@@ -2,13 +2,28 @@ from datetime import datetime, timezone
 from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import psycopg
+import os
 
 app = FastAPI(title="GameSales API", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Compose service name: "postgres"
-DB_DSN = "postgresql://gamesales_app:najTylth1@postgres:5432/gamesales"
+DB_DSN = os.getenv(
+    "DATABASE_URL",
+    "postgresql://gamesales_app:najTylth1@postgres:5432/gamesales",
+)
 
 def now_utc():
     return datetime.now(timezone.utc)
