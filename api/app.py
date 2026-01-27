@@ -6,6 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import psycopg
 import os
+from dotenv import load_dotenv, find_dotenv
+
+load_dotenv(find_dotenv(".env.dev"))
 
 app = FastAPI(title="GameSales API", version="0.1.0")
 app.add_middleware(

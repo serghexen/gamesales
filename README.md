@@ -44,3 +44,9 @@ Open: http://localhost:5173
 Docker Compose files are for server usage (DB + API + web).
 See `docker-compose.prod.yml` and `.env.example`.
 
+### Deploy on VDS
+Make sure `.env.prod` exists on the server, then:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+```

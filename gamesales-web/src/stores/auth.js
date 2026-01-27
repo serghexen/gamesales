@@ -31,7 +31,7 @@ export function useAuth() {
   }
 
   function isAuthed() {
-    return !!state.token
+    return !!(state.token || localStorage.getItem('auth_token'))
   }
 
   return { state, login, logout, isAuthed }
