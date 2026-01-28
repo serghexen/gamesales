@@ -3,7 +3,9 @@
     <div class="shell">
       <header class="top">
         <div class="brand">
-          <div class="logo">GS</div>
+          <div class="logo">
+            <img src="../assets/logo.jpg" alt="Логотип" />
+          </div>
           <div>
             <div class="title">Рабочая зона</div>
             <div class="sub">Пользователь: <b>{{ auth.state.user }}</b></div>
@@ -2057,6 +2059,13 @@ watch(activeTab, async (tab) => {
   background: linear-gradient(135deg, rgba(62, 232, 181, 0.3), rgba(247, 185, 85, 0.3));
   border: 1px solid rgba(255, 255, 255, 0.2);
   font-weight: 700;
+  overflow: hidden;
+}
+
+.logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .title {

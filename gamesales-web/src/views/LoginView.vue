@@ -3,7 +3,9 @@
     <div class="shell">
       <div class="card" role="region" aria-label="Авторизация">
         <div class="card__head">
-          <div class="logo">GS</div>
+          <div class="logo">
+            <img src="../assets/logo.jpg" alt="Логотип" />
+          </div>
           <div>
             <h2 class="title">Вход в панель</h2>
             <p class="subtitle">Введите логин и пароль для продолжения</p>
@@ -168,6 +170,13 @@ async function onSubmit() {
   background: linear-gradient(135deg, rgba(62, 232, 181, 0.3), rgba(247, 185, 85, 0.3));
   border: 1px solid rgba(255, 255, 255, 0.2);
   font-weight: 700;
+  overflow: hidden;
+}
+
+.logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .title {
