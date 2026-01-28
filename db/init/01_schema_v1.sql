@@ -182,6 +182,7 @@ CREATE TABLE IF NOT EXISTS app.deal_items (
   deal_id          bigint NOT NULL REFERENCES app.deals(deal_id) ON DELETE CASCADE,
   account_id       bigint REFERENCES app.accounts(account_id) ON DELETE RESTRICT,
   game_id          bigint REFERENCES app.game_titles(game_id) ON DELETE RESTRICT,
+  platform_id      smallint REFERENCES app.platforms(platform_id),
   account_asset_id bigint REFERENCES app.account_assets(account_asset_id) ON DELETE RESTRICT,
   qty              integer NOT NULL DEFAULT 1,
   price            numeric(14,2) NOT NULL DEFAULT 0,
@@ -206,6 +207,7 @@ COMMENT ON COLUMN app.deal_items.deal_item_id IS 'Идентификатор п�
 COMMENT ON COLUMN app.deal_items.deal_id IS 'Сделка';
 COMMENT ON COLUMN app.deal_items.account_id IS 'Аккаунт (если применимо)';
 COMMENT ON COLUMN app.deal_items.game_id IS 'Игра (если применимо)';
+COMMENT ON COLUMN app.deal_items.platform_id IS 'Платформа (если применимо)';
 COMMENT ON COLUMN app.deal_items.account_asset_id IS 'Ассет аккаунта (если применимо)';
 COMMENT ON COLUMN app.deal_items.qty IS 'Количество';
 COMMENT ON COLUMN app.deal_items.price IS 'Цена';

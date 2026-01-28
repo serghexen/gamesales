@@ -20,3 +20,25 @@ export async function apiPost(path, body, { token } = {}) {
   if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`)
   return res.json()
 }
+
+export async function apiDelete(path, { token } = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'DELETE',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  })
+  if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status}`)
+  return res.json()
+}
+
+export async function apiPut(path, body, { token } = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`PUT ${path} failed: ${res.status}`)
+  return res.json()
+}

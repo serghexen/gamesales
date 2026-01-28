@@ -229,6 +229,182 @@
           </div>
         </section>
 
+        <section class="panel panel--wide">
+          <button class="panel__toggle" @click="showDeals = !showDeals">
+            <div>
+              <h2>Продажа / аренда</h2>
+              <p class="muted">Фиксация выдач и продаж по аккаунтам.</p>
+            </div>
+            <span class="chev" :class="{ open: showDeals }">⌄</span>
+          </button>
+          <div v-if="showDeals" class="panel__body">
+            <div class="form form--stack">
+              <label class="field">
+                <span class="label">Тип</span>
+                <select v-model="newDeal.deal_type_code" class="input input--select">
+                  <option value="sale">Продажа</option>
+                  <option value="rental">Аренда</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Аккаунт</span>
+                <select v-model.number="newDeal.account_id" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="a in accounts" :key="a.account_id" :value="a.account_id">
+                    {{ a.login_full || a.account_id }}
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Игра</span>
+                <select v-model.number="newDeal.game_id" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="g in games" :key="g.game_id" :value="g.game_id">
+                    {{ g.title }}
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Пользователь</span>
+                <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="nickname" />
+              </label>
+              <label class="field">
+                <span class="label">Откуда</span>
+                <select v-model="newDeal.source_code" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="s in sources" :key="s.code" :value="s.code">
+                    {{ s.name }} ({{ s.code }})
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Платформа</span>
+                <select v-model="newDeal.platform_code" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="p in platforms" :key="p.code" :value="p.code">
+                    {{ p.name }} ({{ p.code }})
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Цена</span>
+                <input v-model.number="newDeal.price" class="input" type="number" min="0" />
+              </label>
+              <label class="field">
+                <span class="label">Дата покупки</span>
+                <input v-model="newDeal.purchase_at" class="input" type="date" />
+              </label>
+              <label v-if="newDeal.deal_type_code === 'rental'" class="field">
+                <span class="label">Слотов используется</span>
+                <input v-model.number="newDeal.slots_used" class="input" type="number" min="1" />
+              </label>
+              <label class="field">
+                <span class="label">Комментарий</span>
+                <input v-model.trim="newDeal.notes" class="input" />
+              </label>
+              <p v-if="dealError" class="bad">{{ dealError }}</p>
+              <p v-if="dealOk" class="ok">{{ dealOk }}</p>
+              <button class="btn" @click="createDeal" :disabled="dealLoading">
+                {{ dealLoading ? 'Сохраняем…' : 'Сохранить' }}
+              </button>
+            </div>
+
+            <div class="panel__head">
+              <div></div>
+              <button class="ghost" @click="loadDeals(1)" :disabled="dealListLoading">
+                {{ dealListLoading ? 'Обновляем…' : 'Обновить список' }}
+              </button>
+            </div>
+
+            <div class="form form--stack">
+              <label class="field">
+                <span class="label">Фильтр по аккаунту</span>
+                <select v-model.number="dealFilters.account_id" class="input input--select">
+                  <option value="">— все —</option>
+                  <option v-for="a in accounts" :key="a.account_id" :value="a.account_id">
+                    {{ a.login_full || a.account_id }}
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Фильтр по игре</span>
+                <select v-model.number="dealFilters.game_id" class="input input--select">
+                  <option value="">— все —</option>
+                  <option v-for="g in games" :key="g.game_id" :value="g.game_id">
+                    {{ g.title }}
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Фильтр по платформе</span>
+                <select v-model="dealFilters.platform_code" class="input input--select">
+                  <option value="">— все —</option>
+                  <option v-for="p in platforms" :key="p.code" :value="p.code">
+                    {{ p.name }} ({{ p.code }})
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Поиск</span>
+                <input v-model.trim="dealFilters.q" class="input" placeholder="игра / логин / пользователь" />
+              </label>
+              <label class="field">
+                <span class="label">Показывать на странице</span>
+                <select v-model.number="dealPageSize" class="input input--select">
+                  <option :value="10">10</option>
+                  <option :value="20">20</option>
+                  <option :value="50">50</option>
+                  <option :value="100">100</option>
+                </select>
+              </label>
+              <button class="btn" @click="loadDeals(1)" :disabled="dealListLoading">
+                {{ dealListLoading ? 'Ищем…' : 'Применить фильтры' }}
+              </button>
+            </div>
+
+            <p v-if="dealListError" class="bad">{{ dealListError }}</p>
+            <table v-if="dealItems.length" class="table">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Тип</th>
+                  <th>Аккаунт</th>
+                  <th>Игра</th>
+                  <th>Платформа</th>
+                  <th>Пользователь</th>
+                  <th>Цена</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="d in dealItems" :key="d.deal_id">
+                  <td>{{ formatDate(d.created_at) }}</td>
+                  <td>{{ d.deal_type }}</td>
+                  <td>{{ d.account_login || d.account_id }}</td>
+                  <td>{{ d.game_title || '—' }}</td>
+                  <td>{{ d.platform_code || '—' }}</td>
+                  <td>{{ d.customer_nickname || '—' }}</td>
+                  <td>{{ d.price }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <p v-else class="muted">Пока нет сделок.</p>
+
+            <div class="pager">
+              <button class="ghost" @click="loadDeals(dealPage - 1)" :disabled="dealPage <= 1 || dealListLoading">
+                ← Назад
+              </button>
+              <span class="muted">Страница {{ dealPage }} из {{ totalPages }}</span>
+              <button
+                class="ghost"
+                @click="loadDeals(dealPage + 1)"
+                :disabled="dealPage >= totalPages || dealListLoading"
+              >
+                Вперёд →
+              </button>
+            </div>
+          </div>
+        </section>
+
         <section v-if="isAdmin" class="panel panel--wide">
           <button class="panel__toggle" @click="showCatalogs = !showCatalogs">
             <div>
@@ -262,6 +438,34 @@
               </button>
             </div>
 
+            <div class="form form--stack">
+              <label class="field">
+                <span class="label">Платформа (код)</span>
+                <input v-model.trim="newPlatform.code" class="input" placeholder="steam" />
+              </label>
+              <label class="field">
+                <span class="label">Платформа (название)</span>
+                <input v-model.trim="newPlatform.name" class="input" placeholder="Steam" />
+              </label>
+              <button class="btn" @click="createPlatform" :disabled="catalogsLoading">
+                {{ catalogsLoading ? 'Сохраняем…' : 'Добавить платформу' }}
+              </button>
+            </div>
+
+            <div class="form form--stack">
+              <label class="field">
+                <span class="label">Регион (код)</span>
+                <input v-model.trim="newRegion.code" class="input" placeholder="RU" />
+              </label>
+              <label class="field">
+                <span class="label">Регион (название)</span>
+                <input v-model.trim="newRegion.name" class="input" placeholder="Russia" />
+              </label>
+              <button class="btn" @click="createRegion" :disabled="catalogsLoading">
+                {{ catalogsLoading ? 'Сохраняем…' : 'Добавить регион' }}
+              </button>
+            </div>
+
             <p v-if="catalogsError" class="bad">{{ catalogsError }}</p>
             <p v-if="catalogsOk" class="ok">{{ catalogsOk }}</p>
 
@@ -269,16 +473,54 @@
               <div>
                 <h3>Домены</h3>
                 <ul class="list" v-if="domains.length">
-                  <li v-for="d in domains" :key="d.code">{{ d.name }}</li>
+                  <li v-for="d in domains" :key="d.code">
+                    <span>{{ d.name }}</span>
+                    <div class="list-actions">
+                      <button class="mini-btn" @click="editDomain(d.code)">Редактировать</button>
+                      <button class="mini-btn mini-btn--danger" @click="deleteDomain(d.code)">Удалить</button>
+                    </div>
+                  </li>
                 </ul>
                 <p v-else class="muted">Пока нет доменов.</p>
               </div>
               <div>
                 <h3>Источники</h3>
                 <ul class="list" v-if="sources.length">
-                  <li v-for="s in sources" :key="s.code">{{ s.code }} — {{ s.name }}</li>
+                  <li v-for="s in sources" :key="s.code">
+                    <span>{{ s.code }} — {{ s.name }}</span>
+                    <div class="list-actions">
+                      <button class="mini-btn" @click="editSource(s.code, s.name)">Редактировать</button>
+                      <button class="mini-btn mini-btn--danger" @click="deleteSource(s.code)">Удалить</button>
+                    </div>
+                  </li>
                 </ul>
                 <p v-else class="muted">Пока нет источников.</p>
+              </div>
+              <div>
+                <h3>Платформы</h3>
+                <ul class="list" v-if="platforms.length">
+                  <li v-for="p in platforms" :key="p.code">
+                    <span>{{ p.code }} — {{ p.name }}</span>
+                    <div class="list-actions">
+                      <button class="mini-btn" @click="editPlatform(p.code, p.name)">Редактировать</button>
+                      <button class="mini-btn mini-btn--danger" @click="deletePlatform(p.code)">Удалить</button>
+                    </div>
+                  </li>
+                </ul>
+                <p v-else class="muted">Пока нет платформ.</p>
+              </div>
+              <div>
+                <h3>Регионы</h3>
+                <ul class="list" v-if="regions.length">
+                  <li v-for="r in regions" :key="r.code">
+                    <span>{{ r.code }} — {{ r.name }}</span>
+                    <div class="list-actions">
+                      <button class="mini-btn" @click="editRegion(r.code, r.name)">Редактировать</button>
+                      <button class="mini-btn mini-btn--danger" @click="deleteRegion(r.code)">Удалить</button>
+                    </div>
+                  </li>
+                </ul>
+                <p v-else class="muted">Пока нет регионов.</p>
               </div>
             </div>
           </div>
@@ -350,7 +592,7 @@
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../stores/auth'
-import { apiGet, apiPost } from '../api/http'
+import { apiGet, apiPost, apiDelete, apiPut } from '../api/http'
 
 const router = useRouter()
 const auth = useAuth()
@@ -377,6 +619,15 @@ const userLoading = ref(false)
 const gameError = ref(null)
 const gameOk = ref(null)
 const gameLoading = ref(false)
+const dealError = ref(null)
+const dealOk = ref(null)
+const dealLoading = ref(false)
+const dealItems = ref([])
+const dealListError = ref(null)
+const dealListLoading = ref(false)
+const dealPage = ref(1)
+const dealPageSize = ref(20)
+const dealTotal = ref(0)
 const pwdError = ref(null)
 const pwdOk = ref(false)
 const pwdLoading = ref(false)
@@ -400,6 +651,7 @@ const showProfile = ref(false)
 const showAccounts = ref(true)
 const showUsers = ref(true)
 const showGames = ref(false)
+const showDeals = ref(false)
 const showCatalogs = ref(false)
 
 const newGame = reactive({
@@ -408,8 +660,42 @@ const newGame = reactive({
   region_code: '',
 })
 
+const newDeal = reactive({
+  deal_type_code: 'sale',
+  account_id: '',
+  game_id: '',
+  customer_nickname: '',
+  source_code: '',
+  platform_code: '',
+  price: 0,
+  purchase_at: '',
+  slots_used: 1,
+  notes: '',
+})
+
+const games = ref([])
+const dealFilters = reactive({
+  account_id: '',
+  game_id: '',
+  platform_code: '',
+  q: '',
+})
+
+const totalPages = computed(() => {
+  const pages = Math.ceil(dealTotal.value / dealPageSize.value)
+  return pages > 0 ? pages : 1
+})
+
 const newDomain = ref('')
 const newSource = reactive({
+  code: '',
+  name: '',
+})
+const newPlatform = reactive({
+  code: '',
+  name: '',
+})
+const newRegion = reactive({
   code: '',
   name: '',
 })
@@ -483,6 +769,15 @@ async function loadSources() {
     sources.value = s || []
   } catch {
     sources.value = []
+  }
+}
+
+async function loadGames() {
+  try {
+    const g = await apiGet('/games', { token: auth.state.token })
+    games.value = g || []
+  } catch {
+    games.value = []
   }
 }
 
@@ -617,6 +912,70 @@ async function createGame() {
   }
 }
 
+async function createDeal() {
+  dealError.value = null
+  dealOk.value = null
+  if (!newDeal.account_id || !newDeal.game_id || !newDeal.customer_nickname || !newDeal.platform_code) {
+    dealError.value = 'Заполните аккаунт, игру, пользователя и платформу'
+    return
+  }
+  dealLoading.value = true
+  try {
+    await apiPost(
+      '/deals',
+      {
+        deal_type_code: newDeal.deal_type_code,
+        account_id: newDeal.account_id,
+        game_id: newDeal.game_id,
+        customer_nickname: newDeal.customer_nickname,
+        source_code: newDeal.source_code || null,
+        platform_code: newDeal.platform_code || null,
+        price: newDeal.price || 0,
+        purchase_at: newDeal.purchase_at ? `${newDeal.purchase_at}T00:00:00Z` : null,
+        slots_used: newDeal.deal_type_code === 'rental' ? newDeal.slots_used : 0,
+        notes: newDeal.notes || null,
+      },
+      { token: auth.state.token }
+    )
+    dealOk.value = 'Сделка сохранена'
+    newDeal.customer_nickname = ''
+    newDeal.price = 0
+    newDeal.purchase_at = ''
+    newDeal.notes = ''
+  } catch (e) {
+    dealError.value = e?.message || 'Ошибка'
+  } finally {
+    dealLoading.value = false
+  }
+}
+
+async function loadDeals(page = 1) {
+  dealListError.value = null
+  dealListLoading.value = true
+  try {
+    const params = new URLSearchParams()
+    if (dealFilters.account_id) params.set('account_id', String(dealFilters.account_id))
+    if (dealFilters.game_id) params.set('game_id', String(dealFilters.game_id))
+    if (dealFilters.platform_code) params.set('platform_code', String(dealFilters.platform_code))
+    if (dealFilters.q) params.set('q', dealFilters.q)
+    params.set('page', String(page))
+    params.set('page_size', String(dealPageSize.value))
+    const res = await apiGet(`/deals?${params.toString()}`, { token: auth.state.token })
+    dealItems.value = res?.items || []
+    dealTotal.value = res?.total || 0
+    dealPage.value = page
+  } catch (e) {
+    dealListError.value = e?.message || 'Ошибка'
+  } finally {
+    dealListLoading.value = false
+  }
+}
+
+function formatDate(value) {
+  if (!value) return '—'
+  return new Date(value).toLocaleString()
+}
+
 async function createDomain() {
   catalogsError.value = null
   catalogsOk.value = null
@@ -658,6 +1017,180 @@ async function createSource() {
   }
 }
 
+async function createPlatform() {
+  catalogsError.value = null
+  catalogsOk.value = null
+  if (!newPlatform.code || !newPlatform.name) {
+    catalogsError.value = 'Введите код и название платформы'
+    return
+  }
+  catalogsLoading.value = true
+  try {
+    await apiPost('/platforms', newPlatform, { token: auth.state.token })
+    catalogsOk.value = `Платформа ${newPlatform.code} добавлена`
+    newPlatform.code = ''
+    newPlatform.name = ''
+    await loadCatalogs()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+  }
+}
+
+async function createRegion() {
+  catalogsError.value = null
+  catalogsOk.value = null
+  if (!newRegion.code || !newRegion.name) {
+    catalogsError.value = 'Введите код и название региона'
+    return
+  }
+  catalogsLoading.value = true
+  try {
+    await apiPost('/regions', newRegion, { token: auth.state.token })
+    catalogsOk.value = `Регион ${newRegion.code} добавлен`
+    newRegion.code = ''
+    newRegion.name = ''
+    await loadCatalogs()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+  }
+}
+
+async function deleteDomain(name) {
+  if (!window.confirm(`Удалить домен ${name}?`)) return
+  catalogsError.value = null
+  catalogsOk.value = null
+  catalogsLoading.value = true
+  try {
+    await apiDelete(`/domains/${encodeURIComponent(name)}`, { token: auth.state.token })
+    catalogsOk.value = `Домен ${name} удалён`
+    await loadDomains()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+  }
+}
+
+async function deleteSource(code) {
+  if (!window.confirm(`Удалить источник ${code}?`)) return
+  catalogsError.value = null
+  catalogsOk.value = null
+  catalogsLoading.value = true
+  try {
+    await apiDelete(`/sources/${encodeURIComponent(code)}`, { token: auth.state.token })
+    catalogsOk.value = `Источник ${code} удалён`
+    await loadSources()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+  }
+}
+
+async function deletePlatform(code) {
+  if (!window.confirm(`Удалить платформу ${code}?`)) return
+  catalogsError.value = null
+  catalogsOk.value = null
+  catalogsLoading.value = true
+  try {
+    await apiDelete(`/platforms/${encodeURIComponent(code)}`, { token: auth.state.token })
+    catalogsOk.value = `Платформа ${code} удалена`
+    await loadCatalogs()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+  }
+}
+
+async function deleteRegion(code) {
+  if (!window.confirm(`Удалить регион ${code}?`)) return
+  catalogsError.value = null
+  catalogsOk.value = null
+  catalogsLoading.value = true
+  try {
+    await apiDelete(`/regions/${encodeURIComponent(code)}`, { token: auth.state.token })
+    catalogsOk.value = `Регион ${code} удалён`
+    await loadCatalogs()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+  }
+}
+
+async function editDomain(name) {
+  const next = window.prompt('Новый домен', name)
+  if (!next || next === name) return
+  catalogsError.value = null
+  catalogsOk.value = null
+  catalogsLoading.value = true
+  try {
+    await apiPut(`/domains/${encodeURIComponent(name)}`, { name: next }, { token: auth.state.token })
+    catalogsOk.value = `Домен обновлён`
+    await loadDomains()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+  }
+}
+
+async function editSource(code, currentName) {
+  const next = window.prompt('Новое название источника', currentName)
+  if (!next || next === currentName) return
+  catalogsError.value = null
+  catalogsOk.value = null
+  catalogsLoading.value = true
+  try {
+    await apiPut(`/sources/${encodeURIComponent(code)}`, { name: next }, { token: auth.state.token })
+    catalogsOk.value = `Источник обновлён`
+    await loadSources()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+  }
+}
+
+async function editPlatform(code, currentName) {
+  const next = window.prompt('Новое название платформы', currentName)
+  if (!next || next === currentName) return
+  catalogsError.value = null
+  catalogsOk.value = null
+  catalogsLoading.value = true
+  try {
+    await apiPut(`/platforms/${encodeURIComponent(code)}`, { name: next }, { token: auth.state.token })
+    catalogsOk.value = `Платформа обновлена`
+    await loadCatalogs()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+  }
+}
+
+async function editRegion(code, currentName) {
+  const next = window.prompt('Новое название региона', currentName)
+  if (!next || next === currentName) return
+  catalogsError.value = null
+  catalogsOk.value = null
+  catalogsLoading.value = true
+  try {
+    await apiPut(`/regions/${encodeURIComponent(code)}`, { name: next }, { token: auth.state.token })
+    catalogsOk.value = `Регион обновлён`
+    await loadCatalogs()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+  }
+}
+
 function onLogout() {
   auth.logout()
   router.replace('/login')
@@ -688,9 +1221,26 @@ watch(showAccounts, async (open) => {
   await loadAccounts()
 })
 
+watch(showDeals, async (open) => {
+  if (!open) return
+  if (!accounts.value.length) {
+    await loadAccounts()
+  }
+  if (!games.value.length) {
+    await loadGames()
+  }
+  if (!platforms.value.length || !regions.value.length) {
+    await loadCatalogs()
+  }
+  if (!sources.value.length) {
+    await loadSources()
+  }
+  await loadDeals(1)
+})
+
 watch(showCatalogs, async (open) => {
   if (!open) return
-  await Promise.all([loadDomains(), loadSources()])
+  await Promise.all([loadDomains(), loadSources(), loadCatalogs()])
 })
 </script>
 
@@ -924,6 +1474,49 @@ h2 {
   margin: 0;
   padding-left: 16px;
   color: var(--ink);
+}
+
+.list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.list-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.mini-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cfe1ff;
+  border-radius: 10px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mini-btn:hover {
+  background: rgba(207, 225, 255, 0.15);
+}
+
+.mini-btn--danger {
+  color: #ffb4b4;
+}
+
+.mini-btn--danger:hover {
+  background: rgba(255, 180, 180, 0.15);
 }
 
 h3 {
