@@ -1,27 +1,6 @@
 <template>
   <div class="page">
     <div class="shell">
-      <section class="hero" aria-hidden="true">
-        <div class="hero__badge">GameSales</div>
-        <h1 class="hero__title">
-          Управляй аккаунтами, арендами и продажами в одном месте
-        </h1>
-        <p class="hero__text">
-          Быстрый доступ к витрине, свободным слотам и истории выдач. Всё в пару
-          кликов.
-        </p>
-        <div class="hero__stats">
-          <div class="stat">
-            <div class="stat__value">99.9%</div>
-            <div class="stat__label">аптайм</div>
-          </div>
-          <div class="stat">
-            <div class="stat__value">2.4s</div>
-            <div class="stat__label">до сделки</div>
-          </div>
-        </div>
-      </section>
-
       <div class="card" role="region" aria-label="Авторизация">
         <div class="card__head">
           <div class="logo">GS</div>
@@ -61,10 +40,6 @@
             <span v-else>Войти</span>
           </button>
         </form>
-
-        <p class="hint">
-          Прототип: вход проходит, если API отвечает на <code>/health</code>.
-        </p>
       </div>
     </div>
   </div>
@@ -166,68 +141,9 @@ async function onSubmit() {
   z-index: 1;
 }
 
-.hero {
-  padding: 22px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(12px);
-  animation: rise 0.7s ease both;
-}
-
-.hero__badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(62, 232, 181, 0.5);
-  color: var(--accent);
-  font-size: 12px;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  margin-bottom: 14px;
-}
-
-.hero__title {
-  margin: 0 0 10px;
-  font-family: 'Fraunces', serif;
-  font-size: clamp(24px, 4.8vw, 36px);
-  line-height: 1.1;
-}
-
-.hero__text {
-  margin: 0 0 16px;
-  color: var(--muted);
-  font-size: clamp(14px, 3.4vw, 16px);
-}
-
-.hero__stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.stat {
-  padding: 12px;
-  border-radius: 14px;
-  background: rgba(10, 16, 32, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.stat__value {
-  font-weight: 700;
-  font-size: 18px;
-}
-
-.stat__label {
-  font-size: 12px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-}
-
 .card {
   width: 100%;
+  max-width: 460px;
   border-radius: 20px;
   background: var(--card);
   border: 1px solid var(--stroke);
@@ -300,6 +216,7 @@ async function onSubmit() {
   color: var(--ink);
   outline: none;
   font-size: 16px;
+  box-sizing: border-box;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -320,7 +237,7 @@ async function onSubmit() {
 
 .btn {
   margin-top: 6px;
-  height: 50px;
+  height: 48px;
   border-radius: 14px;
   border: 0;
   background: linear-gradient(135deg, #3ee8b5, #7df0c6);
@@ -343,17 +260,6 @@ async function onSubmit() {
   transform: none;
 }
 
-.hint {
-  margin: 16px 0 0;
-  opacity: 0.6;
-  font-size: 12px;
-  line-height: 1.4;
-  word-break: break-word;
-}
-
-code {
-  opacity: 0.9;
-}
 
 @keyframes rise {
   from {
@@ -379,14 +285,8 @@ code {
 
 @media (min-width: 900px) {
   .shell {
-    grid-template-columns: 1.05fr 0.95fr;
     align-items: center;
-  }
-
-  .hero {
-    padding: 28px;
-    border-radius: 24px;
-    min-height: 380px;
+    justify-items: center;
   }
 
   .card {

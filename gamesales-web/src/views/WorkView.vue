@@ -92,9 +92,14 @@
               <h2>Профиль</h2>
               <p class="muted">Сменить пароль текущего пользователя.</p>
             </div>
+            <div class="toolbar-actions">
+              <button class="btn btn--ghost" @click="showPwdForm = !showPwdForm">
+                {{ showPwdForm ? 'Скрыть форму' : 'Сменить пароль' }}
+              </button>
+            </div>
           </div>
           <div class="panel__body">
-            <div class="form">
+            <div v-if="showPwdForm" class="form">
               <label class="field">
                 <span class="label">Текущий пароль</span>
                 <input v-model="pwdForm.current" class="input" type="password" />
@@ -113,6 +118,7 @@
                 {{ pwdLoading ? 'Сохраняем…' : 'Сменить пароль' }}
               </button>
             </div>
+            <p v-else class="muted">Нажмите «Сменить пароль», чтобы открыть форму.</p>
           </div>
         </section>
 
@@ -124,7 +130,7 @@
             </div>
             <div class="toolbar-actions">
               <button class="btn btn--ghost" @click="showAccountForm = !showAccountForm">
-                {{ showAccountForm ? 'Скрыть форму' : 'Завести аккаунт' }}
+                {{ showAccountForm ? 'Скрыть форму' : 'Добавить аккаунт' }}
               </button>
               <button class="btn btn--ghost" @click="showAccountFilters = !showAccountFilters">
                 {{ showAccountFilters ? 'Скрыть фильтры' : 'Фильтр' }}
@@ -707,14 +713,44 @@
             <p v-if="catalogsError" class="bad">{{ catalogsError }}</p>
             <p v-if="catalogsOk" class="ok">{{ catalogsOk }}</p>
 
-            <div class="catalog">
-              <div class="catalog__head">
-                <h3>Домены</h3>
-                <button class="mini-btn" @click="showDomainForm = !showDomainForm">
-                  {{ showDomainForm ? 'Закрыть' : 'Добавить' }}
-                </button>
+            <div v-if="catalogsLoading" class="loader-wrap">
+              <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
+                <div class="wheel"></div>
+                <div class="hamster">
+                  <div class="hamster__body">
+                    <div class="hamster__head">
+                      <div class="hamster__ear"></div>
+                      <div class="hamster__eye"></div>
+                      <div class="hamster__nose"></div>
+                    </div>
+                    <div class="hamster__limb hamster__limb--fr"></div>
+                    <div class="hamster__limb hamster__limb--fl"></div>
+                    <div class="hamster__limb hamster__limb--br"></div>
+                    <div class="hamster__limb hamster__limb--bl"></div>
+                    <div class="hamster__tail"></div>
+                  </div>
+                </div>
+                <div class="spoke"></div>
               </div>
-              <div v-if="showDomainForm" class="form form--stack form--compact">
+              <p class="muted">Загрузка справочников…</p>
+            </div>
+
+            <div v-else>
+            <div class="catalog">
+              <div class="panel__head">
+                <div>
+                  <h3>Домены</h3>
+                </div>
+                <div class="toolbar-actions">
+                  <button class="btn btn--ghost" @click="showDomainForm = !showDomainForm">
+                    {{ showDomainForm ? 'Скрыть форму' : 'Добавить домен' }}
+                  </button>
+                  <button class="btn btn--ghost" @click="loadDomains" :disabled="catalogsLoading">
+                    {{ catalogsLoading ? 'Обновляем…' : 'Обновить список' }}
+                  </button>
+                </div>
+              </div>
+              <div v-if="showDomainForm" class="form form--stack form--card form--compact">
                 <label class="field">
                   <span class="label">Новый домен</span>
                   <input v-model.trim="newDomain" class="input" placeholder="example.com" />
@@ -723,26 +759,43 @@
                   {{ catalogsLoading ? 'Сохраняем…' : 'Добавить домен' }}
                 </button>
               </div>
-              <ul class="list" v-if="domains.length">
-                <li v-for="d in domains" :key="d.code">
-                  <span class="list-text">{{ d.name }}</span>
-                  <div class="list-actions">
-                    <button class="mini-btn" @click="editDomain(d.code)">Редактировать</button>
-                    <button class="mini-btn mini-btn--danger" @click="deleteDomain(d.code)">Удалить</button>
-                  </div>
-                </li>
-              </ul>
+              <table v-if="domains.length" class="table table--compact">
+                <thead>
+                  <tr>
+                    <th>Домен</th>
+                    <th>Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="d in domains" :key="d.code">
+                    <td>{{ d.name }}</td>
+                    <td>
+                      <div class="list-actions">
+                        <button class="mini-btn" @click="editDomain(d.code)">Редактировать</button>
+                        <button class="mini-btn mini-btn--danger" @click="deleteDomain(d.code)">Удалить</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
               <p v-else class="muted">Пока нет доменов.</p>
             </div>
 
             <div class="catalog">
-              <div class="catalog__head">
-                <h3>Источники</h3>
-                <button class="mini-btn" @click="showSourceForm = !showSourceForm">
-                  {{ showSourceForm ? 'Закрыть' : 'Добавить' }}
-                </button>
+              <div class="panel__head">
+                <div>
+                  <h3>Источники</h3>
+                </div>
+                <div class="toolbar-actions">
+                  <button class="btn btn--ghost" @click="showSourceForm = !showSourceForm">
+                    {{ showSourceForm ? 'Скрыть форму' : 'Добавить источник' }}
+                  </button>
+                  <button class="btn btn--ghost" @click="loadSources" :disabled="catalogsLoading">
+                    {{ catalogsLoading ? 'Обновляем…' : 'Обновить список' }}
+                  </button>
+                </div>
               </div>
-              <div v-if="showSourceForm" class="form form--stack form--compact">
+              <div v-if="showSourceForm" class="form form--stack form--card form--compact">
                 <label class="field">
                   <span class="label">Источник (код)</span>
                   <input v-model.trim="newSource.code" class="input" placeholder="tg" />
@@ -755,26 +808,45 @@
                   {{ catalogsLoading ? 'Сохраняем…' : 'Добавить источник' }}
                 </button>
               </div>
-              <ul class="list" v-if="sources.length">
-                <li v-for="s in sources" :key="s.code">
-                  <span class="list-text">{{ s.code }} — {{ s.name }}</span>
-                  <div class="list-actions">
-                    <button class="mini-btn" @click="editSource(s.code, s.name)">Редактировать</button>
-                    <button class="mini-btn mini-btn--danger" @click="deleteSource(s.code)">Удалить</button>
-                  </div>
-                </li>
-              </ul>
+              <table v-if="sources.length" class="table table--compact">
+                <thead>
+                  <tr>
+                    <th>Код</th>
+                    <th>Название</th>
+                    <th>Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="s in sources" :key="s.code">
+                    <td>{{ s.code }}</td>
+                    <td>{{ s.name }}</td>
+                    <td>
+                      <div class="list-actions">
+                        <button class="mini-btn" @click="editSource(s.code, s.name)">Редактировать</button>
+                        <button class="mini-btn mini-btn--danger" @click="deleteSource(s.code)">Удалить</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
               <p v-else class="muted">Пока нет источников.</p>
             </div>
 
             <div class="catalog">
-              <div class="catalog__head">
-                <h3>Платформы</h3>
-                <button class="mini-btn" @click="showPlatformForm = !showPlatformForm">
-                  {{ showPlatformForm ? 'Закрыть' : 'Добавить' }}
-                </button>
+              <div class="panel__head">
+                <div>
+                  <h3>Платформы</h3>
+                </div>
+                <div class="toolbar-actions">
+                  <button class="btn btn--ghost" @click="showPlatformForm = !showPlatformForm">
+                    {{ showPlatformForm ? 'Скрыть форму' : 'Добавить платформу' }}
+                  </button>
+                  <button class="btn btn--ghost" @click="loadCatalogs" :disabled="catalogsLoading">
+                    {{ catalogsLoading ? 'Обновляем…' : 'Обновить список' }}
+                  </button>
+                </div>
               </div>
-              <div v-if="showPlatformForm" class="form form--stack form--compact">
+              <div v-if="showPlatformForm" class="form form--stack form--card form--compact">
                 <label class="field">
                   <span class="label">Платформа (код)</span>
                   <input v-model.trim="newPlatform.code" class="input" placeholder="steam" />
@@ -787,26 +859,45 @@
                   {{ catalogsLoading ? 'Сохраняем…' : 'Добавить платформу' }}
                 </button>
               </div>
-              <ul class="list" v-if="platforms.length">
-                <li v-for="p in platforms" :key="p.code">
-                  <span class="list-text">{{ p.code }} — {{ p.name }}</span>
-                  <div class="list-actions">
-                    <button class="mini-btn" @click="editPlatform(p.code, p.name)">Редактировать</button>
-                    <button class="mini-btn mini-btn--danger" @click="deletePlatform(p.code)">Удалить</button>
-                  </div>
-                </li>
-              </ul>
+              <table v-if="platforms.length" class="table table--compact">
+                <thead>
+                  <tr>
+                    <th>Код</th>
+                    <th>Название</th>
+                    <th>Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="p in platforms" :key="p.code">
+                    <td>{{ p.code }}</td>
+                    <td>{{ p.name }}</td>
+                    <td>
+                      <div class="list-actions">
+                        <button class="mini-btn" @click="editPlatform(p.code, p.name)">Редактировать</button>
+                        <button class="mini-btn mini-btn--danger" @click="deletePlatform(p.code)">Удалить</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
               <p v-else class="muted">Пока нет платформ.</p>
             </div>
 
             <div class="catalog">
-              <div class="catalog__head">
-                <h3>Регионы</h3>
-                <button class="mini-btn" @click="showRegionForm = !showRegionForm">
-                  {{ showRegionForm ? 'Закрыть' : 'Добавить' }}
-                </button>
+              <div class="panel__head">
+                <div>
+                  <h3>Регионы</h3>
+                </div>
+                <div class="toolbar-actions">
+                  <button class="btn btn--ghost" @click="showRegionForm = !showRegionForm">
+                    {{ showRegionForm ? 'Скрыть форму' : 'Добавить регион' }}
+                  </button>
+                  <button class="btn btn--ghost" @click="loadCatalogs" :disabled="catalogsLoading">
+                    {{ catalogsLoading ? 'Обновляем…' : 'Обновить список' }}
+                  </button>
+                </div>
               </div>
-              <div v-if="showRegionForm" class="form form--stack form--compact">
+              <div v-if="showRegionForm" class="form form--stack form--card form--compact">
                 <label class="field">
                   <span class="label">Регион (код)</span>
                   <input v-model.trim="newRegion.code" class="input" placeholder="RU" />
@@ -819,16 +910,29 @@
                   {{ catalogsLoading ? 'Сохраняем…' : 'Добавить регион' }}
                 </button>
               </div>
-              <ul class="list" v-if="regions.length">
-                <li v-for="r in regions" :key="r.code">
-                  <span class="list-text">{{ r.code }} — {{ r.name }}</span>
-                  <div class="list-actions">
-                    <button class="mini-btn" @click="editRegion(r.code, r.name)">Редактировать</button>
-                    <button class="mini-btn mini-btn--danger" @click="deleteRegion(r.code)">Удалить</button>
-                  </div>
-                </li>
-              </ul>
+              <table v-if="regions.length" class="table table--compact">
+                <thead>
+                  <tr>
+                    <th>Код</th>
+                    <th>Название</th>
+                    <th>Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="r in regions" :key="r.code">
+                    <td>{{ r.code }}</td>
+                    <td>{{ r.name }}</td>
+                    <td>
+                      <div class="list-actions">
+                        <button class="mini-btn" @click="editRegion(r.code, r.name)">Редактировать</button>
+                        <button class="mini-btn mini-btn--danger" @click="deleteRegion(r.code)">Удалить</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
               <p v-else class="muted">Пока нет регионов.</p>
+            </div>
             </div>
           </div>
         </section>
@@ -839,16 +943,17 @@
               <h2>Пользователи</h2>
               <p class="muted">Создание менеджеров и управление доступом.</p>
             </div>
-          </div>
-          <div class="panel__body">
-            <div class="panel__head">
-              <div></div>
-              <button class="ghost" @click="loadUsers" :disabled="userLoading">
-                {{ userLoading ? 'Обновляем…' : 'Обновить' }}
+            <div class="toolbar-actions">
+              <button class="btn btn--ghost" @click="showUserForm = !showUserForm">
+                {{ showUserForm ? 'Скрыть форму' : 'Добавить пользователя' }}
+              </button>
+              <button class="btn btn--ghost" @click="loadUsers" :disabled="userLoading">
+                {{ userLoading ? 'Обновляем…' : 'Обновить список' }}
               </button>
             </div>
-
-            <div class="form form--stack">
+          </div>
+          <div class="panel__body">
+            <div v-if="showUserForm" class="form form--stack form--card form--compact">
               <label class="field">
                 <span class="label">Логин</span>
                 <input v-model.trim="newUser.username" class="input" placeholder="manager1" />
@@ -867,10 +972,32 @@
                 {{ userLoading ? 'Создаём…' : 'Создать' }}
               </button>
             </div>
+            <p v-else class="muted">Нажмите «Добавить пользователя», чтобы открыть форму.</p>
 
             <p v-if="userError" class="bad">{{ userError }}</p>
             <p v-if="userOk" class="ok">{{ userOk }}</p>
-            <table v-if="users.length" class="table">
+            <div v-if="userLoading" class="loader-wrap">
+              <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
+                <div class="wheel"></div>
+                <div class="hamster">
+                  <div class="hamster__body">
+                    <div class="hamster__head">
+                      <div class="hamster__ear"></div>
+                      <div class="hamster__eye"></div>
+                      <div class="hamster__nose"></div>
+                    </div>
+                    <div class="hamster__limb hamster__limb--fr"></div>
+                    <div class="hamster__limb hamster__limb--fl"></div>
+                    <div class="hamster__limb hamster__limb--br"></div>
+                    <div class="hamster__limb hamster__limb--bl"></div>
+                    <div class="hamster__tail"></div>
+                  </div>
+                </div>
+                <div class="spoke"></div>
+              </div>
+              <p class="muted">Загрузка пользователей…</p>
+            </div>
+            <table v-else-if="users.length" class="table">
               <thead>
                 <tr>
                   <th>Логин</th>
@@ -923,6 +1050,7 @@ const catalogsLoading = ref(false)
 const userError = ref(null)
 const userOk = ref(null)
 const userLoading = ref(false)
+const showUserForm = ref(false)
 const gameError = ref(null)
 const gameOk = ref(null)
 const gameLoading = ref(false)
@@ -938,6 +1066,7 @@ const dealTotal = ref(0)
 const pwdError = ref(null)
 const pwdOk = ref(false)
 const pwdLoading = ref(false)
+const showPwdForm = ref(false)
 
 const isAdmin = computed(() => auth.state.role === 'admin')
 
@@ -1123,6 +1252,7 @@ async function loadUsers() {
 }
 
 async function loadCatalogs() {
+  catalogsLoading.value = true
   try {
     const [p, r] = await Promise.all([
       apiGet('/platforms', { token: auth.state.token }),
@@ -1133,24 +1263,32 @@ async function loadCatalogs() {
   } catch {
     platforms.value = []
     regions.value = []
+  } finally {
+    catalogsLoading.value = false
   }
 }
 
 async function loadDomains() {
+  catalogsLoading.value = true
   try {
     const d = await apiGet('/domains', { token: auth.state.token })
     domains.value = d || []
   } catch {
     domains.value = []
+  } finally {
+    catalogsLoading.value = false
   }
 }
 
 async function loadSources() {
+  catalogsLoading.value = true
   try {
     const s = await apiGet('/sources', { token: auth.state.token })
     sources.value = s || []
   } catch {
     sources.value = []
+  } finally {
+    catalogsLoading.value = false
   }
 }
 
@@ -1806,6 +1944,7 @@ watch(activeTab, async (tab) => {
   }
   if (tab === 'profile') {
     pwdOk.value = false
+    showPwdForm.value = false
     return
   }
   if (tab === 'games') {
@@ -1848,6 +1987,7 @@ watch(activeTab, async (tab) => {
   }
   if (tab === 'users' && isAdmin.value) {
     await loadUsers()
+    showUserForm.value = false
   }
 }, { immediate: true })
 
@@ -1944,13 +2084,18 @@ watch(activeTab, async (tab) => {
 }
 
 .tab {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #e8eefc;
+  background: rgba(11, 15, 25, 0.06);
+  border: 1px solid rgba(11, 15, 25, 0.12);
+  color: #4b5565;
   border-radius: 999px;
   padding: 8px 12px;
   font-size: 12px;
   cursor: pointer;
+}
+
+.tab:hover {
+  background: rgba(11, 15, 25, 0.12);
+  color: #1f2937;
 }
 
 .tab.active {
@@ -1969,8 +2114,19 @@ button {
 }
 
 .ghost {
-  background: rgba(255, 255, 255, 0.08);
-  color: #e8eefc;
+  background: rgba(11, 15, 25, 0.06);
+  border: 1px solid rgba(11, 15, 25, 0.12);
+  color: #2b3441;
+}
+
+.ghost:hover {
+  background: rgba(11, 15, 25, 0.12);
+  color: #111827;
+}
+
+.ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .danger {
@@ -2540,13 +2696,39 @@ table.table {
   border-collapse: collapse;
   margin-top: 8px;
   font-size: 13px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow:
+    inset 0 0 0 1px rgba(17, 24, 39, 0.06),
+    0 6px 18px rgba(17, 24, 39, 0.04);
 }
 
 .table th,
 .table td {
   text-align: left;
   padding: 8px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(17, 24, 39, 0.06);
+  border-right: 1px solid rgba(17, 24, 39, 0.04);
+}
+
+.table th:last-child,
+.table td:last-child {
+  border-right: 0;
+}
+
+.table th {
+  background: rgba(17, 24, 39, 0.03);
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.table tr:last-child td {
+  border-bottom: 0;
+}
+
+.table tbody tr:hover td {
+  background: rgba(62, 232, 181, 0.08);
 }
 
 .status {
