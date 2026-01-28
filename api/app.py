@@ -54,6 +54,16 @@ class AccountCreate(BaseModel):
     slot_reserved: int = 0
     notes: Optional[str] = None
 
+class AccountUpdate(BaseModel):
+    platform_code: Optional[str] = None
+    region_code: Optional[str] = None
+    login_name: Optional[str] = None
+    domain_code: Optional[str] = None
+    status_code: Optional[str] = None
+    slot_capacity: Optional[int] = None
+    slot_reserved: Optional[int] = None
+    notes: Optional[str] = None
+
 class AccountOut(BaseModel):
     account_id: int
     platform_code: str
@@ -66,6 +76,7 @@ class AccountOut(BaseModel):
     slot_reserved: int
     occupied_slots: int
     free_slots: int
+    notes: Optional[str] = None
 
 class GameCreate(BaseModel):
     title: str
@@ -650,7 +661,8 @@ def list_accounts(user: UserOut = Depends(get_current_user)):
               a.slot_capacity,
               a.slot_reserved,
               s.occupied_slots,
-              s.free_slots
+              s.free_slots,
+              a.notes
             FROM app.accounts a
             JOIN app.platforms p ON p.platform_id = a.platform_id
             LEFT JOIN app.regions r ON r.region_id = a.region_id
@@ -665,7 +677,8 @@ def list_accounts(user: UserOut = Depends(get_current_user)):
             status=row[3], login_name=row[4], domain_code=row[5],
             login_full=f"{row[4]}@{row[5]}" if row[4] and row[5] else None,
             slot_capacity=row[6], slot_reserved=row[7],
-            occupied_slots=row[8] or 0, free_slots=row[9] or 0
+            occupied_slots=row[8] or 0, free_slots=row[9] or 0,
+            notes=row[10]
         )
         for row in rows
     ]
@@ -704,8 +717,108 @@ def create_account(payload: AccountCreate, user: UserOut = Depends(get_current_u
             slot_capacity=payload.slot_capacity,
             slot_reserved=payload.slot_reserved,
             occupied_slots=occ,
-            free_slots=free
+            free_slots=free,
+            notes=payload.notes
         )
+
+@app.put("/accounts/{account_id}", response_model=AccountOut)
+def update_account(
+    account_id: int,
+    payload: AccountUpdate,
+    user: UserOut = Depends(require_role("admin")),
+):
+    if payload.slot_capacity is not None and payload.slot_reserved is not None:
+        if payload.slot_capacity < payload.slot_reserved:
+            raise HTTPException(400, "slot_capacity must be >= slot_reserved")
+    with psycopg.connect(DB_DSN) as conn:
+        current = q1(
+            conn,
+            """
+            SELECT login_name, domain_id, platform_id, region_id, status_code, slot_capacity, slot_reserved, notes
+            FROM app.accounts
+            WHERE account_id=%s
+            """,
+            (account_id,),
+        )
+        if not current:
+            raise HTTPException(404, "Account not found")
+
+        platform_id = get_platform_id(conn, payload.platform_code) if payload.platform_code else current[2]
+        region_id = get_region_id(conn, payload.region_code) if payload.region_code else current[3]
+        domain_id = get_domain_id(conn, payload.domain_code) if payload.domain_code else current[1]
+
+        new_login = payload.login_name if payload.login_name is not None else current[0]
+        new_status = payload.status_code if payload.status_code is not None else current[4]
+        new_capacity = payload.slot_capacity if payload.slot_capacity is not None else current[5]
+        new_reserved = payload.slot_reserved if payload.slot_reserved is not None else current[6]
+        new_notes = payload.notes if payload.notes is not None else current[7]
+
+        if new_capacity < new_reserved:
+            raise HTTPException(400, "slot_capacity must be >= slot_reserved")
+
+        exec1(
+            conn,
+            """
+            UPDATE app.accounts
+            SET login_name=%s,
+                domain_id=%s,
+                platform_id=%s,
+                region_id=%s,
+                status_code=%s,
+                slot_capacity=%s,
+                slot_reserved=%s,
+                notes=%s
+            WHERE account_id=%s
+            """,
+            (
+                new_login,
+                domain_id,
+                platform_id,
+                region_id,
+                new_status,
+                new_capacity,
+                new_reserved,
+                new_notes,
+                account_id,
+            ),
+        )
+        conn.commit()
+
+        row = q1(
+            conn,
+            """
+            SELECT
+              a.account_id,
+              p.code as platform_code,
+              r.code as region_code,
+              a.status_code,
+              a.login_name,
+              d.name as domain_name,
+              a.slot_capacity,
+              a.slot_reserved,
+              s.occupied_slots,
+              s.free_slots,
+              a.notes
+            FROM app.accounts a
+            JOIN app.platforms p ON p.platform_id = a.platform_id
+            LEFT JOIN app.regions r ON r.region_id = a.region_id
+            LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+            LEFT JOIN app.v_account_slots s ON s.account_id = a.account_id
+            WHERE a.account_id=%s
+            """,
+            (account_id,),
+        )
+        if not row:
+            raise HTTPException(404, "Account not found")
+
+    return AccountOut(
+        account_id=row[0], platform_code=row[1], region_code=row[2],
+        status=row[3], login_name=row[4], domain_code=row[5],
+        login_full=f"{row[4]}@{row[5]}" if row[4] and row[5] else None,
+        slot_capacity=row[6], slot_reserved=row[7],
+        occupied_slots=row[8] or 0, free_slots=row[9] or 0,
+        notes=row[10]
+    )
 
 @app.get("/accounts/{account_id}/secrets", response_model=List[AccountSecretOut])
 def list_account_secrets(account_id: int, user: UserOut = Depends(require_role("admin"))):
@@ -748,6 +861,21 @@ def upsert_account_secret(
             (account_id, payload.secret_key),
         )
     return AccountSecretOut(secret_key=row[0], secret_value_b64=row[1], created_at=row[2])
+
+@app.delete("/accounts/{account_id}/secrets/{secret_key}")
+def delete_account_secret(
+    account_id: int,
+    secret_key: str,
+    user: UserOut = Depends(require_role("admin")),
+):
+    with psycopg.connect(DB_DSN) as conn:
+        exec1(
+            conn,
+            "DELETE FROM app.account_secrets WHERE account_id=%s AND secret_key=%s",
+            (account_id, secret_key),
+        )
+        conn.commit()
+    return {"ok": True}
 
 @app.get("/games", response_model=List[GameOut])
 def list_games(q: Optional[str] = None, user: UserOut = Depends(get_current_user)):
@@ -944,8 +1072,8 @@ def list_deals(
         rows = qall(conn, f"""
             SELECT
               d.deal_id,
-              d.deal_type_code,
-              d.status_code,
+              dt.name as deal_type_name,
+              ds.name as status_name,
               di.account_id,
               a.login_name,
               dm.name as domain_name,
@@ -959,6 +1087,8 @@ def list_deals(
               d.created_at
             FROM app.deal_items di
             JOIN app.deals d ON d.deal_id = di.deal_id
+            LEFT JOIN app.deal_types dt ON dt.code = d.deal_type_code
+            LEFT JOIN app.deal_statuses ds ON ds.code = d.status_code
             LEFT JOIN app.accounts a ON a.account_id = di.account_id
             LEFT JOIN app.domains dm ON dm.domain_id = a.domain_id
             LEFT JOIN app.game_titles g ON g.game_id = di.game_id

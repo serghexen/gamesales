@@ -255,7 +255,7 @@ LEFT JOIN app.deals d ON d.deal_id = di.deal_id
 GROUP BY a.account_id, a.slot_capacity, a.slot_reserved;
 
 INSERT INTO app.platforms(code, name)
-VALUES ('steam','Steam'),('psn','PlayStation Network'),('xbox','Xbox'),('epic','Epic Games')
+VALUES ('steam','Steam'),('xbox','Xbox'),('epic','Epic Games')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO app.regions(code, name)
@@ -264,32 +264,32 @@ ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO app.account_statuses(code, name)
 VALUES
-  ('active','Active'),
-  ('banned','Banned'),
-  ('archived','Archived'),
-  ('problem','Problem')
+  ('active','Активный'),
+  ('banned','Бан'),
+  ('archived','Архив'),
+  ('problem','Проблемный')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO app.asset_types(code, name)
 VALUES
-  ('game','Game'),
-  ('subscription','Subscription'),
+  ('game','Игра'),
+  ('subscription','Подписка'),
   ('dlc','DLC'),
-  ('other','Other')
+  ('other','Другое')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO app.deal_types(code, name)
 VALUES
-  ('sale','Sale'),
-  ('rental','Rental'),
-  ('expense','Expense'),
-  ('adjustment','Adjustment')
+  ('sale','Продажа'),
+  ('rental','Аренда'),
+  ('expense','Расходы'),
+  ('adjustment','Корректирование')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO app.deal_statuses(code, name)
 VALUES
-  ('draft','Draft'),
-  ('confirmed','Confirmed'),
-  ('cancelled','Cancelled'),
-  ('closed','Closed')
+  ('draft','Черновик'),
+  ('confirmed','Подтвержден'),
+  ('cancelled','Отменен'),
+  ('closed','Закрыт')
 ON CONFLICT (code) DO NOTHING;
