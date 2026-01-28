@@ -96,9 +96,9 @@ async function loadAccounts() {
   error.value = null
   accountsJson.value = ''
   try {
-    await apiGet('/health')
+    await apiGet('/health', { token: auth.state.token })
     apiOk.value = true
-    const data = await apiGet('/accounts') // без реальной авторизации пока
+    const data = await apiGet('/accounts', { token: auth.state.token })
     accountsJson.value = JSON.stringify(data, null, 2)
   } catch (e) {
     apiOk.value = false

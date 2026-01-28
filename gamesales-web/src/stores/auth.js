@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { apiGet } from '../api/http'
+import { apiGet, apiPost } from '../api/http'
 
 const state = reactive({
   token: localStorage.getItem('auth_token') || null,
@@ -8,16 +8,14 @@ const state = reactive({
 
 export function useAuth() {
   async function login({ username, password }) {
-    // Пока заглушка: проверяем, что API живой, и пускаем.
-    // Позже заменим на: apiPost('/auth/login', {username, password})
-    await apiGet('/health').catch(() => {
-      throw new Error('API недоступен (healthcheck не прошёл)')
+    const res = await apiPost('/auth/login', { username, password }).catch(() => {
+      throw new Error('API недоступен или неверные данные')
     })
 
-    // Условный "токен" для прототипа
-    const token = `demo-${Date.now()}`
+    const token = res?.access_token
+    if (!token) throw new Error('Не удалось получить токен')
     state.token = token
-    state.user = username || 'user'
+    state.user = res?.user?.username || username || 'user'
 
     localStorage.setItem('auth_token', token)
     localStorage.setItem('auth_user', state.user)

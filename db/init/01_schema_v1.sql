@@ -1,35 +1,57 @@
 CREATE SCHEMA IF NOT EXISTS app;
+COMMENT ON SCHEMA app IS 'Схема приложения GameSales';
 
 CREATE TABLE IF NOT EXISTS app.platforms (
   platform_id  smallserial PRIMARY KEY,
   code         text NOT NULL UNIQUE,
   name         text NOT NULL
 );
+COMMENT ON TABLE app.platforms IS 'Справочник платформ';
+COMMENT ON COLUMN app.platforms.platform_id IS 'Идентификатор платформы';
+COMMENT ON COLUMN app.platforms.code IS 'Код платформы (steam/psn/xbox/epic)';
+COMMENT ON COLUMN app.platforms.name IS 'Название платформы';
 
 CREATE TABLE IF NOT EXISTS app.regions (
   region_id smallserial PRIMARY KEY,
   code      text NOT NULL UNIQUE,
   name      text NOT NULL
 );
+COMMENT ON TABLE app.regions IS 'Справочник регионов';
+COMMENT ON COLUMN app.regions.region_id IS 'Идентификатор региона';
+COMMENT ON COLUMN app.regions.code IS 'Код региона (RU/TR/US/EU)';
+COMMENT ON COLUMN app.regions.name IS 'Название региона';
 
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'account_status' AND typnamespace = 'app'::regnamespace) THEN
-    CREATE TYPE app.account_status AS ENUM ('active','banned','archived','problem');
-  END IF;
+CREATE TABLE IF NOT EXISTS app.account_statuses (
+  code text PRIMARY KEY,
+  name text NOT NULL
+);
+COMMENT ON TABLE app.account_statuses IS 'Справочник статусов аккаунтов';
+COMMENT ON COLUMN app.account_statuses.code IS 'Код статуса';
+COMMENT ON COLUMN app.account_statuses.name IS 'Название статуса';
 
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'asset_type' AND typnamespace = 'app'::regnamespace) THEN
-    CREATE TYPE app.asset_type AS ENUM ('game','subscription','dlc','other');
-  END IF;
+CREATE TABLE IF NOT EXISTS app.asset_types (
+  code text PRIMARY KEY,
+  name text NOT NULL
+);
+COMMENT ON TABLE app.asset_types IS 'Справочник типов ассетов';
+COMMENT ON COLUMN app.asset_types.code IS 'Код типа ассета';
+COMMENT ON COLUMN app.asset_types.name IS 'Название типа ассета';
 
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'deal_type' AND typnamespace = 'app'::regnamespace) THEN
-    CREATE TYPE app.deal_type AS ENUM ('sale','rental','expense','adjustment');
-  END IF;
+CREATE TABLE IF NOT EXISTS app.deal_types (
+  code text PRIMARY KEY,
+  name text NOT NULL
+);
+COMMENT ON TABLE app.deal_types IS 'Справочник типов сделок';
+COMMENT ON COLUMN app.deal_types.code IS 'Код типа сделки';
+COMMENT ON COLUMN app.deal_types.name IS 'Название типа сделки';
 
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'deal_status' AND typnamespace = 'app'::regnamespace) THEN
-    CREATE TYPE app.deal_status AS ENUM ('draft','confirmed','cancelled','closed');
-  END IF;
-END$$;
+CREATE TABLE IF NOT EXISTS app.deal_statuses (
+  code text PRIMARY KEY,
+  name text NOT NULL
+);
+COMMENT ON TABLE app.deal_statuses IS 'Справочник статусов сделок';
+COMMENT ON COLUMN app.deal_statuses.code IS 'Код статуса сделки';
+COMMENT ON COLUMN app.deal_statuses.name IS 'Название статуса сделки';
 
 CREATE TABLE IF NOT EXISTS app.game_titles (
   game_id      bigserial PRIMARY KEY,
@@ -38,6 +60,12 @@ CREATE TABLE IF NOT EXISTS app.game_titles (
   region_id    smallint REFERENCES app.regions(region_id),
   created_at   timestamptz NOT NULL DEFAULT now()
 );
+COMMENT ON TABLE app.game_titles IS 'Справочник игровых тайтлов';
+COMMENT ON COLUMN app.game_titles.game_id IS 'Идентификатор тайтла';
+COMMENT ON COLUMN app.game_titles.title IS 'Название игры';
+COMMENT ON COLUMN app.game_titles.platform_id IS 'Платформа игры';
+COMMENT ON COLUMN app.game_titles.region_id IS 'Регион игры';
+COMMENT ON COLUMN app.game_titles.created_at IS 'Дата создания записи';
 CREATE INDEX IF NOT EXISTS ix_game_titles_title ON app.game_titles (title);
 
 CREATE TABLE IF NOT EXISTS app.accounts (
@@ -45,7 +73,7 @@ CREATE TABLE IF NOT EXISTS app.accounts (
   nickname       text NOT NULL UNIQUE,
   platform_id    smallint NOT NULL REFERENCES app.platforms(platform_id),
   region_id      smallint REFERENCES app.regions(region_id),
-  status         app.account_status NOT NULL DEFAULT 'active',
+  status_code    text NOT NULL DEFAULT 'active' REFERENCES app.account_statuses(code),
   created_at     timestamptz NOT NULL DEFAULT now(),
   notes          text,
   slot_capacity  integer NOT NULL DEFAULT 1,
@@ -53,15 +81,31 @@ CREATE TABLE IF NOT EXISTS app.accounts (
   CONSTRAINT ck_slots_nonneg CHECK (slot_capacity >= 0 AND slot_reserved >= 0),
   CONSTRAINT ck_slots_capacity CHECK (slot_capacity >= slot_reserved)
 );
+COMMENT ON TABLE app.accounts IS 'Аккаунты для продаж/аренд';
+COMMENT ON COLUMN app.accounts.account_id IS 'Идентификатор аккаунта';
+COMMENT ON COLUMN app.accounts.nickname IS 'Псевдоним аккаунта';
+COMMENT ON COLUMN app.accounts.platform_id IS 'Платформа аккаунта';
+COMMENT ON COLUMN app.accounts.region_id IS 'Регион аккаунта';
+COMMENT ON COLUMN app.accounts.status_code IS 'Статус аккаунта';
+COMMENT ON COLUMN app.accounts.created_at IS 'Дата создания аккаунта';
+COMMENT ON COLUMN app.accounts.notes IS 'Заметки';
+COMMENT ON COLUMN app.accounts.slot_capacity IS 'Всего слотов';
+COMMENT ON COLUMN app.accounts.slot_reserved IS 'Зарезервировано слотов';
 
 CREATE TABLE IF NOT EXISTS app.account_assets (
   account_asset_id bigserial PRIMARY KEY,
   account_id       bigint NOT NULL REFERENCES app.accounts(account_id) ON DELETE CASCADE,
   game_id          bigint NOT NULL REFERENCES app.game_titles(game_id) ON DELETE RESTRICT,
-  asset_type       app.asset_type NOT NULL DEFAULT 'game',
+  asset_type_code  text NOT NULL DEFAULT 'game' REFERENCES app.asset_types(code),
   notes            text,
-  UNIQUE (account_id, game_id, asset_type)
+  UNIQUE (account_id, game_id, asset_type_code)
 );
+COMMENT ON TABLE app.account_assets IS 'Ассеты, привязанные к аккаунтам';
+COMMENT ON COLUMN app.account_assets.account_asset_id IS 'Идентификатор связи';
+COMMENT ON COLUMN app.account_assets.account_id IS 'Аккаунт';
+COMMENT ON COLUMN app.account_assets.game_id IS 'Игра/тайтл';
+COMMENT ON COLUMN app.account_assets.asset_type_code IS 'Тип ассета';
+COMMENT ON COLUMN app.account_assets.notes IS 'Заметки';
 
 CREATE TABLE IF NOT EXISTS app.customers (
   customer_id bigserial PRIMARY KEY,
@@ -70,17 +114,32 @@ CREATE TABLE IF NOT EXISTS app.customers (
   notes       text,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
+COMMENT ON TABLE app.customers IS 'Клиенты';
+COMMENT ON COLUMN app.customers.customer_id IS 'Идентификатор клиента';
+COMMENT ON COLUMN app.customers.nickname IS 'Имя/ник клиента';
+COMMENT ON COLUMN app.customers.contacts IS 'Контакты клиента';
+COMMENT ON COLUMN app.customers.notes IS 'Заметки';
+COMMENT ON COLUMN app.customers.created_at IS 'Дата создания записи';
 
 CREATE TABLE IF NOT EXISTS app.deals (
   deal_id      bigserial PRIMARY KEY,
-  deal_type    app.deal_type NOT NULL,
-  status       app.deal_status NOT NULL DEFAULT 'confirmed',
+  deal_type_code text NOT NULL REFERENCES app.deal_types(code),
+  status_code    text NOT NULL DEFAULT 'confirmed' REFERENCES app.deal_statuses(code),
   customer_id  bigint REFERENCES app.customers(customer_id),
   currency     text NOT NULL DEFAULT 'RUB',
   total_amount numeric(14,2),
   notes        text,
   created_at   timestamptz NOT NULL DEFAULT now()
 );
+COMMENT ON TABLE app.deals IS 'Сделки (продажа/аренда/расход и т.д.)';
+COMMENT ON COLUMN app.deals.deal_id IS 'Идентификатор сделки';
+COMMENT ON COLUMN app.deals.deal_type_code IS 'Тип сделки';
+COMMENT ON COLUMN app.deals.status_code IS 'Статус сделки';
+COMMENT ON COLUMN app.deals.customer_id IS 'Клиент';
+COMMENT ON COLUMN app.deals.currency IS 'Валюта';
+COMMENT ON COLUMN app.deals.total_amount IS 'Сумма сделки';
+COMMENT ON COLUMN app.deals.notes IS 'Заметки';
+COMMENT ON COLUMN app.deals.created_at IS 'Дата создания сделки';
 
 CREATE TABLE IF NOT EXISTS app.deal_items (
   deal_item_id     bigserial PRIMARY KEY,
@@ -100,6 +159,19 @@ CREATE TABLE IF NOT EXISTS app.deal_items (
   CONSTRAINT ck_lease_window CHECK (end_at IS NULL OR start_at IS NULL OR end_at >= start_at),
   CONSTRAINT ck_one_target CHECK ((account_id IS NOT NULL)::int + (account_asset_id IS NOT NULL)::int >= 1)
 );
+COMMENT ON TABLE app.deal_items IS 'Позиции сделки';
+COMMENT ON COLUMN app.deal_items.deal_item_id IS 'Идентификатор позиции';
+COMMENT ON COLUMN app.deal_items.deal_id IS 'Сделка';
+COMMENT ON COLUMN app.deal_items.account_id IS 'Аккаунт (если применимо)';
+COMMENT ON COLUMN app.deal_items.account_asset_id IS 'Ассет аккаунта (если применимо)';
+COMMENT ON COLUMN app.deal_items.qty IS 'Количество';
+COMMENT ON COLUMN app.deal_items.price IS 'Цена';
+COMMENT ON COLUMN app.deal_items.fee IS 'Комиссия/расход';
+COMMENT ON COLUMN app.deal_items.start_at IS 'Дата начала';
+COMMENT ON COLUMN app.deal_items.end_at IS 'Дата окончания';
+COMMENT ON COLUMN app.deal_items.returned_at IS 'Факт возврата';
+COMMENT ON COLUMN app.deal_items.slots_used IS 'Количество занятых слотов';
+COMMENT ON COLUMN app.deal_items.notes IS 'Заметки';
 
 CREATE OR REPLACE VIEW app.v_account_slots AS
 SELECT
@@ -108,8 +180,8 @@ SELECT
   a.slot_reserved,
   COALESCE(SUM(
     CASE
-      WHEN d.deal_type = 'rental'
-       AND d.status = 'confirmed'
+      WHEN d.deal_type_code = 'rental'
+       AND d.status_code = 'confirmed'
        AND di.returned_at IS NULL
        AND (di.start_at IS NULL OR di.start_at <= now())
        AND (di.end_at   IS NULL OR di.end_at   >= now())
@@ -119,12 +191,12 @@ SELECT
   ), 0) AS occupied_slots,
   GREATEST(
     a.slot_capacity - a.slot_reserved - COALESCE(SUM(
-      CASE
-        WHEN d.deal_type = 'rental'
-         AND d.status = 'confirmed'
-         AND di.returned_at IS NULL
-         AND (di.start_at IS NULL OR di.start_at <= now())
-         AND (di.end_at   IS NULL OR di.end_at   >= now())
+    CASE
+      WHEN d.deal_type_code = 'rental'
+       AND d.status_code = 'confirmed'
+       AND di.returned_at IS NULL
+       AND (di.start_at IS NULL OR di.start_at <= now())
+       AND (di.end_at   IS NULL OR di.end_at   >= now())
         THEN di.slots_used
         ELSE 0
       END
@@ -142,4 +214,36 @@ ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO app.regions(code, name)
 VALUES ('RU','Russia'),('TR','Turkey'),('US','USA'),('EU','Europe')
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO app.account_statuses(code, name)
+VALUES
+  ('active','Active'),
+  ('banned','Banned'),
+  ('archived','Archived'),
+  ('problem','Problem')
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO app.asset_types(code, name)
+VALUES
+  ('game','Game'),
+  ('subscription','Subscription'),
+  ('dlc','DLC'),
+  ('other','Other')
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO app.deal_types(code, name)
+VALUES
+  ('sale','Sale'),
+  ('rental','Rental'),
+  ('expense','Expense'),
+  ('adjustment','Adjustment')
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO app.deal_statuses(code, name)
+VALUES
+  ('draft','Draft'),
+  ('confirmed','Confirmed'),
+  ('cancelled','Cancelled'),
+  ('closed','Closed')
 ON CONFLICT (code) DO NOTHING;
