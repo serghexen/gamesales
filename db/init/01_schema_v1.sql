@@ -86,7 +86,6 @@ CREATE INDEX IF NOT EXISTS ix_game_titles_title ON app.game_titles (title);
 
 CREATE TABLE IF NOT EXISTS app.accounts (
   account_id     bigserial PRIMARY KEY,
-  nickname       text NOT NULL UNIQUE,
   login_name     text,
   domain_id      smallint REFERENCES app.domains(domain_id),
   platform_id    smallint NOT NULL REFERENCES app.platforms(platform_id),
@@ -102,7 +101,6 @@ CREATE TABLE IF NOT EXISTS app.accounts (
 );
 COMMENT ON TABLE app.accounts IS 'Аккаунты для продаж/аренд';
 COMMENT ON COLUMN app.accounts.account_id IS 'Идентификатор аккаунта';
-COMMENT ON COLUMN app.accounts.nickname IS 'Псевдоним аккаунта';
 COMMENT ON COLUMN app.accounts.login_name IS 'Логин аккаунта (без домена)';
 COMMENT ON COLUMN app.accounts.domain_id IS 'Домен аккаунта';
 COMMENT ON COLUMN app.accounts.platform_id IS 'Платформа аккаунта';

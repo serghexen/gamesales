@@ -11,8 +11,8 @@
         </div>
 
         <div class="actions">
-          <button class="ghost" @click="loadAccounts" :disabled="loading">
-            {{ loading ? 'Загрузка…' : 'Проверить /accounts' }}
+          <button class="ghost" @click="checkApi" :disabled="loading">
+            {{ loading ? 'Загрузка…' : 'Проверить API' }}
           </button>
           <button class="danger" @click="onLogout">Выйти</button>
         </div>
@@ -60,7 +60,7 @@
                 <span v-else>ошибка</span>
               </span>
             </div>
-            <button class="btn" @click="loadAccounts" :disabled="loading">
+            <button class="btn" @click="checkApi" :disabled="loading">
               {{ loading ? 'Проверяем…' : 'Проверить API' }}
             </button>
           </div>
@@ -100,15 +100,91 @@
         <section class="panel panel--wide">
           <button class="panel__toggle" @click="showAccounts = !showAccounts">
             <div>
-              <h2>Аккаунты (демо)</h2>
-              <p class="muted">Список последних аккаунтов с платформами.</p>
+              <h2>Аккаунты</h2>
+              <p class="muted">Создание аккаунтов и контроль слотов.</p>
             </div>
             <span class="chev" :class="{ open: showAccounts }">⌄</span>
           </button>
           <div v-if="showAccounts" class="panel__body">
-            <p v-if="error" class="bad">{{ error }}</p>
-            <pre v-if="accountsJson">{{ accountsJson }}</pre>
-            <p v-else class="muted">Нажмите “Проверить /accounts”.</p>
+            <div class="panel__head">
+              <div></div>
+              <button class="ghost" @click="loadAccounts" :disabled="accountsLoading">
+                {{ accountsLoading ? 'Обновляем…' : 'Обновить' }}
+              </button>
+            </div>
+
+            <div class="form form--stack">
+              <label class="field">
+                <span class="label">Логин (без домена)</span>
+                <input v-model.trim="newAccount.login_name" class="input" placeholder="user" />
+              </label>
+              <label class="field">
+                <span class="label">Домен</span>
+                <select v-model="newAccount.domain_code" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="d in domains" :key="d.code" :value="d.code">
+                    {{ d.name }}
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Платформа</span>
+                <select v-model="newAccount.platform_code" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="p in platforms" :key="p.code" :value="p.code">
+                    {{ p.name }} ({{ p.code }})
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Регион</span>
+                <select v-model="newAccount.region_code" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="r in regions" :key="r.code" :value="r.code">
+                    {{ r.name }} ({{ r.code }})
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Всего слотов</span>
+                <input v-model.number="newAccount.slot_capacity" class="input" type="number" min="0" />
+              </label>
+              <label class="field">
+                <span class="label">Зарезервировано</span>
+                <input v-model.number="newAccount.slot_reserved" class="input" type="number" min="0" />
+              </label>
+              <label class="field">
+                <span class="label">Комментарий</span>
+                <input v-model.trim="newAccount.notes" class="input" placeholder="заметки" />
+              </label>
+              <p v-if="accountsError" class="bad">{{ accountsError }}</p>
+              <p v-if="accountsOk" class="ok">{{ accountsOk }}</p>
+              <button class="btn" @click="createAccount" :disabled="accountsLoading">
+                {{ accountsLoading ? 'Создаём…' : 'Добавить аккаунт' }}
+              </button>
+            </div>
+
+            <table v-if="accounts.length" class="table">
+              <thead>
+                <tr>
+                  <th>Логин</th>
+                  <th>Платформа</th>
+                  <th>Регион</th>
+                  <th>Статус</th>
+                  <th>Свободно</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="a in accounts" :key="a.account_id">
+                  <td>{{ a.login_full || '—' }}</td>
+                  <td>{{ a.platform_code }}</td>
+                  <td>{{ a.region_code || '—' }}</td>
+                  <td>{{ a.status }}</td>
+                  <td>{{ a.free_slots }}/{{ a.slot_capacity }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <p v-else class="muted">Пока нет аккаунтов.</p>
           </div>
         </section>
 
@@ -149,6 +225,61 @@
               <button class="btn" @click="createGame" :disabled="gameLoading">
                 {{ gameLoading ? 'Сохраняем…' : 'Добавить игру' }}
               </button>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="isAdmin" class="panel panel--wide">
+          <button class="panel__toggle" @click="showCatalogs = !showCatalogs">
+            <div>
+              <h2>Справочники</h2>
+              <p class="muted">Домены и источники клиентов.</p>
+            </div>
+            <span class="chev" :class="{ open: showCatalogs }">⌄</span>
+          </button>
+          <div v-if="showCatalogs" class="panel__body">
+            <div class="form form--stack">
+              <label class="field">
+                <span class="label">Новый домен</span>
+                <input v-model.trim="newDomain" class="input" placeholder="example.com" />
+              </label>
+              <button class="btn" @click="createDomain" :disabled="catalogsLoading">
+                {{ catalogsLoading ? 'Сохраняем…' : 'Добавить домен' }}
+              </button>
+            </div>
+
+            <div class="form form--stack">
+              <label class="field">
+                <span class="label">Источник (код)</span>
+                <input v-model.trim="newSource.code" class="input" placeholder="tg" />
+              </label>
+              <label class="field">
+                <span class="label">Источник (название)</span>
+                <input v-model.trim="newSource.name" class="input" placeholder="Telegram" />
+              </label>
+              <button class="btn" @click="createSource" :disabled="catalogsLoading">
+                {{ catalogsLoading ? 'Сохраняем…' : 'Добавить источник' }}
+              </button>
+            </div>
+
+            <p v-if="catalogsError" class="bad">{{ catalogsError }}</p>
+            <p v-if="catalogsOk" class="ok">{{ catalogsOk }}</p>
+
+            <div class="grid-2">
+              <div>
+                <h3>Домены</h3>
+                <ul class="list" v-if="domains.length">
+                  <li v-for="d in domains" :key="d.code">{{ d.name }}</li>
+                </ul>
+                <p v-else class="muted">Пока нет доменов.</p>
+              </div>
+              <div>
+                <h3>Источники</h3>
+                <ul class="list" v-if="sources.length">
+                  <li v-for="s in sources" :key="s.code">{{ s.code }} — {{ s.name }}</li>
+                </ul>
+                <p v-else class="muted">Пока нет источников.</p>
+              </div>
             </div>
           </div>
         </section>
@@ -227,11 +358,19 @@ const auth = useAuth()
 const apiOk = ref(null)
 const loading = ref(false)
 const error = ref(null)
-const accountsJson = ref('')
+const accounts = ref([])
+const accountsError = ref(null)
+const accountsOk = ref(null)
+const accountsLoading = ref(false)
 const users = ref([])
 const roles = ref([])
 const platforms = ref([])
 const regions = ref([])
+const domains = ref([])
+const sources = ref([])
+const catalogsError = ref(null)
+const catalogsOk = ref(null)
+const catalogsLoading = ref(false)
 const userError = ref(null)
 const userOk = ref(null)
 const userLoading = ref(false)
@@ -261,6 +400,7 @@ const showProfile = ref(false)
 const showAccounts = ref(true)
 const showUsers = ref(true)
 const showGames = ref(false)
+const showCatalogs = ref(false)
 
 const newGame = reactive({
   title: '',
@@ -268,15 +408,28 @@ const newGame = reactive({
   region_code: '',
 })
 
-async function loadAccounts() {
+const newDomain = ref('')
+const newSource = reactive({
+  code: '',
+  name: '',
+})
+
+const newAccount = reactive({
+  login_name: '',
+  domain_code: '',
+  platform_code: '',
+  region_code: '',
+  slot_capacity: 1,
+  slot_reserved: 0,
+  notes: '',
+})
+
+async function checkApi() {
   loading.value = true
   error.value = null
-  accountsJson.value = ''
   try {
     await apiGet('/health', { token: auth.state.token })
     apiOk.value = true
-    const data = await apiGet('/accounts', { token: auth.state.token })
-    accountsJson.value = JSON.stringify(data, null, 2)
   } catch (e) {
     apiOk.value = false
     error.value = e?.message || 'Ошибка'
@@ -312,6 +465,76 @@ async function loadCatalogs() {
   } catch {
     platforms.value = []
     regions.value = []
+  }
+}
+
+async function loadDomains() {
+  try {
+    const d = await apiGet('/domains', { token: auth.state.token })
+    domains.value = d || []
+  } catch {
+    domains.value = []
+  }
+}
+
+async function loadSources() {
+  try {
+    const s = await apiGet('/sources', { token: auth.state.token })
+    sources.value = s || []
+  } catch {
+    sources.value = []
+  }
+}
+
+async function loadAccounts() {
+  accountsLoading.value = true
+  accountsError.value = null
+  accountsOk.value = null
+  try {
+    const data = await apiGet('/accounts', { token: auth.state.token })
+    accounts.value = data || []
+  } catch (e) {
+    accountsError.value = e?.message || 'Ошибка'
+  } finally {
+    accountsLoading.value = false
+  }
+}
+
+async function createAccount() {
+  accountsError.value = null
+  accountsOk.value = null
+  if (!newAccount.login_name || !newAccount.domain_code || !newAccount.platform_code) {
+    accountsError.value = 'Укажите логин, домен и платформу'
+    return
+  }
+  accountsLoading.value = true
+  try {
+    await apiPost(
+      '/accounts',
+      {
+        platform_code: newAccount.platform_code,
+        region_code: newAccount.region_code || null,
+        login_name: newAccount.login_name || null,
+        domain_code: newAccount.domain_code || null,
+        slot_capacity: newAccount.slot_capacity,
+        slot_reserved: newAccount.slot_reserved,
+        notes: newAccount.notes || null,
+      },
+      { token: auth.state.token }
+    )
+    accountsOk.value = `Аккаунт ${newAccount.login_name}@${newAccount.domain_code} создан`
+    newAccount.login_name = ''
+    newAccount.domain_code = ''
+    newAccount.platform_code = ''
+    newAccount.region_code = ''
+    newAccount.slot_capacity = 1
+    newAccount.slot_reserved = 0
+    newAccount.notes = ''
+    await loadAccounts()
+  } catch (e) {
+    accountsError.value = e?.message || 'Ошибка'
+  } finally {
+    accountsLoading.value = false
   }
 }
 
@@ -394,6 +617,47 @@ async function createGame() {
   }
 }
 
+async function createDomain() {
+  catalogsError.value = null
+  catalogsOk.value = null
+  if (!newDomain.value) {
+    catalogsError.value = 'Введите домен'
+    return
+  }
+  catalogsLoading.value = true
+  try {
+    await apiPost('/domains', { name: newDomain.value }, { token: auth.state.token })
+    catalogsOk.value = `Домен ${newDomain.value} добавлен`
+    newDomain.value = ''
+    await loadDomains()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+  }
+}
+
+async function createSource() {
+  catalogsError.value = null
+  catalogsOk.value = null
+  if (!newSource.code || !newSource.name) {
+    catalogsError.value = 'Введите код и название источника'
+    return
+  }
+  catalogsLoading.value = true
+  try {
+    await apiPost('/sources', newSource, { token: auth.state.token })
+    catalogsOk.value = `Источник ${newSource.code} добавлен`
+    newSource.code = ''
+    newSource.name = ''
+    await loadSources()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+  }
+}
+
 function onLogout() {
   auth.logout()
   router.replace('/login')
@@ -408,8 +672,25 @@ onMounted(async () => {
 
 watch(showGames, async (open) => {
   if (!open) return
-  if (platforms.value.length || regions.value.length) return
-  await loadCatalogs()
+  if (!platforms.value.length || !regions.value.length) {
+    await loadCatalogs()
+  }
+})
+
+watch(showAccounts, async (open) => {
+  if (!open) return
+  if (!platforms.value.length || !regions.value.length) {
+    await loadCatalogs()
+  }
+  if (!domains.value.length) {
+    await loadDomains()
+  }
+  await loadAccounts()
+})
+
+watch(showCatalogs, async (open) => {
+  if (!open) return
+  await Promise.all([loadDomains(), loadSources()])
 })
 </script>
 
@@ -630,6 +911,27 @@ h2 {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   opacity: 0.85;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.list {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--ink);
+}
+
+h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
 }
 
 .form {

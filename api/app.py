@@ -46,7 +46,6 @@ def now_utc():
 # Models
 # ----------------------------
 class AccountCreate(BaseModel):
-    nickname: str
     platform_code: str = Field(..., description="steam/psn/xbox/epic")
     region_code: Optional[str] = Field(None, description="RU/TR/US/EU")
     login_name: Optional[str] = None
@@ -57,7 +56,6 @@ class AccountCreate(BaseModel):
 
 class AccountOut(BaseModel):
     account_id: int
-    nickname: str
     platform_code: str
     region_code: Optional[str]
     status: str
@@ -127,6 +125,13 @@ class ResetPasswordIn(BaseModel):
     new_password: str
 
 class RoleOut(BaseModel):
+    code: str
+    name: str
+
+class DomainIn(BaseModel):
+    name: str
+
+class SourceIn(BaseModel):
     code: str
     name: str
 
@@ -330,6 +335,35 @@ def list_sources(user: UserOut = Depends(get_current_user)):
         rows = qall(conn, "SELECT code, name FROM app.sources ORDER BY code")
     return [PlatformOut(code=r0, name=r1) for (r0, r1) in rows]
 
+@app.post("/domains", response_model=PlatformOut)
+def create_domain(payload: DomainIn, user: UserOut = Depends(require_role("admin"))):
+    name = (payload.name or "").strip().lower()
+    if not name:
+        raise HTTPException(400, "Domain name is required")
+    with psycopg.connect(DB_DSN) as conn:
+        exec1(
+            conn,
+            "INSERT INTO app.domains(name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
+            (name,),
+        )
+        conn.commit()
+    return PlatformOut(code=name, name=name)
+
+@app.post("/sources", response_model=PlatformOut)
+def create_source(payload: SourceIn, user: UserOut = Depends(require_role("admin"))):
+    code = (payload.code or "").strip().lower()
+    name = (payload.name or "").strip()
+    if not code or not name:
+        raise HTTPException(400, "Source code and name are required")
+    with psycopg.connect(DB_DSN) as conn:
+        exec1(
+            conn,
+            "INSERT INTO app.sources(code, name) VALUES (%s, %s) ON CONFLICT (code) DO NOTHING",
+            (code, name),
+        )
+        conn.commit()
+    return PlatformOut(code=code, name=name)
+
 @app.post("/auth/change-password")
 def change_password(payload: ChangePasswordIn, user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
@@ -399,7 +433,6 @@ def list_accounts(user: UserOut = Depends(get_current_user)):
         rows = qall(conn, """
             SELECT
               a.account_id,
-              a.nickname,
               p.code as platform_code,
               r.code as region_code,
               a.status_code,
@@ -419,11 +452,11 @@ def list_accounts(user: UserOut = Depends(get_current_user)):
         """)
     return [
         AccountOut(
-            account_id=row[0], nickname=row[1], platform_code=row[2], region_code=row[3],
-            status=row[4], login_name=row[5], domain_code=row[6],
-            login_full=f"{row[5]}@{row[6]}" if row[5] and row[6] else None,
-            slot_capacity=row[7], slot_reserved=row[8],
-            occupied_slots=row[9] or 0, free_slots=row[10] or 0
+            account_id=row[0], platform_code=row[1], region_code=row[2],
+            status=row[3], login_name=row[4], domain_code=row[5],
+            login_full=f"{row[4]}@{row[5]}" if row[4] and row[5] else None,
+            slot_capacity=row[6], slot_reserved=row[7],
+            occupied_slots=row[8] or 0, free_slots=row[9] or 0
         )
         for row in rows
     ]
@@ -432,17 +465,19 @@ def list_accounts(user: UserOut = Depends(get_current_user)):
 def create_account(payload: AccountCreate, user: UserOut = Depends(get_current_user)):
     if payload.slot_capacity < payload.slot_reserved:
         raise HTTPException(400, "slot_capacity must be >= slot_reserved")
+    if not payload.login_name or not payload.domain_code:
+        raise HTTPException(400, "login_name and domain_code are required")
     with psycopg.connect(DB_DSN) as conn:
         platform_id = get_platform_id(conn, payload.platform_code)
         region_id = get_region_id(conn, payload.region_code)
         domain_id = get_domain_id(conn, payload.domain_code)
 
         row = q1(conn, """
-            INSERT INTO app.accounts(nickname, login_name, domain_id, platform_id, region_id, slot_capacity, slot_reserved, notes)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO app.accounts(login_name, domain_id, platform_id, region_id, slot_capacity, slot_reserved, notes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING account_id
         """, (
-            payload.nickname, payload.login_name, domain_id,
+            payload.login_name, domain_id,
             platform_id, region_id, payload.slot_capacity, payload.slot_reserved, payload.notes
         ))
         account_id = int(row[0])
@@ -451,7 +486,6 @@ def create_account(payload: AccountCreate, user: UserOut = Depends(get_current_u
         occ, free = slots_summary(conn, account_id)
         return AccountOut(
             account_id=account_id,
-            nickname=payload.nickname,
             platform_code=payload.platform_code,
             region_code=payload.region_code,
             status="active",
