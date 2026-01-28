@@ -49,9 +49,25 @@ CREATE TABLE IF NOT EXISTS app.deal_statuses (
   code text PRIMARY KEY,
   name text NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS app.sources (
+  code text PRIMARY KEY,
+  name text NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS app.domains (
+  domain_id smallserial PRIMARY KEY,
+  name text NOT NULL UNIQUE
+);
 COMMENT ON TABLE app.deal_statuses IS 'Справочник статусов сделок';
 COMMENT ON COLUMN app.deal_statuses.code IS 'Код статуса сделки';
 COMMENT ON COLUMN app.deal_statuses.name IS 'Название статуса сделки';
+COMMENT ON TABLE app.sources IS 'Справочник источников клиентов';
+COMMENT ON COLUMN app.sources.code IS 'Код источника';
+COMMENT ON COLUMN app.sources.name IS 'Название источника';
+COMMENT ON TABLE app.domains IS 'Справочник доменов аккаунтов';
+COMMENT ON COLUMN app.domains.domain_id IS 'Идентификатор домена';
+COMMENT ON COLUMN app.domains.name IS 'Домен (например, example.com)';
 
 CREATE TABLE IF NOT EXISTS app.game_titles (
   game_id      bigserial PRIMARY KEY,
@@ -71,6 +87,8 @@ CREATE INDEX IF NOT EXISTS ix_game_titles_title ON app.game_titles (title);
 CREATE TABLE IF NOT EXISTS app.accounts (
   account_id     bigserial PRIMARY KEY,
   nickname       text NOT NULL UNIQUE,
+  login_name     text,
+  domain_id      smallint REFERENCES app.domains(domain_id),
   platform_id    smallint NOT NULL REFERENCES app.platforms(platform_id),
   region_id      smallint REFERENCES app.regions(region_id),
   status_code    text NOT NULL DEFAULT 'active' REFERENCES app.account_statuses(code),
@@ -79,11 +97,14 @@ CREATE TABLE IF NOT EXISTS app.accounts (
   slot_capacity  integer NOT NULL DEFAULT 1,
   slot_reserved  integer NOT NULL DEFAULT 0,
   CONSTRAINT ck_slots_nonneg CHECK (slot_capacity >= 0 AND slot_reserved >= 0),
-  CONSTRAINT ck_slots_capacity CHECK (slot_capacity >= slot_reserved)
+  CONSTRAINT ck_slots_capacity CHECK (slot_capacity >= slot_reserved),
+  CONSTRAINT uq_account_login UNIQUE (login_name, domain_id)
 );
 COMMENT ON TABLE app.accounts IS 'Аккаунты для продаж/аренд';
 COMMENT ON COLUMN app.accounts.account_id IS 'Идентификатор аккаунта';
 COMMENT ON COLUMN app.accounts.nickname IS 'Псевдоним аккаунта';
+COMMENT ON COLUMN app.accounts.login_name IS 'Логин аккаунта (без домена)';
+COMMENT ON COLUMN app.accounts.domain_id IS 'Домен аккаунта';
 COMMENT ON COLUMN app.accounts.platform_id IS 'Платформа аккаунта';
 COMMENT ON COLUMN app.accounts.region_id IS 'Регион аккаунта';
 COMMENT ON COLUMN app.accounts.status_code IS 'Статус аккаунта';
@@ -100,16 +121,32 @@ CREATE TABLE IF NOT EXISTS app.account_assets (
   notes            text,
   UNIQUE (account_id, game_id, asset_type_code)
 );
+
+CREATE TABLE IF NOT EXISTS app.account_secrets (
+  account_secret_id bigserial PRIMARY KEY,
+  account_id        bigint NOT NULL REFERENCES app.accounts(account_id) ON DELETE CASCADE,
+  secret_key        text NOT NULL,
+  secret_value      text NOT NULL,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (account_id, secret_key)
+);
 COMMENT ON TABLE app.account_assets IS 'Ассеты, привязанные к аккаунтам';
 COMMENT ON COLUMN app.account_assets.account_asset_id IS 'Идентификатор связи';
 COMMENT ON COLUMN app.account_assets.account_id IS 'Аккаунт';
 COMMENT ON COLUMN app.account_assets.game_id IS 'Игра/тайтл';
 COMMENT ON COLUMN app.account_assets.asset_type_code IS 'Тип ассета';
 COMMENT ON COLUMN app.account_assets.notes IS 'Заметки';
+COMMENT ON TABLE app.account_secrets IS 'Секреты аккаунтов (пароли, резервы)';
+COMMENT ON COLUMN app.account_secrets.account_secret_id IS 'Идентификатор секрета';
+COMMENT ON COLUMN app.account_secrets.account_id IS 'Аккаунт';
+COMMENT ON COLUMN app.account_secrets.secret_key IS 'Ключ секрета (password/reserve1/...)';
+COMMENT ON COLUMN app.account_secrets.secret_value IS 'Значение секрета (base64)';
+COMMENT ON COLUMN app.account_secrets.created_at IS 'Дата создания секрета';
 
 CREATE TABLE IF NOT EXISTS app.customers (
   customer_id bigserial PRIMARY KEY,
   nickname    text NOT NULL,
+  source_code text REFERENCES app.sources(code),
   contacts    text,
   notes       text,
   created_at  timestamptz NOT NULL DEFAULT now()
@@ -117,6 +154,7 @@ CREATE TABLE IF NOT EXISTS app.customers (
 COMMENT ON TABLE app.customers IS 'Клиенты';
 COMMENT ON COLUMN app.customers.customer_id IS 'Идентификатор клиента';
 COMMENT ON COLUMN app.customers.nickname IS 'Имя/ник клиента';
+COMMENT ON COLUMN app.customers.source_code IS 'Источник привлечения';
 COMMENT ON COLUMN app.customers.contacts IS 'Контакты клиента';
 COMMENT ON COLUMN app.customers.notes IS 'Заметки';
 COMMENT ON COLUMN app.customers.created_at IS 'Дата создания записи';
@@ -145,10 +183,12 @@ CREATE TABLE IF NOT EXISTS app.deal_items (
   deal_item_id     bigserial PRIMARY KEY,
   deal_id          bigint NOT NULL REFERENCES app.deals(deal_id) ON DELETE CASCADE,
   account_id       bigint REFERENCES app.accounts(account_id) ON DELETE RESTRICT,
+  game_id          bigint REFERENCES app.game_titles(game_id) ON DELETE RESTRICT,
   account_asset_id bigint REFERENCES app.account_assets(account_asset_id) ON DELETE RESTRICT,
   qty              integer NOT NULL DEFAULT 1,
   price            numeric(14,2) NOT NULL DEFAULT 0,
   fee              numeric(14,2) NOT NULL DEFAULT 0,
+  purchase_at      timestamptz,
   start_at         timestamptz,
   end_at           timestamptz,
   returned_at      timestamptz,
@@ -157,16 +197,22 @@ CREATE TABLE IF NOT EXISTS app.deal_items (
   CONSTRAINT ck_qty_positive CHECK (qty > 0),
   CONSTRAINT ck_slots_used_nonneg CHECK (slots_used >= 0),
   CONSTRAINT ck_lease_window CHECK (end_at IS NULL OR start_at IS NULL OR end_at >= start_at),
-  CONSTRAINT ck_one_target CHECK ((account_id IS NOT NULL)::int + (account_asset_id IS NOT NULL)::int >= 1)
+  CONSTRAINT ck_one_target CHECK (
+    (account_id IS NOT NULL)::int +
+    (account_asset_id IS NOT NULL)::int +
+    (game_id IS NOT NULL)::int >= 1
+  )
 );
 COMMENT ON TABLE app.deal_items IS 'Позиции сделки';
 COMMENT ON COLUMN app.deal_items.deal_item_id IS 'Идентификатор позиции';
 COMMENT ON COLUMN app.deal_items.deal_id IS 'Сделка';
 COMMENT ON COLUMN app.deal_items.account_id IS 'Аккаунт (если применимо)';
+COMMENT ON COLUMN app.deal_items.game_id IS 'Игра (если применимо)';
 COMMENT ON COLUMN app.deal_items.account_asset_id IS 'Ассет аккаунта (если применимо)';
 COMMENT ON COLUMN app.deal_items.qty IS 'Количество';
 COMMENT ON COLUMN app.deal_items.price IS 'Цена';
 COMMENT ON COLUMN app.deal_items.fee IS 'Комиссия/расход';
+COMMENT ON COLUMN app.deal_items.purchase_at IS 'Дата покупки';
 COMMENT ON COLUMN app.deal_items.start_at IS 'Дата начала';
 COMMENT ON COLUMN app.deal_items.end_at IS 'Дата окончания';
 COMMENT ON COLUMN app.deal_items.returned_at IS 'Факт возврата';

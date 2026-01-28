@@ -6,11 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import psycopg
 import os
-from dotenv import load_dotenv, find_dotenv
+from dotenv import load_dotenv
+from pathlib import Path
 import jwt
 from passlib.context import CryptContext
+import base64
 
-load_dotenv(find_dotenv(".env.dev"))
+ROOT_DIR = Path(__file__).resolve().parents[1]
+load_dotenv(ROOT_DIR / ".env.dev", override=True)
 
 app = FastAPI(title="GameSales API", version="0.1.0")
 app.add_middleware(
@@ -33,11 +36,8 @@ DB_DSN = os.getenv(
 JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ALG = os.getenv("JWT_ALG", "HS256")
 JWT_TTL_MIN = int(os.getenv("JWT_TTL_MIN", "720"))
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-ADMIN_ROLE = os.getenv("ADMIN_ROLE", "admin")
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 def now_utc():
     return datetime.now(timezone.utc)
@@ -49,6 +49,8 @@ class AccountCreate(BaseModel):
     nickname: str
     platform_code: str = Field(..., description="steam/psn/xbox/epic")
     region_code: Optional[str] = Field(None, description="RU/TR/US/EU")
+    login_name: Optional[str] = None
+    domain_code: Optional[str] = Field(None, description="email domain, e.g. example.com")
     slot_capacity: int = 1
     slot_reserved: int = 0
     notes: Optional[str] = None
@@ -59,6 +61,9 @@ class AccountOut(BaseModel):
     platform_code: str
     region_code: Optional[str]
     status: str
+    login_name: Optional[str]
+    domain_code: Optional[str]
+    login_full: Optional[str]
     slot_capacity: int
     slot_reserved: int
     occupied_slots: int
@@ -74,6 +79,14 @@ class GameOut(BaseModel):
     title: str
     platform_code: Optional[str]
     region_code: Optional[str]
+
+class PlatformOut(BaseModel):
+    code: str
+    name: str
+
+class RegionOut(BaseModel):
+    code: str
+    name: str
 
 class RentalCreate(BaseModel):
     account_id: int
@@ -95,6 +108,36 @@ class LoginOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserOut
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role_code: str = "manager"
+
+class UserListOut(BaseModel):
+    username: str
+    role: str
+    created_at: datetime
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str
+
+class ResetPasswordIn(BaseModel):
+    new_password: str
+
+class RoleOut(BaseModel):
+    code: str
+    name: str
+
+class AccountSecretIn(BaseModel):
+    secret_key: str
+    secret_value: str
+
+class AccountSecretOut(BaseModel):
+    secret_key: str
+    secret_value_b64: str
+    created_at: datetime
 
 # ----------------------------
 # DB helpers
@@ -127,6 +170,14 @@ def get_region_id(conn, code: Optional[str]) -> Optional[int]:
     row = q1(conn, "SELECT region_id FROM app.regions WHERE code=%s", (code,))
     if not row:
         raise HTTPException(400, f"Unknown region_code: {code}")
+    return int(row[0])
+
+def get_domain_id(conn, code: Optional[str]) -> Optional[int]:
+    if not code:
+        return None
+    row = q1(conn, "SELECT domain_id FROM app.domains WHERE name=%s", (code,))
+    if not row:
+        raise HTTPException(400, f"Unknown domain: {code}")
     return int(row[0])
 
 def slots_summary(conn, account_id: int):
@@ -172,17 +223,30 @@ def get_user_by_username(conn, username: str):
         (username,),
     )
 
+def role_exists(conn, role_code: str) -> bool:
+    row = q1(conn, "SELECT 1 FROM app.user_roles WHERE code=%s", (role_code,))
+    return bool(row)
+
 def ensure_admin_user(conn):
-    if not ADMIN_USERNAME or not ADMIN_PASSWORD:
+    admin_username = os.getenv("ADMIN_USERNAME")
+    admin_password = os.getenv("ADMIN_PASSWORD")
+    admin_role = os.getenv("ADMIN_ROLE", "admin")
+    if not admin_username or not admin_password:
         return
-    row = get_user_by_username(conn, ADMIN_USERNAME)
+    if not role_exists(conn, admin_role):
+        exec1(
+            conn,
+            "INSERT INTO app.user_roles(code, name) VALUES (%s, %s) ON CONFLICT (code) DO NOTHING",
+            (admin_role, admin_role.title()),
+        )
+    row = get_user_by_username(conn, admin_username)
     if row:
         return
-    password_hash = pwd_context.hash(ADMIN_PASSWORD)
+    password_hash = pwd_context.hash(admin_password)
     exec1(
         conn,
         "INSERT INTO app.users(username, password_hash, role_code) VALUES (%s, %s, %s)",
-        (ADMIN_USERNAME, password_hash, ADMIN_ROLE),
+        (admin_username, password_hash, admin_role),
     )
     conn.commit()
 
@@ -202,6 +266,16 @@ def get_current_user(authorization: str = Header(None)) -> UserOut:
     except Exception:
         raise HTTPException(401, "Invalid token")
     return UserOut(username=payload.get("username"), role=payload.get("role"))
+
+def b64_encode(value: str) -> str:
+    return base64.b64encode(value.encode("utf-8")).decode("utf-8")
+
+def require_role(*roles):
+    def _dep(user: UserOut = Depends(get_current_user)) -> UserOut:
+        if user.role not in roles:
+            raise HTTPException(403, "Forbidden")
+        return user
+    return _dep
 
 # ----------------------------
 # Endpoints
@@ -232,6 +306,93 @@ def login(payload: LoginIn):
 def me(user: UserOut = Depends(get_current_user)):
     return user
 
+@app.get("/platforms", response_model=List[PlatformOut])
+def list_platforms(user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        rows = qall(conn, "SELECT code, name FROM app.platforms ORDER BY code")
+    return [PlatformOut(code=r0, name=r1) for (r0, r1) in rows]
+
+@app.get("/regions", response_model=List[RegionOut])
+def list_regions(user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        rows = qall(conn, "SELECT code, name FROM app.regions ORDER BY code")
+    return [RegionOut(code=r0, name=r1) for (r0, r1) in rows]
+
+@app.get("/domains", response_model=List[PlatformOut])
+def list_domains(user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        rows = qall(conn, "SELECT name, name FROM app.domains ORDER BY name")
+    return [PlatformOut(code=r0, name=r1) for (r0, r1) in rows]
+
+@app.get("/sources", response_model=List[PlatformOut])
+def list_sources(user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        rows = qall(conn, "SELECT code, name FROM app.sources ORDER BY code")
+    return [PlatformOut(code=r0, name=r1) for (r0, r1) in rows]
+
+@app.post("/auth/change-password")
+def change_password(payload: ChangePasswordIn, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        row = get_user_by_username(conn, user.username)
+        if not row:
+            raise HTTPException(404, "User not found")
+        user_id, username, password_hash, role = row
+        if not pwd_context.verify(payload.current_password, password_hash):
+            raise HTTPException(401, "Invalid credentials")
+        new_hash = pwd_context.hash(payload.new_password)
+        exec1(
+            conn,
+            "UPDATE app.users SET password_hash=%s WHERE user_id=%s",
+            (new_hash, user_id),
+        )
+        conn.commit()
+    return {"ok": True}
+
+@app.get("/user-roles", response_model=List[RoleOut])
+def list_roles(user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        rows = qall(conn, "SELECT code, name FROM app.user_roles ORDER BY code")
+    return [RoleOut(code=r0, name=r1) for (r0, r1) in rows]
+
+@app.get("/users", response_model=List[UserListOut])
+def list_users(user: UserOut = Depends(require_role("admin"))):
+    with psycopg.connect(DB_DSN) as conn:
+        rows = qall(conn, "SELECT username, role_code, created_at FROM app.users ORDER BY user_id")
+    return [UserListOut(username=r0, role=r1, created_at=r2) for (r0, r1, r2) in rows]
+
+@app.post("/users", response_model=UserOut)
+def create_user(payload: UserCreate, user: UserOut = Depends(require_role("admin"))):
+    with psycopg.connect(DB_DSN) as conn:
+        if not role_exists(conn, payload.role_code):
+            raise HTTPException(400, "Unknown role")
+        row = get_user_by_username(conn, payload.username)
+        if row:
+            raise HTTPException(409, "User already exists")
+        password_hash = pwd_context.hash(payload.password)
+        exec1(
+            conn,
+            "INSERT INTO app.users(username, password_hash, role_code) VALUES (%s, %s, %s)",
+            (payload.username, password_hash, payload.role_code),
+        )
+        conn.commit()
+    return UserOut(username=payload.username, role=payload.role_code)
+
+@app.post("/users/{username}/password")
+def reset_password(username: str, payload: ResetPasswordIn, user: UserOut = Depends(require_role("admin"))):
+    with psycopg.connect(DB_DSN) as conn:
+        row = get_user_by_username(conn, username)
+        if not row:
+            raise HTTPException(404, "User not found")
+        user_id = int(row[0])
+        new_hash = pwd_context.hash(payload.new_password)
+        exec1(
+            conn,
+            "UPDATE app.users SET password_hash=%s WHERE user_id=%s",
+            (new_hash, user_id),
+        )
+        conn.commit()
+    return {"ok": True}
+
 @app.get("/accounts", response_model=List[AccountOut])
 def list_accounts(user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
@@ -242,6 +403,8 @@ def list_accounts(user: UserOut = Depends(get_current_user)):
               p.code as platform_code,
               r.code as region_code,
               a.status_code,
+              a.login_name,
+              d.name as domain_name,
               a.slot_capacity,
               a.slot_reserved,
               s.occupied_slots,
@@ -249,6 +412,7 @@ def list_accounts(user: UserOut = Depends(get_current_user)):
             FROM app.accounts a
             JOIN app.platforms p ON p.platform_id = a.platform_id
             LEFT JOIN app.regions r ON r.region_id = a.region_id
+            LEFT JOIN app.domains d ON d.domain_id = a.domain_id
             LEFT JOIN app.v_account_slots s ON s.account_id = a.account_id
             ORDER BY a.account_id DESC
             LIMIT 200
@@ -256,8 +420,10 @@ def list_accounts(user: UserOut = Depends(get_current_user)):
     return [
         AccountOut(
             account_id=row[0], nickname=row[1], platform_code=row[2], region_code=row[3],
-            status=row[4], slot_capacity=row[5], slot_reserved=row[6],
-            occupied_slots=row[7] or 0, free_slots=row[8] or 0
+            status=row[4], login_name=row[5], domain_code=row[6],
+            login_full=f"{row[5]}@{row[6]}" if row[5] and row[6] else None,
+            slot_capacity=row[7], slot_reserved=row[8],
+            occupied_slots=row[9] or 0, free_slots=row[10] or 0
         )
         for row in rows
     ]
@@ -269,12 +435,16 @@ def create_account(payload: AccountCreate, user: UserOut = Depends(get_current_u
     with psycopg.connect(DB_DSN) as conn:
         platform_id = get_platform_id(conn, payload.platform_code)
         region_id = get_region_id(conn, payload.region_code)
+        domain_id = get_domain_id(conn, payload.domain_code)
 
         row = q1(conn, """
-            INSERT INTO app.accounts(nickname, platform_id, region_id, slot_capacity, slot_reserved, notes)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO app.accounts(nickname, login_name, domain_id, platform_id, region_id, slot_capacity, slot_reserved, notes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING account_id
-        """, (payload.nickname, platform_id, region_id, payload.slot_capacity, payload.slot_reserved, payload.notes))
+        """, (
+            payload.nickname, payload.login_name, domain_id,
+            platform_id, region_id, payload.slot_capacity, payload.slot_reserved, payload.notes
+        ))
         account_id = int(row[0])
         conn.commit()
 
@@ -285,11 +455,56 @@ def create_account(payload: AccountCreate, user: UserOut = Depends(get_current_u
             platform_code=payload.platform_code,
             region_code=payload.region_code,
             status="active",
+            login_name=payload.login_name,
+            domain_code=payload.domain_code,
+            login_full=f"{payload.login_name}@{payload.domain_code}" if payload.login_name and payload.domain_code else None,
             slot_capacity=payload.slot_capacity,
             slot_reserved=payload.slot_reserved,
             occupied_slots=occ,
             free_slots=free
         )
+
+@app.get("/accounts/{account_id}/secrets", response_model=List[AccountSecretOut])
+def list_account_secrets(account_id: int, user: UserOut = Depends(require_role("admin"))):
+    with psycopg.connect(DB_DSN) as conn:
+        rows = qall(
+            conn,
+            """
+            SELECT secret_key, secret_value, created_at
+            FROM app.account_secrets
+            WHERE account_id=%s
+            ORDER BY secret_key
+            """,
+            (account_id,),
+        )
+    return [AccountSecretOut(secret_key=r0, secret_value_b64=r1, created_at=r2) for (r0, r1, r2) in rows]
+
+@app.post("/accounts/{account_id}/secrets", response_model=AccountSecretOut)
+def upsert_account_secret(
+    account_id: int,
+    payload: AccountSecretIn,
+    user: UserOut = Depends(require_role("admin")),
+):
+    value_b64 = b64_encode(payload.secret_value)
+    with psycopg.connect(DB_DSN) as conn:
+        q1(
+            conn,
+            """
+            INSERT INTO app.account_secrets(account_id, secret_key, secret_value)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (account_id, secret_key)
+            DO UPDATE SET secret_value=excluded.secret_value
+            RETURNING secret_key, secret_value, created_at
+            """,
+            (account_id, payload.secret_key, value_b64),
+        )
+        conn.commit()
+        row = q1(
+            conn,
+            "SELECT secret_key, secret_value, created_at FROM app.account_secrets WHERE account_id=%s AND secret_key=%s",
+            (account_id, payload.secret_key),
+        )
+    return AccountSecretOut(secret_key=row[0], secret_value_b64=row[1], created_at=row[2])
 
 @app.get("/games", response_model=List[GameOut])
 def list_games(q: Optional[str] = None, user: UserOut = Depends(get_current_user)):
@@ -355,7 +570,7 @@ def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_use
 
         # create deal + item
         deal_row = q1(conn, """
-            INSERT INTO app.deals(deal_type, status, customer_id, currency, total_amount)
+            INSERT INTO app.deals(deal_type_code, status_code, customer_id, currency, total_amount)
             VALUES ('rental', 'confirmed', %s, 'RUB', %s)
             RETURNING deal_id
         """, (customer_id, payload.price))
