@@ -118,32 +118,72 @@
               <p class="muted">Сменить пароль текущего пользователя.</p>
             </div>
             <div class="toolbar-actions">
-              <button class="btn btn--ghost" @click="showPwdForm = !showPwdForm">
-                {{ showPwdForm ? 'Скрыть форму' : 'Сменить пароль' }}
+              <button
+                class="btn btn--icon btn--glow btn--glow-eye"
+                title="Сменить пароль"
+                aria-label="Сменить пароль"
+                @click="openPwdModal"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M7 10a5 5 0 0 1 10 0v4a5 5 0 0 1-10 0v-4Z" />
+                  <path d="M9 10V8a3 3 0 0 1 6 0v2" />
+                </svg>
               </button>
             </div>
           </div>
           <div class="panel__body">
-            <div v-if="showPwdForm" class="form">
-              <label class="field">
-                <span class="label">Текущий пароль</span>
-                <input v-model="pwdForm.current" class="input" type="password" />
-              </label>
-              <label class="field">
-                <span class="label">Новый пароль</span>
-                <input v-model="pwdForm.next" class="input" type="password" />
-              </label>
-              <label class="field">
-                <span class="label">Повторите пароль</span>
-                <input v-model="pwdForm.next2" class="input" type="password" />
-              </label>
-              <p v-if="pwdError" class="bad">{{ pwdError }}</p>
-              <p v-if="pwdOk" class="ok">Пароль обновлён</p>
-              <button class="btn" @click="changePassword" :disabled="pwdLoading">
-                {{ pwdLoading ? 'Сохраняем…' : 'Сменить пароль' }}
-              </button>
-            </div>
-            <p v-else class="muted">Нажмите «Сменить пароль», чтобы открыть форму.</p>
+            <p class="muted">Нажмите иконку, чтобы открыть форму смены пароля.</p>
+            <teleport to="body">
+              <div v-if="showPwdForm" class="modal-backdrop" @click.self="closePwdModal">
+                <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
+                  <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
+                    <h3>Смена пароля</h3>
+                    <button
+                      class="btn btn--icon-plain"
+                      type="button"
+                      aria-label="Закрыть"
+                      title="Закрыть"
+                      @click="closePwdModal"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 6l12 12M18 6l-12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="modal__body">
+                    <div class="form form--stack form--compact">
+                      <label class="field">
+                        <span class="label">Текущий пароль</span>
+                        <input v-model="pwdForm.current" class="input" type="password" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Новый пароль</span>
+                        <input v-model="pwdForm.next" class="input" type="password" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Повторите пароль</span>
+                        <input v-model="pwdForm.next2" class="input" type="password" />
+                      </label>
+                      <p v-if="pwdError" class="bad">{{ pwdError }}</p>
+                      <p v-if="pwdOk" class="ok">Пароль обновлён</p>
+                      <div class="toolbar-actions">
+                        <button
+                          class="btn btn--icon-plain"
+                          @click="changePassword"
+                          :disabled="pwdLoading"
+                          aria-label="Сохранить"
+                          title="Сохранить"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </teleport>
           </div>
         </section>
 
@@ -154,17 +194,56 @@
               <p class="muted">Создание аккаунтов и контроль слотов.</p>
             </div>
             <div class="toolbar-actions">
-              <button class="btn btn--ghost" @click="showAccountForm = !showAccountForm">
-                {{ showAccountForm ? 'Скрыть форму' : 'Добавить аккаунт' }}
+              <button
+                class="btn btn--icon btn--glow btn--glow-add"
+                aria-label="Добавить аккаунт"
+                title="Добавить аккаунт"
+                @click="openCreateAccountModal"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
               </button>
-              <button class="btn btn--ghost" @click="showAccountFilters = !showAccountFilters">
-                {{ showAccountFilters ? 'Скрыть фильтры' : 'Фильтр' }}
+              <button
+                class="btn btn--icon btn--glow btn--glow-filter"
+                :aria-label="showAccountFilters ? 'Скрыть фильтры' : 'Фильтр'"
+                :title="showAccountFilters ? 'Скрыть фильтры' : 'Фильтр'"
+                @click="showAccountFilters = !showAccountFilters"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 6h16M7 12h10M10 18h4" />
+                </svg>
               </button>
-              <button class="btn btn--ghost" @click="showPasswords = !showPasswords">
-                {{ showPasswords ? 'Скрыть пароли' : 'Показать пароли' }}
+              <button
+                class="btn btn--icon btn--glow btn--glow-eye"
+                :aria-label="showPasswords ? 'Скрыть пароли' : 'Показать пароли'"
+                :title="showPasswords ? 'Скрыть пароли' : 'Показать пароли'"
+                @click="showPasswords = !showPasswords"
+              >
+                <svg v-if="!showPasswords" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"
+                  />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 3l18 18" />
+                  <path d="M10.6 10.6a3 3 0 0 0 4.2 4.2" />
+                  <path d="M6.5 6.5C4.2 8.2 2.8 10.4 2.5 12c1.4 2.5 4.8 6 9.5 6 1.6 0 3-.4 4.2-1" />
+                  <path d="M9 5.3A10.9 10.9 0 0 1 12 5c6 0 9.5 6 9.5 6a14.3 14.3 0 0 1-2.6 3.3" />
+                </svg>
               </button>
-              <button class="btn btn--ghost" @click="loadAccounts" :disabled="accountsLoading">
-                {{ accountsLoading ? 'Обновляем…' : 'Обновить список' }}
+              <button
+                class="btn btn--icon btn--glow btn--glow-refresh"
+                aria-label="Обновить список"
+                title="Обновить список"
+                @click="loadAccounts"
+                :disabled="accountsLoading"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+                  <path d="M20 4v6h-6" />
+                </svg>
               </button>
             </div>
           </div>
@@ -258,211 +337,264 @@
 
             <div class="divider"></div>
 
-            <div v-if="showAccountForm" class="form form--stack form--card form--compact">
-              <label class="field">
-                <span class="label">Логин (без домена)</span>
-                <input v-model.trim="newAccount.login_name" class="input" placeholder="user" />
-              </label>
-              <label class="field">
-                <span class="label">Домен</span>
-                <select v-model="newAccount.domain_code" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="d in domains" :key="d.name" :value="d.name">
-                    {{ d.name }}
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Платформа</span>
-                <select v-model="newAccount.platform_code" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="p in platforms" :key="p.code" :value="p.code">
-                    {{ p.name }} ({{ p.code }}) — {{ p.slot_capacity }} сл.
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Регион</span>
-                <select v-model="newAccount.region_code" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="r in regions" :key="r.code" :value="r.code">
-                    {{ r.name }} ({{ r.code }})
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Комментарий</span>
-                <input v-model.trim="newAccount.notes" class="input" placeholder="заметки" />
-              </label>
-              <label class="field">
-                <span class="label">Дата</span>
-                <input v-model="newAccount.account_date" class="input" type="date" />
-              </label>
-              <label class="field">
-                <span class="label">Пароль почта</span>
-                <input v-model.trim="newAccount.email_password" class="input" type="password" autocomplete="new-password" />
-              </label>
-              <label class="field">
-                <span class="label">Пароль аккаунт</span>
-                <input v-model.trim="newAccount.account_password" class="input" type="password" autocomplete="new-password" />
-              </label>
-              <label class="field">
-                <span class="label">Код аутентификатора</span>
-                <input v-model.trim="newAccount.auth_code" class="input" placeholder="код" />
-              </label>
-              <div class="field field--full">
-                <span class="label">Пароли резерв</span>
-                <div class="input-list">
-                  <div v-for="(p, idx) in newAccount.reserve_secrets" :key="idx" class="input-list__row">
-                    <input
-                      v-model.trim="newAccount.reserve_secrets[idx]"
-                      class="input"
-                      type="password"
-                      autocomplete="new-password"
-                      :placeholder="`Резерв ${idx + 1}`"
-                    />
-                    <button class="ghost" type="button" @click="removeReserveSecret(idx)">Убрать</button>
+            <teleport to="body">
+              <div v-if="editAccount.open" class="modal-backdrop" @click.self="cancelEditAccount">
+                <div ref="modalRef" class="modal" :style="modalStyle">
+                  <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
+                    <h3>{{ accountModalMode === 'create' ? 'Новый аккаунт' : 'Редактирование аккаунта' }}</h3>
+                    <button
+                      class="btn btn--icon-plain"
+                      type="button"
+                      aria-label="Закрыть"
+                      title="Закрыть"
+                      @click="cancelEditAccount"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 6l12 12M18 6l-12 12" />
+                      </svg>
+                    </button>
                   </div>
-                  <button class="ghost" type="button" @click="addReserveSecret">+ Добавить резервный пароль</button>
-                </div>
-              </div>
-              <div class="field field--full">
-                <span class="label">Игры</span>
-                <input v-model.trim="accountGameSearch" class="input" placeholder="поиск игры" />
-                <div class="check-list">
-                  <label v-for="g in filteredAccountGames" :key="g.game_id" class="check-item">
-                    <input type="checkbox" :value="g.game_id" v-model="newAccount.game_ids" />
-                    <span>{{ g.title }}</span>
-                  </label>
-                </div>
-              </div>
-              <p v-if="accountsError" class="bad">{{ accountsError }}</p>
-              <p v-if="accountsOk" class="ok">{{ accountsOk }}</p>
-              <button class="btn" @click="createAccount" :disabled="accountsLoading">
-                {{ accountsLoading ? 'Создаём…' : 'Добавить аккаунт' }}
-              </button>
-            </div>
-
-            <div v-if="editAccount.open" class="form form--stack form--card form--compact">
-              <h3>Редактирование аккаунта</h3>
-              <div v-if="accountGamesLoading" class="loader-wrap">
-                <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
-                  <div class="wheel"></div>
-                  <div class="hamster">
-                    <div class="hamster__body">
-                      <div class="hamster__head">
-                        <div class="hamster__ear"></div>
-                        <div class="hamster__eye"></div>
-                        <div class="hamster__nose"></div>
+                  <div class="modal__body">
+                    <div v-if="accountModalMode === 'edit' && accountGamesLoading" class="loader-wrap">
+                      <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
+                        <div class="wheel"></div>
+                        <div class="hamster">
+                          <div class="hamster__body">
+                            <div class="hamster__head">
+                              <div class="hamster__ear"></div>
+                              <div class="hamster__eye"></div>
+                              <div class="hamster__nose"></div>
+                            </div>
+                            <div class="hamster__limb hamster__limb--fr"></div>
+                            <div class="hamster__limb hamster__limb--fl"></div>
+                            <div class="hamster__limb hamster__limb--br"></div>
+                            <div class="hamster__limb hamster__limb--bl"></div>
+                            <div class="hamster__tail"></div>
+                          </div>
+                        </div>
+                        <div class="spoke"></div>
                       </div>
-                      <div class="hamster__limb hamster__limb--fr"></div>
-                      <div class="hamster__limb hamster__limb--fl"></div>
-                      <div class="hamster__limb hamster__limb--br"></div>
-                      <div class="hamster__limb hamster__limb--bl"></div>
-                      <div class="hamster__tail"></div>
+                      <p class="muted">Загрузка аккаунта…</p>
+                    </div>
+                    <div v-else-if="accountModalMode === 'edit'" class="form form--stack form--compact">
+                      <label class="field">
+                        <span class="label">Логин (без домена)</span>
+                        <input v-model.trim="editAccount.login_name" class="input" placeholder="user" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Домен</span>
+                        <select v-model="editAccount.domain_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="d in domains" :key="d.name" :value="d.name">
+                            {{ d.name }}
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Платформа</span>
+                        <select v-model="editAccount.platform_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="p in platforms" :key="p.code" :value="p.code">
+                            {{ p.name }} ({{ p.code }}) — {{ p.slot_capacity }} сл.
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Регион</span>
+                        <select v-model="editAccount.region_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="r in regions" :key="r.code" :value="r.code">
+                            {{ r.name }} ({{ r.code }})
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Статус</span>
+                        <select v-model="editAccount.status_code" class="input input--select">
+                          <option value="active">active</option>
+                          <option value="banned">banned</option>
+                          <option value="archived">archived</option>
+                          <option value="problem">problem</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Дата</span>
+                        <input v-model="editAccount.account_date" class="input" type="date" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Комментарий</span>
+                        <input v-model.trim="editAccount.notes" class="input" placeholder="заметки" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Пароль почта</span>
+                        <input v-model.trim="editAccount.email_password" class="input" autocomplete="new-password" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Пароль аккаунт</span>
+                        <input v-model.trim="editAccount.account_password" class="input" autocomplete="new-password" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Код аутентификатора</span>
+                        <input v-model.trim="editAccount.auth_code" class="input" placeholder="код" />
+                      </label>
+                      <div class="field field--full">
+                        <span class="label">Пароли резерв</span>
+                        <div class="input-list">
+                        <div v-for="(p, idx) in editAccount.reserve_secrets" :key="idx" class="input-list__row">
+                          <input
+                            v-model.trim="editAccount.reserve_secrets[idx]"
+                            class="input"
+                            autocomplete="new-password"
+                            :placeholder="`Резерв ${idx + 1}`"
+                          />
+                          <button
+                            class="btn btn--icon-plain btn--icon-tiny"
+                            type="button"
+                            aria-label="Убрать"
+                            title="Убрать"
+                            @click="removeEditReserveSecret(idx)"
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
+                            </svg>
+                          </button>
+                        </div>
+                        <button class="ghost" type="button" @click="addEditReserveSecret">+ Добавить резервный пароль</button>
+                      </div>
+                      </div>
+                      <div class="field field--full">
+                        <span class="label">Игры</span>
+                        <input v-model.trim="editAccountGameSearch" class="input" placeholder="поиск игры" />
+                        <div class="check-list">
+                          <label v-for="g in filteredEditAccountGames" :key="g.game_id" class="check-item">
+                            <input type="checkbox" :value="g.game_id" v-model="editAccount.game_ids" />
+                            <span>{{ g.title }}</span>
+                          </label>
+                        </div>
+                      </div>
+                      <p v-if="accountsError" class="bad">{{ accountsError }}</p>
+                      <p v-if="accountsOk" class="ok">{{ accountsOk }}</p>
+                      <div class="toolbar-actions">
+                        <button
+                          class="btn btn--icon-plain"
+                          @click="updateAccount"
+                          :disabled="accountsLoading"
+                          aria-label="Сохранить изменения"
+                          title="Сохранить изменения"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div v-else class="form form--stack form--compact">
+                      <label class="field">
+                        <span class="label">Логин (без домена)</span>
+                        <input v-model.trim="newAccount.login_name" class="input" placeholder="user" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Домен</span>
+                        <select v-model="newAccount.domain_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="d in domains" :key="d.name" :value="d.name">
+                            {{ d.name }}
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Платформа</span>
+                        <select v-model="newAccount.platform_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="p in platforms" :key="p.code" :value="p.code">
+                            {{ p.name }} ({{ p.code }}) — {{ p.slot_capacity }} сл.
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Регион</span>
+                        <select v-model="newAccount.region_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="r in regions" :key="r.code" :value="r.code">
+                            {{ r.name }} ({{ r.code }})
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Комментарий</span>
+                        <input v-model.trim="newAccount.notes" class="input" placeholder="заметки" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Дата</span>
+                        <input v-model="newAccount.account_date" class="input" type="date" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Пароль почта</span>
+                        <input v-model.trim="newAccount.email_password" class="input" autocomplete="new-password" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Пароль аккаунт</span>
+                        <input v-model.trim="newAccount.account_password" class="input" autocomplete="new-password" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Код аутентификатора</span>
+                        <input v-model.trim="newAccount.auth_code" class="input" placeholder="код" />
+                      </label>
+                      <div class="field field--full">
+                        <span class="label">Пароли резерв</span>
+                        <div class="input-list">
+                          <div v-for="(p, idx) in newAccount.reserve_secrets" :key="idx" class="input-list__row">
+                            <input
+                              v-model.trim="newAccount.reserve_secrets[idx]"
+                              class="input"
+                              autocomplete="new-password"
+                              :placeholder="`Резерв ${idx + 1}`"
+                            />
+                            <button
+                              class="btn btn--icon-plain btn--icon-tiny"
+                              type="button"
+                              aria-label="Убрать"
+                              title="Убрать"
+                              @click="removeReserveSecret(idx)"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
+                              </svg>
+                            </button>
+                          </div>
+                          <button class="ghost" type="button" @click="addReserveSecret">+ Добавить резервный пароль</button>
+                        </div>
+                      </div>
+                      <div class="field field--full">
+                        <span class="label">Игры</span>
+                        <input v-model.trim="accountGameSearch" class="input" placeholder="поиск игры" />
+                        <div class="check-list">
+                          <label v-for="g in filteredAccountGames" :key="g.game_id" class="check-item">
+                            <input type="checkbox" :value="g.game_id" v-model="newAccount.game_ids" />
+                            <span>{{ g.title }}</span>
+                          </label>
+                        </div>
+                      </div>
+                      <p v-if="accountsError" class="bad">{{ accountsError }}</p>
+                      <p v-if="accountsOk" class="ok">{{ accountsOk }}</p>
+                      <div class="toolbar-actions">
+                        <button
+                          class="btn btn--icon-plain"
+                          @click="createAccount"
+                          :disabled="accountsLoading"
+                          aria-label="Создать аккаунт"
+                          title="Создать аккаунт"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div class="spoke"></div>
-                </div>
-                <p class="muted">Загрузка аккаунта…</p>
-              </div>
-              <div v-else class="form form--stack form--compact">
-                <label class="field">
-                  <span class="label">Логин (без домена)</span>
-                  <input v-model.trim="editAccount.login_name" class="input" placeholder="user" />
-                </label>
-                <label class="field">
-                  <span class="label">Домен</span>
-                  <select v-model="editAccount.domain_code" class="input input--select">
-                    <option value="">— не выбрано —</option>
-                    <option v-for="d in domains" :key="d.name" :value="d.name">
-                      {{ d.name }}
-                    </option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span class="label">Платформа</span>
-                  <select v-model="editAccount.platform_code" class="input input--select">
-                    <option value="">— не выбрано —</option>
-                    <option v-for="p in platforms" :key="p.code" :value="p.code">
-                      {{ p.name }} ({{ p.code }}) — {{ p.slot_capacity }} сл.
-                    </option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span class="label">Регион</span>
-                  <select v-model="editAccount.region_code" class="input input--select">
-                    <option value="">— не выбрано —</option>
-                    <option v-for="r in regions" :key="r.code" :value="r.code">
-                      {{ r.name }} ({{ r.code }})
-                    </option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span class="label">Статус</span>
-                  <select v-model="editAccount.status_code" class="input input--select">
-                    <option value="active">active</option>
-                    <option value="banned">banned</option>
-                    <option value="archived">archived</option>
-                    <option value="problem">problem</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span class="label">Дата</span>
-                  <input v-model="editAccount.account_date" class="input" type="date" />
-                </label>
-                <label class="field">
-                  <span class="label">Комментарий</span>
-                  <input v-model.trim="editAccount.notes" class="input" placeholder="заметки" />
-                </label>
-                <label class="field">
-                  <span class="label">Пароль почта</span>
-                  <input v-model.trim="editAccount.email_password" class="input" type="password" autocomplete="new-password" />
-                </label>
-                <label class="field">
-                  <span class="label">Пароль аккаунт</span>
-                  <input v-model.trim="editAccount.account_password" class="input" type="password" autocomplete="new-password" />
-                </label>
-                <label class="field">
-                  <span class="label">Код аутентификатора</span>
-                  <input v-model.trim="editAccount.auth_code" class="input" placeholder="код" />
-                </label>
-                <div class="field field--full">
-                  <span class="label">Пароли резерв</span>
-                  <div class="input-list">
-                    <div v-for="(p, idx) in editAccount.reserve_secrets" :key="idx" class="input-list__row">
-                      <input
-                        v-model.trim="editAccount.reserve_secrets[idx]"
-                        class="input"
-                        type="password"
-                        autocomplete="new-password"
-                        :placeholder="`Резерв ${idx + 1}`"
-                      />
-                      <button class="ghost" type="button" @click="removeEditReserveSecret(idx)">Убрать</button>
-                    </div>
-                    <button class="ghost" type="button" @click="addEditReserveSecret">+ Добавить резервный пароль</button>
-                  </div>
-                </div>
-                <div class="field field--full">
-                  <span class="label">Игры</span>
-                  <input v-model.trim="editAccountGameSearch" class="input" placeholder="поиск игры" />
-                  <div class="check-list">
-                    <label v-for="g in filteredEditAccountGames" :key="g.game_id" class="check-item">
-                      <input type="checkbox" :value="g.game_id" v-model="editAccount.game_ids" />
-                      <span>{{ g.title }}</span>
-                    </label>
-                  </div>
-                </div>
-                <p v-if="accountsError" class="bad">{{ accountsError }}</p>
-                <p v-if="accountsOk" class="ok">{{ accountsOk }}</p>
-                <div class="toolbar-actions">
-                  <button class="btn" @click="updateAccount" :disabled="accountsLoading">
-                    {{ accountsLoading ? 'Сохраняем…' : 'Сохранить изменения' }}
-                  </button>
-                  <button class="btn btn--ghost" type="button" @click="cancelEditAccount">Отмена</button>
                 </div>
               </div>
-            </div>
+            </teleport>
           </div>
         </section>
 
@@ -473,14 +605,37 @@
               <p class="muted">Добавление игр в справочник.</p>
             </div>
             <div class="toolbar-actions">
-              <button class="btn btn--ghost" @click="showGameForm = !showGameForm">
-                {{ showGameForm ? 'Скрыть форму' : 'Добавить игру' }}
+              <button
+                class="btn btn--icon btn--glow btn--glow-add"
+                title="Добавить игру"
+                aria-label="Добавить игру"
+                @click="openCreateGameModal"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
               </button>
-              <button class="btn btn--ghost" @click="showGameFilters = !showGameFilters">
-                {{ showGameFilters ? 'Скрыть фильтры' : 'Фильтр' }}
+              <button
+                class="btn btn--icon btn--glow btn--glow-filter"
+                :title="showGameFilters ? 'Скрыть фильтры' : 'Фильтр'"
+                :aria-label="showGameFilters ? 'Скрыть фильтры' : 'Фильтр'"
+                @click="showGameFilters = !showGameFilters"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 6h16M7 12h10M10 18h4" />
+                </svg>
               </button>
-              <button class="btn btn--ghost" @click="loadGames" :disabled="gamesLoading">
-                {{ gamesLoading ? 'Обновляем…' : 'Обновить список' }}
+              <button
+                class="btn btn--icon btn--glow btn--glow-refresh"
+                title="Обновить список"
+                aria-label="Обновить список"
+                @click="loadGames"
+                :disabled="gamesLoading"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+                  <path d="M20 4v6h-6" />
+                </svg>
               </button>
             </div>
           </div>
@@ -548,138 +703,213 @@
             </table>
             <p v-else class="muted">Пока нет игр.</p>
 
-            <div v-if="selectedGame" class="form form--card form--compact">
-              <div class="panel__head">
-                <div>
-                  <h3>{{ selectedGame.title }}</h3>
-                  <p class="muted">Аккаунты с игрой и свободные слоты.</p>
-                </div>
-                <div class="toolbar-actions">
-                  <button class="btn btn--ghost" @click="refreshGameAccounts" :disabled="gameAccountsLoading">
-                    {{ gameAccountsLoading ? 'Обновляем…' : 'Обновить список' }}
-                  </button>
-                  <button class="btn btn--ghost" @click="startEditGame(selectedGame)">Редактировать</button>
-                  <button class="btn btn--ghost" @click="selectedGame = null">Скрыть</button>
-                </div>
-              </div>
-              <p v-if="gameAccountsError" class="bad">{{ gameAccountsError }}</p>
-              <div v-if="gameAccountsLoading" class="loader-wrap">
-                <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
-                  <div class="wheel"></div>
-                  <div class="hamster">
-                    <div class="hamster__body">
-                      <div class="hamster__head">
-                        <div class="hamster__ear"></div>
-                        <div class="hamster__eye"></div>
-                        <div class="hamster__nose"></div>
-                      </div>
-                      <div class="hamster__limb hamster__limb--fr"></div>
-                      <div class="hamster__limb hamster__limb--fl"></div>
-                      <div class="hamster__limb hamster__limb--br"></div>
-                      <div class="hamster__limb hamster__limb--bl"></div>
-                      <div class="hamster__tail"></div>
+            <teleport to="body">
+              <div v-if="selectedGame" class="modal-backdrop" @click.self="selectedGame = null">
+                <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
+                  <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
+                    <div>
+                      <h3>{{ selectedGame.title }}</h3>
+                      <p class="muted">Аккаунты с игрой и свободные слоты.</p>
+                    </div>
+                    <div class="toolbar-actions">
+                      <button
+                        class="btn btn--icon-plain"
+                        @click="refreshGameAccounts"
+                        :disabled="gameAccountsLoading"
+                        aria-label="Обновить список"
+                        title="Обновить список"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+                          <path d="M20 4v6h-6" />
+                        </svg>
+                      </button>
+                      <button
+                        class="btn btn--icon-plain"
+                        @click="startEditGame(selectedGame)"
+                        aria-label="Редактировать игру"
+                        title="Редактировать игру"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 20h4l10-10-4-4L4 16v4Z" />
+                          <path d="M13 6l4 4" />
+                        </svg>
+                      </button>
+                      <button
+                        class="btn btn--icon-plain"
+                        aria-label="Закрыть"
+                        title="Закрыть"
+                        @click="selectedGame = null"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M6 6l12 12M18 6l-12 12" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
-                  <div class="spoke"></div>
-                </div>
-                <p class="muted">Загрузка аккаунтов…</p>
-              </div>
-              <table v-else-if="pagedGameAccounts.length" class="table table--compact">
-                <thead>
-                  <tr>
-                    <th class="sortable" @click="sortGameAccounts('login_full')">Аккаунт</th>
-                    <th class="sortable" @click="sortGameAccounts('platform_code')">Платформа</th>
-                    <th class="sortable" @click="sortGameAccounts('free_slots')">Свободно</th>
-                    <th class="sortable" @click="sortGameAccounts('occupied_slots')">Занято</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="a in pagedGameAccounts" :key="a.account_id" class="clickable-row" @click="goToAccount(a.login_full)">
-                    <td>{{ a.login_full || a.account_id }}</td>
-                    <td>{{ a.platform_code }}</td>
-                    <td>{{ a.free_slots }}</td>
-                    <td>{{ a.occupied_slots }}</td>
-                  </tr>
-                </tbody>
-              </table>
-              <p v-else class="muted">Пока нет аккаунтов.</p>
+                  <div class="modal__body">
+                    <p v-if="gameAccountsError" class="bad">{{ gameAccountsError }}</p>
+                    <div v-if="gameAccountsLoading" class="loader-wrap">
+                      <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
+                        <div class="wheel"></div>
+                        <div class="hamster">
+                          <div class="hamster__body">
+                            <div class="hamster__head">
+                              <div class="hamster__ear"></div>
+                              <div class="hamster__eye"></div>
+                              <div class="hamster__nose"></div>
+                            </div>
+                            <div class="hamster__limb hamster__limb--fr"></div>
+                            <div class="hamster__limb hamster__limb--fl"></div>
+                            <div class="hamster__limb hamster__limb--br"></div>
+                            <div class="hamster__limb hamster__limb--bl"></div>
+                            <div class="hamster__tail"></div>
+                          </div>
+                        </div>
+                        <div class="spoke"></div>
+                      </div>
+                      <p class="muted">Загрузка аккаунтов…</p>
+                    </div>
+                    <table v-else-if="pagedGameAccounts.length" class="table table--compact">
+                      <thead>
+                        <tr>
+                          <th class="sortable" @click="sortGameAccounts('login_full')">Аккаунт</th>
+                          <th class="sortable" @click="sortGameAccounts('platform_code')">Платформа</th>
+                          <th class="sortable" @click="sortGameAccounts('free_slots')">Свободно</th>
+                          <th class="sortable" @click="sortGameAccounts('occupied_slots')">Занято</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="a in pagedGameAccounts" :key="a.account_id" class="clickable-row" @click="goToAccount(a.login_full)">
+                          <td>{{ a.login_full || a.account_id }}</td>
+                          <td>{{ a.platform_code }}</td>
+                          <td>{{ a.free_slots }}</td>
+                          <td>{{ a.occupied_slots }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <p v-else class="muted">Пока нет аккаунтов.</p>
 
-              <div v-if="gameAccountsTotalPages > 1" class="pager">
-                <button class="ghost" @click="prevGameAccountsPage" :disabled="gameAccountsPage <= 1">
-                  ← Назад
-                </button>
-                <span class="muted">Страница {{ gameAccountsPage }} из {{ gameAccountsTotalPages }}</span>
-                <button class="ghost" @click="nextGameAccountsPage" :disabled="gameAccountsPage >= gameAccountsTotalPages">
-                  Вперёд →
-                </button>
+                    <div v-if="gameAccountsTotalPages > 1" class="pager">
+                      <button class="ghost" @click="prevGameAccountsPage" :disabled="gameAccountsPage <= 1">
+                        ← Назад
+                      </button>
+                      <span class="muted">Страница {{ gameAccountsPage }} из {{ gameAccountsTotalPages }}</span>
+                      <button class="ghost" @click="nextGameAccountsPage" :disabled="gameAccountsPage >= gameAccountsTotalPages">
+                        Вперёд →
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            </teleport>
 
             <div class="divider"></div>
 
-            <div v-if="editGame.open" class="form form--stack form--card form--compact">
-              <h3>Редактирование игры</h3>
-              <label class="field">
-                <span class="label">Название</span>
-                <input v-model.trim="editGame.title" class="input" placeholder="Например, GTA V" />
-              </label>
-              <label class="field">
-                <span class="label">Платформа</span>
-                <select v-model="editGame.platform_code" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="p in platforms" :key="p.code" :value="p.code">
-                    {{ p.name }} ({{ p.code }})
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Регион</span>
-                <select v-model="editGame.region_code" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="r in regions" :key="r.code" :value="r.code">
-                    {{ r.name }} ({{ r.code }})
-                  </option>
-                </select>
-              </label>
-              <p v-if="gameError" class="bad">{{ gameError }}</p>
-              <p v-if="gameOk" class="ok">{{ gameOk }}</p>
-              <div class="toolbar-actions">
-                <button class="btn" @click="updateGame" :disabled="gameLoading">
-                  {{ gameLoading ? 'Сохраняем…' : 'Сохранить изменения' }}
-                </button>
-                <button class="btn btn--ghost" type="button" @click="cancelEditGame">Отмена</button>
+            <teleport to="body">
+              <div
+                v-if="editGame.open || showGameForm"
+                class="modal-backdrop"
+                @click.self="closeGameModal"
+              >
+                <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
+                  <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
+                    <h3>{{ editGame.open ? 'Редактирование игры' : 'Новая игра' }}</h3>
+                    <button
+                      class="btn btn--icon-plain"
+                      type="button"
+                      aria-label="Закрыть"
+                      title="Закрыть"
+                      @click="closeGameModal"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 6l12 12M18 6l-12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="modal__body">
+                    <div v-if="editGame.open" class="form form--stack form--compact">
+                      <label class="field">
+                        <span class="label">Название</span>
+                        <input v-model.trim="editGame.title" class="input" placeholder="Например, GTA V" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Платформа</span>
+                        <select v-model="editGame.platform_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="p in platforms" :key="p.code" :value="p.code">
+                            {{ p.name }} ({{ p.code }})
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Регион</span>
+                        <select v-model="editGame.region_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="r in regions" :key="r.code" :value="r.code">
+                            {{ r.name }} ({{ r.code }})
+                          </option>
+                        </select>
+                      </label>
+                      <p v-if="gameError" class="bad">{{ gameError }}</p>
+                      <p v-if="gameOk" class="ok">{{ gameOk }}</p>
+                      <div class="toolbar-actions">
+                        <button
+                          class="btn btn--icon-plain"
+                          @click="updateGame"
+                          :disabled="gameLoading"
+                          aria-label="Сохранить изменения"
+                          title="Сохранить изменения"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div v-else class="form form--stack form--compact">
+                      <label class="field">
+                        <span class="label">Название</span>
+                        <input v-model.trim="newGame.title" class="input" placeholder="Например, GTA V" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Платформа (опционально)</span>
+                        <select v-model="newGame.platform_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="p in platforms" :key="p.code" :value="p.code">
+                            {{ p.name }} ({{ p.code }})
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Регион (опционально)</span>
+                        <select v-model="newGame.region_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="r in regions" :key="r.code" :value="r.code">
+                            {{ r.name }} ({{ r.code }})
+                          </option>
+                        </select>
+                      </label>
+                      <p v-if="gameError" class="bad">{{ gameError }}</p>
+                      <p v-if="gameOk" class="ok">{{ gameOk }}</p>
+                      <div class="toolbar-actions">
+                        <button
+                          class="btn btn--icon-plain"
+                          @click="createGame"
+                          :disabled="gameLoading"
+                          aria-label="Добавить игру"
+                          title="Добавить игру"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-
-            <div v-if="showGameForm" class="form form--stack form--card form--compact">
-              <label class="field">
-                <span class="label">Название</span>
-                <input v-model.trim="newGame.title" class="input" placeholder="Например, GTA V" />
-              </label>
-              <label class="field">
-                <span class="label">Платформа (опционально)</span>
-                <select v-model="newGame.platform_code" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="p in platforms" :key="p.code" :value="p.code">
-                    {{ p.name }} ({{ p.code }})
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Регион (опционально)</span>
-                <select v-model="newGame.region_code" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="r in regions" :key="r.code" :value="r.code">
-                    {{ r.name }} ({{ r.code }})
-                  </option>
-                </select>
-              </label>
-              <p v-if="gameError" class="bad">{{ gameError }}</p>
-              <p v-if="gameOk" class="ok">{{ gameOk }}</p>
-              <button class="btn" @click="createGame" :disabled="gameLoading">
-                {{ gameLoading ? 'Сохраняем…' : 'Добавить игру' }}
-              </button>
-            </div>
+            </teleport>
           </div>
         </section>
 
@@ -690,14 +920,37 @@
               <p class="muted">Фиксация выдач и продаж по аккаунтам.</p>
             </div>
             <div class="toolbar-actions">
-              <button class="btn btn--ghost" @click="showDealForm = !showDealForm">
-                {{ showDealForm ? 'Скрыть форму' : 'Добавить продажу' }}
+              <button
+                class="btn btn--icon btn--glow btn--glow-add"
+                title="Добавить продажу"
+                aria-label="Добавить продажу"
+                @click="openCreateDealModal"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
               </button>
-              <button class="btn btn--ghost" @click="showDealFilters = !showDealFilters">
-                {{ showDealFilters ? 'Скрыть фильтры' : 'Фильтр' }}
+              <button
+                class="btn btn--icon btn--glow btn--glow-filter"
+                :title="showDealFilters ? 'Скрыть фильтры' : 'Фильтр'"
+                :aria-label="showDealFilters ? 'Скрыть фильтры' : 'Фильтр'"
+                @click="showDealFilters = !showDealFilters"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 6h16M7 12h10M10 18h4" />
+                </svg>
               </button>
-              <button class="btn btn--ghost" @click="loadDeals(1)" :disabled="dealListLoading">
-                {{ dealListLoading ? 'Обновляем…' : 'Обновить список' }}
+              <button
+                class="btn btn--icon btn--glow btn--glow-refresh"
+                title="Обновить список"
+                aria-label="Обновить список"
+                @click="loadDeals(1)"
+                :disabled="dealListLoading"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+                  <path d="M20 4v6h-6" />
+                </svg>
               </button>
             </div>
           </div>
@@ -827,152 +1080,188 @@
             </div>
 
             <div class="divider"></div>
-
-            <div v-if="editDeal.open" class="form form--stack form--card form--compact">
-              <h3>Редактирование сделки</h3>
-              <label class="field">
-                <span class="label">Тип</span>
-                <select v-model="editDeal.deal_type_code" class="input input--select">
-                  <option value="sale">Продажа</option>
-                  <option value="rental">Аренда</option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Аккаунт</span>
-                <select v-model.number="editDeal.account_id" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="a in accounts" :key="a.account_id" :value="a.account_id">
-                    {{ a.login_full || a.account_id }}
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Игра</span>
-                <select v-model.number="editDeal.game_id" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="g in games" :key="g.game_id" :value="g.game_id">
-                    {{ g.title }}
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Пользователь</span>
-                <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="nickname" />
-              </label>
-              <label class="field">
-                <span class="label">Откуда</span>
-                <select v-model="editDeal.source_code" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="s in sources" :key="s.code" :value="s.code">
-                    {{ s.name }} ({{ s.code }})
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Платформа</span>
-                <select v-model="editDeal.platform_code" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="p in platforms" :key="p.code" :value="p.code">
-                    {{ p.name }} ({{ p.code }})
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Цена</span>
-                <input v-model.number="editDeal.price" class="input" type="number" min="0" />
-              </label>
-              <label class="field">
-                <span class="label">Дата покупки</span>
-                <input v-model="editDeal.purchase_at" class="input" type="date" />
-              </label>
-              <label v-if="editDeal.deal_type_code === 'rental'" class="field">
-                <span class="label">Слотов используется</span>
-                <input v-model.number="editDeal.slots_used" class="input" type="number" min="1" />
-              </label>
-              <label class="field">
-                <span class="label">Комментарий</span>
-                <input v-model.trim="editDeal.notes" class="input" />
-              </label>
-              <p v-if="dealError" class="bad">{{ dealError }}</p>
-              <p v-if="dealOk" class="ok">{{ dealOk }}</p>
-              <div class="toolbar-actions">
-                <button class="btn" @click="updateDeal" :disabled="dealLoading">
-                  {{ dealLoading ? 'Сохраняем…' : 'Сохранить изменения' }}
-                </button>
-                <button class="btn btn--ghost" type="button" @click="cancelEditDeal">Отмена</button>
+            <teleport to="body">
+              <div
+                v-if="editDeal.open || showDealForm"
+                class="modal-backdrop"
+                @click.self="closeDealModal"
+              >
+                <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
+                  <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
+                    <h3>{{ editDeal.open ? 'Редактирование сделки' : 'Новая сделка' }}</h3>
+                    <button
+                      class="btn btn--icon-plain"
+                      type="button"
+                      aria-label="Закрыть"
+                      title="Закрыть"
+                      @click="closeDealModal"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 6l12 12M18 6l-12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="modal__body">
+                    <div v-if="editDeal.open" class="form form--stack form--compact">
+                      <label class="field">
+                        <span class="label">Тип</span>
+                        <select v-model="editDeal.deal_type_code" class="input input--select">
+                          <option value="sale">Продажа</option>
+                          <option value="rental">Аренда</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Аккаунт</span>
+                        <select v-model.number="editDeal.account_id" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="a in dealAccountsForEdit" :key="a.account_id" :value="a.account_id">
+                            {{ a.login_full || a.account_id }}
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Игра</span>
+                        <select v-model.number="editDeal.game_id" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="g in games" :key="g.game_id" :value="g.game_id">
+                            {{ g.title }}
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Пользователь</span>
+                        <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="nickname" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Откуда</span>
+                        <select v-model="editDeal.source_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="s in sources" :key="s.code" :value="s.code">
+                            {{ s.name }} ({{ s.code }})
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Платформа</span>
+                        <select v-model="editDeal.platform_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="p in platforms" :key="p.code" :value="p.code">
+                            {{ p.name }} ({{ p.code }})
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Цена</span>
+                        <input v-model.number="editDeal.price" class="input" type="number" min="0" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Дата покупки</span>
+                        <input v-model="editDeal.purchase_at" class="input" type="date" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Комментарий</span>
+                        <input v-model.trim="editDeal.notes" class="input" />
+                      </label>
+                      <p v-if="dealError" class="bad">{{ dealError }}</p>
+                      <p v-if="dealOk" class="ok">{{ dealOk }}</p>
+                      <div class="toolbar-actions">
+                        <button
+                          class="btn btn--icon-plain"
+                          @click="updateDeal"
+                          :disabled="dealLoading"
+                          aria-label="Сохранить изменения"
+                          title="Сохранить изменения"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div v-else class="form form--stack form--compact">
+                      <label class="field">
+                        <span class="label">Тип</span>
+                        <select v-model="newDeal.deal_type_code" class="input input--select">
+                          <option value="sale">Продажа</option>
+                          <option value="rental">Аренда</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Аккаунт</span>
+                        <select v-model.number="newDeal.account_id" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="a in dealAccountsForNew" :key="a.account_id" :value="a.account_id">
+                            {{ a.login_full || a.account_id }}
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Игра</span>
+                        <select v-model.number="newDeal.game_id" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="g in games" :key="g.game_id" :value="g.game_id">
+                            {{ g.title }}
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Пользователь</span>
+                        <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="nickname" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Откуда</span>
+                        <select v-model="newDeal.source_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="s in sources" :key="s.code" :value="s.code">
+                            {{ s.name }} ({{ s.code }})
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Платформа</span>
+                        <select v-model="newDeal.platform_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="p in platforms" :key="p.code" :value="p.code">
+                            {{ p.name }} ({{ p.code }})
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">Цена</span>
+                        <input v-model.number="newDeal.price" class="input" type="number" min="0" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Дата покупки</span>
+                        <input v-model="newDeal.purchase_at" class="input" type="date" />
+                      </label>
+                      <label v-if="newDeal.deal_type_code === 'rental'" class="field">
+                        <span class="label">Слотов используется</span>
+                        <input v-model.number="newDeal.slots_used" class="input" type="number" min="1" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Комментарий</span>
+                        <input v-model.trim="newDeal.notes" class="input" />
+                      </label>
+                      <p v-if="dealError" class="bad">{{ dealError }}</p>
+                      <p v-if="dealOk" class="ok">{{ dealOk }}</p>
+                      <div class="toolbar-actions">
+                        <button
+                          class="btn btn--icon-plain"
+                          @click="createDeal"
+                          :disabled="dealLoading"
+                          aria-label="Сохранить сделку"
+                          title="Сохранить сделку"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-
-            <div v-if="showDealForm" class="form form--stack form--card form--compact">
-              <label class="field">
-                <span class="label">Тип</span>
-                <select v-model="newDeal.deal_type_code" class="input input--select">
-                  <option value="sale">Продажа</option>
-                  <option value="rental">Аренда</option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Аккаунт</span>
-                <select v-model.number="newDeal.account_id" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="a in accounts" :key="a.account_id" :value="a.account_id">
-                    {{ a.login_full || a.account_id }}
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Игра</span>
-                <select v-model.number="newDeal.game_id" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="g in games" :key="g.game_id" :value="g.game_id">
-                    {{ g.title }}
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Пользователь</span>
-                <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="nickname" />
-              </label>
-              <label class="field">
-                <span class="label">Откуда</span>
-                <select v-model="newDeal.source_code" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="s in sources" :key="s.code" :value="s.code">
-                    {{ s.name }} ({{ s.code }})
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Платформа</span>
-                <select v-model="newDeal.platform_code" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="p in platforms" :key="p.code" :value="p.code">
-                    {{ p.name }} ({{ p.code }})
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Цена</span>
-                <input v-model.number="newDeal.price" class="input" type="number" min="0" />
-              </label>
-              <label class="field">
-                <span class="label">Дата покупки</span>
-                <input v-model="newDeal.purchase_at" class="input" type="date" />
-              </label>
-              <label v-if="newDeal.deal_type_code === 'rental'" class="field">
-                <span class="label">Слотов используется</span>
-                <input v-model.number="newDeal.slots_used" class="input" type="number" min="1" />
-              </label>
-              <label class="field">
-                <span class="label">Комментарий</span>
-                <input v-model.trim="newDeal.notes" class="input" />
-              </label>
-              <p v-if="dealError" class="bad">{{ dealError }}</p>
-              <p v-if="dealOk" class="ok">{{ dealOk }}</p>
-              <button class="btn" @click="createDeal" :disabled="dealLoading">
-                {{ dealLoading ? 'Сохраняем…' : 'Сохранить' }}
-              </button>
-            </div>
+            </teleport>
           </div>
         </section>
 
@@ -1016,34 +1305,105 @@
                   <h3>Домены</h3>
                 </div>
                 <div class="toolbar-actions">
-                  <button class="btn btn--ghost" @click="showDomainForm = !showDomainForm">
-                    {{ showDomainForm ? 'Скрыть форму' : 'Добавить домен' }}
+                  <button
+                    class="btn btn--icon btn--glow btn--glow-add"
+                    title="Добавить домен"
+                    aria-label="Добавить домен"
+                    @click="openDomainModal"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
                   </button>
-                  <button class="btn btn--ghost" @click="loadDomains" :disabled="catalogsLoading">
-                    {{ catalogsLoading ? 'Обновляем…' : 'Обновить список' }}
+                  <button
+                    class="btn btn--icon btn--glow btn--glow-refresh"
+                    title="Обновить список"
+                    aria-label="Обновить список"
+                    @click="loadDomains"
+                    :disabled="catalogsLoading"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+                      <path d="M20 4v6h-6" />
+                    </svg>
                   </button>
                 </div>
               </div>
-              <div v-if="showDomainForm" class="form form--stack form--card form--compact">
-                <label class="field">
-                  <span class="label">Новый домен</span>
-                  <input v-model.trim="newDomain" class="input" placeholder="example.com" />
-                </label>
-                <button class="btn" @click="createDomain" :disabled="catalogsLoading">
-                  {{ catalogsLoading ? 'Сохраняем…' : 'Добавить домен' }}
-                </button>
-              </div>
-              <div v-if="editDomain.open" class="form form--stack form--card form--compact">
-                <label class="field">
-                  <span class="label">Домен</span>
-                  <input v-model.trim="editDomain.name" class="input" placeholder="example.com" />
-                </label>
-                <div class="toolbar-actions">
-                  <button class="btn" @click="saveEditDomain" :disabled="catalogsLoading">Сохранить</button>
-                  <button class="btn btn--ghost" type="button" @click="deleteDomain(editDomain.original)">Удалить</button>
-                  <button class="btn btn--ghost" type="button" @click="cancelEditDomain">Отмена</button>
+              <teleport to="body">
+                <div
+                  v-if="showDomainForm || editDomain.open"
+                  class="modal-backdrop"
+                  @click.self="closeDomainModal"
+                >
+                  <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
+                    <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
+                      <h3>{{ editDomain.open ? 'Редактирование домена' : 'Новый домен' }}</h3>
+                      <button
+                        class="btn btn--icon-plain"
+                        type="button"
+                        aria-label="Закрыть"
+                        title="Закрыть"
+                        @click="closeDomainModal"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M6 6l12 12M18 6l-12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="modal__body">
+                      <div v-if="editDomain.open" class="form form--stack form--compact">
+                        <label class="field">
+                          <span class="label">Домен</span>
+                          <input v-model.trim="editDomain.name" class="input" placeholder="example.com" />
+                        </label>
+                        <div class="toolbar-actions">
+                          <button
+                            class="btn btn--icon-plain"
+                            @click="saveEditDomain"
+                            :disabled="catalogsLoading"
+                            aria-label="Сохранить"
+                            title="Сохранить"
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 13l4 4L19 7" />
+                            </svg>
+                          </button>
+                          <button
+                            class="btn btn--icon-plain"
+                            type="button"
+                            aria-label="Удалить"
+                            title="Удалить"
+                            @click="deleteDomain(editDomain.original)"
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div v-else class="form form--stack form--compact">
+                        <label class="field">
+                          <span class="label">Новый домен</span>
+                          <input v-model.trim="newDomain" class="input" placeholder="example.com" />
+                        </label>
+                        <div class="toolbar-actions">
+                          <button
+                            class="btn btn--icon-plain"
+                            @click="createDomain"
+                            :disabled="catalogsLoading"
+                            aria-label="Добавить домен"
+                            title="Добавить домен"
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 13l4 4L19 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </teleport>
               <table v-if="sortedDomains.length" class="table table--compact">
                 <thead>
                   <tr>
@@ -1065,42 +1425,113 @@
                   <h3>Источники</h3>
                 </div>
                 <div class="toolbar-actions">
-                  <button class="btn btn--ghost" @click="showSourceForm = !showSourceForm">
-                    {{ showSourceForm ? 'Скрыть форму' : 'Добавить источник' }}
+                  <button
+                    class="btn btn--icon btn--glow btn--glow-add"
+                    title="Добавить источник"
+                    aria-label="Добавить источник"
+                    @click="openSourceModal"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
                   </button>
-                  <button class="btn btn--ghost" @click="loadSources" :disabled="catalogsLoading">
-                    {{ catalogsLoading ? 'Обновляем…' : 'Обновить список' }}
+                  <button
+                    class="btn btn--icon btn--glow btn--glow-refresh"
+                    title="Обновить список"
+                    aria-label="Обновить список"
+                    @click="loadSources"
+                    :disabled="catalogsLoading"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+                      <path d="M20 4v6h-6" />
+                    </svg>
                   </button>
                 </div>
               </div>
-              <div v-if="showSourceForm" class="form form--stack form--card form--compact">
-                <label class="field">
-                  <span class="label">Источник (код)</span>
-                  <input v-model.trim="newSource.code" class="input" placeholder="tg" />
-                </label>
-                <label class="field">
-                  <span class="label">Источник (название)</span>
-                  <input v-model.trim="newSource.name" class="input" placeholder="Telegram" />
-                </label>
-                <button class="btn" @click="createSource" :disabled="catalogsLoading">
-                  {{ catalogsLoading ? 'Сохраняем…' : 'Добавить источник' }}
-                </button>
-              </div>
-              <div v-if="editSource.open" class="form form--stack form--card form--compact">
-                <label class="field">
-                  <span class="label">Код</span>
-                  <input v-model.trim="editSource.code" class="input" disabled />
-                </label>
-                <label class="field">
-                  <span class="label">Название</span>
-                  <input v-model.trim="editSource.name" class="input" />
-                </label>
-                <div class="toolbar-actions">
-                  <button class="btn" @click="saveEditSource" :disabled="catalogsLoading">Сохранить</button>
-                  <button class="btn btn--ghost" type="button" @click="deleteSource(editSource.code)">Удалить</button>
-                  <button class="btn btn--ghost" type="button" @click="cancelEditSource">Отмена</button>
+              <teleport to="body">
+                <div
+                  v-if="showSourceForm || editSource.open"
+                  class="modal-backdrop"
+                  @click.self="closeSourceModal"
+                >
+                  <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
+                    <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
+                      <h3>{{ editSource.open ? 'Редактирование источника' : 'Новый источник' }}</h3>
+                      <button
+                        class="btn btn--icon-plain"
+                        type="button"
+                        aria-label="Закрыть"
+                        title="Закрыть"
+                        @click="closeSourceModal"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M6 6l12 12M18 6l-12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="modal__body">
+                      <div v-if="editSource.open" class="form form--stack form--compact">
+                        <label class="field">
+                          <span class="label">Код</span>
+                          <input v-model.trim="editSource.code" class="input" disabled />
+                        </label>
+                        <label class="field">
+                          <span class="label">Название</span>
+                          <input v-model.trim="editSource.name" class="input" />
+                        </label>
+                        <div class="toolbar-actions">
+                          <button
+                            class="btn btn--icon-plain"
+                            @click="saveEditSource"
+                            :disabled="catalogsLoading"
+                            aria-label="Сохранить"
+                            title="Сохранить"
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 13l4 4L19 7" />
+                            </svg>
+                          </button>
+                          <button
+                            class="btn btn--icon-plain"
+                            type="button"
+                            aria-label="Удалить"
+                            title="Удалить"
+                            @click="deleteSource(editSource.code)"
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div v-else class="form form--stack form--compact">
+                        <label class="field">
+                          <span class="label">Источник (код)</span>
+                          <input v-model.trim="newSource.code" class="input" placeholder="tg" />
+                        </label>
+                        <label class="field">
+                          <span class="label">Источник (название)</span>
+                          <input v-model.trim="newSource.name" class="input" placeholder="Telegram" />
+                        </label>
+                        <div class="toolbar-actions">
+                          <button
+                            class="btn btn--icon-plain"
+                            @click="createSource"
+                            :disabled="catalogsLoading"
+                            aria-label="Добавить источник"
+                            title="Добавить источник"
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 13l4 4L19 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </teleport>
               <table v-if="sortedSources.length" class="table table--compact">
                 <thead>
                   <tr>
@@ -1124,50 +1555,121 @@
                   <h3>Платформы</h3>
                 </div>
                 <div class="toolbar-actions">
-                  <button class="btn btn--ghost" @click="showPlatformForm = !showPlatformForm">
-                    {{ showPlatformForm ? 'Скрыть форму' : 'Добавить платформу' }}
+                  <button
+                    class="btn btn--icon btn--glow btn--glow-add"
+                    title="Добавить платформу"
+                    aria-label="Добавить платформу"
+                    @click="openPlatformModal"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
                   </button>
-                  <button class="btn btn--ghost" @click="loadCatalogs" :disabled="catalogsLoading">
-                    {{ catalogsLoading ? 'Обновляем…' : 'Обновить список' }}
+                  <button
+                    class="btn btn--icon btn--glow btn--glow-refresh"
+                    title="Обновить список"
+                    aria-label="Обновить список"
+                    @click="loadCatalogs"
+                    :disabled="catalogsLoading"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+                      <path d="M20 4v6h-6" />
+                    </svg>
                   </button>
                 </div>
               </div>
-              <div v-if="showPlatformForm" class="form form--stack form--card form--compact">
-                <label class="field">
-                  <span class="label">Платформа (код)</span>
-                  <input v-model.trim="newPlatform.code" class="input" placeholder="steam" />
-                </label>
-                <label class="field">
-                  <span class="label">Платформа (название)</span>
-                  <input v-model.trim="newPlatform.name" class="input" placeholder="Steam" />
-                </label>
-                <label class="field">
-                  <span class="label">Слотов на аккаунт</span>
-                  <input v-model.number="newPlatform.slot_capacity" class="input" type="number" min="0" />
-                </label>
-                <button class="btn" @click="createPlatform" :disabled="catalogsLoading">
-                  {{ catalogsLoading ? 'Сохраняем…' : 'Добавить платформу' }}
-                </button>
-              </div>
-              <div v-if="editPlatform.open" class="form form--stack form--card form--compact">
-                <label class="field">
-                  <span class="label">Код</span>
-                  <input v-model.trim="editPlatform.code" class="input" disabled />
-                </label>
-                <label class="field">
-                  <span class="label">Название</span>
-                  <input v-model.trim="editPlatform.name" class="input" />
-                </label>
-                <label class="field">
-                  <span class="label">Слотов на аккаунт</span>
-                  <input v-model.number="editPlatform.slot_capacity" class="input" type="number" min="0" />
-                </label>
-                <div class="toolbar-actions">
-                  <button class="btn" @click="saveEditPlatform" :disabled="catalogsLoading">Сохранить</button>
-                  <button class="btn btn--ghost" type="button" @click="deletePlatform(editPlatform.code)">Удалить</button>
-                  <button class="btn btn--ghost" type="button" @click="cancelEditPlatform">Отмена</button>
+              <teleport to="body">
+                <div
+                  v-if="showPlatformForm || editPlatform.open"
+                  class="modal-backdrop"
+                  @click.self="closePlatformModal"
+                >
+                  <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
+                    <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
+                      <h3>{{ editPlatform.open ? 'Редактирование платформы' : 'Новая платформа' }}</h3>
+                      <button
+                        class="btn btn--icon-plain"
+                        type="button"
+                        aria-label="Закрыть"
+                        title="Закрыть"
+                        @click="closePlatformModal"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M6 6l12 12M18 6l-12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="modal__body">
+                      <div v-if="editPlatform.open" class="form form--stack form--compact">
+                        <label class="field">
+                          <span class="label">Код</span>
+                          <input v-model.trim="editPlatform.code" class="input" disabled />
+                        </label>
+                        <label class="field">
+                          <span class="label">Название</span>
+                          <input v-model.trim="editPlatform.name" class="input" />
+                        </label>
+                        <label class="field">
+                          <span class="label">Слотов на аккаунт</span>
+                          <input v-model.number="editPlatform.slot_capacity" class="input" type="number" min="0" />
+                        </label>
+                        <div class="toolbar-actions">
+                          <button
+                            class="btn btn--icon-plain"
+                            @click="saveEditPlatform"
+                            :disabled="catalogsLoading"
+                            aria-label="Сохранить"
+                            title="Сохранить"
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 13l4 4L19 7" />
+                            </svg>
+                          </button>
+                          <button
+                            class="btn btn--icon-plain"
+                            type="button"
+                            aria-label="Удалить"
+                            title="Удалить"
+                            @click="deletePlatform(editPlatform.code)"
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div v-else class="form form--stack form--compact">
+                        <label class="field">
+                          <span class="label">Платформа (код)</span>
+                          <input v-model.trim="newPlatform.code" class="input" placeholder="steam" />
+                        </label>
+                        <label class="field">
+                          <span class="label">Платформа (название)</span>
+                          <input v-model.trim="newPlatform.name" class="input" placeholder="Steam" />
+                        </label>
+                        <label class="field">
+                          <span class="label">Слотов на аккаунт</span>
+                          <input v-model.number="newPlatform.slot_capacity" class="input" type="number" min="0" />
+                        </label>
+                        <div class="toolbar-actions">
+                          <button
+                            class="btn btn--icon-plain"
+                            @click="createPlatform"
+                            :disabled="catalogsLoading"
+                            aria-label="Добавить платформу"
+                            title="Добавить платформу"
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 13l4 4L19 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </teleport>
               <table v-if="sortedPlatforms.length" class="table table--compact">
                 <thead>
                   <tr>
@@ -1193,42 +1695,113 @@
                   <h3>Регионы</h3>
                 </div>
                 <div class="toolbar-actions">
-                  <button class="btn btn--ghost" @click="showRegionForm = !showRegionForm">
-                    {{ showRegionForm ? 'Скрыть форму' : 'Добавить регион' }}
+                  <button
+                    class="btn btn--icon btn--glow btn--glow-add"
+                    title="Добавить регион"
+                    aria-label="Добавить регион"
+                    @click="openRegionModal"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
                   </button>
-                  <button class="btn btn--ghost" @click="loadCatalogs" :disabled="catalogsLoading">
-                    {{ catalogsLoading ? 'Обновляем…' : 'Обновить список' }}
+                  <button
+                    class="btn btn--icon btn--glow btn--glow-refresh"
+                    title="Обновить список"
+                    aria-label="Обновить список"
+                    @click="loadCatalogs"
+                    :disabled="catalogsLoading"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+                      <path d="M20 4v6h-6" />
+                    </svg>
                   </button>
                 </div>
               </div>
-              <div v-if="showRegionForm" class="form form--stack form--card form--compact">
-                <label class="field">
-                  <span class="label">Регион (код)</span>
-                  <input v-model.trim="newRegion.code" class="input" placeholder="RU" />
-                </label>
-                <label class="field">
-                  <span class="label">Регион (название)</span>
-                  <input v-model.trim="newRegion.name" class="input" placeholder="Russia" />
-                </label>
-                <button class="btn" @click="createRegion" :disabled="catalogsLoading">
-                  {{ catalogsLoading ? 'Сохраняем…' : 'Добавить регион' }}
-                </button>
-              </div>
-              <div v-if="editRegion.open" class="form form--stack form--card form--compact">
-                <label class="field">
-                  <span class="label">Код</span>
-                  <input v-model.trim="editRegion.code" class="input" disabled />
-                </label>
-                <label class="field">
-                  <span class="label">Название</span>
-                  <input v-model.trim="editRegion.name" class="input" />
-                </label>
-                <div class="toolbar-actions">
-                  <button class="btn" @click="saveEditRegion" :disabled="catalogsLoading">Сохранить</button>
-                  <button class="btn btn--ghost" type="button" @click="deleteRegion(editRegion.code)">Удалить</button>
-                  <button class="btn btn--ghost" type="button" @click="cancelEditRegion">Отмена</button>
+              <teleport to="body">
+                <div
+                  v-if="showRegionForm || editRegion.open"
+                  class="modal-backdrop"
+                  @click.self="closeRegionModal"
+                >
+                  <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
+                    <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
+                      <h3>{{ editRegion.open ? 'Редактирование региона' : 'Новый регион' }}</h3>
+                      <button
+                        class="btn btn--icon-plain"
+                        type="button"
+                        aria-label="Закрыть"
+                        title="Закрыть"
+                        @click="closeRegionModal"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M6 6l12 12M18 6l-12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="modal__body">
+                      <div v-if="editRegion.open" class="form form--stack form--compact">
+                        <label class="field">
+                          <span class="label">Код</span>
+                          <input v-model.trim="editRegion.code" class="input" disabled />
+                        </label>
+                        <label class="field">
+                          <span class="label">Название</span>
+                          <input v-model.trim="editRegion.name" class="input" />
+                        </label>
+                        <div class="toolbar-actions">
+                          <button
+                            class="btn btn--icon-plain"
+                            @click="saveEditRegion"
+                            :disabled="catalogsLoading"
+                            aria-label="Сохранить"
+                            title="Сохранить"
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 13l4 4L19 7" />
+                            </svg>
+                          </button>
+                          <button
+                            class="btn btn--icon-plain"
+                            type="button"
+                            aria-label="Удалить"
+                            title="Удалить"
+                            @click="deleteRegion(editRegion.code)"
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div v-else class="form form--stack form--compact">
+                        <label class="field">
+                          <span class="label">Регион (код)</span>
+                          <input v-model.trim="newRegion.code" class="input" placeholder="RU" />
+                        </label>
+                        <label class="field">
+                          <span class="label">Регион (название)</span>
+                          <input v-model.trim="newRegion.name" class="input" placeholder="Russia" />
+                        </label>
+                        <div class="toolbar-actions">
+                          <button
+                            class="btn btn--icon-plain"
+                            @click="createRegion"
+                            :disabled="catalogsLoading"
+                            aria-label="Добавить регион"
+                            title="Добавить регион"
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 13l4 4L19 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </teleport>
               <table v-if="sortedRegions.length" class="table table--compact">
                 <thead>
                   <tr>
@@ -1256,35 +1829,83 @@
               <p class="muted">Создание менеджеров и управление доступом.</p>
             </div>
             <div class="toolbar-actions">
-              <button class="btn btn--ghost" @click="showUserForm = !showUserForm">
-                {{ showUserForm ? 'Скрыть форму' : 'Добавить пользователя' }}
+              <button
+                class="btn btn--icon btn--glow btn--glow-add"
+                title="Добавить пользователя"
+                aria-label="Добавить пользователя"
+                @click="openUserModal"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
               </button>
-              <button class="btn btn--ghost" @click="loadUsers" :disabled="userLoading">
-                {{ userLoading ? 'Обновляем…' : 'Обновить список' }}
+              <button
+                class="btn btn--icon btn--glow btn--glow-refresh"
+                title="Обновить список"
+                aria-label="Обновить список"
+                @click="loadUsers"
+                :disabled="userLoading"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+                  <path d="M20 4v6h-6" />
+                </svg>
               </button>
             </div>
           </div>
           <div class="panel__body">
-            <div v-if="showUserForm" class="form form--stack form--card form--compact">
-              <label class="field">
-                <span class="label">Логин</span>
-                <input v-model.trim="newUser.username" class="input" placeholder="manager1" />
-              </label>
-              <label class="field">
-                <span class="label">Пароль</span>
-                <input v-model="newUser.password" class="input" type="password" />
-              </label>
-              <label class="field">
-                <span class="label">Роль</span>
-                <select v-model="newUser.role_code" class="input input--select">
-                  <option v-for="r in roles" :key="r.code" :value="r.code">{{ r.name }}</option>
-                </select>
-              </label>
-              <button class="btn" @click="createUser" :disabled="userLoading">
-                {{ userLoading ? 'Создаём…' : 'Создать' }}
-              </button>
-            </div>
-            <p v-else class="muted">Нажмите «Добавить пользователя», чтобы открыть форму.</p>
+            <p class="muted">Нажмите иконку, чтобы добавить пользователя.</p>
+            <teleport to="body">
+              <div v-if="showUserForm" class="modal-backdrop" @click.self="closeUserModal">
+                <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
+                  <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
+                    <h3>Новый пользователь</h3>
+                    <button
+                      class="btn btn--icon-plain"
+                      type="button"
+                      aria-label="Закрыть"
+                      title="Закрыть"
+                      @click="closeUserModal"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 6l12 12M18 6l-12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="modal__body">
+                    <div class="form form--stack form--compact">
+                      <label class="field">
+                        <span class="label">Логин</span>
+                        <input v-model.trim="newUser.username" class="input" placeholder="manager1" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Пароль</span>
+                        <input v-model="newUser.password" class="input" type="password" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Роль</span>
+                        <select v-model="newUser.role_code" class="input input--select">
+                          <option v-for="r in roles" :key="r.code" :value="r.code">{{ r.name }}</option>
+                        </select>
+                      </label>
+                      <div class="toolbar-actions">
+                        <button
+                          class="btn btn--icon-plain"
+                          @click="createUser"
+                          :disabled="userLoading"
+                          aria-label="Создать пользователя"
+                          title="Создать пользователя"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </teleport>
 
             <p v-if="userError" class="bad">{{ userError }}</p>
             <p v-if="userOk" class="ok">{{ userOk }}</p>
@@ -1395,6 +2016,55 @@ const globalSaving = computed(() => accountSaving.value || dealSaving.value || g
 
 const isAdmin = computed(() => auth.state.role === 'admin')
 
+const modalRef = ref(null)
+const modalPos = reactive({ x: 0, y: 0 })
+const modalDragging = ref(false)
+const modalDragStart = reactive({ x: 0, y: 0 })
+const modalBase = reactive({ left: 0, top: 0, width: 0, height: 0 })
+const modalPadding = 16
+
+const modalStyle = computed(() => ({
+  transform: `translate(${modalPos.x}px, ${modalPos.y}px)`,
+}))
+
+const resetModalPos = () => {
+  modalPos.x = 0
+  modalPos.y = 0
+}
+
+const startModalDrag = (event) => {
+  if (event.button !== 0) return
+  const rect = modalRef.value?.getBoundingClientRect()
+  if (!rect) return
+  modalBase.left = rect.left - modalPos.x
+  modalBase.top = rect.top - modalPos.y
+  modalBase.width = rect.width
+  modalBase.height = rect.height
+  modalDragging.value = true
+  modalDragStart.x = event.clientX - modalPos.x
+  modalDragStart.y = event.clientY - modalPos.y
+  window.addEventListener('mousemove', onModalDrag)
+  window.addEventListener('mouseup', stopModalDrag)
+}
+
+const onModalDrag = (event) => {
+  if (!modalDragging.value) return
+  const nextX = event.clientX - modalDragStart.x
+  const nextY = event.clientY - modalDragStart.y
+  const minX = modalPadding - modalBase.left
+  const maxX = window.innerWidth - modalPadding - (modalBase.left + modalBase.width)
+  const minY = modalPadding - modalBase.top
+  const maxY = window.innerHeight - modalPadding - (modalBase.top + modalBase.height)
+  modalPos.x = Math.min(Math.max(nextX, minX), maxX)
+  modalPos.y = Math.min(Math.max(nextY, minY), maxY)
+}
+
+const stopModalDrag = () => {
+  modalDragging.value = false
+  window.removeEventListener('mousemove', onModalDrag)
+  window.removeEventListener('mouseup', stopModalDrag)
+}
+
 const newUser = reactive({
   username: '',
   password: '',
@@ -1497,7 +2167,7 @@ const newAccount = reactive({
   game_ids: [],
 })
 
-const showAccountForm = ref(false)
+const accountModalMode = ref('edit')
 const showAccountFilters = ref(false)
 const showPasswords = ref(false)
 const accountGameSearch = ref('')
@@ -1587,6 +2257,22 @@ const sortedAccounts = computed(() => {
     list.sort((a, b) => new Date(b.account_date || 0) - new Date(a.account_date || 0))
   } else if (accountSort.value === 'date_asc') {
     list.sort((a, b) => new Date(a.account_date || 0) - new Date(b.account_date || 0))
+  }
+  return list
+})
+
+const dealAccountsForNew = computed(() => {
+  let list = [...accounts.value]
+  if (newDeal.platform_code) {
+    list = list.filter((a) => a.platform_code === newDeal.platform_code)
+  }
+  return list
+})
+
+const dealAccountsForEdit = computed(() => {
+  let list = [...accounts.value]
+  if (editDeal.platform_code) {
+    list = list.filter((a) => a.platform_code === editDeal.platform_code)
   }
   return list
 })
@@ -1838,6 +2524,7 @@ function formatSecret(value, isList = false) {
 }
 
 function openGameAccounts(game) {
+  resetModalPos()
   selectedGame.value = game
   gameAccountsPage.value = 1
   loadGameAccounts(game.game_id)
@@ -1916,6 +2603,8 @@ function toggleRegionsSort(key) {
 }
 
 function startEditGame(game) {
+  resetModalPos()
+  showGameForm.value = false
   editGame.open = true
   editGame.game_id = game.game_id
   editGame.title = game.title || ''
@@ -1929,6 +2618,24 @@ function cancelEditGame() {
   editGame.title = ''
   editGame.platform_code = ''
   editGame.region_code = ''
+}
+
+function openCreateGameModal() {
+  resetModalPos()
+  showGameForm.value = true
+  cancelEditGame()
+  gameError.value = null
+  gameOk.value = null
+}
+
+function closeGameModal() {
+  showGameForm.value = false
+  cancelEditGame()
+  gameError.value = null
+  gameOk.value = null
+  newGame.title = ''
+  newGame.platform_code = ''
+  newGame.region_code = ''
 }
 
 function refreshGameAccounts() {
@@ -1952,7 +2659,34 @@ function openDealGame(deal) {
   }
 }
 
+function openCreateDealModal() {
+  resetModalPos()
+  showDealForm.value = true
+  cancelEditDeal()
+  dealError.value = null
+  dealOk.value = null
+}
+
+function closeDealModal() {
+  showDealForm.value = false
+  cancelEditDeal()
+  dealError.value = null
+  dealOk.value = null
+  newDeal.deal_type_code = 'sale'
+  newDeal.account_id = ''
+  newDeal.game_id = ''
+  newDeal.customer_nickname = ''
+  newDeal.source_code = ''
+  newDeal.platform_code = ''
+  newDeal.price = 0
+  newDeal.purchase_at = ''
+  newDeal.slots_used = 1
+  newDeal.notes = ''
+}
+
 function startEditDeal(deal) {
+  resetModalPos()
+  showDealForm.value = false
   editDeal.open = true
   editDeal.deal_id = deal.deal_id
   editDeal.deal_type_code = deal.deal_type_code || (deal.deal_type === 'Аренда' ? 'rental' : 'sale')
@@ -2133,6 +2867,8 @@ async function loadAccounts() {
 }
 
 function startEditAccount(a) {
+  resetModalPos()
+  accountModalMode.value = 'edit'
   editAccount.open = true
   editAccount.account_id = a.account_id
   editAccount.login_name = a.login_name || ''
@@ -2164,8 +2900,30 @@ function startEditAccount(a) {
   loadAccountGames(a.account_id)
 }
 
+function openCreateAccountModal() {
+  resetModalPos()
+  accountModalMode.value = 'create'
+  editAccount.open = true
+  accountGamesLoading.value = false
+  accountsError.value = null
+  accountsOk.value = null
+  newAccount.login_name = ''
+  newAccount.domain_code = ''
+  newAccount.platform_code = ''
+  newAccount.region_code = ''
+  newAccount.notes = ''
+  newAccount.account_date = ''
+  newAccount.email_password = ''
+  newAccount.account_password = ''
+  newAccount.reserve_secrets = []
+  newAccount.auth_code = ''
+  newAccount.game_ids = []
+  accountGameSearch.value = ''
+}
+
 function cancelEditAccount() {
   editAccount.open = false
+  accountModalMode.value = 'edit'
   editAccount.account_id = null
   editAccount.login_name = ''
   editAccount.domain_code = ''
@@ -2187,6 +2945,18 @@ function cancelEditAccount() {
   editAccount.has_auth = false
   editAccount.game_ids = []
   editAccountGameSearch.value = ''
+  newAccount.login_name = ''
+  newAccount.domain_code = ''
+  newAccount.platform_code = ''
+  newAccount.region_code = ''
+  newAccount.notes = ''
+  newAccount.account_date = ''
+  newAccount.email_password = ''
+  newAccount.account_password = ''
+  newAccount.reserve_secrets = []
+  newAccount.auth_code = ''
+  newAccount.game_ids = []
+  accountGameSearch.value = ''
 }
 
 async function createAccount() {
@@ -2277,6 +3047,7 @@ async function createAccount() {
     newAccount.game_ids = []
     accountGameSearch.value = ''
     await loadAccounts()
+    cancelEditAccount()
   } catch (e) {
     accountsError.value = e?.message || 'Ошибка'
   } finally {
@@ -2410,11 +3181,27 @@ async function createUser() {
     newUser.username = ''
     newUser.password = ''
     await loadUsers()
+    closeUserModal()
   } catch (e) {
     userError.value = e?.message || 'Ошибка'
   } finally {
     userLoading.value = false
   }
+}
+
+function openUserModal() {
+  resetModalPos()
+  showUserForm.value = true
+  userError.value = null
+  userOk.value = null
+}
+
+function closeUserModal() {
+  showUserForm.value = false
+  userError.value = null
+  userOk.value = null
+  newUser.username = ''
+  newUser.password = ''
 }
 
 async function changePassword() {
@@ -2446,6 +3233,22 @@ async function changePassword() {
   }
 }
 
+function openPwdModal() {
+  resetModalPos()
+  showPwdForm.value = true
+  pwdError.value = null
+  pwdOk.value = false
+}
+
+function closePwdModal() {
+  showPwdForm.value = false
+  pwdError.value = null
+  pwdOk.value = false
+  pwdForm.current = ''
+  pwdForm.next = ''
+  pwdForm.next2 = ''
+}
+
 async function createGame() {
   gameError.value = null
   gameOk.value = null
@@ -2470,6 +3273,7 @@ async function createGame() {
     newGame.platform_code = ''
     newGame.region_code = ''
     await loadGames()
+    closeGameModal()
   } catch (e) {
     gameError.value = e?.message || 'Ошибка'
   } finally {
@@ -2541,6 +3345,7 @@ async function createDeal() {
     newDeal.purchase_at = ''
     newDeal.notes = ''
     await loadDeals(1)
+    closeDealModal()
   } catch (e) {
     dealError.value = e?.message || 'Ошибка'
   } finally {
@@ -2578,7 +3383,7 @@ async function updateDeal() {
     )
     dealOk.value = 'Сделка обновлена'
     await loadDeals(dealPage.value)
-    cancelEditDeal()
+    closeDealModal()
   } catch (e) {
     dealError.value = e?.message || 'Ошибка'
   } finally {
@@ -2615,6 +3420,8 @@ function formatDate(value) {
 }
 
 function openEditDomain(d) {
+  resetModalPos()
+  showDomainForm.value = false
   editDomain.open = true
   editDomain.name = d.name
   editDomain.original = d.name
@@ -2624,6 +3431,22 @@ function cancelEditDomain() {
   editDomain.open = false
   editDomain.name = ''
   editDomain.original = ''
+}
+
+function openDomainModal() {
+  resetModalPos()
+  showDomainForm.value = true
+  cancelEditDomain()
+  catalogsError.value = null
+  catalogsOk.value = null
+}
+
+function closeDomainModal() {
+  showDomainForm.value = false
+  cancelEditDomain()
+  catalogsError.value = null
+  catalogsOk.value = null
+  newDomain.value = ''
 }
 
 async function saveEditDomain() {
@@ -2636,7 +3459,7 @@ async function saveEditDomain() {
     await apiPut(`/domains/${encodeURIComponent(editDomain.original)}`, { name: editDomain.name }, { token: auth.state.token })
     catalogsOk.value = `Домен обновлён`
     await loadDomains()
-    cancelEditDomain()
+    closeDomainModal()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
@@ -2646,6 +3469,8 @@ async function saveEditDomain() {
 }
 
 function openEditSource(s) {
+  resetModalPos()
+  showSourceForm.value = false
   editSource.open = true
   editSource.code = s.code
   editSource.name = s.name
@@ -2655,6 +3480,23 @@ function cancelEditSource() {
   editSource.open = false
   editSource.code = ''
   editSource.name = ''
+}
+
+function openSourceModal() {
+  resetModalPos()
+  showSourceForm.value = true
+  cancelEditSource()
+  catalogsError.value = null
+  catalogsOk.value = null
+}
+
+function closeSourceModal() {
+  showSourceForm.value = false
+  cancelEditSource()
+  catalogsError.value = null
+  catalogsOk.value = null
+  newSource.code = ''
+  newSource.name = ''
 }
 
 async function saveEditSource() {
@@ -2667,7 +3509,7 @@ async function saveEditSource() {
     await apiPut(`/sources/${encodeURIComponent(editSource.code)}`, { name: editSource.name }, { token: auth.state.token })
     catalogsOk.value = `Источник обновлён`
     await loadSources()
-    cancelEditSource()
+    closeSourceModal()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
@@ -2677,6 +3519,8 @@ async function saveEditSource() {
 }
 
 function openEditPlatform(p) {
+  resetModalPos()
+  showPlatformForm.value = false
   editPlatform.open = true
   editPlatform.code = p.code
   editPlatform.name = p.name
@@ -2688,6 +3532,24 @@ function cancelEditPlatform() {
   editPlatform.code = ''
   editPlatform.name = ''
   editPlatform.slot_capacity = 0
+}
+
+function openPlatformModal() {
+  resetModalPos()
+  showPlatformForm.value = true
+  cancelEditPlatform()
+  catalogsError.value = null
+  catalogsOk.value = null
+}
+
+function closePlatformModal() {
+  showPlatformForm.value = false
+  cancelEditPlatform()
+  catalogsError.value = null
+  catalogsOk.value = null
+  newPlatform.code = ''
+  newPlatform.name = ''
+  newPlatform.slot_capacity = 0
 }
 
 async function saveEditPlatform() {
@@ -2704,7 +3566,7 @@ async function saveEditPlatform() {
     )
     catalogsOk.value = `Платформа обновлена`
     await loadCatalogs()
-    cancelEditPlatform()
+    closePlatformModal()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
@@ -2714,6 +3576,8 @@ async function saveEditPlatform() {
 }
 
 function openEditRegion(r) {
+  resetModalPos()
+  showRegionForm.value = false
   editRegion.open = true
   editRegion.code = r.code
   editRegion.name = r.name
@@ -2723,6 +3587,23 @@ function cancelEditRegion() {
   editRegion.open = false
   editRegion.code = ''
   editRegion.name = ''
+}
+
+function openRegionModal() {
+  resetModalPos()
+  showRegionForm.value = true
+  cancelEditRegion()
+  catalogsError.value = null
+  catalogsOk.value = null
+}
+
+function closeRegionModal() {
+  showRegionForm.value = false
+  cancelEditRegion()
+  catalogsError.value = null
+  catalogsOk.value = null
+  newRegion.code = ''
+  newRegion.name = ''
 }
 
 async function saveEditRegion() {
@@ -2735,7 +3616,7 @@ async function saveEditRegion() {
     await apiPut(`/regions/${encodeURIComponent(editRegion.code)}`, { name: editRegion.name }, { token: auth.state.token })
     catalogsOk.value = `Регион обновлён`
     await loadCatalogs()
-    cancelEditRegion()
+    closeRegionModal()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
@@ -2758,6 +3639,7 @@ async function createDomain() {
     catalogsOk.value = `Домен ${newDomain.value} добавлен`
     newDomain.value = ''
     await loadDomains()
+    closeDomainModal()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
@@ -2781,6 +3663,7 @@ async function createSource() {
     newSource.code = ''
     newSource.name = ''
     await loadSources()
+    closeSourceModal()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
@@ -2805,6 +3688,7 @@ async function createPlatform() {
     newPlatform.name = ''
     newPlatform.slot_capacity = 0
     await loadCatalogs()
+    closePlatformModal()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
@@ -2828,6 +3712,7 @@ async function createRegion() {
     newRegion.code = ''
     newRegion.name = ''
     await loadCatalogs()
+    closeRegionModal()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
@@ -2846,7 +3731,7 @@ async function deleteDomain(name) {
     await apiDelete(`/domains/${encodeURIComponent(name)}`, { token: auth.state.token })
     catalogsOk.value = `Домен ${name} удалён`
     await loadDomains()
-    if (editDomain.open && editDomain.original === name) cancelEditDomain()
+    if (editDomain.open && editDomain.original === name) closeDomainModal()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
@@ -2865,7 +3750,7 @@ async function deleteSource(code) {
     await apiDelete(`/sources/${encodeURIComponent(code)}`, { token: auth.state.token })
     catalogsOk.value = `Источник ${code} удалён`
     await loadSources()
-    if (editSource.open && editSource.code === code) cancelEditSource()
+    if (editSource.open && editSource.code === code) closeSourceModal()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
@@ -2884,7 +3769,7 @@ async function deletePlatform(code) {
     await apiDelete(`/platforms/${encodeURIComponent(code)}`, { token: auth.state.token })
     catalogsOk.value = `Платформа ${code} удалена`
     await loadCatalogs()
-    if (editPlatform.open && editPlatform.code === code) cancelEditPlatform()
+    if (editPlatform.open && editPlatform.code === code) closePlatformModal()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
@@ -2903,7 +3788,7 @@ async function deleteRegion(code) {
     await apiDelete(`/regions/${encodeURIComponent(code)}`, { token: auth.state.token })
     catalogsOk.value = `Регион ${code} удалён`
     await loadCatalogs()
-    if (editRegion.open && editRegion.code === code) cancelEditRegion()
+    if (editRegion.open && editRegion.code === code) closeRegionModal()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
@@ -2958,7 +3843,6 @@ watch(activeTab, async (tab) => {
       await loadGames()
     }
     await loadAccounts()
-    showAccountForm.value = false
     showAccountFilters.value = false
     return
   }
@@ -2983,11 +3867,64 @@ watch(activeTab, async (tab) => {
   }
 }, { immediate: true })
 
-watch([showAccountForm, () => editAccount.open], async ([showForm, showEdit]) => {
-  if ((showForm || showEdit) && !domains.value.length) {
+watch([() => editAccount.open], async ([showEdit]) => {
+  if (showEdit && !domains.value.length) {
     await loadDomains()
   }
 })
+
+const syncDealPlatformFromAccount = (deal, accountsList) => {
+  if (!deal.account_id) return
+  const acc = accountsList.find((a) => a.account_id === deal.account_id)
+  if (acc) {
+    deal.platform_code = acc.platform_code || ''
+  }
+}
+
+const clearDealAccountIfMismatch = (deal, accountsList) => {
+  if (!deal.account_id) return
+  const acc = accountsList.find((a) => a.account_id === deal.account_id)
+  if (acc && deal.platform_code && acc.platform_code !== deal.platform_code) {
+    deal.account_id = ''
+  }
+}
+
+watch(
+  () => newDeal.account_id,
+  () => {
+    syncDealPlatformFromAccount(newDeal, accounts.value)
+  }
+)
+
+watch(
+  () => newDeal.platform_code,
+  () => {
+    clearDealAccountIfMismatch(newDeal, accounts.value)
+  }
+)
+
+watch(
+  () => editDeal.account_id,
+  () => {
+    syncDealPlatformFromAccount(editDeal, accounts.value)
+  }
+)
+
+watch(
+  () => editDeal.platform_code,
+  () => {
+    clearDealAccountIfMismatch(editDeal, accounts.value)
+  }
+)
+
+watch(
+  () => editAccount.open,
+  (open) => {
+    if (open) {
+      resetModalPos()
+    }
+  }
+)
 
 </script>
 
@@ -3228,8 +4165,8 @@ button {
 
 .chev {
   display: inline-flex;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
@@ -3247,6 +4184,10 @@ button {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+}
+
+.panel__head--tight {
+  margin-bottom: 6px;
 }
 
 h2 {
@@ -3289,6 +4230,113 @@ h2 {
   place-items: center;
   gap: 6px;
   padding: 10px 0;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 10, 18, 0.45);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 50;
+  padding: 24px 18px;
+  overflow: auto;
+}
+
+.modal {
+  width: min(980px, 96vw);
+  height: min(92vh, 820px);
+  overflow: hidden;
+  background: #f6f8fb;
+  color: #111827;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 20px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.35),
+    0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+.modal--auto {
+  height: auto;
+  max-height: min(90vh, 720px);
+}
+
+.modal--auto .modal__body {
+  max-height: min(74vh, 560px);
+}
+
+.modal .label {
+  color: #4b5563;
+}
+
+.modal .muted {
+  color: #6b7280;
+}
+
+.modal .input {
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+}
+
+.modal .btn--ghost,
+.modal .ghost {
+  background: rgba(17, 24, 39, 0.06);
+  color: #1f2937;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+}
+
+.modal__head {
+  cursor: move;
+  user-select: none;
+}
+
+.modal .panel__head {
+  margin-bottom: 8px;
+}
+
+.modal__body {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  padding-right: 4px;
+}
+
+.btn--icon-plain {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: #f2f4f8;
+  color: #1f2937;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 10px;
+}
+
+.btn--icon-plain:hover {
+  background: #e8ecf3;
+}
+
+.btn--icon-plain svg {
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.btn--icon-tiny {
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
 }
 
 /* Hamster loader (Uiverse.io by Nawsome) */
@@ -3612,7 +4660,7 @@ h3 {
 .check-list {
   display: grid;
   gap: 6px;
-  max-height: 220px;
+  max-height: 200px;
   overflow: auto;
   padding: 8px;
   border-radius: 12px;
@@ -3675,6 +4723,72 @@ h3 {
 .btn--ghost {
   background: rgba(255, 255, 255, 0.08);
   color: #e8eefc;
+}
+
+.btn--icon {
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  aspect-ratio: 1 / 1;
+  display: grid;
+  place-items: center;
+}
+
+.btn--icon svg {
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.btn--glow {
+  border-radius: 50% !important;
+  border: none;
+  position: relative;
+  z-index: 0;
+  color: #fff;
+  transition: transform 0.1s ease, filter 0.2s ease;
+}
+
+.btn--glow::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: rgba(12, 14, 24, 0.85);
+  z-index: -1;
+  transition: 0.35s ease;
+}
+
+.btn--glow:hover::before {
+  inset: 100%;
+}
+
+.btn--glow:active {
+  transform: scale(0.9);
+}
+
+.btn--glow-add {
+  background: linear-gradient(120deg, #02ff2c, #008a12);
+}
+
+.btn--glow-filter {
+  background: linear-gradient(120deg, #3b82f6, #06b6d4);
+}
+
+.btn--glow-eye {
+  background: linear-gradient(120deg, #833ab4, #fd1d1d, #fcb045);
+}
+
+.btn--glow-refresh {
+  background: linear-gradient(120deg, #f97316, #ef4444);
+}
+
+.btn--glow svg {
+  color: #fff;
 }
 
 .field {
@@ -3828,6 +4942,33 @@ table.table {
   font-weight: 700;
   font-size: 14px;
   cursor: pointer;
+}
+
+.btn.btn--icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+}
+
+.btn.btn--glow {
+  background: transparent;
+}
+
+.btn.btn--glow-add {
+  background: linear-gradient(120deg, #02ff2c, #008a12);
+}
+
+.btn.btn--glow-filter {
+  background: linear-gradient(120deg, #3b82f6, #06b6d4);
+}
+
+.btn.btn--glow-eye {
+  background: linear-gradient(120deg, #833ab4, #fd1d1d, #fcb045);
+}
+
+.btn.btn--glow-refresh {
+  background: linear-gradient(120deg, #f97316, #ef4444);
 }
 
 pre {
