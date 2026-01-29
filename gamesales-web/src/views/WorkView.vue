@@ -1,5 +1,28 @@
 <template>
   <div class="page">
+    <div v-if="globalSaving" class="overlay">
+      <div class="loader-wrap">
+        <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
+          <div class="wheel"></div>
+          <div class="hamster">
+            <div class="hamster__body">
+              <div class="hamster__head">
+                <div class="hamster__ear"></div>
+                <div class="hamster__eye"></div>
+                <div class="hamster__nose"></div>
+              </div>
+              <div class="hamster__limb hamster__limb--fr"></div>
+              <div class="hamster__limb hamster__limb--fl"></div>
+              <div class="hamster__limb hamster__limb--br"></div>
+              <div class="hamster__limb hamster__limb--bl"></div>
+              <div class="hamster__tail"></div>
+            </div>
+          </div>
+          <div class="spoke"></div>
+        </div>
+        <p class="muted">Сохраняем изменения…</p>
+      </div>
+    </div>
     <div class="shell">
       <header class="top">
         <div class="brand">
@@ -156,7 +179,7 @@
                 <select v-model="accountFilters.platform_code" class="input input--select">
                   <option value="">Все</option>
                   <option v-for="p in platforms" :key="p.code" :value="p.code">
-                    {{ p.name }} ({{ p.code }})
+                    {{ p.name }} ({{ p.code }}) — {{ p.slot_capacity }} сл.
                   </option>
                 </select>
               </label>
@@ -165,8 +188,16 @@
                 <select v-model="accountSort" class="input input--select">
                   <option value="login_asc">Логин ↑</option>
                   <option value="login_desc">Логин ↓</option>
-                  <option value="free_desc">Свободные слоты ↓</option>
-                  <option value="free_asc">Свободные слоты ↑</option>
+                  <option value="platform_asc">Платформа ↑</option>
+                  <option value="platform_desc">Платформа ↓</option>
+                  <option value="region_asc">Регион ↑</option>
+                  <option value="region_desc">Регион ↓</option>
+                  <option value="status_asc">Статус ↑</option>
+                  <option value="status_desc">Статус ↓</option>
+                  <option value="slots_desc">Слоты ↓</option>
+                  <option value="slots_asc">Слоты ↑</option>
+                  <option value="date_desc">Дата ↓</option>
+                  <option value="date_asc">Дата ↑</option>
                 </select>
               </label>
             </div>
@@ -193,31 +224,33 @@
               <p class="muted">Загрузка аккаунтов…</p>
             </div>
 
-            <table v-else-if="filteredAccounts.length" class="table table--compact">
+            <table v-else-if="sortedAccounts.length" class="table table--compact">
               <thead>
                 <tr>
-                  <th>Логин</th>
-                  <th>Платформа</th>
-                  <th>Регион</th>
-                  <th>Статус</th>
-                  <th>Свободно</th>
-                  <th>Основной пароль</th>
-                  <th>Резервные</th>
-                  <th>Действия</th>
+                  <th class="sortable" @click="toggleAccountSort('login')">Логин</th>
+                  <th class="sortable" @click="toggleAccountSort('platform')">Платформа</th>
+                  <th class="sortable" @click="toggleAccountSort('region')">Регион</th>
+                  <th class="sortable" @click="toggleAccountSort('status')">Статус</th>
+                  <th class="sortable" @click="toggleAccountSort('slots')">Слоты</th>
+                  <th class="sortable" @click="toggleAccountSort('date')">Дата</th>
+                  <th>Пароль почта</th>
+                  <th>Пароль аккаунт</th>
+                  <th>Пароль резерв</th>
+                  <th>Код аутентификатора</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="a in filteredAccounts" :key="a.account_id">
+                <tr v-for="a in sortedAccounts" :key="a.account_id" class="clickable-row" @click="startEditAccount(a)">
                   <td>{{ a.login_full || '—' }}</td>
                   <td>{{ a.platform_code }}</td>
                   <td>{{ a.region_code || '—' }}</td>
                   <td>{{ a.status }}</td>
-                  <td>{{ a.free_slots }}/{{ a.slot_capacity }}</td>
-                  <td>{{ formatSecret(getPrimarySecret(a.account_id)) }}</td>
-                  <td>{{ formatSecret(getReserveSecrets(a.account_id), true) }}</td>
-                  <td>
-                    <button class="ghost" @click="startEditAccount(a)">Редактировать</button>
-                  </td>
+                  <td>{{ a.occupied_slots }}/{{ a.slot_capacity }}</td>
+                  <td>{{ formatDateOnly(a.account_date) }}</td>
+                  <td>{{ formatSecret(getEmailSecret(a.account_id)) }}</td>
+                  <td>{{ formatSecret(getAccountSecret(a.account_id)) }}</td>
+                  <td>{{ formatSecret(getReserveSecrets(a.account_id)) }}</td>
+                  <td>{{ formatSecret(getAuthSecret(a.account_id)) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -234,7 +267,7 @@
                 <span class="label">Домен</span>
                 <select v-model="newAccount.domain_code" class="input input--select">
                   <option value="">— не выбрано —</option>
-                  <option v-for="d in domains" :key="d.code" :value="d.code">
+                  <option v-for="d in domains" :key="d.name" :value="d.name">
                     {{ d.name }}
                   </option>
                 </select>
@@ -244,7 +277,7 @@
                 <select v-model="newAccount.platform_code" class="input input--select">
                   <option value="">— не выбрано —</option>
                   <option v-for="p in platforms" :key="p.code" :value="p.code">
-                    {{ p.name }} ({{ p.code }})
+                    {{ p.name }} ({{ p.code }}) — {{ p.slot_capacity }} сл.
                   </option>
                 </select>
               </label>
@@ -258,23 +291,27 @@
                 </select>
               </label>
               <label class="field">
-                <span class="label">Всего слотов</span>
-                <input v-model.number="newAccount.slot_capacity" class="input" type="number" min="0" />
-              </label>
-              <label class="field">
-                <span class="label">Зарезервировано</span>
-                <input v-model.number="newAccount.slot_reserved" class="input" type="number" min="0" />
-              </label>
-              <label class="field">
                 <span class="label">Комментарий</span>
                 <input v-model.trim="newAccount.notes" class="input" placeholder="заметки" />
               </label>
               <label class="field">
-                <span class="label">Основной пароль</span>
-                <input v-model.trim="newAccount.primary_secret" class="input" type="password" autocomplete="new-password" />
+                <span class="label">Дата</span>
+                <input v-model="newAccount.account_date" class="input" type="date" />
+              </label>
+              <label class="field">
+                <span class="label">Пароль почта</span>
+                <input v-model.trim="newAccount.email_password" class="input" type="password" autocomplete="new-password" />
+              </label>
+              <label class="field">
+                <span class="label">Пароль аккаунт</span>
+                <input v-model.trim="newAccount.account_password" class="input" type="password" autocomplete="new-password" />
+              </label>
+              <label class="field">
+                <span class="label">Код аутентификатора</span>
+                <input v-model.trim="newAccount.auth_code" class="input" placeholder="код" />
               </label>
               <div class="field field--full">
-                <span class="label">Резервные пароли</span>
+                <span class="label">Пароли резерв</span>
                 <div class="input-list">
                   <div v-for="(p, idx) in newAccount.reserve_secrets" :key="idx" class="input-list__row">
                     <input
@@ -289,6 +326,16 @@
                   <button class="ghost" type="button" @click="addReserveSecret">+ Добавить резервный пароль</button>
                 </div>
               </div>
+              <div class="field field--full">
+                <span class="label">Игры</span>
+                <input v-model.trim="accountGameSearch" class="input" placeholder="поиск игры" />
+                <div class="check-list">
+                  <label v-for="g in filteredAccountGames" :key="g.game_id" class="check-item">
+                    <input type="checkbox" :value="g.game_id" v-model="newAccount.game_ids" />
+                    <span>{{ g.title }}</span>
+                  </label>
+                </div>
+              </div>
               <p v-if="accountsError" class="bad">{{ accountsError }}</p>
               <p v-if="accountsOk" class="ok">{{ accountsOk }}</p>
               <button class="btn" @click="createAccount" :disabled="accountsLoading">
@@ -298,85 +345,122 @@
 
             <div v-if="editAccount.open" class="form form--stack form--card form--compact">
               <h3>Редактирование аккаунта</h3>
-              <label class="field">
-                <span class="label">Логин (без домена)</span>
-                <input v-model.trim="editAccount.login_name" class="input" placeholder="user" />
-              </label>
-              <label class="field">
-                <span class="label">Домен</span>
-                <select v-model="editAccount.domain_code" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="d in domains" :key="d.code" :value="d.code">
-                    {{ d.name }}
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Платформа</span>
-                <select v-model="editAccount.platform_code" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="p in platforms" :key="p.code" :value="p.code">
-                    {{ p.name }} ({{ p.code }})
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Регион</span>
-                <select v-model="editAccount.region_code" class="input input--select">
-                  <option value="">— не выбрано —</option>
-                  <option v-for="r in regions" :key="r.code" :value="r.code">
-                    {{ r.name }} ({{ r.code }})
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Статус</span>
-                <select v-model="editAccount.status_code" class="input input--select">
-                  <option value="active">active</option>
-                  <option value="banned">banned</option>
-                  <option value="archived">archived</option>
-                  <option value="problem">problem</option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Всего слотов</span>
-                <input v-model.number="editAccount.slot_capacity" class="input" type="number" min="0" />
-              </label>
-              <label class="field">
-                <span class="label">Зарезервировано</span>
-                <input v-model.number="editAccount.slot_reserved" class="input" type="number" min="0" />
-              </label>
-              <label class="field">
-                <span class="label">Комментарий</span>
-                <input v-model.trim="editAccount.notes" class="input" placeholder="заметки" />
-              </label>
-              <label class="field">
-                <span class="label">Основной пароль</span>
-                <input v-model.trim="editAccount.primary_secret" class="input" type="password" autocomplete="new-password" />
-              </label>
-              <div class="field field--full">
-                <span class="label">Резервные пароли</span>
-                <div class="input-list">
-                  <div v-for="(p, idx) in editAccount.reserve_secrets" :key="idx" class="input-list__row">
-                    <input
-                      v-model.trim="editAccount.reserve_secrets[idx]"
-                      class="input"
-                      type="password"
-                      autocomplete="new-password"
-                      :placeholder="`Резерв ${idx + 1}`"
-                    />
-                    <button class="ghost" type="button" @click="removeEditReserveSecret(idx)">Убрать</button>
+              <div v-if="accountGamesLoading" class="loader-wrap">
+                <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
+                  <div class="wheel"></div>
+                  <div class="hamster">
+                    <div class="hamster__body">
+                      <div class="hamster__head">
+                        <div class="hamster__ear"></div>
+                        <div class="hamster__eye"></div>
+                        <div class="hamster__nose"></div>
+                      </div>
+                      <div class="hamster__limb hamster__limb--fr"></div>
+                      <div class="hamster__limb hamster__limb--fl"></div>
+                      <div class="hamster__limb hamster__limb--br"></div>
+                      <div class="hamster__limb hamster__limb--bl"></div>
+                      <div class="hamster__tail"></div>
+                    </div>
                   </div>
-                  <button class="ghost" type="button" @click="addEditReserveSecret">+ Добавить резервный пароль</button>
+                  <div class="spoke"></div>
                 </div>
+                <p class="muted">Загрузка аккаунта…</p>
               </div>
-              <p v-if="accountsError" class="bad">{{ accountsError }}</p>
-              <p v-if="accountsOk" class="ok">{{ accountsOk }}</p>
-              <div class="toolbar-actions">
-                <button class="btn" @click="updateAccount" :disabled="accountsLoading">
-                  {{ accountsLoading ? 'Сохраняем…' : 'Сохранить изменения' }}
-                </button>
-                <button class="btn btn--ghost" type="button" @click="cancelEditAccount">Отмена</button>
+              <div v-else class="form form--stack form--compact">
+                <label class="field">
+                  <span class="label">Логин (без домена)</span>
+                  <input v-model.trim="editAccount.login_name" class="input" placeholder="user" />
+                </label>
+                <label class="field">
+                  <span class="label">Домен</span>
+                  <select v-model="editAccount.domain_code" class="input input--select">
+                    <option value="">— не выбрано —</option>
+                    <option v-for="d in domains" :key="d.name" :value="d.name">
+                      {{ d.name }}
+                    </option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="label">Платформа</span>
+                  <select v-model="editAccount.platform_code" class="input input--select">
+                    <option value="">— не выбрано —</option>
+                    <option v-for="p in platforms" :key="p.code" :value="p.code">
+                      {{ p.name }} ({{ p.code }}) — {{ p.slot_capacity }} сл.
+                    </option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="label">Регион</span>
+                  <select v-model="editAccount.region_code" class="input input--select">
+                    <option value="">— не выбрано —</option>
+                    <option v-for="r in regions" :key="r.code" :value="r.code">
+                      {{ r.name }} ({{ r.code }})
+                    </option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="label">Статус</span>
+                  <select v-model="editAccount.status_code" class="input input--select">
+                    <option value="active">active</option>
+                    <option value="banned">banned</option>
+                    <option value="archived">archived</option>
+                    <option value="problem">problem</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="label">Дата</span>
+                  <input v-model="editAccount.account_date" class="input" type="date" />
+                </label>
+                <label class="field">
+                  <span class="label">Комментарий</span>
+                  <input v-model.trim="editAccount.notes" class="input" placeholder="заметки" />
+                </label>
+                <label class="field">
+                  <span class="label">Пароль почта</span>
+                  <input v-model.trim="editAccount.email_password" class="input" type="password" autocomplete="new-password" />
+                </label>
+                <label class="field">
+                  <span class="label">Пароль аккаунт</span>
+                  <input v-model.trim="editAccount.account_password" class="input" type="password" autocomplete="new-password" />
+                </label>
+                <label class="field">
+                  <span class="label">Код аутентификатора</span>
+                  <input v-model.trim="editAccount.auth_code" class="input" placeholder="код" />
+                </label>
+                <div class="field field--full">
+                  <span class="label">Пароли резерв</span>
+                  <div class="input-list">
+                    <div v-for="(p, idx) in editAccount.reserve_secrets" :key="idx" class="input-list__row">
+                      <input
+                        v-model.trim="editAccount.reserve_secrets[idx]"
+                        class="input"
+                        type="password"
+                        autocomplete="new-password"
+                        :placeholder="`Резерв ${idx + 1}`"
+                      />
+                      <button class="ghost" type="button" @click="removeEditReserveSecret(idx)">Убрать</button>
+                    </div>
+                    <button class="ghost" type="button" @click="addEditReserveSecret">+ Добавить резервный пароль</button>
+                  </div>
+                </div>
+                <div class="field field--full">
+                  <span class="label">Игры</span>
+                  <input v-model.trim="editAccountGameSearch" class="input" placeholder="поиск игры" />
+                  <div class="check-list">
+                    <label v-for="g in filteredEditAccountGames" :key="g.game_id" class="check-item">
+                      <input type="checkbox" :value="g.game_id" v-model="editAccount.game_ids" />
+                      <span>{{ g.title }}</span>
+                    </label>
+                  </div>
+                </div>
+                <p v-if="accountsError" class="bad">{{ accountsError }}</p>
+                <p v-if="accountsOk" class="ok">{{ accountsOk }}</p>
+                <div class="toolbar-actions">
+                  <button class="btn" @click="updateAccount" :disabled="accountsLoading">
+                    {{ accountsLoading ? 'Сохраняем…' : 'Сохранить изменения' }}
+                  </button>
+                  <button class="btn btn--ghost" type="button" @click="cancelEditAccount">Отмена</button>
+                </div>
               </div>
             </div>
           </div>
@@ -446,16 +530,16 @@
               </div>
               <p class="muted">Загрузка игр…</p>
             </div>
-            <table v-else-if="filteredGames.length" class="table table--compact">
+            <table v-else-if="sortedGames.length" class="table table--compact">
               <thead>
                 <tr>
-                  <th>Игра</th>
-                  <th>Платформа</th>
-                  <th>Регион</th>
+                  <th class="sortable" @click="toggleGamesSort('title')">Игра</th>
+                  <th class="sortable" @click="toggleGamesSort('platform')">Платформа</th>
+                  <th class="sortable" @click="toggleGamesSort('region')">Регион</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="g in filteredGames" :key="g.game_id">
+                <tr v-for="g in sortedGames" :key="g.game_id" class="clickable-row" @click="openGameAccounts(g)">
                   <td>{{ g.title }}</td>
                   <td>{{ g.platform_code || '—' }}</td>
                   <td>{{ g.region_code || '—' }}</td>
@@ -464,7 +548,108 @@
             </table>
             <p v-else class="muted">Пока нет игр.</p>
 
+            <div v-if="selectedGame" class="form form--card form--compact">
+              <div class="panel__head">
+                <div>
+                  <h3>{{ selectedGame.title }}</h3>
+                  <p class="muted">Аккаунты с игрой и свободные слоты.</p>
+                </div>
+                <div class="toolbar-actions">
+                  <button class="btn btn--ghost" @click="refreshGameAccounts" :disabled="gameAccountsLoading">
+                    {{ gameAccountsLoading ? 'Обновляем…' : 'Обновить список' }}
+                  </button>
+                  <button class="btn btn--ghost" @click="startEditGame(selectedGame)">Редактировать</button>
+                  <button class="btn btn--ghost" @click="selectedGame = null">Скрыть</button>
+                </div>
+              </div>
+              <p v-if="gameAccountsError" class="bad">{{ gameAccountsError }}</p>
+              <div v-if="gameAccountsLoading" class="loader-wrap">
+                <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
+                  <div class="wheel"></div>
+                  <div class="hamster">
+                    <div class="hamster__body">
+                      <div class="hamster__head">
+                        <div class="hamster__ear"></div>
+                        <div class="hamster__eye"></div>
+                        <div class="hamster__nose"></div>
+                      </div>
+                      <div class="hamster__limb hamster__limb--fr"></div>
+                      <div class="hamster__limb hamster__limb--fl"></div>
+                      <div class="hamster__limb hamster__limb--br"></div>
+                      <div class="hamster__limb hamster__limb--bl"></div>
+                      <div class="hamster__tail"></div>
+                    </div>
+                  </div>
+                  <div class="spoke"></div>
+                </div>
+                <p class="muted">Загрузка аккаунтов…</p>
+              </div>
+              <table v-else-if="pagedGameAccounts.length" class="table table--compact">
+                <thead>
+                  <tr>
+                    <th class="sortable" @click="sortGameAccounts('login_full')">Аккаунт</th>
+                    <th class="sortable" @click="sortGameAccounts('platform_code')">Платформа</th>
+                    <th class="sortable" @click="sortGameAccounts('free_slots')">Свободно</th>
+                    <th class="sortable" @click="sortGameAccounts('occupied_slots')">Занято</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="a in pagedGameAccounts" :key="a.account_id" class="clickable-row" @click="goToAccount(a.login_full)">
+                    <td>{{ a.login_full || a.account_id }}</td>
+                    <td>{{ a.platform_code }}</td>
+                    <td>{{ a.free_slots }}</td>
+                    <td>{{ a.occupied_slots }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p v-else class="muted">Пока нет аккаунтов.</p>
+
+              <div v-if="gameAccountsTotalPages > 1" class="pager">
+                <button class="ghost" @click="prevGameAccountsPage" :disabled="gameAccountsPage <= 1">
+                  ← Назад
+                </button>
+                <span class="muted">Страница {{ gameAccountsPage }} из {{ gameAccountsTotalPages }}</span>
+                <button class="ghost" @click="nextGameAccountsPage" :disabled="gameAccountsPage >= gameAccountsTotalPages">
+                  Вперёд →
+                </button>
+              </div>
+            </div>
+
             <div class="divider"></div>
+
+            <div v-if="editGame.open" class="form form--stack form--card form--compact">
+              <h3>Редактирование игры</h3>
+              <label class="field">
+                <span class="label">Название</span>
+                <input v-model.trim="editGame.title" class="input" placeholder="Например, GTA V" />
+              </label>
+              <label class="field">
+                <span class="label">Платформа</span>
+                <select v-model="editGame.platform_code" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="p in platforms" :key="p.code" :value="p.code">
+                    {{ p.name }} ({{ p.code }})
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Регион</span>
+                <select v-model="editGame.region_code" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="r in regions" :key="r.code" :value="r.code">
+                    {{ r.name }} ({{ r.code }})
+                  </option>
+                </select>
+              </label>
+              <p v-if="gameError" class="bad">{{ gameError }}</p>
+              <p v-if="gameOk" class="ok">{{ gameOk }}</p>
+              <div class="toolbar-actions">
+                <button class="btn" @click="updateGame" :disabled="gameLoading">
+                  {{ gameLoading ? 'Сохраняем…' : 'Сохранить изменения' }}
+                </button>
+                <button class="btn btn--ghost" type="button" @click="cancelEditGame">Отмена</button>
+              </div>
+            </div>
 
             <div v-if="showGameForm" class="form form--stack form--card form--compact">
               <label class="field">
@@ -585,24 +770,35 @@
               </div>
               <p class="muted">Загрузка сделок…</p>
             </div>
-            <table v-else-if="dealItems.length" class="table">
+            <table v-else-if="sortedDeals.length" class="table">
               <thead>
                 <tr>
-                  <th>Аккаунт</th>
-                  <th>Игра</th>
-                  <th>Тип</th>
-                  <th>Статус</th>
-                  <th>Пользователь</th>
-                  <th>Откуда</th>
-                  <th>Дата покупки</th>
-                  <th>Платформа</th>
-                  <th>Цена</th>
+                  <th class="sortable" @click="toggleDealSort('account')">Аккаунт</th>
+                  <th class="sortable" @click="toggleDealSort('game')">Игра</th>
+                  <th class="sortable" @click="toggleDealSort('type')">Тип</th>
+                  <th class="sortable" @click="toggleDealSort('status')">Статус</th>
+                  <th class="sortable" @click="toggleDealSort('customer')">Пользователь</th>
+                  <th class="sortable" @click="toggleDealSort('source')">Откуда</th>
+                  <th class="sortable" @click="toggleDealSort('date')">Дата покупки</th>
+                  <th class="sortable" @click="toggleDealSort('platform')">Платформа</th>
+                  <th class="sortable" @click="toggleDealSort('price')">Цена</th>
+                  <th class="sortable" @click="toggleDealSort('notes')">Комментарий</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="d in dealItems" :key="d.deal_id">
-                  <td>{{ d.account_login || d.account_id }}</td>
-                  <td>{{ d.game_title || '—' }}</td>
+                <tr
+                  v-for="d in sortedDeals"
+                  :key="d.deal_id"
+                  class="clickable-row"
+                  :class="{ 'row-active': editDeal.open && editDeal.deal_id === d.deal_id }"
+                  @click="startEditDeal(d)"
+                >
+                  <td>
+                    <span class="clickable-cell" @click.stop="goToAccount(d.account_login)">{{ d.account_login || d.account_id }}</span>
+                  </td>
+                  <td>
+                    <span class="clickable-cell" @click.stop="openDealGame(d)">{{ d.game_title || '—' }}</span>
+                  </td>
                   <td>{{ d.deal_type }}</td>
                   <td>{{ d.status || '—' }}</td>
                   <td>{{ d.customer_nickname || '—' }}</td>
@@ -610,12 +806,13 @@
                   <td>{{ formatDate(d.purchase_at || d.created_at) }}</td>
                   <td>{{ d.platform_code || '—' }}</td>
                   <td>{{ d.price }}</td>
+                  <td>{{ d.notes || '—' }}</td>
                 </tr>
               </tbody>
             </table>
             <p v-else class="muted">Пока нет сделок.</p>
 
-            <div class="pager">
+            <div v-if="totalPages > 1" class="pager">
               <button class="ghost" @click="loadDeals(dealPage - 1)" :disabled="dealPage <= 1 || dealListLoading">
                 ← Назад
               </button>
@@ -630,6 +827,81 @@
             </div>
 
             <div class="divider"></div>
+
+            <div v-if="editDeal.open" class="form form--stack form--card form--compact">
+              <h3>Редактирование сделки</h3>
+              <label class="field">
+                <span class="label">Тип</span>
+                <select v-model="editDeal.deal_type_code" class="input input--select">
+                  <option value="sale">Продажа</option>
+                  <option value="rental">Аренда</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Аккаунт</span>
+                <select v-model.number="editDeal.account_id" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="a in accounts" :key="a.account_id" :value="a.account_id">
+                    {{ a.login_full || a.account_id }}
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Игра</span>
+                <select v-model.number="editDeal.game_id" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="g in games" :key="g.game_id" :value="g.game_id">
+                    {{ g.title }}
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Пользователь</span>
+                <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="nickname" />
+              </label>
+              <label class="field">
+                <span class="label">Откуда</span>
+                <select v-model="editDeal.source_code" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="s in sources" :key="s.code" :value="s.code">
+                    {{ s.name }} ({{ s.code }})
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Платформа</span>
+                <select v-model="editDeal.platform_code" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="p in platforms" :key="p.code" :value="p.code">
+                    {{ p.name }} ({{ p.code }})
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Цена</span>
+                <input v-model.number="editDeal.price" class="input" type="number" min="0" />
+              </label>
+              <label class="field">
+                <span class="label">Дата покупки</span>
+                <input v-model="editDeal.purchase_at" class="input" type="date" />
+              </label>
+              <label v-if="editDeal.deal_type_code === 'rental'" class="field">
+                <span class="label">Слотов используется</span>
+                <input v-model.number="editDeal.slots_used" class="input" type="number" min="1" />
+              </label>
+              <label class="field">
+                <span class="label">Комментарий</span>
+                <input v-model.trim="editDeal.notes" class="input" />
+              </label>
+              <p v-if="dealError" class="bad">{{ dealError }}</p>
+              <p v-if="dealOk" class="ok">{{ dealOk }}</p>
+              <div class="toolbar-actions">
+                <button class="btn" @click="updateDeal" :disabled="dealLoading">
+                  {{ dealLoading ? 'Сохраняем…' : 'Сохранить изменения' }}
+                </button>
+                <button class="btn btn--ghost" type="button" @click="cancelEditDeal">Отмена</button>
+              </div>
+            </div>
 
             <div v-if="showDealForm" class="form form--stack form--card form--compact">
               <label class="field">
@@ -761,22 +1033,26 @@
                   {{ catalogsLoading ? 'Сохраняем…' : 'Добавить домен' }}
                 </button>
               </div>
-              <table v-if="domains.length" class="table table--compact">
+              <div v-if="editDomain.open" class="form form--stack form--card form--compact">
+                <label class="field">
+                  <span class="label">Домен</span>
+                  <input v-model.trim="editDomain.name" class="input" placeholder="example.com" />
+                </label>
+                <div class="toolbar-actions">
+                  <button class="btn" @click="saveEditDomain" :disabled="catalogsLoading">Сохранить</button>
+                  <button class="btn btn--ghost" type="button" @click="deleteDomain(editDomain.original)">Удалить</button>
+                  <button class="btn btn--ghost" type="button" @click="cancelEditDomain">Отмена</button>
+                </div>
+              </div>
+              <table v-if="sortedDomains.length" class="table table--compact">
                 <thead>
                   <tr>
-                    <th>Домен</th>
-                    <th>Действия</th>
+                    <th class="sortable" @click="toggleDomainsSort">Домен</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="d in domains" :key="d.code">
+                  <tr v-for="d in sortedDomains" :key="d.name" class="clickable-row" @click="openEditDomain(d)">
                     <td>{{ d.name }}</td>
-                    <td>
-                      <div class="list-actions">
-                        <button class="mini-btn" @click="editDomain(d.code)">Редактировать</button>
-                        <button class="mini-btn mini-btn--danger" @click="deleteDomain(d.code)">Удалить</button>
-                      </div>
-                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -810,24 +1086,32 @@
                   {{ catalogsLoading ? 'Сохраняем…' : 'Добавить источник' }}
                 </button>
               </div>
-              <table v-if="sources.length" class="table table--compact">
+              <div v-if="editSource.open" class="form form--stack form--card form--compact">
+                <label class="field">
+                  <span class="label">Код</span>
+                  <input v-model.trim="editSource.code" class="input" disabled />
+                </label>
+                <label class="field">
+                  <span class="label">Название</span>
+                  <input v-model.trim="editSource.name" class="input" />
+                </label>
+                <div class="toolbar-actions">
+                  <button class="btn" @click="saveEditSource" :disabled="catalogsLoading">Сохранить</button>
+                  <button class="btn btn--ghost" type="button" @click="deleteSource(editSource.code)">Удалить</button>
+                  <button class="btn btn--ghost" type="button" @click="cancelEditSource">Отмена</button>
+                </div>
+              </div>
+              <table v-if="sortedSources.length" class="table table--compact">
                 <thead>
                   <tr>
-                    <th>Код</th>
-                    <th>Название</th>
-                    <th>Действия</th>
+                    <th class="sortable" @click="toggleSourcesSort('code')">Код</th>
+                    <th class="sortable" @click="toggleSourcesSort('name')">Название</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="s in sources" :key="s.code">
+                  <tr v-for="s in sortedSources" :key="s.code" class="clickable-row" @click="openEditSource(s)">
                     <td>{{ s.code }}</td>
                     <td>{{ s.name }}</td>
-                    <td>
-                      <div class="list-actions">
-                        <button class="mini-btn" @click="editSource(s.code, s.name)">Редактировать</button>
-                        <button class="mini-btn mini-btn--danger" @click="deleteSource(s.code)">Удалить</button>
-                      </div>
-                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -857,28 +1141,46 @@
                   <span class="label">Платформа (название)</span>
                   <input v-model.trim="newPlatform.name" class="input" placeholder="Steam" />
                 </label>
+                <label class="field">
+                  <span class="label">Слотов на аккаунт</span>
+                  <input v-model.number="newPlatform.slot_capacity" class="input" type="number" min="0" />
+                </label>
                 <button class="btn" @click="createPlatform" :disabled="catalogsLoading">
                   {{ catalogsLoading ? 'Сохраняем…' : 'Добавить платформу' }}
                 </button>
               </div>
-              <table v-if="platforms.length" class="table table--compact">
+              <div v-if="editPlatform.open" class="form form--stack form--card form--compact">
+                <label class="field">
+                  <span class="label">Код</span>
+                  <input v-model.trim="editPlatform.code" class="input" disabled />
+                </label>
+                <label class="field">
+                  <span class="label">Название</span>
+                  <input v-model.trim="editPlatform.name" class="input" />
+                </label>
+                <label class="field">
+                  <span class="label">Слотов на аккаунт</span>
+                  <input v-model.number="editPlatform.slot_capacity" class="input" type="number" min="0" />
+                </label>
+                <div class="toolbar-actions">
+                  <button class="btn" @click="saveEditPlatform" :disabled="catalogsLoading">Сохранить</button>
+                  <button class="btn btn--ghost" type="button" @click="deletePlatform(editPlatform.code)">Удалить</button>
+                  <button class="btn btn--ghost" type="button" @click="cancelEditPlatform">Отмена</button>
+                </div>
+              </div>
+              <table v-if="sortedPlatforms.length" class="table table--compact">
                 <thead>
                   <tr>
-                    <th>Код</th>
-                    <th>Название</th>
-                    <th>Действия</th>
+                    <th class="sortable" @click="togglePlatformsSort('code')">Код</th>
+                    <th class="sortable" @click="togglePlatformsSort('name')">Название</th>
+                    <th class="sortable" @click="togglePlatformsSort('slot_capacity')">Слоты</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="p in platforms" :key="p.code">
+                  <tr v-for="p in sortedPlatforms" :key="p.code" class="clickable-row" @click="openEditPlatform(p)">
                     <td>{{ p.code }}</td>
                     <td>{{ p.name }}</td>
-                    <td>
-                      <div class="list-actions">
-                        <button class="mini-btn" @click="editPlatform(p.code, p.name)">Редактировать</button>
-                        <button class="mini-btn mini-btn--danger" @click="deletePlatform(p.code)">Удалить</button>
-                      </div>
-                    </td>
+                    <td>{{ p.slot_capacity }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -912,24 +1214,32 @@
                   {{ catalogsLoading ? 'Сохраняем…' : 'Добавить регион' }}
                 </button>
               </div>
-              <table v-if="regions.length" class="table table--compact">
+              <div v-if="editRegion.open" class="form form--stack form--card form--compact">
+                <label class="field">
+                  <span class="label">Код</span>
+                  <input v-model.trim="editRegion.code" class="input" disabled />
+                </label>
+                <label class="field">
+                  <span class="label">Название</span>
+                  <input v-model.trim="editRegion.name" class="input" />
+                </label>
+                <div class="toolbar-actions">
+                  <button class="btn" @click="saveEditRegion" :disabled="catalogsLoading">Сохранить</button>
+                  <button class="btn btn--ghost" type="button" @click="deleteRegion(editRegion.code)">Удалить</button>
+                  <button class="btn btn--ghost" type="button" @click="cancelEditRegion">Отмена</button>
+                </div>
+              </div>
+              <table v-if="sortedRegions.length" class="table table--compact">
                 <thead>
                   <tr>
-                    <th>Код</th>
-                    <th>Название</th>
-                    <th>Действия</th>
+                    <th class="sortable" @click="toggleRegionsSort('code')">Код</th>
+                    <th class="sortable" @click="toggleRegionsSort('name')">Название</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="r in regions" :key="r.code">
+                  <tr v-for="r in sortedRegions" :key="r.code" class="clickable-row" @click="openEditRegion(r)">
                     <td>{{ r.code }}</td>
                     <td>{{ r.name }}</td>
-                    <td>
-                      <div class="list-actions">
-                        <button class="mini-btn" @click="editRegion(r.code, r.name)">Редактировать</button>
-                        <button class="mini-btn mini-btn--danger" @click="deleteRegion(r.code)">Удалить</button>
-                      </div>
-                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -999,16 +1309,16 @@
               </div>
               <p class="muted">Загрузка пользователей…</p>
             </div>
-            <table v-else-if="users.length" class="table">
+            <table v-else-if="sortedUsers.length" class="table">
               <thead>
                 <tr>
-                  <th>Логин</th>
-                  <th>Роль</th>
-                  <th>Создан</th>
+                  <th class="sortable" @click="toggleUsersSort('username')">Логин</th>
+                  <th class="sortable" @click="toggleUsersSort('role')">Роль</th>
+                  <th class="sortable" @click="toggleUsersSort('created_at')">Создан</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="u in users" :key="u.username">
+                <tr v-for="u in sortedUsers" :key="u.username">
                   <td>{{ u.username }}</td>
                   <td>{{ u.role }}</td>
                   <td>{{ new Date(u.created_at).toLocaleString() }}</td>
@@ -1040,6 +1350,10 @@ const accountSecrets = ref({})
 const accountsError = ref(null)
 const accountsOk = ref(null)
 const accountsLoading = ref(false)
+const accountSaving = ref(false)
+const dealSaving = ref(false)
+const gameSaving = ref(false)
+const catalogSaving = ref(false)
 const users = ref([])
 const roles = ref([])
 const platforms = ref([])
@@ -1056,6 +1370,13 @@ const showUserForm = ref(false)
 const gameError = ref(null)
 const gameOk = ref(null)
 const gameLoading = ref(false)
+const gameAccounts = ref([])
+const gameAccountsLoading = ref(false)
+const gameAccountsError = ref(null)
+const selectedGame = ref(null)
+const gameAccountsSort = ref({ key: 'free_slots', dir: 'desc' })
+const gameAccountsPage = ref(1)
+const gameAccountsPageSize = 15
 const dealError = ref(null)
 const dealOk = ref(null)
 const dealLoading = ref(false)
@@ -1069,6 +1390,8 @@ const pwdError = ref(null)
 const pwdOk = ref(false)
 const pwdLoading = ref(false)
 const showPwdForm = ref(false)
+
+const globalSaving = computed(() => accountSaving.value || dealSaving.value || gameSaving.value || catalogSaving.value)
 
 const isAdmin = computed(() => auth.state.role === 'admin')
 
@@ -1105,8 +1428,30 @@ const newDeal = reactive({
   notes: '',
 })
 
+const editDeal = reactive({
+  open: false,
+  deal_id: null,
+  deal_type_code: 'sale',
+  account_id: '',
+  game_id: '',
+  customer_nickname: '',
+  source_code: '',
+  platform_code: '',
+  price: 0,
+  purchase_at: '',
+  slots_used: 1,
+  notes: '',
+})
+
 const games = ref([])
 const gamesLoading = ref(false)
+const editGame = reactive({
+  open: false,
+  game_id: null,
+  title: '',
+  platform_code: '',
+  region_code: '',
+})
 const dealFilters = reactive({
   account_id: '',
   game_id: '',
@@ -1120,34 +1465,44 @@ const totalPages = computed(() => {
 })
 
 const newDomain = ref('')
+const editDomain = reactive({ open: false, name: '', original: '' })
 const newSource = reactive({
   code: '',
   name: '',
 })
+const editSource = reactive({ open: false, code: '', name: '' })
 const newPlatform = reactive({
   code: '',
   name: '',
+  slot_capacity: 0,
 })
+const editPlatform = reactive({ open: false, code: '', name: '', slot_capacity: 0 })
 const newRegion = reactive({
   code: '',
   name: '',
 })
+const editRegion = reactive({ open: false, code: '', name: '' })
 
 const newAccount = reactive({
   login_name: '',
   domain_code: '',
   platform_code: '',
   region_code: '',
-  slot_capacity: 1,
-  slot_reserved: 0,
   notes: '',
-  primary_secret: '',
+  account_date: '',
+  email_password: '',
+  account_password: '',
   reserve_secrets: [],
+  auth_code: '',
+  game_ids: [],
 })
 
 const showAccountForm = ref(false)
 const showAccountFilters = ref(false)
 const showPasswords = ref(false)
+const accountGameSearch = ref('')
+const editAccountGameSearch = ref('')
+const accountGamesLoading = ref(false)
 const editAccount = reactive({
   open: false,
   account_id: null,
@@ -1156,14 +1511,20 @@ const editAccount = reactive({
   platform_code: '',
   region_code: '',
   status_code: 'active',
-  slot_capacity: 1,
-  slot_reserved: 0,
   notes: '',
-  primary_secret: '',
-  primary_key: 'primary',
+  account_date: '',
+  email_password: '',
+  account_password: '',
+  account_key: 'account_password',
+  email_key: 'email_password',
+  auth_code: '',
+  auth_key: 'auth_code',
   reserve_secrets: [],
   existing_reserve_keys: [],
-  has_primary: false,
+  has_account: false,
+  has_email: false,
+  has_auth: false,
+  game_ids: [],
 })
 const showGameForm = ref(false)
 const showGameFilters = ref(false)
@@ -1178,6 +1539,13 @@ const accountFilters = reactive({
   platform_code: '',
 })
 const accountSort = ref('login_asc')
+const gamesSort = ref({ key: 'title', dir: 'asc' })
+const dealSort = ref({ key: 'date', dir: 'desc' })
+const usersSort = ref({ key: 'created_at', dir: 'desc' })
+const domainsSortAsc = ref(true)
+const sourcesSort = ref({ key: 'code', dir: 'asc' })
+const platformsSort = ref({ key: 'code', dir: 'asc' })
+const regionsSort = ref({ key: 'code', dir: 'asc' })
 
 const filteredAccounts = computed(() => {
   let list = [...accounts.value]
@@ -1190,16 +1558,49 @@ const filteredAccounts = computed(() => {
   if (accountFilters.platform_code) {
     list = list.filter((a) => a.platform_code === accountFilters.platform_code)
   }
+  return list
+})
+
+const sortedAccounts = computed(() => {
+  const list = [...filteredAccounts.value]
   if (accountSort.value === 'login_asc') {
     list.sort((a, b) => (a.login_full || '').localeCompare(b.login_full || ''))
   } else if (accountSort.value === 'login_desc') {
     list.sort((a, b) => (b.login_full || '').localeCompare(a.login_full || ''))
-  } else if (accountSort.value === 'free_desc') {
-    list.sort((a, b) => (b.free_slots || 0) - (a.free_slots || 0))
-  } else if (accountSort.value === 'free_asc') {
-    list.sort((a, b) => (a.free_slots || 0) - (b.free_slots || 0))
+  } else if (accountSort.value === 'platform_asc') {
+    list.sort((a, b) => (a.platform_code || '').localeCompare(b.platform_code || ''))
+  } else if (accountSort.value === 'platform_desc') {
+    list.sort((a, b) => (b.platform_code || '').localeCompare(a.platform_code || ''))
+  } else if (accountSort.value === 'region_asc') {
+    list.sort((a, b) => (a.region_code || '').localeCompare(b.region_code || ''))
+  } else if (accountSort.value === 'region_desc') {
+    list.sort((a, b) => (b.region_code || '').localeCompare(a.region_code || ''))
+  } else if (accountSort.value === 'status_asc') {
+    list.sort((a, b) => (a.status || '').localeCompare(b.status || ''))
+  } else if (accountSort.value === 'status_desc') {
+    list.sort((a, b) => (b.status || '').localeCompare(a.status || ''))
+  } else if (accountSort.value === 'slots_desc') {
+    list.sort((a, b) => (b.slot_capacity || 0) - (a.slot_capacity || 0))
+  } else if (accountSort.value === 'slots_asc') {
+    list.sort((a, b) => (a.slot_capacity || 0) - (b.slot_capacity || 0))
+  } else if (accountSort.value === 'date_desc') {
+    list.sort((a, b) => new Date(b.account_date || 0) - new Date(a.account_date || 0))
+  } else if (accountSort.value === 'date_asc') {
+    list.sort((a, b) => new Date(a.account_date || 0) - new Date(b.account_date || 0))
   }
   return list
+})
+
+const filteredAccountGames = computed(() => {
+  const q = accountGameSearch.value.trim().toLowerCase()
+  if (!q) return games.value
+  return games.value.filter((g) => (g.title || '').toLowerCase().includes(q))
+})
+
+const filteredEditAccountGames = computed(() => {
+  const q = editAccountGameSearch.value.trim().toLowerCase()
+  if (!q) return games.value
+  return games.value.filter((g) => (g.title || '').toLowerCase().includes(q))
 })
 
 const gameFilters = reactive({
@@ -1220,6 +1621,116 @@ const filteredGames = computed(() => {
   if (gameFilters.region_code) {
     list = list.filter((g) => g.region_code === gameFilters.region_code)
   }
+  return list
+})
+
+const sortedGames = computed(() => {
+  const list = [...filteredGames.value]
+  const { key, dir } = gamesSort.value
+  list.sort((a, b) => {
+    const av = key === 'title' ? a.title : key === 'platform' ? a.platform_code : a.region_code
+    const bv = key === 'title' ? b.title : key === 'platform' ? b.platform_code : b.region_code
+    return dir === 'asc'
+      ? String(av || '').localeCompare(String(bv || ''))
+      : String(bv || '').localeCompare(String(av || ''))
+  })
+  return list
+})
+
+const sortedDeals = computed(() => {
+  const list = [...dealItems.value]
+  const { key, dir } = dealSort.value
+  const getVal = (d) => {
+    if (key === 'account') return d.account_login || ''
+    if (key === 'game') return d.game_title || ''
+    if (key === 'type') return d.deal_type || ''
+    if (key === 'status') return d.status || ''
+    if (key === 'customer') return d.customer_nickname || ''
+    if (key === 'source') return d.source_code || ''
+    if (key === 'platform') return d.platform_code || ''
+    if (key === 'price') return Number(d.price || 0)
+    if (key === 'notes') return d.notes || ''
+    if (key === 'date') return new Date(d.purchase_at || d.created_at || 0).getTime()
+    return ''
+  }
+  list.sort((a, b) => {
+    const av = getVal(a)
+    const bv = getVal(b)
+    if (typeof av === 'number' && typeof bv === 'number') {
+      return dir === 'asc' ? av - bv : bv - av
+    }
+    return dir === 'asc'
+      ? String(av || '').localeCompare(String(bv || ''))
+      : String(bv || '').localeCompare(String(av || ''))
+  })
+  return list
+})
+
+const sortedUsers = computed(() => {
+  const list = [...users.value]
+  const { key, dir } = usersSort.value
+  list.sort((a, b) => {
+    const av = key === 'created_at' ? new Date(a.created_at || 0).getTime() : a[key]
+    const bv = key === 'created_at' ? new Date(b.created_at || 0).getTime() : b[key]
+    if (typeof av === 'number' && typeof bv === 'number') {
+      return dir === 'asc' ? av - bv : bv - av
+    }
+    return dir === 'asc'
+      ? String(av || '').localeCompare(String(bv || ''))
+      : String(bv || '').localeCompare(String(av || ''))
+  })
+  return list
+})
+
+const sortedDomains = computed(() => {
+  const list = [...domains.value]
+  list.sort((a, b) =>
+    domainsSortAsc.value
+      ? String(a.name || '').localeCompare(String(b.name || ''))
+      : String(b.name || '').localeCompare(String(a.name || ''))
+  )
+  return list
+})
+
+const sortedSources = computed(() => {
+  const list = [...sources.value]
+  const { key, dir } = sourcesSort.value
+  list.sort((a, b) => {
+    const av = a[key]
+    const bv = b[key]
+    return dir === 'asc'
+      ? String(av || '').localeCompare(String(bv || ''))
+      : String(bv || '').localeCompare(String(av || ''))
+  })
+  return list
+})
+
+const sortedPlatforms = computed(() => {
+  const list = [...platforms.value]
+  const { key, dir } = platformsSort.value
+  list.sort((a, b) => {
+    const av = a[key]
+    const bv = b[key]
+    if (typeof av === 'number' && typeof bv === 'number') {
+      return dir === 'asc' ? av - bv : bv - av
+    }
+    return dir === 'asc'
+      ? String(av || '').localeCompare(String(bv || ''))
+      : String(bv || '').localeCompare(String(av || ''))
+  })
+  return list
+})
+
+const sortedRegions = computed(() => {
+  const list = [...regions.value]
+  const { key, dir } = regionsSort.value
+  list.sort((a, b) => {
+    const av = a[key]
+    const bv = b[key]
+    return dir === 'asc'
+      ? String(av || '').localeCompare(String(bv || ''))
+      : String(bv || '').localeCompare(String(av || ''))
+  })
   return list
 })
 
@@ -1326,10 +1837,168 @@ function formatSecret(value, isList = false) {
   return value
 }
 
-function getPrimarySecret(accountId) {
+function openGameAccounts(game) {
+  selectedGame.value = game
+  gameAccountsPage.value = 1
+  loadGameAccounts(game.game_id)
+}
+
+function toggleAccountSort(key) {
+  const map = {
+    login: ['login_asc', 'login_desc'],
+    platform: ['platform_asc', 'platform_desc'],
+    region: ['region_asc', 'region_desc'],
+    status: ['status_asc', 'status_desc'],
+    slots: ['slots_asc', 'slots_desc'],
+    date: ['date_asc', 'date_desc'],
+  }
+  const [asc, desc] = map[key] || []
+  if (!asc) return
+  accountSort.value = accountSort.value === asc ? desc : asc
+}
+
+function toggleGamesSort(key) {
+  const current = gamesSort.value
+  if (current.key === key) {
+    current.dir = current.dir === 'asc' ? 'desc' : 'asc'
+  } else {
+    gamesSort.value = { key, dir: 'asc' }
+  }
+}
+
+function toggleDealSort(key) {
+  const current = dealSort.value
+  if (current.key === key) {
+    current.dir = current.dir === 'asc' ? 'desc' : 'asc'
+  } else {
+    dealSort.value = { key, dir: 'asc' }
+  }
+}
+
+function toggleUsersSort(key) {
+  const current = usersSort.value
+  if (current.key === key) {
+    current.dir = current.dir === 'asc' ? 'desc' : 'asc'
+  } else {
+    usersSort.value = { key, dir: 'asc' }
+  }
+}
+
+function toggleDomainsSort() {
+  domainsSortAsc.value = !domainsSortAsc.value
+}
+
+function toggleSourcesSort(key) {
+  const current = sourcesSort.value
+  if (current.key === key) {
+    current.dir = current.dir === 'asc' ? 'desc' : 'asc'
+  } else {
+    sourcesSort.value = { key, dir: 'asc' }
+  }
+}
+
+function togglePlatformsSort(key) {
+  const current = platformsSort.value
+  if (current.key === key) {
+    current.dir = current.dir === 'asc' ? 'desc' : 'asc'
+  } else {
+    platformsSort.value = { key, dir: 'asc' }
+  }
+}
+
+function toggleRegionsSort(key) {
+  const current = regionsSort.value
+  if (current.key === key) {
+    current.dir = current.dir === 'asc' ? 'desc' : 'asc'
+  } else {
+    regionsSort.value = { key, dir: 'asc' }
+  }
+}
+
+function startEditGame(game) {
+  editGame.open = true
+  editGame.game_id = game.game_id
+  editGame.title = game.title || ''
+  editGame.platform_code = game.platform_code || ''
+  editGame.region_code = game.region_code || ''
+}
+
+function cancelEditGame() {
+  editGame.open = false
+  editGame.game_id = null
+  editGame.title = ''
+  editGame.platform_code = ''
+  editGame.region_code = ''
+}
+
+function refreshGameAccounts() {
+  if (selectedGame.value) {
+    gameAccountsPage.value = 1
+    loadGameAccounts(selectedGame.value.game_id)
+  }
+}
+
+function goToAccount(login) {
+  activeTab.value = 'accounts'
+  accountFilters.q = login || ''
+}
+
+function openDealGame(deal) {
+  if (!deal || !deal.game_id) return
+  activeTab.value = 'games'
+  const game = games.value.find((g) => g.game_id === deal.game_id)
+  if (game) {
+    openGameAccounts(game)
+  }
+}
+
+function startEditDeal(deal) {
+  editDeal.open = true
+  editDeal.deal_id = deal.deal_id
+  editDeal.deal_type_code = deal.deal_type_code || (deal.deal_type === 'Аренда' ? 'rental' : 'sale')
+  editDeal.account_id = deal.account_id
+  editDeal.game_id = deal.game_id
+  editDeal.customer_nickname = deal.customer_nickname || ''
+  editDeal.source_code = deal.source_code || ''
+  editDeal.platform_code = deal.platform_code || ''
+  editDeal.price = Number(deal.price || 0)
+  editDeal.purchase_at = deal.purchase_at ? String(deal.purchase_at).slice(0, 10) : ''
+  editDeal.slots_used = deal.slots_used || (deal.deal_type_code === 'rental' ? 1 : 0)
+  editDeal.notes = deal.notes || ''
+}
+
+function cancelEditDeal() {
+  editDeal.open = false
+  editDeal.deal_id = null
+  editDeal.deal_type_code = 'sale'
+  editDeal.account_id = ''
+  editDeal.game_id = ''
+  editDeal.customer_nickname = ''
+  editDeal.source_code = ''
+  editDeal.platform_code = ''
+  editDeal.price = 0
+  editDeal.purchase_at = ''
+  editDeal.slots_used = 1
+  editDeal.notes = ''
+}
+
+function formatDateOnly(value) {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString()
+}
+
+function getEmailSecret(accountId) {
   const list = accountSecrets.value[accountId] || []
-  const primary = list.find((s) => s.secret_key === 'primary' || s.secret_key === 'password')
-  return primary?.secret_value_b64 ? fromBase64(primary.secret_value_b64) : ''
+  const item = list.find((s) => s.secret_key === 'email_password')
+  return item?.secret_value_b64 ? fromBase64(item.secret_value_b64) : ''
+}
+
+function getAccountSecret(accountId) {
+  const list = accountSecrets.value[accountId] || []
+  const item = list.find((s) => s.secret_key === 'account_password' || s.secret_key === 'primary' || s.secret_key === 'password')
+  return item?.secret_value_b64 ? fromBase64(item.secret_value_b64) : ''
 }
 
 function getReserveSecrets(accountId) {
@@ -1339,6 +2008,12 @@ function getReserveSecrets(accountId) {
     .map((s) => (s.secret_value_b64 ? fromBase64(s.secret_value_b64) : ''))
     .filter(Boolean)
   return reserves.join(', ')
+}
+
+function getAuthSecret(accountId) {
+  const list = accountSecrets.value[accountId] || []
+  const item = list.find((s) => s.secret_key === 'auth_code')
+  return item?.secret_value_b64 ? fromBase64(item.secret_value_b64) : ''
 }
 
 async function loadAccountSecrets(list) {
@@ -1356,6 +2031,18 @@ async function loadAccountSecrets(list) {
   )
 }
 
+async function loadAccountGames(accountId) {
+  accountGamesLoading.value = true
+  try {
+    const items = await apiGet(`/accounts/${accountId}/games`, { token: auth.state.token })
+    editAccount.game_ids = (items || []).map((g) => g.game_id)
+  } catch {
+    editAccount.game_ids = []
+  } finally {
+    accountGamesLoading.value = false
+  }
+}
+
 async function loadGames() {
   gamesLoading.value = true
   try {
@@ -1365,6 +2052,68 @@ async function loadGames() {
     games.value = []
   } finally {
     gamesLoading.value = false
+  }
+}
+
+async function loadGameAccounts(gameId) {
+  gameAccountsLoading.value = true
+  gameAccountsError.value = null
+  try {
+    const data = await apiGet(`/games/${gameId}/accounts`, { token: auth.state.token })
+    gameAccounts.value = data || []
+  } catch (e) {
+    gameAccountsError.value = e?.message || 'Ошибка'
+    gameAccounts.value = []
+  } finally {
+    gameAccountsLoading.value = false
+  }
+}
+
+const sortedGameAccounts = computed(() => {
+  const list = [...gameAccounts.value]
+  const { key, dir } = gameAccountsSort.value
+  list.sort((a, b) => {
+    const av = a[key]
+    const bv = b[key]
+    if (typeof av === 'number' && typeof bv === 'number') {
+      return dir === 'asc' ? av - bv : bv - av
+    }
+    return dir === 'asc'
+      ? String(av || '').localeCompare(String(bv || ''))
+      : String(bv || '').localeCompare(String(av || ''))
+  })
+  return list
+})
+
+const gameAccountsTotalPages = computed(() => {
+  const pages = Math.ceil(sortedGameAccounts.value.length / gameAccountsPageSize)
+  return pages > 0 ? pages : 1
+})
+
+const pagedGameAccounts = computed(() => {
+  const start = (gameAccountsPage.value - 1) * gameAccountsPageSize
+  return sortedGameAccounts.value.slice(start, start + gameAccountsPageSize)
+})
+
+function sortGameAccounts(key) {
+  const current = gameAccountsSort.value
+  if (current.key === key) {
+    current.dir = current.dir === 'asc' ? 'desc' : 'asc'
+  } else {
+    gameAccountsSort.value = { key, dir: 'asc' }
+  }
+  gameAccountsPage.value = 1
+}
+
+function nextGameAccountsPage() {
+  if (gameAccountsPage.value < gameAccountsTotalPages.value) {
+    gameAccountsPage.value += 1
+  }
+}
+
+function prevGameAccountsPage() {
+  if (gameAccountsPage.value > 1) {
+    gameAccountsPage.value -= 1
   }
 }
 
@@ -1391,20 +2140,28 @@ function startEditAccount(a) {
   editAccount.platform_code = a.platform_code || ''
   editAccount.region_code = a.region_code || ''
   editAccount.status_code = a.status || 'active'
-  editAccount.slot_capacity = a.slot_capacity || 0
-  editAccount.slot_reserved = a.slot_reserved || 0
   editAccount.notes = a.notes || ''
+  editAccount.account_date = a.account_date || ''
 
   const secrets = accountSecrets.value[a.account_id] || []
-  const primary = secrets.find((s) => s.secret_key === 'primary' || s.secret_key === 'password')
+  const email = secrets.find((s) => s.secret_key === 'email_password')
+  const account = secrets.find((s) => s.secret_key === 'account_password' || s.secret_key === 'primary' || s.secret_key === 'password')
+  const auth = secrets.find((s) => s.secret_key === 'auth_code')
   const reserves = secrets.filter((s) => s.secret_key?.startsWith('reserve'))
-  editAccount.primary_secret = primary?.secret_value_b64 ? fromBase64(primary.secret_value_b64) : ''
-  editAccount.primary_key = primary?.secret_key || 'primary'
+  editAccount.email_password = email?.secret_value_b64 ? fromBase64(email.secret_value_b64) : ''
+  editAccount.email_key = email?.secret_key || 'email_password'
+  editAccount.account_password = account?.secret_value_b64 ? fromBase64(account.secret_value_b64) : ''
+  editAccount.account_key = account?.secret_key || 'account_password'
+  editAccount.auth_code = auth?.secret_value_b64 ? fromBase64(auth.secret_value_b64) : ''
+  editAccount.auth_key = auth?.secret_key || 'auth_code'
   editAccount.reserve_secrets = reserves
     .sort((a1, a2) => a1.secret_key.localeCompare(a2.secret_key))
     .map((s) => (s.secret_value_b64 ? fromBase64(s.secret_value_b64) : ''))
   editAccount.existing_reserve_keys = reserves.map((s) => s.secret_key)
-  editAccount.has_primary = Boolean(primary)
+  editAccount.has_account = Boolean(account)
+  editAccount.has_email = Boolean(email)
+  editAccount.has_auth = Boolean(auth)
+  loadAccountGames(a.account_id)
 }
 
 function cancelEditAccount() {
@@ -1415,14 +2172,21 @@ function cancelEditAccount() {
   editAccount.platform_code = ''
   editAccount.region_code = ''
   editAccount.status_code = 'active'
-  editAccount.slot_capacity = 1
-  editAccount.slot_reserved = 0
   editAccount.notes = ''
-  editAccount.primary_secret = ''
-  editAccount.primary_key = 'primary'
+  editAccount.account_date = ''
+  editAccount.email_password = ''
+  editAccount.email_key = 'email_password'
+  editAccount.account_password = ''
+  editAccount.account_key = 'account_password'
+  editAccount.auth_code = ''
+  editAccount.auth_key = 'auth_code'
   editAccount.reserve_secrets = []
   editAccount.existing_reserve_keys = []
-  editAccount.has_primary = false
+  editAccount.has_account = false
+  editAccount.has_email = false
+  editAccount.has_auth = false
+  editAccount.game_ids = []
+  editAccountGameSearch.value = ''
 }
 
 async function createAccount() {
@@ -1441,19 +2205,36 @@ async function createAccount() {
         region_code: newAccount.region_code || null,
         login_name: newAccount.login_name || null,
         domain_code: newAccount.domain_code || null,
-        slot_capacity: newAccount.slot_capacity,
-        slot_reserved: newAccount.slot_reserved,
         notes: newAccount.notes || null,
+        account_date: newAccount.account_date || null,
       },
       { token: auth.state.token }
     )
 
     const secretTasks = []
-    if (newAccount.primary_secret) {
+    if (newAccount.email_password) {
       secretTasks.push(
         apiPost(
           `/accounts/${created.account_id}/secrets`,
-          { secret_key: 'primary', secret_value: newAccount.primary_secret },
+          { secret_key: 'email_password', secret_value: newAccount.email_password },
+          { token: auth.state.token }
+        )
+      )
+    }
+    if (newAccount.account_password) {
+      secretTasks.push(
+        apiPost(
+          `/accounts/${created.account_id}/secrets`,
+          { secret_key: 'account_password', secret_value: newAccount.account_password },
+          { token: auth.state.token }
+        )
+      )
+    }
+    if (newAccount.auth_code) {
+      secretTasks.push(
+        apiPost(
+          `/accounts/${created.account_id}/secrets`,
+          { secret_key: 'auth_code', secret_value: newAccount.auth_code },
           { token: auth.state.token }
         )
       )
@@ -1474,16 +2255,27 @@ async function createAccount() {
       await Promise.all(secretTasks)
     }
 
+    if (newAccount.game_ids.length) {
+      await apiPut(
+        `/accounts/${created.account_id}/games`,
+        { game_ids: newAccount.game_ids },
+        { token: auth.state.token }
+      )
+    }
+
     accountsOk.value = `Аккаунт ${newAccount.login_name}@${newAccount.domain_code} создан`
     newAccount.login_name = ''
     newAccount.domain_code = ''
     newAccount.platform_code = ''
     newAccount.region_code = ''
-    newAccount.slot_capacity = 1
-    newAccount.slot_reserved = 0
     newAccount.notes = ''
-    newAccount.primary_secret = ''
+    newAccount.account_date = ''
+    newAccount.email_password = ''
+    newAccount.account_password = ''
     newAccount.reserve_secrets = []
+    newAccount.auth_code = ''
+    newAccount.game_ids = []
+    accountGameSearch.value = ''
     await loadAccounts()
   } catch (e) {
     accountsError.value = e?.message || 'Ошибка'
@@ -1500,7 +2292,7 @@ async function updateAccount() {
     accountsError.value = 'Укажите логин, домен и платформу'
     return
   }
-  accountsLoading.value = true
+  accountSaving.value = true
   try {
     await apiPut(
       `/accounts/${editAccount.account_id}`,
@@ -1509,26 +2301,57 @@ async function updateAccount() {
         region_code: editAccount.region_code || null,
         login_name: editAccount.login_name || null,
         domain_code: editAccount.domain_code || null,
-        slot_capacity: editAccount.slot_capacity,
-        slot_reserved: editAccount.slot_reserved,
         notes: editAccount.notes || null,
+        account_date: editAccount.account_date || null,
         status_code: editAccount.status_code || 'active',
       },
       { token: auth.state.token }
     )
 
     const secretTasks = []
-    if (editAccount.primary_secret) {
+    if (editAccount.email_password) {
       secretTasks.push(
         apiPost(
           `/accounts/${editAccount.account_id}/secrets`,
-          { secret_key: editAccount.primary_key || 'primary', secret_value: editAccount.primary_secret },
+          { secret_key: editAccount.email_key || 'email_password', secret_value: editAccount.email_password },
           { token: auth.state.token }
         )
       )
-    } else if (editAccount.has_primary) {
+    } else if (editAccount.has_email) {
       secretTasks.push(
-        apiDelete(`/accounts/${editAccount.account_id}/secrets/${editAccount.primary_key || 'primary'}`, {
+        apiDelete(`/accounts/${editAccount.account_id}/secrets/${editAccount.email_key || 'email_password'}`, {
+          token: auth.state.token,
+        })
+      )
+    }
+
+    if (editAccount.account_password) {
+      secretTasks.push(
+        apiPost(
+          `/accounts/${editAccount.account_id}/secrets`,
+          { secret_key: editAccount.account_key || 'account_password', secret_value: editAccount.account_password },
+          { token: auth.state.token }
+        )
+      )
+    } else if (editAccount.has_account) {
+      secretTasks.push(
+        apiDelete(`/accounts/${editAccount.account_id}/secrets/${editAccount.account_key || 'account_password'}`, {
+          token: auth.state.token,
+        })
+      )
+    }
+
+    if (editAccount.auth_code) {
+      secretTasks.push(
+        apiPost(
+          `/accounts/${editAccount.account_id}/secrets`,
+          { secret_key: editAccount.auth_key || 'auth_code', secret_value: editAccount.auth_code },
+          { token: auth.state.token }
+        )
+      )
+    } else if (editAccount.has_auth) {
+      secretTasks.push(
+        apiDelete(`/accounts/${editAccount.account_id}/secrets/${editAccount.auth_key || 'auth_code'}`, {
           token: auth.state.token,
         })
       )
@@ -1557,13 +2380,19 @@ async function updateAccount() {
       await Promise.all(secretTasks)
     }
 
+    await apiPut(
+      `/accounts/${editAccount.account_id}/games`,
+      { game_ids: editAccount.game_ids || [] },
+      { token: auth.state.token }
+    )
+
     accountsOk.value = 'Аккаунт обновлён'
     await loadAccounts()
     cancelEditAccount()
   } catch (e) {
     accountsError.value = e?.message || 'Ошибка'
   } finally {
-    accountsLoading.value = false
+    accountSaving.value = false
   }
 }
 
@@ -1625,6 +2454,7 @@ async function createGame() {
     return
   }
   gameLoading.value = true
+  gameSaving.value = true
   try {
     await apiPost(
       '/games',
@@ -1644,6 +2474,38 @@ async function createGame() {
     gameError.value = e?.message || 'Ошибка'
   } finally {
     gameLoading.value = false
+    gameSaving.value = false
+  }
+}
+
+async function updateGame() {
+  gameError.value = null
+  gameOk.value = null
+  if (!editGame.game_id) return
+  if (!editGame.title) {
+    gameError.value = 'Укажите название игры'
+    return
+  }
+  gameLoading.value = true
+  gameSaving.value = true
+  try {
+    await apiPut(
+      `/games/${editGame.game_id}`,
+      {
+        title: editGame.title,
+        platform_code: editGame.platform_code || null,
+        region_code: editGame.region_code || null,
+      },
+      { token: auth.state.token }
+    )
+    gameOk.value = 'Игра обновлена'
+    await loadGames()
+    cancelEditGame()
+  } catch (e) {
+    gameError.value = e?.message || 'Ошибка'
+  } finally {
+    gameLoading.value = false
+    gameSaving.value = false
   }
 }
 
@@ -1655,6 +2517,7 @@ async function createDeal() {
     return
   }
   dealLoading.value = true
+  dealSaving.value = true
   try {
     await apiPost(
       '/deals',
@@ -1682,6 +2545,45 @@ async function createDeal() {
     dealError.value = e?.message || 'Ошибка'
   } finally {
     dealLoading.value = false
+    dealSaving.value = false
+  }
+}
+
+async function updateDeal() {
+  dealError.value = null
+  dealOk.value = null
+  if (!editDeal.deal_id) return
+  if (!editDeal.account_id || !editDeal.game_id || !editDeal.customer_nickname || !editDeal.platform_code) {
+    dealError.value = 'Заполните аккаунт, игру, пользователя и платформу'
+    return
+  }
+  dealLoading.value = true
+  dealSaving.value = true
+  try {
+    await apiPut(
+      `/deals/${editDeal.deal_id}`,
+      {
+        deal_type_code: editDeal.deal_type_code,
+        account_id: editDeal.account_id,
+        game_id: editDeal.game_id,
+        customer_nickname: editDeal.customer_nickname,
+        source_code: editDeal.source_code || null,
+        platform_code: editDeal.platform_code || null,
+        price: editDeal.price,
+        purchase_at: editDeal.purchase_at || null,
+        slots_used: editDeal.slots_used,
+        notes: editDeal.notes || null,
+      },
+      { token: auth.state.token }
+    )
+    dealOk.value = 'Сделка обновлена'
+    await loadDeals(dealPage.value)
+    cancelEditDeal()
+  } catch (e) {
+    dealError.value = e?.message || 'Ошибка'
+  } finally {
+    dealLoading.value = false
+    dealSaving.value = false
   }
 }
 
@@ -1712,6 +2614,136 @@ function formatDate(value) {
   return new Date(value).toLocaleString()
 }
 
+function openEditDomain(d) {
+  editDomain.open = true
+  editDomain.name = d.name
+  editDomain.original = d.name
+}
+
+function cancelEditDomain() {
+  editDomain.open = false
+  editDomain.name = ''
+  editDomain.original = ''
+}
+
+async function saveEditDomain() {
+  if (!editDomain.name) return
+  catalogsError.value = null
+  catalogsOk.value = null
+  catalogsLoading.value = true
+  catalogSaving.value = true
+  try {
+    await apiPut(`/domains/${encodeURIComponent(editDomain.original)}`, { name: editDomain.name }, { token: auth.state.token })
+    catalogsOk.value = `Домен обновлён`
+    await loadDomains()
+    cancelEditDomain()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+    catalogSaving.value = false
+  }
+}
+
+function openEditSource(s) {
+  editSource.open = true
+  editSource.code = s.code
+  editSource.name = s.name
+}
+
+function cancelEditSource() {
+  editSource.open = false
+  editSource.code = ''
+  editSource.name = ''
+}
+
+async function saveEditSource() {
+  if (!editSource.code || !editSource.name) return
+  catalogsError.value = null
+  catalogsOk.value = null
+  catalogsLoading.value = true
+  catalogSaving.value = true
+  try {
+    await apiPut(`/sources/${encodeURIComponent(editSource.code)}`, { name: editSource.name }, { token: auth.state.token })
+    catalogsOk.value = `Источник обновлён`
+    await loadSources()
+    cancelEditSource()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+    catalogSaving.value = false
+  }
+}
+
+function openEditPlatform(p) {
+  editPlatform.open = true
+  editPlatform.code = p.code
+  editPlatform.name = p.name
+  editPlatform.slot_capacity = p.slot_capacity || 0
+}
+
+function cancelEditPlatform() {
+  editPlatform.open = false
+  editPlatform.code = ''
+  editPlatform.name = ''
+  editPlatform.slot_capacity = 0
+}
+
+async function saveEditPlatform() {
+  if (!editPlatform.code || !editPlatform.name) return
+  catalogsError.value = null
+  catalogsOk.value = null
+  catalogsLoading.value = true
+  catalogSaving.value = true
+  try {
+    await apiPut(
+      `/platforms/${encodeURIComponent(editPlatform.code)}`,
+      { name: editPlatform.name, slot_capacity: editPlatform.slot_capacity },
+      { token: auth.state.token }
+    )
+    catalogsOk.value = `Платформа обновлена`
+    await loadCatalogs()
+    cancelEditPlatform()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+    catalogSaving.value = false
+  }
+}
+
+function openEditRegion(r) {
+  editRegion.open = true
+  editRegion.code = r.code
+  editRegion.name = r.name
+}
+
+function cancelEditRegion() {
+  editRegion.open = false
+  editRegion.code = ''
+  editRegion.name = ''
+}
+
+async function saveEditRegion() {
+  if (!editRegion.code || !editRegion.name) return
+  catalogsError.value = null
+  catalogsOk.value = null
+  catalogsLoading.value = true
+  catalogSaving.value = true
+  try {
+    await apiPut(`/regions/${encodeURIComponent(editRegion.code)}`, { name: editRegion.name }, { token: auth.state.token })
+    catalogsOk.value = `Регион обновлён`
+    await loadCatalogs()
+    cancelEditRegion()
+  } catch (e) {
+    catalogsError.value = e?.message || 'Ошибка'
+  } finally {
+    catalogsLoading.value = false
+    catalogSaving.value = false
+  }
+}
+
 async function createDomain() {
   catalogsError.value = null
   catalogsOk.value = null
@@ -1720,6 +2752,7 @@ async function createDomain() {
     return
   }
   catalogsLoading.value = true
+  catalogSaving.value = true
   try {
     await apiPost('/domains', { name: newDomain.value }, { token: auth.state.token })
     catalogsOk.value = `Домен ${newDomain.value} добавлен`
@@ -1729,6 +2762,7 @@ async function createDomain() {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
     catalogsLoading.value = false
+    catalogSaving.value = false
   }
 }
 
@@ -1740,6 +2774,7 @@ async function createSource() {
     return
   }
   catalogsLoading.value = true
+  catalogSaving.value = true
   try {
     await apiPost('/sources', newSource, { token: auth.state.token })
     catalogsOk.value = `Источник ${newSource.code} добавлен`
@@ -1750,6 +2785,7 @@ async function createSource() {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
     catalogsLoading.value = false
+    catalogSaving.value = false
   }
 }
 
@@ -1761,16 +2797,19 @@ async function createPlatform() {
     return
   }
   catalogsLoading.value = true
+  catalogSaving.value = true
   try {
     await apiPost('/platforms', newPlatform, { token: auth.state.token })
     catalogsOk.value = `Платформа ${newPlatform.code} добавлена`
     newPlatform.code = ''
     newPlatform.name = ''
+    newPlatform.slot_capacity = 0
     await loadCatalogs()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
     catalogsLoading.value = false
+    catalogSaving.value = false
   }
 }
 
@@ -1782,6 +2821,7 @@ async function createRegion() {
     return
   }
   catalogsLoading.value = true
+  catalogSaving.value = true
   try {
     await apiPost('/regions', newRegion, { token: auth.state.token })
     catalogsOk.value = `Регион ${newRegion.code} добавлен`
@@ -1792,6 +2832,7 @@ async function createRegion() {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
     catalogsLoading.value = false
+    catalogSaving.value = false
   }
 }
 
@@ -1800,14 +2841,17 @@ async function deleteDomain(name) {
   catalogsError.value = null
   catalogsOk.value = null
   catalogsLoading.value = true
+  catalogSaving.value = true
   try {
     await apiDelete(`/domains/${encodeURIComponent(name)}`, { token: auth.state.token })
     catalogsOk.value = `Домен ${name} удалён`
     await loadDomains()
+    if (editDomain.open && editDomain.original === name) cancelEditDomain()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
     catalogsLoading.value = false
+    catalogSaving.value = false
   }
 }
 
@@ -1816,14 +2860,17 @@ async function deleteSource(code) {
   catalogsError.value = null
   catalogsOk.value = null
   catalogsLoading.value = true
+  catalogSaving.value = true
   try {
     await apiDelete(`/sources/${encodeURIComponent(code)}`, { token: auth.state.token })
     catalogsOk.value = `Источник ${code} удалён`
     await loadSources()
+    if (editSource.open && editSource.code === code) cancelEditSource()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
     catalogsLoading.value = false
+    catalogSaving.value = false
   }
 }
 
@@ -1832,14 +2879,17 @@ async function deletePlatform(code) {
   catalogsError.value = null
   catalogsOk.value = null
   catalogsLoading.value = true
+  catalogSaving.value = true
   try {
     await apiDelete(`/platforms/${encodeURIComponent(code)}`, { token: auth.state.token })
     catalogsOk.value = `Платформа ${code} удалена`
     await loadCatalogs()
+    if (editPlatform.open && editPlatform.code === code) cancelEditPlatform()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
     catalogsLoading.value = false
+    catalogSaving.value = false
   }
 }
 
@@ -1848,84 +2898,20 @@ async function deleteRegion(code) {
   catalogsError.value = null
   catalogsOk.value = null
   catalogsLoading.value = true
+  catalogSaving.value = true
   try {
     await apiDelete(`/regions/${encodeURIComponent(code)}`, { token: auth.state.token })
     catalogsOk.value = `Регион ${code} удалён`
     await loadCatalogs()
+    if (editRegion.open && editRegion.code === code) cancelEditRegion()
   } catch (e) {
     catalogsError.value = e?.message || 'Ошибка'
   } finally {
     catalogsLoading.value = false
+    catalogSaving.value = false
   }
 }
 
-async function editDomain(name) {
-  const next = window.prompt('Новый домен', name)
-  if (!next || next === name) return
-  catalogsError.value = null
-  catalogsOk.value = null
-  catalogsLoading.value = true
-  try {
-    await apiPut(`/domains/${encodeURIComponent(name)}`, { name: next }, { token: auth.state.token })
-    catalogsOk.value = `Домен обновлён`
-    await loadDomains()
-  } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
-  } finally {
-    catalogsLoading.value = false
-  }
-}
-
-async function editSource(code, currentName) {
-  const next = window.prompt('Новое название источника', currentName)
-  if (!next || next === currentName) return
-  catalogsError.value = null
-  catalogsOk.value = null
-  catalogsLoading.value = true
-  try {
-    await apiPut(`/sources/${encodeURIComponent(code)}`, { name: next }, { token: auth.state.token })
-    catalogsOk.value = `Источник обновлён`
-    await loadSources()
-  } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
-  } finally {
-    catalogsLoading.value = false
-  }
-}
-
-async function editPlatform(code, currentName) {
-  const next = window.prompt('Новое название платформы', currentName)
-  if (!next || next === currentName) return
-  catalogsError.value = null
-  catalogsOk.value = null
-  catalogsLoading.value = true
-  try {
-    await apiPut(`/platforms/${encodeURIComponent(code)}`, { name: next }, { token: auth.state.token })
-    catalogsOk.value = `Платформа обновлена`
-    await loadCatalogs()
-  } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
-  } finally {
-    catalogsLoading.value = false
-  }
-}
-
-async function editRegion(code, currentName) {
-  const next = window.prompt('Новое название региона', currentName)
-  if (!next || next === currentName) return
-  catalogsError.value = null
-  catalogsOk.value = null
-  catalogsLoading.value = true
-  try {
-    await apiPut(`/regions/${encodeURIComponent(code)}`, { name: next }, { token: auth.state.token })
-    catalogsOk.value = `Регион обновлён`
-    await loadCatalogs()
-  } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
-  } finally {
-    catalogsLoading.value = false
-  }
-}
 
 function onLogout() {
   auth.logout()
@@ -1958,6 +2944,7 @@ watch(activeTab, async (tab) => {
     }
     showGameForm.value = false
     showGameFilters.value = false
+    editGame.open = false
     return
   }
   if (tab === 'accounts') {
@@ -1966,6 +2953,9 @@ watch(activeTab, async (tab) => {
     }
     if (!domains.value.length) {
       await loadDomains()
+    }
+    if (!games.value.length) {
+      await loadGames()
     }
     await loadAccounts()
     showAccountForm.value = false
@@ -1992,6 +2982,12 @@ watch(activeTab, async (tab) => {
     showUserForm.value = false
   }
 }, { immediate: true })
+
+watch([showAccountForm, () => editAccount.open], async ([showForm, showEdit]) => {
+  if ((showForm || showEdit) && !domains.value.length) {
+    await loadDomains()
+  }
+})
 
 </script>
 
@@ -2613,6 +3609,24 @@ h3 {
   align-items: center;
 }
 
+.check-list {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -2738,6 +3752,49 @@ table.table {
 
 .table tbody tr:hover td {
   background: rgba(62, 232, 181, 0.08);
+}
+
+.clickable-row {
+  cursor: pointer;
+}
+
+.clickable-row td {
+  transition: background 0.2s ease;
+}
+
+.clickable-row:hover td {
+  background: rgba(88, 130, 255, 0.08);
+}
+
+.clickable-cell {
+  cursor: pointer;
+}
+
+.clickable-cell:hover {
+  text-decoration: underline;
+}
+
+.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.sortable:hover {
+  color: #0f172a;
+}
+
+.row-active td {
+  background: rgba(247, 185, 85, 0.18);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: grid;
+  place-items: center;
 }
 
 .status {

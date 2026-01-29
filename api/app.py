@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from typing import Optional, List, Tuple
 
 from fastapi import FastAPI, HTTPException, Depends, Header
@@ -50,8 +50,7 @@ class AccountCreate(BaseModel):
     region_code: Optional[str] = Field(None, description="RU/TR/US/EU")
     login_name: Optional[str] = None
     domain_code: Optional[str] = Field(None, description="email domain, e.g. example.com")
-    slot_capacity: int = 1
-    slot_reserved: int = 0
+    account_date: Optional[date] = None
     notes: Optional[str] = None
 
 class AccountUpdate(BaseModel):
@@ -60,8 +59,7 @@ class AccountUpdate(BaseModel):
     login_name: Optional[str] = None
     domain_code: Optional[str] = None
     status_code: Optional[str] = None
-    slot_capacity: Optional[int] = None
-    slot_reserved: Optional[int] = None
+    account_date: Optional[date] = None
     notes: Optional[str] = None
 
 class AccountOut(BaseModel):
@@ -73,13 +71,18 @@ class AccountOut(BaseModel):
     domain_code: Optional[str]
     login_full: Optional[str]
     slot_capacity: int
-    slot_reserved: int
     occupied_slots: int
     free_slots: int
+    account_date: Optional[date] = None
     notes: Optional[str] = None
 
 class GameCreate(BaseModel):
     title: str
+    platform_code: Optional[str] = None
+    region_code: Optional[str] = None
+
+class GameUpdate(BaseModel):
+    title: Optional[str] = None
     platform_code: Optional[str] = None
     region_code: Optional[str] = None
 
@@ -92,6 +95,7 @@ class GameOut(BaseModel):
 class PlatformOut(BaseModel):
     code: str
     name: str
+    slot_capacity: int
 
 class RegionOut(BaseModel):
     code: str
@@ -100,6 +104,11 @@ class RegionOut(BaseModel):
 class PlatformIn(BaseModel):
     code: str
     name: str
+    slot_capacity: int = 0
+
+class PlatformUpdate(BaseModel):
+    name: Optional[str] = None
+    slot_capacity: Optional[int] = None
 
 class RegionIn(BaseModel):
     code: str
@@ -165,9 +174,24 @@ class DealCreate(BaseModel):
     slots_used: int = 1
     notes: Optional[str] = None
 
+class DealUpdate(BaseModel):
+    deal_type_code: Optional[str] = None
+    account_id: Optional[int] = None
+    game_id: Optional[int] = None
+    customer_nickname: Optional[str] = None
+    source_code: Optional[str] = None
+    platform_code: Optional[str] = None
+    price: Optional[float] = None
+    purchase_at: Optional[datetime] = None
+    start_at: Optional[datetime] = None
+    end_at: Optional[datetime] = None
+    slots_used: Optional[int] = None
+    notes: Optional[str] = None
+
 class DealListItem(BaseModel):
     deal_id: int
     deal_type: str
+    deal_type_code: Optional[str] = None
     status: str
     account_id: int
     account_login: Optional[str]
@@ -179,6 +203,8 @@ class DealListItem(BaseModel):
     price: float
     purchase_at: Optional[datetime]
     created_at: datetime
+    slots_used: Optional[int] = None
+    notes: Optional[str] = None
 
 class DealListOut(BaseModel):
     total: int
@@ -202,6 +228,16 @@ class AccountSecretOut(BaseModel):
     secret_key: str
     secret_value_b64: str
     created_at: datetime
+
+class AccountGamesIn(BaseModel):
+    game_ids: List[int]
+
+class GameAccountOut(BaseModel):
+    account_id: int
+    login_full: Optional[str]
+    platform_code: str
+    free_slots: int
+    occupied_slots: int
 
 # ----------------------------
 # DB helpers
@@ -227,6 +263,12 @@ def get_platform_id(conn, code: str) -> int:
     if not row:
         raise HTTPException(400, f"Unknown platform_code: {code}")
     return int(row[0])
+
+def get_platform_info(conn, code: str) -> tuple[int, int]:
+    row = q1(conn, "SELECT platform_id, slot_capacity FROM app.platforms WHERE code=%s", (code,))
+    if not row:
+        raise HTTPException(400, f"Unknown platform_code: {code}")
+    return int(row[0]), int(row[1] or 0)
 
 def get_region_id(conn, code: Optional[str]) -> Optional[int]:
     if not code:
@@ -263,6 +305,22 @@ def ensure_game_exists(conn, game_id: Optional[int]):
     row = q1(conn, "SELECT 1 FROM app.game_titles WHERE game_id=%s", (game_id,))
     if not row:
         raise HTTPException(400, f"Unknown game_id: {game_id}")
+
+def ensure_customer(conn, nickname: Optional[str], source_code: Optional[str]) -> Optional[int]:
+    if not nickname:
+        return None
+    row = q1(conn, "SELECT customer_id, source_code FROM app.customers WHERE nickname=%s", (nickname,))
+    if row:
+        customer_id = int(row[0])
+        if source_code and row[1] != source_code:
+            exec1(conn, "UPDATE app.customers SET source_code=%s WHERE customer_id=%s", (source_code, customer_id))
+        return customer_id
+    row = q1(
+        conn,
+        "INSERT INTO app.customers(nickname, source_code) VALUES (%s, %s) RETURNING customer_id",
+        (nickname, source_code),
+    )
+    return int(row[0])
 
 def ensure_source_exists(conn, code: Optional[str]):
     if not code:
@@ -424,8 +482,8 @@ def me(user: UserOut = Depends(get_current_user)):
 @app.get("/platforms", response_model=List[PlatformOut])
 def list_platforms(user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
-        rows = qall(conn, "SELECT code, name FROM app.platforms ORDER BY code")
-    return [PlatformOut(code=r0, name=r1) for (r0, r1) in rows]
+        rows = qall(conn, "SELECT code, name, slot_capacity FROM app.platforms ORDER BY code")
+    return [PlatformOut(code=r0, name=r1, slot_capacity=r2) for (r0, r1, r2) in rows]
 
 @app.get("/regions", response_model=List[RegionOut])
 def list_regions(user: UserOut = Depends(get_current_user)):
@@ -442,21 +500,23 @@ def create_platform(payload: PlatformIn, user: UserOut = Depends(require_role("a
     with psycopg.connect(DB_DSN) as conn:
         exec1(
             conn,
-            "INSERT INTO app.platforms(code, name) VALUES (%s, %s) ON CONFLICT (code) DO NOTHING",
-            (code, name),
+            "INSERT INTO app.platforms(code, name, slot_capacity) VALUES (%s, %s, %s) ON CONFLICT (code) DO NOTHING",
+            (code, name, payload.slot_capacity),
         )
         conn.commit()
-    return PlatformOut(code=code, name=name)
+    return PlatformOut(code=code, name=name, slot_capacity=payload.slot_capacity)
 
 @app.put("/platforms/{code}", response_model=PlatformOut)
-def update_platform(code: str, payload: NameUpdate, user: UserOut = Depends(require_role("admin"))):
-    name = (payload.name or "").strip()
-    if not name:
-        raise HTTPException(400, "Name is required")
+def update_platform(code: str, payload: PlatformUpdate, user: UserOut = Depends(require_role("admin"))):
     with psycopg.connect(DB_DSN) as conn:
-        exec1(conn, "UPDATE app.platforms SET name=%s WHERE code=%s", (name, code))
+        row = q1(conn, "SELECT name, slot_capacity FROM app.platforms WHERE code=%s", (code,))
+        if not row:
+            raise HTTPException(404, "Platform not found")
+        new_name = (payload.name or row[0]).strip()
+        new_slots = payload.slot_capacity if payload.slot_capacity is not None else row[1]
+        exec1(conn, "UPDATE app.platforms SET name=%s, slot_capacity=%s WHERE code=%s", (new_name, new_slots, code))
         conn.commit()
-    return PlatformOut(code=code, name=name)
+    return PlatformOut(code=code, name=new_name, slot_capacity=new_slots)
 
 @app.delete("/platforms/{code}")
 def delete_platform(code: str, user: UserOut = Depends(require_role("admin"))):
@@ -507,13 +567,13 @@ def delete_region(code: str, user: UserOut = Depends(require_role("admin"))):
 def list_domains(user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
         rows = qall(conn, "SELECT name, name FROM app.domains ORDER BY name")
-    return [PlatformOut(code=r0, name=r1) for (r0, r1) in rows]
+    return [PlatformOut(code=r0, name=r1, slot_capacity=0) for (r0, r1) in rows]
 
 @app.get("/sources", response_model=List[PlatformOut])
 def list_sources(user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
         rows = qall(conn, "SELECT code, name FROM app.sources ORDER BY code")
-    return [PlatformOut(code=r0, name=r1) for (r0, r1) in rows]
+    return [PlatformOut(code=r0, name=r1, slot_capacity=0) for (r0, r1) in rows]
 
 @app.post("/domains", response_model=PlatformOut)
 def create_domain(payload: DomainIn, user: UserOut = Depends(require_role("admin"))):
@@ -527,7 +587,7 @@ def create_domain(payload: DomainIn, user: UserOut = Depends(require_role("admin
             (name,),
         )
         conn.commit()
-    return PlatformOut(code=name, name=name)
+    return PlatformOut(code=name, name=name, slot_capacity=0)
 
 @app.put("/domains/{name}", response_model=PlatformOut)
 def update_domain(name: str, payload: NameUpdate, user: UserOut = Depends(require_role("admin"))):
@@ -537,7 +597,7 @@ def update_domain(name: str, payload: NameUpdate, user: UserOut = Depends(requir
     with psycopg.connect(DB_DSN) as conn:
         exec1(conn, "UPDATE app.domains SET name=%s WHERE name=%s", (new_name, name))
         conn.commit()
-    return PlatformOut(code=new_name, name=new_name)
+    return PlatformOut(code=new_name, name=new_name, slot_capacity=0)
 
 @app.delete("/domains/{name}")
 def delete_domain(name: str, user: UserOut = Depends(require_role("admin"))):
@@ -562,7 +622,7 @@ def create_source(payload: SourceIn, user: UserOut = Depends(require_role("admin
             (code, name),
         )
         conn.commit()
-    return PlatformOut(code=code, name=name)
+    return PlatformOut(code=code, name=name, slot_capacity=0)
 
 @app.put("/sources/{code}", response_model=PlatformOut)
 def update_source(code: str, payload: NameUpdate, user: UserOut = Depends(require_role("admin"))):
@@ -572,7 +632,7 @@ def update_source(code: str, payload: NameUpdate, user: UserOut = Depends(requir
     with psycopg.connect(DB_DSN) as conn:
         exec1(conn, "UPDATE app.sources SET name=%s WHERE code=%s", (name, code))
         conn.commit()
-    return PlatformOut(code=code, name=name)
+    return PlatformOut(code=code, name=name, slot_capacity=0)
 
 @app.delete("/sources/{code}")
 def delete_source(code: str, user: UserOut = Depends(require_role("admin"))):
@@ -658,10 +718,10 @@ def list_accounts(user: UserOut = Depends(get_current_user)):
               a.status_code,
               a.login_name,
               d.name as domain_name,
-              a.slot_capacity,
-              a.slot_reserved,
               s.occupied_slots,
               s.free_slots,
+              s.slot_capacity,
+              a.account_date,
               a.notes
             FROM app.accounts a
             JOIN app.platforms p ON p.platform_id = a.platform_id
@@ -676,8 +736,9 @@ def list_accounts(user: UserOut = Depends(get_current_user)):
             account_id=row[0], platform_code=row[1], region_code=row[2],
             status=row[3], login_name=row[4], domain_code=row[5],
             login_full=f"{row[4]}@{row[5]}" if row[4] and row[5] else None,
-            slot_capacity=row[6], slot_reserved=row[7],
-            occupied_slots=row[8] or 0, free_slots=row[9] or 0,
+            slot_capacity=row[8] or 0,
+            occupied_slots=row[6] or 0, free_slots=row[7] or 0,
+            account_date=row[9],
             notes=row[10]
         )
         for row in rows
@@ -685,22 +746,20 @@ def list_accounts(user: UserOut = Depends(get_current_user)):
 
 @app.post("/accounts", response_model=AccountOut)
 def create_account(payload: AccountCreate, user: UserOut = Depends(get_current_user)):
-    if payload.slot_capacity < payload.slot_reserved:
-        raise HTTPException(400, "slot_capacity must be >= slot_reserved")
     if not payload.login_name or not payload.domain_code:
         raise HTTPException(400, "login_name and domain_code are required")
     with psycopg.connect(DB_DSN) as conn:
-        platform_id = get_platform_id(conn, payload.platform_code)
+        platform_id, platform_slots = get_platform_info(conn, payload.platform_code)
         region_id = get_region_id(conn, payload.region_code)
         domain_id = get_domain_id(conn, payload.domain_code)
 
         row = q1(conn, """
-            INSERT INTO app.accounts(login_name, domain_id, platform_id, region_id, slot_capacity, slot_reserved, notes)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO app.accounts(login_name, domain_id, platform_id, region_id, slot_capacity, slot_reserved, notes, account_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING account_id
         """, (
             payload.login_name, domain_id,
-            platform_id, region_id, payload.slot_capacity, payload.slot_reserved, payload.notes
+            platform_id, region_id, platform_slots, 0, payload.notes, payload.account_date
         ))
         account_id = int(row[0])
         conn.commit()
@@ -714,10 +773,10 @@ def create_account(payload: AccountCreate, user: UserOut = Depends(get_current_u
             login_name=payload.login_name,
             domain_code=payload.domain_code,
             login_full=f"{payload.login_name}@{payload.domain_code}" if payload.login_name and payload.domain_code else None,
-            slot_capacity=payload.slot_capacity,
-            slot_reserved=payload.slot_reserved,
+            slot_capacity=platform_slots,
             occupied_slots=occ,
             free_slots=free,
+            account_date=payload.account_date,
             notes=payload.notes
         )
 
@@ -727,14 +786,11 @@ def update_account(
     payload: AccountUpdate,
     user: UserOut = Depends(require_role("admin")),
 ):
-    if payload.slot_capacity is not None and payload.slot_reserved is not None:
-        if payload.slot_capacity < payload.slot_reserved:
-            raise HTTPException(400, "slot_capacity must be >= slot_reserved")
     with psycopg.connect(DB_DSN) as conn:
         current = q1(
             conn,
             """
-            SELECT login_name, domain_id, platform_id, region_id, status_code, slot_capacity, slot_reserved, notes
+            SELECT login_name, domain_id, platform_id, region_id, status_code, account_date, notes
             FROM app.accounts
             WHERE account_id=%s
             """,
@@ -743,18 +799,20 @@ def update_account(
         if not current:
             raise HTTPException(404, "Account not found")
 
-        platform_id = get_platform_id(conn, payload.platform_code) if payload.platform_code else current[2]
+        platform_id = current[2]
+        platform_slots = None
+        if payload.platform_code:
+            platform_id, platform_slots = get_platform_info(conn, payload.platform_code)
+        else:
+            platform_slots = q1(conn, "SELECT slot_capacity FROM app.platforms WHERE platform_id=%s", (platform_id,))[0]
+
         region_id = get_region_id(conn, payload.region_code) if payload.region_code else current[3]
         domain_id = get_domain_id(conn, payload.domain_code) if payload.domain_code else current[1]
 
         new_login = payload.login_name if payload.login_name is not None else current[0]
         new_status = payload.status_code if payload.status_code is not None else current[4]
-        new_capacity = payload.slot_capacity if payload.slot_capacity is not None else current[5]
-        new_reserved = payload.slot_reserved if payload.slot_reserved is not None else current[6]
-        new_notes = payload.notes if payload.notes is not None else current[7]
-
-        if new_capacity < new_reserved:
-            raise HTTPException(400, "slot_capacity must be >= slot_reserved")
+        new_date = payload.account_date if payload.account_date is not None else current[5]
+        new_notes = payload.notes if payload.notes is not None else current[6]
 
         exec1(
             conn,
@@ -767,7 +825,8 @@ def update_account(
                 status_code=%s,
                 slot_capacity=%s,
                 slot_reserved=%s,
-                notes=%s
+                notes=%s,
+                account_date=%s
             WHERE account_id=%s
             """,
             (
@@ -776,9 +835,10 @@ def update_account(
                 platform_id,
                 region_id,
                 new_status,
-                new_capacity,
-                new_reserved,
+                int(platform_slots or 0),
+                0,
                 new_notes,
+                new_date,
                 account_id,
             ),
         )
@@ -794,10 +854,10 @@ def update_account(
               a.status_code,
               a.login_name,
               d.name as domain_name,
-              a.slot_capacity,
-              a.slot_reserved,
               s.occupied_slots,
               s.free_slots,
+              s.slot_capacity,
+              a.account_date,
               a.notes
             FROM app.accounts a
             JOIN app.platforms p ON p.platform_id = a.platform_id
@@ -815,8 +875,9 @@ def update_account(
         account_id=row[0], platform_code=row[1], region_code=row[2],
         status=row[3], login_name=row[4], domain_code=row[5],
         login_full=f"{row[4]}@{row[5]}" if row[4] and row[5] else None,
-        slot_capacity=row[6], slot_reserved=row[7],
-        occupied_slots=row[8] or 0, free_slots=row[9] or 0,
+        slot_capacity=row[8] or 0,
+        occupied_slots=row[6] or 0, free_slots=row[7] or 0,
+        account_date=row[9],
         notes=row[10]
     )
 
@@ -877,6 +938,89 @@ def delete_account_secret(
         conn.commit()
     return {"ok": True}
 
+@app.get("/accounts/{account_id}/games", response_model=List[GameOut])
+def list_account_games(account_id: int, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        ensure_account_exists(conn, account_id)
+        rows = qall(
+            conn,
+            """
+            SELECT g.game_id, g.title, p.code, r.code
+            FROM app.account_assets aa
+            JOIN app.game_titles g ON g.game_id = aa.game_id
+            LEFT JOIN app.platforms p ON p.platform_id = g.platform_id
+            LEFT JOIN app.regions r ON r.region_id = g.region_id
+            WHERE aa.account_id=%s AND aa.asset_type_code='game'
+            ORDER BY g.title
+            """,
+            (account_id,),
+        )
+    return [GameOut(game_id=r0, title=r1, platform_code=r2, region_code=r3) for (r0, r1, r2, r3) in rows]
+
+@app.put("/accounts/{account_id}/games")
+def set_account_games(
+    account_id: int,
+    payload: AccountGamesIn,
+    user: UserOut = Depends(require_role("admin")),
+):
+    with psycopg.connect(DB_DSN) as conn:
+        ensure_account_exists(conn, account_id)
+        game_ids = list({int(g) for g in (payload.game_ids or [])})
+        if game_ids:
+            rows = qall(conn, "SELECT game_id FROM app.game_titles WHERE game_id = ANY(%s)", (game_ids,))
+            valid_ids = [int(r[0]) for r in rows]
+        else:
+            valid_ids = []
+
+        exec1(
+            conn,
+            "DELETE FROM app.account_assets WHERE account_id=%s AND asset_type_code='game'",
+            (account_id,),
+        )
+        if valid_ids:
+            with conn.cursor() as cur:
+                cur.executemany(
+                    "INSERT INTO app.account_assets(account_id, game_id, asset_type_code) VALUES (%s, %s, 'game')",
+                    [(account_id, gid) for gid in valid_ids],
+                )
+        conn.commit()
+    return {"ok": True}
+
+@app.get("/games/{game_id}/accounts", response_model=List[GameAccountOut])
+def list_game_accounts(game_id: int, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        ensure_game_exists(conn, game_id)
+        rows = qall(
+            conn,
+            """
+            SELECT
+              a.account_id,
+              a.login_name,
+              d.name as domain_name,
+              p.code as platform_code,
+              s.free_slots,
+              s.occupied_slots
+            FROM app.account_assets aa
+            JOIN app.accounts a ON a.account_id = aa.account_id
+            LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+            JOIN app.platforms p ON p.platform_id = a.platform_id
+            LEFT JOIN app.v_account_slots s ON s.account_id = a.account_id
+            WHERE aa.game_id=%s AND aa.asset_type_code='game'
+            ORDER BY a.account_id DESC
+            """,
+            (game_id,),
+        )
+    return [
+        GameAccountOut(
+            account_id=r0,
+            login_full=f"{r1}@{r2}" if r1 and r2 else None,
+            platform_code=r3,
+            free_slots=int(r4 or 0),
+            occupied_slots=int(r5 or 0),
+        )
+        for (r0, r1, r2, r3, r4, r5) in rows
+    ]
+
 @app.get("/games", response_model=List[GameOut])
 def list_games(q: Optional[str] = None, user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
@@ -916,6 +1060,48 @@ def create_game(payload: GameCreate, user: UserOut = Depends(get_current_user)):
         conn.commit()
 
     return GameOut(game_id=gid, title=payload.title, platform_code=payload.platform_code, region_code=payload.region_code)
+
+@app.put("/games/{game_id}", response_model=GameOut)
+def update_game(game_id: int, payload: GameUpdate, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        row = q1(
+            conn,
+            """
+            SELECT g.title, p.code, r.code
+            FROM app.game_titles g
+            LEFT JOIN app.platforms p ON p.platform_id = g.platform_id
+            LEFT JOIN app.regions r ON r.region_id = g.region_id
+            WHERE g.game_id=%s
+            """,
+            (game_id,),
+        )
+        if not row:
+            raise HTTPException(404, "Game not found")
+
+        new_title = payload.title if payload.title is not None else row[0]
+        if not new_title:
+            raise HTTPException(400, "title is required")
+
+        if payload.platform_code is None:
+            platform_code = row[1]
+        else:
+            platform_code = payload.platform_code or None
+        if payload.region_code is None:
+            region_code = row[2]
+        else:
+            region_code = payload.region_code or None
+
+        platform_id = get_platform_id_optional(conn, platform_code)
+        region_id = get_region_id(conn, region_code)
+
+        exec1(
+            conn,
+            "UPDATE app.game_titles SET title=%s, platform_id=%s, region_id=%s WHERE game_id=%s",
+            (new_title, platform_id, region_id, game_id),
+        )
+        conn.commit()
+
+    return GameOut(game_id=game_id, title=new_title, platform_code=platform_code, region_code=region_code)
 
 @app.post("/rentals")
 def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_user)):
@@ -1037,6 +1223,121 @@ def create_deal(payload: DealCreate, user: UserOut = Depends(get_current_user)):
 
         return {"deal_id": deal_id}
 
+@app.put("/deals/{deal_id}")
+def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        row = q1(
+            conn,
+            """
+            SELECT
+              d.deal_type_code,
+              d.status_code,
+              d.customer_id,
+              d.total_amount,
+              di.deal_item_id,
+              di.account_id,
+              di.game_id,
+              di.platform_id,
+              di.price,
+              di.purchase_at,
+              di.start_at,
+              di.end_at,
+              di.slots_used,
+              di.notes
+            FROM app.deals d
+            JOIN app.deal_items di ON di.deal_id = d.deal_id
+            WHERE d.deal_id=%s
+            ORDER BY di.deal_item_id ASC
+            LIMIT 1
+            """,
+            (deal_id,),
+        )
+        if not row:
+            raise HTTPException(404, "Deal not found")
+
+        current_type, status_code, customer_id, total_amount, deal_item_id, \
+            account_id, game_id, platform_id, price, purchase_at, start_at, end_at, slots_used, notes = row
+
+        deal_type = (payload.deal_type_code or current_type or "").strip().lower()
+        if deal_type not in ("sale", "rental"):
+            raise HTTPException(400, "deal_type_code must be sale or rental")
+
+        new_account_id = payload.account_id if payload.account_id is not None else account_id
+        new_game_id = payload.game_id if payload.game_id is not None else game_id
+        ensure_account_exists(conn, new_account_id)
+        ensure_game_exists(conn, new_game_id)
+        ensure_source_exists(conn, payload.source_code if payload.source_code is not None else None)
+
+        new_platform_id = platform_id
+        if payload.platform_code is not None:
+            new_platform_id = get_platform_id_optional(conn, payload.platform_code)
+
+        # customer update
+        cust_nickname = payload.customer_nickname
+        cust_source = payload.source_code if payload.source_code is not None else None
+        if cust_nickname:
+            customer_id = ensure_customer(conn, cust_nickname, cust_source)
+
+        new_price = payload.price if payload.price is not None else price
+        new_purchase_at = payload.purchase_at if payload.purchase_at is not None else purchase_at
+        new_start_at = payload.start_at if payload.start_at is not None else start_at
+        new_end_at = payload.end_at if payload.end_at is not None else end_at
+        new_notes = payload.notes if payload.notes is not None else notes
+        new_slots_used = payload.slots_used if payload.slots_used is not None else slots_used
+        if deal_type == "sale":
+            new_slots_used = 0
+        if deal_type == "rental" and new_slots_used <= 0:
+            raise HTTPException(400, "slots_used must be >= 1 for rental")
+
+        # check slots for rental
+        if deal_type == "rental":
+            occ, free = slots_summary(conn, new_account_id)
+            free_adjusted = free + (slots_used if new_account_id == account_id else 0)
+            if free_adjusted < new_slots_used:
+                raise HTTPException(409, f"Not enough free slots. free_slots={free_adjusted}, requested={new_slots_used}")
+
+        exec1(
+            conn,
+            """
+            UPDATE app.deals
+            SET deal_type_code=%s, customer_id=%s, total_amount=%s
+            WHERE deal_id=%s
+            """,
+            (deal_type, customer_id, new_price, deal_id),
+        )
+
+        exec1(
+            conn,
+            """
+            UPDATE app.deal_items
+            SET account_id=%s,
+                game_id=%s,
+                platform_id=%s,
+                price=%s,
+                purchase_at=%s,
+                start_at=%s,
+                end_at=%s,
+                slots_used=%s,
+                notes=%s
+            WHERE deal_item_id=%s
+            """,
+            (
+                new_account_id,
+                new_game_id,
+                new_platform_id,
+                new_price,
+                new_purchase_at,
+                new_start_at,
+                new_end_at,
+                new_slots_used,
+                new_notes,
+                deal_item_id,
+            ),
+        )
+        conn.commit()
+
+    return {"ok": True}
+
 @app.get("/deals", response_model=DealListOut)
 def list_deals(
     account_id: Optional[int] = None,
@@ -1073,6 +1374,7 @@ def list_deals(
             SELECT
               d.deal_id,
               dt.name as deal_type_name,
+              dt.code as deal_type_code,
               ds.name as status_name,
               di.account_id,
               a.login_name,
@@ -1084,7 +1386,9 @@ def list_deals(
               c.source_code,
               di.price,
               di.purchase_at,
-              d.created_at
+              d.created_at,
+              di.slots_used,
+              di.notes
             FROM app.deal_items di
             JOIN app.deals d ON d.deal_id = di.deal_id
             LEFT JOIN app.deal_types dt ON dt.code = d.deal_type_code
@@ -1101,22 +1405,25 @@ def list_deals(
 
     items = []
     for r in rows:
-        login_full = f"{r[4]}@{r[5]}" if r[4] and r[5] else None
+        login_full = f"{r[5]}@{r[6]}" if r[5] and r[6] else None
         items.append(
             DealListItem(
                 deal_id=r[0],
                 deal_type=r[1],
-                status=r[2],
-                account_id=r[3],
+                deal_type_code=r[2],
+                status=r[3],
+                account_id=r[4],
                 account_login=login_full,
-                game_id=r[6],
-                game_title=r[7],
-                platform_code=r[8],
-                customer_nickname=r[9],
-                source_code=r[10],
-                price=float(r[11] or 0),
-                purchase_at=r[12],
-                created_at=r[13],
+                game_id=r[7],
+                game_title=r[8],
+                platform_code=r[9],
+                customer_nickname=r[10],
+                source_code=r[11],
+                price=float(r[12] or 0),
+                purchase_at=r[13],
+                created_at=r[14],
+                slots_used=r[15],
+                notes=r[16],
             )
         )
 

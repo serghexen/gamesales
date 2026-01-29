@@ -4,12 +4,14 @@ COMMENT ON SCHEMA app IS 'Схема приложения GameSales';
 CREATE TABLE IF NOT EXISTS app.platforms (
   platform_id  smallserial PRIMARY KEY,
   code         text NOT NULL UNIQUE,
-  name         text NOT NULL
+  name         text NOT NULL,
+  slot_capacity integer NOT NULL DEFAULT 0
 );
 COMMENT ON TABLE app.platforms IS 'Справочник платформ';
 COMMENT ON COLUMN app.platforms.platform_id IS 'Идентификатор платформы';
 COMMENT ON COLUMN app.platforms.code IS 'Код платформы (steam/psn/xbox/epic)';
 COMMENT ON COLUMN app.platforms.name IS 'Название платформы';
+COMMENT ON COLUMN app.platforms.slot_capacity IS 'Слотов на аккаунт для платформы';
 
 CREATE TABLE IF NOT EXISTS app.regions (
   region_id smallserial PRIMARY KEY,
@@ -92,6 +94,7 @@ CREATE TABLE IF NOT EXISTS app.accounts (
   region_id      smallint REFERENCES app.regions(region_id),
   status_code    text NOT NULL DEFAULT 'active' REFERENCES app.account_statuses(code),
   created_at     timestamptz NOT NULL DEFAULT now(),
+  account_date   date,
   notes          text,
   slot_capacity  integer NOT NULL DEFAULT 1,
   slot_reserved  integer NOT NULL DEFAULT 0,
@@ -107,6 +110,7 @@ COMMENT ON COLUMN app.accounts.platform_id IS 'Платформа аккаунт
 COMMENT ON COLUMN app.accounts.region_id IS 'Регион аккаунта';
 COMMENT ON COLUMN app.accounts.status_code IS 'Статус аккаунта';
 COMMENT ON COLUMN app.accounts.created_at IS 'Дата создания аккаунта';
+COMMENT ON COLUMN app.accounts.account_date IS 'Дата аккаунта';
 COMMENT ON COLUMN app.accounts.notes IS 'Заметки';
 COMMENT ON COLUMN app.accounts.slot_capacity IS 'Всего слотов';
 COMMENT ON COLUMN app.accounts.slot_reserved IS 'Зарезервировано слотов';
@@ -222,8 +226,7 @@ COMMENT ON COLUMN app.deal_items.notes IS 'Заметки';
 CREATE OR REPLACE VIEW app.v_account_slots AS
 SELECT
   a.account_id,
-  a.slot_capacity,
-  a.slot_reserved,
+  p.slot_capacity,
   COALESCE(SUM(
     CASE
       WHEN d.deal_type_code = 'rental'
@@ -236,7 +239,7 @@ SELECT
     END
   ), 0) AS occupied_slots,
   GREATEST(
-    a.slot_capacity - a.slot_reserved - COALESCE(SUM(
+    p.slot_capacity - COALESCE(SUM(
     CASE
       WHEN d.deal_type_code = 'rental'
        AND d.status_code = 'confirmed'
@@ -250,12 +253,13 @@ SELECT
     0
   ) AS free_slots
 FROM app.accounts a
+JOIN app.platforms p ON p.platform_id = a.platform_id
 LEFT JOIN app.deal_items di ON di.account_id = a.account_id
 LEFT JOIN app.deals d ON d.deal_id = di.deal_id
-GROUP BY a.account_id, a.slot_capacity, a.slot_reserved;
+GROUP BY a.account_id, p.slot_capacity;
 
 INSERT INTO app.platforms(code, name)
-VALUES ('steam','Steam'),('xbox','Xbox'),('epic','Epic Games')
+VALUES ('ps4','PlayStation'),('ps5','PlayStation')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO app.regions(code, name)
