@@ -59,14 +59,37 @@
               class="tab"
               :class="{ active: activeTab === 'users' }"
               @click="activeTab = 'users'"
+              style="display:none"
             >
               Пользователи
             </button>
-            <button class="tab" :class="{ active: activeTab === 'profile' }" @click="activeTab = 'profile'">
-              Профиль
-            </button>
           </nav>
-          <button class="danger" @click="onLogout">Выйти</button>
+          <div class="tabs tabs--right">
+            <button
+              class="tab tab--icon"
+              :class="{ active: activeTab === 'profile' }"
+              @click="activeTab = 'profile'"
+              aria-label="Профиль"
+              title="Профиль"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" />
+                <path d="M4 20a8 8 0 0 1 16 0" />
+              </svg>
+            </button>
+            <button
+              class="tab tab--icon tab--danger"
+              @click="onLogout"
+              aria-label="Выйти"
+              title="Выйти"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                <path d="M10 17l5-5-5-5" />
+                <path d="M15 12H3" />
+              </svg>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -118,6 +141,20 @@
               <p class="muted">Сменить пароль текущего пользователя.</p>
             </div>
             <div class="toolbar-actions">
+              <button
+                v-if="isAdmin"
+                class="btn btn--icon btn--glow btn--glow-add"
+                title="Пользователи"
+                aria-label="Пользователи"
+                @click="activeTab = 'users'"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" />
+                  <path d="M8 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3Z" />
+                  <path d="M2 20a6 6 0 0 1 12 0" />
+                  <path d="M14 20a5 5 0 0 1 8 0" />
+                </svg>
+              </button>
               <button
                 class="btn btn--icon btn--glow btn--glow-eye"
                 title="Сменить пароль"
@@ -205,16 +242,6 @@
                 </svg>
               </button>
               <button
-                class="btn btn--icon btn--glow btn--glow-filter"
-                :aria-label="showAccountFilters ? 'Скрыть фильтры' : 'Фильтр'"
-                :title="showAccountFilters ? 'Скрыть фильтры' : 'Фильтр'"
-                @click="showAccountFilters = !showAccountFilters"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M4 6h16M7 12h10M10 18h4" />
-                </svg>
-              </button>
-              <button
                 class="btn btn--icon btn--glow btn--glow-eye"
                 :aria-label="showPasswords ? 'Скрыть пароли' : 'Показать пароли'"
                 :title="showPasswords ? 'Скрыть пароли' : 'Показать пароли'"
@@ -248,40 +275,7 @@
             </div>
           </div>
           <div class="panel__body">
-            <div v-if="showAccountFilters" class="form form--stack form--card form--compact">
-              <label class="field">
-                <span class="label">Поиск</span>
-                <input v-model.trim="accountFilters.q" class="input" placeholder="логин / домен" />
-              </label>
-              <label class="field">
-                <span class="label">Платформа</span>
-                <select v-model="accountFilters.platform_code" class="input input--select">
-                  <option value="">Все</option>
-                  <option v-for="p in platforms" :key="p.code" :value="p.code">
-                    {{ p.name }} ({{ p.code }}) — {{ p.slot_capacity }} сл.
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Сортировка</span>
-                <select v-model="accountSort" class="input input--select">
-                  <option value="login_asc">Логин ↑</option>
-                  <option value="login_desc">Логин ↓</option>
-                  <option value="platform_asc">Платформа ↑</option>
-                  <option value="platform_desc">Платформа ↓</option>
-                  <option value="region_asc">Регион ↑</option>
-                  <option value="region_desc">Регион ↓</option>
-                  <option value="status_asc">Статус ↑</option>
-                  <option value="status_desc">Статус ↓</option>
-                  <option value="slots_desc">Слоты ↓</option>
-                  <option value="slots_asc">Слоты ↑</option>
-                  <option value="date_desc">Дата ↓</option>
-                  <option value="date_asc">Дата ↑</option>
-                </select>
-              </label>
-            </div>
-
-            <div v-if="accountsLoading" class="loader-wrap">
+            <div v-if="accountsLoading" class="loader-wrap loader-overlay">
               <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
                 <div class="wheel"></div>
                 <div class="hamster">
@@ -300,27 +294,196 @@
                 </div>
                 <div class="spoke"></div>
               </div>
-              <p class="muted">Загрузка аккаунтов…</p>
             </div>
 
-            <table v-else-if="sortedAccounts.length" class="table table--compact">
+            <div v-else-if="activeAccountChips.length" class="chip-row">
+              <button class="chip chip--reset" type="button" @click="resetAccountFilter('all')">
+                Сбросить все
+              </button>
+              <span v-for="chip in activeAccountChips" :key="chip.key" class="chip">
+                <span class="chip__label">{{ chip.label }}:</span>
+                <span class="chip__value">{{ chip.value }}</span>
+                <button
+                  class="chip__clear"
+                  type="button"
+                  aria-label="Сбросить фильтр"
+                  title="Сбросить фильтр"
+                  @click="resetAccountFilter(chip.key)"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6l-12 12" />
+                  </svg>
+                </button>
+              </span>
+            </div>
+
+            <table v-if="sortedAccounts.length" class="table table--compact">
               <thead>
                 <tr>
-                  <th class="sortable" @click="toggleAccountSort('login')">Логин</th>
-                  <th class="sortable" @click="toggleAccountSort('platform')">Платформа</th>
-                  <th class="sortable" @click="toggleAccountSort('region')">Регион</th>
-                  <th class="sortable" @click="toggleAccountSort('status')">Статус</th>
-                  <th class="sortable" @click="toggleAccountSort('slots')">Слоты</th>
-                  <th class="sortable" @click="toggleAccountSort('date')">Дата</th>
-                  <th>Пароль почта</th>
-                  <th>Пароль аккаунт</th>
-                  <th>Пароль резерв</th>
-                  <th>Код аутентификатора</th>
+                  <th class="sortable cell--account" @click="toggleAccountSort('login')">
+                    <span class="th-title th-title--filter">
+                      Логин
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(accountFilters.login_q) }"
+                        type="button"
+                        aria-label="Фильтр по логину"
+                        title="Фильтр по логину"
+                        @click.stop="openAccountFilter('login')"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeAccountFilter === 'login'" class="filter-pop filter-pop--left" @click.stop>
+                      <label class="field">
+                        <span class="label">Логин</span>
+                        <input v-model.trim="accountFilterDraft.login" class="input" placeholder="логин / домен" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="applyAccountFilter('login')">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetAccountFilter('login')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable" @click="toggleAccountSort('platform')">
+                    <span class="th-title th-title--filter">
+                      Платф.
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(accountFilters.platform_q) }"
+                        type="button"
+                        aria-label="Фильтр по платформе"
+                        title="Фильтр по платформе"
+                        @click.stop="openAccountFilter('platform')"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeAccountFilter === 'platform'" class="filter-pop filter-pop--center" @click.stop>
+                      <label class="field">
+                        <span class="label">Платформа</span>
+                        <input v-model.trim="accountFilterDraft.platform" class="input" placeholder="платформа" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="applyAccountFilter('platform')">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetAccountFilter('platform')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable" @click="toggleAccountSort('region')">
+                    <span class="th-title th-title--filter">
+                      Рег.
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(accountFilters.region_q) }"
+                        type="button"
+                        aria-label="Фильтр по региону"
+                        title="Фильтр по региону"
+                        @click.stop="openAccountFilter('region')"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeAccountFilter === 'region'" class="filter-pop filter-pop--center" @click.stop>
+                      <label class="field">
+                        <span class="label">Регион</span>
+                        <input v-model.trim="accountFilterDraft.region" class="input" placeholder="регион" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="applyAccountFilter('region')">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetAccountFilter('region')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable" @click="toggleAccountSort('status')">
+                    <span class="th-title th-title--filter">
+                      Стат.
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(accountFilters.status_q) }"
+                        type="button"
+                        aria-label="Фильтр по статусу"
+                        title="Фильтр по статусу"
+                        @click.stop="openAccountFilter('status')"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeAccountFilter === 'status'" class="filter-pop filter-pop--center" @click.stop>
+                      <label class="field">
+                        <span class="label">Статус</span>
+                        <input v-model.trim="accountFilterDraft.status" class="input" placeholder="статус" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="applyAccountFilter('status')">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetAccountFilter('status')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable" @click="toggleAccountSort('slots')">
+                    <span class="th-title th-title--filter">
+                      Слоты
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(accountFilters.slots_q) }"
+                        type="button"
+                        aria-label="Фильтр по слотам"
+                        title="Фильтр по слотам"
+                        @click.stop="openAccountFilter('slots')"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeAccountFilter === 'slots'" class="filter-pop filter-pop--center" @click.stop>
+                      <label class="field">
+                        <span class="label">Слоты</span>
+                        <input v-model.trim="accountFilterDraft.slots" class="input" placeholder="например 2/6" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="applyAccountFilter('slots')">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetAccountFilter('slots')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable" @click="toggleAccountSort('date')">
+                    <span class="th-title th-title--filter">
+                      Дата
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(accountFilters.date_from || accountFilters.date_to) }"
+                        type="button"
+                        aria-label="Фильтр по дате"
+                        title="Фильтр по дате"
+                        @click.stop="openAccountFilter('date')"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeAccountFilter === 'date'" class="filter-pop filter-pop--right" @click.stop>
+                      <label class="field">
+                        <span class="label">С</span>
+                        <input v-model="accountFilterDraft.date_from" class="input" type="date" />
+                      </label>
+                      <label class="field">
+                        <span class="label">По</span>
+                        <input v-model="accountFilterDraft.date_to" class="input" type="date" />
+                      </label>
+                      <p v-if="accountFilterErrors.date" class="bad">{{ accountFilterErrors.date }}</p>
+                      <button class="ghost ghost--small" type="button" @click="applyAccountFilter('date')">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetAccountFilter('date')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th>Почта</th>
+                  <th>Акк. пароль</th>
+                  <th>Резерв</th>
+                  <th>2FA код</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="a in sortedAccounts" :key="a.account_id" class="clickable-row" @click="startEditAccount(a)">
-                  <td>{{ a.login_full || '—' }}</td>
+                  <td class="cell--account">{{ a.login_full || '—' }}</td>
                   <td>{{ a.platform_code }}</td>
                   <td>{{ a.region_code || '—' }}</td>
                   <td>{{ a.status }}</td>
@@ -390,7 +553,6 @@
                         </div>
                         <div class="spoke"></div>
                       </div>
-                      <p class="muted">Загрузка аккаунта…</p>
                     </div>
                     <div v-else-if="accountModalMode === 'edit'" class="form form--stack form--compact">
                       <label class="field">
@@ -487,7 +649,7 @@
                           <span v-if="!accountGameTitles.length" class="muted">Пока нет игр.</span>
                         </div>
                         <div v-else>
-                          <input v-model.trim="editAccountGameSearch" class="input" placeholder="поиск игры" />
+                          <input v-model.trim="editAccountGameSearch" class="input" placeholder="поиск" />
                           <div class="check-list">
                             <label v-for="g in filteredEditAccountGames" :key="g.game_id" class="check-item">
                               <input type="checkbox" :value="g.game_id" v-model="editAccount.game_ids" />
@@ -518,7 +680,6 @@
                             </div>
                             <div class="spoke"></div>
                           </div>
-                          <p class="muted">Загрузка сделок…</p>
                         </div>
                         <table v-else-if="accountDeals.length" class="table table--compact table--dense">
                           <thead>
@@ -637,7 +798,7 @@
                       </div>
                       <div class="field field--full">
                         <span class="label">Игры</span>
-                        <input v-model.trim="accountGameSearch" class="input" placeholder="поиск игры" />
+                        <input v-model.trim="accountGameSearch" class="input" placeholder="поиск" />
                         <div class="check-list">
                           <label v-for="g in filteredAccountGames" :key="g.game_id" class="check-item">
                             <input type="checkbox" :value="g.game_id" v-model="newAccount.game_ids" />
@@ -686,16 +847,6 @@
                 </svg>
               </button>
               <button
-                class="btn btn--icon btn--glow btn--glow-filter"
-                :title="showGameFilters ? 'Скрыть фильтры' : 'Фильтр'"
-                :aria-label="showGameFilters ? 'Скрыть фильтры' : 'Фильтр'"
-                @click="showGameFilters = !showGameFilters"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M4 6h16M7 12h10M10 18h4" />
-                </svg>
-              </button>
-              <button
                 class="btn btn--icon btn--glow btn--glow-refresh"
                 title="Обновить список"
                 aria-label="Обновить список"
@@ -710,31 +861,7 @@
             </div>
           </div>
           <div class="panel__body">
-            <div v-if="showGameFilters" class="form form--stack form--card form--compact">
-              <label class="field">
-                <span class="label">Поиск</span>
-                <input v-model.trim="gameFilters.q" class="input" placeholder="название игры" />
-              </label>
-              <label class="field">
-                <span class="label">Платформа</span>
-                <select v-model="gameFilters.platform_code" class="input input--select">
-                  <option value="">Все</option>
-                  <option v-for="p in platforms" :key="p.code" :value="p.code">
-                    {{ p.name }} ({{ p.code }})
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Регион</span>
-                <select v-model="gameFilters.region_code" class="input input--select">
-                  <option value="">Все</option>
-                  <option v-for="r in regions" :key="r.code" :value="r.code">
-                    {{ r.name }} ({{ r.code }})
-                  </option>
-                </select>
-              </label>
-            </div>
-            <div v-if="gamesLoading" class="loader-wrap">
+            <div v-if="gamesLoading" class="loader-wrap loader-overlay">
               <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
                 <div class="wheel"></div>
                 <div class="hamster">
@@ -753,14 +880,105 @@
                 </div>
                 <div class="spoke"></div>
               </div>
-              <p class="muted">Загрузка игр…</p>
             </div>
-            <table v-else-if="sortedGames.length" class="table table--compact">
+            <div v-else-if="activeGameChips.length" class="chip-row">
+              <button class="chip chip--reset" type="button" @click="resetGameFilter('all')">
+                Сбросить все
+              </button>
+              <span v-for="chip in activeGameChips" :key="chip.key" class="chip">
+                <span class="chip__label">{{ chip.label }}:</span>
+                <span class="chip__value">{{ chip.value }}</span>
+                <button
+                  class="chip__clear"
+                  type="button"
+                  aria-label="Сбросить фильтр"
+                  title="Сбросить фильтр"
+                  @click="resetGameFilter(chip.key)"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6l-12 12" />
+                  </svg>
+                </button>
+              </span>
+            </div>
+            <table v-if="sortedGames.length" class="table table--compact">
               <thead>
                 <tr>
-                  <th class="sortable" @click="toggleGamesSort('title')">Игра</th>
-                  <th class="sortable" @click="toggleGamesSort('platform')">Платформа</th>
-                  <th class="sortable" @click="toggleGamesSort('region')">Регион</th>
+                  <th class="sortable" @click="toggleGamesSort('title')">
+                    <span class="th-title th-title--filter">
+                      Игра
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(gameFilters.q) }"
+                        type="button"
+                        aria-label="Фильтр по игре"
+                        title="Фильтр по игре"
+                        @click.stop="openGameFilter('title')"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeGameFilter === 'title'" class="filter-pop filter-pop--center" @click.stop>
+                      <label class="field">
+                        <span class="label">Игра</span>
+                        <input v-model.trim="gameFilterDraft.title" class="input" placeholder="игра" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="applyGameFilter('title')">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetGameFilter('title')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable" @click="toggleGamesSort('platform')">
+                    <span class="th-title th-title--filter">
+                      Платформа
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(gameFilters.platform_code) }"
+                        type="button"
+                        aria-label="Фильтр по платформе"
+                        title="Фильтр по платформе"
+                        @click.stop="openGameFilter('platform')"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeGameFilter === 'platform'" class="filter-pop filter-pop--center" @click.stop>
+                      <label class="field">
+                        <span class="label">Платформа</span>
+                        <input v-model.trim="gameFilterDraft.platform" class="input" placeholder="платформа" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="applyGameFilter('platform')">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetGameFilter('platform')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable" @click="toggleGamesSort('region')">
+                    <span class="th-title th-title--filter">
+                      Регион
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(gameFilters.region_code) }"
+                        type="button"
+                        aria-label="Фильтр по региону"
+                        title="Фильтр по региону"
+                        @click.stop="openGameFilter('region')"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeGameFilter === 'region'" class="filter-pop filter-pop--right" @click.stop>
+                      <label class="field">
+                        <span class="label">Регион</span>
+                        <input v-model.trim="gameFilterDraft.region" class="input" placeholder="регион" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="applyGameFilter('region')">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetGameFilter('region')">Сбросить</button>
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -838,7 +1056,6 @@
                         </div>
                         <div class="spoke"></div>
                       </div>
-                      <p class="muted">Загрузка аккаунтов…</p>
                     </div>
                     <table v-else-if="pagedGameAccounts.length" class="table table--compact">
                       <thead>
@@ -1001,16 +1218,6 @@
                 </svg>
               </button>
               <button
-                class="btn btn--icon btn--glow btn--glow-filter"
-                :title="showDealFilters ? 'Скрыть фильтры' : 'Фильтр'"
-                :aria-label="showDealFilters ? 'Скрыть фильтры' : 'Фильтр'"
-                @click="showDealFilters = !showDealFilters"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M4 6h16M7 12h10M10 18h4" />
-                </svg>
-              </button>
-              <button
                 class="btn btn--icon btn--glow btn--glow-refresh"
                 title="Обновить список"
                 aria-label="Обновить список"
@@ -1025,54 +1232,8 @@
             </div>
           </div>
           <div class="panel__body">
-            <div v-if="showDealFilters" class="form form--stack form--card form--compact">
-              <label class="field">
-                <span class="label">Фильтр по аккаунту</span>
-                <select v-model.number="dealFilters.account_id" class="input input--select">
-                  <option value="">— все —</option>
-                  <option v-for="a in accounts" :key="a.account_id" :value="a.account_id">
-                    {{ a.login_full || a.account_id }}
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Фильтр по игре</span>
-                <select v-model.number="dealFilters.game_id" class="input input--select">
-                  <option value="">— все —</option>
-                  <option v-for="g in games" :key="g.game_id" :value="g.game_id">
-                    {{ g.title }}
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Фильтр по платформе</span>
-                <select v-model="dealFilters.platform_code" class="input input--select">
-                  <option value="">— все —</option>
-                  <option v-for="p in platforms" :key="p.code" :value="p.code">
-                    {{ p.name }} ({{ p.code }})
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Поиск</span>
-                <input v-model.trim="dealFilters.q" class="input" placeholder="игра / логин / пользователь" />
-              </label>
-              <label class="field">
-                <span class="label">Показывать на странице</span>
-                <select v-model.number="dealPageSize" class="input input--select">
-                  <option :value="10">10</option>
-                  <option :value="20">20</option>
-                  <option :value="50">50</option>
-                  <option :value="100">100</option>
-                </select>
-              </label>
-              <button class="btn" @click="loadDeals(1)" :disabled="dealListLoading">
-                {{ dealListLoading ? 'Ищем…' : 'Применить фильтры' }}
-              </button>
-            </div>
-
             <p v-if="dealListError" class="bad">{{ dealListError }}</p>
-            <div v-else-if="dealListLoading" class="loader-wrap">
+            <div v-else-if="dealListLoading" class="loader-wrap loader-overlay">
               <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
                 <div class="wheel"></div>
                 <div class="hamster">
@@ -1091,21 +1252,302 @@
                 </div>
                 <div class="spoke"></div>
               </div>
-              <p class="muted">Загрузка сделок…</p>
             </div>
-            <table v-else-if="sortedDeals.length" class="table">
+            <div v-else-if="activeDealChips.length" class="chip-row">
+              <button class="chip chip--reset" type="button" @click="resetDealFilter('all')">
+                Сбросить все
+              </button>
+              <span v-for="chip in activeDealChips" :key="chip.key" class="chip">
+                <span class="chip__label">{{ chip.label }}:</span>
+                <span class="chip__value">{{ chip.value }}</span>
+                <button
+                  class="chip__clear"
+                  type="button"
+                  aria-label="Сбросить фильтр"
+                  title="Сбросить фильтр"
+                  @click="resetDealFilter(chip.key)"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6l-12 12" />
+                  </svg>
+                </button>
+              </span>
+            </div>
+            <table v-if="sortedDeals.length" class="table">
               <thead>
                 <tr>
-                  <th class="sortable" @click="toggleDealSort('account')">Аккаунт</th>
-                  <th class="sortable" @click="toggleDealSort('game')">Игра</th>
-                  <th class="sortable" @click="toggleDealSort('type')">Тип</th>
-                  <th class="sortable" @click="toggleDealSort('status')">Статус</th>
-                  <th class="sortable" @click="toggleDealSort('customer')">Пользователь</th>
-                  <th class="sortable" @click="toggleDealSort('source')">Откуда</th>
-                  <th class="sortable" @click="toggleDealSort('date')">Дата покупки</th>
-                  <th class="sortable" @click="toggleDealSort('platform')">Платформа</th>
-                  <th class="sortable" @click="toggleDealSort('price')">Цена</th>
-                  <th class="sortable" @click="toggleDealSort('notes')">Комментарий</th>
+                  <th class="sortable cell--account" @click="toggleDealSort('account')">
+                    <span class="th-title th-title--filter">
+                      Аккаунт
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(dealFilters.account_q) }"
+                        type="button"
+                        aria-label="Фильтр по аккаунту"
+                        title="Фильтр по аккаунту"
+                        @click.stop="activeDealFilter = activeDealFilter === 'account' ? '' : 'account'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeDealFilter === 'account'" class="filter-pop filter-pop--left" @click.stop>
+                      <label class="field">
+                        <span class="label">Аккаунт</span>
+                        <input v-model.trim="dealFilters.account_q" class="input" placeholder="аккаунт" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('account')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable" @click="toggleDealSort('game')">
+                    <span class="th-title th-title--filter">
+                      Игра
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(dealFilters.game_q) }"
+                        type="button"
+                        aria-label="Фильтр по игре"
+                        title="Фильтр по игре"
+                        @click.stop="activeDealFilter = activeDealFilter === 'game' ? '' : 'game'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeDealFilter === 'game'" class="filter-pop filter-pop--center" @click.stop>
+                      <label class="field">
+                        <span class="label">Игра</span>
+                        <input v-model.trim="dealFilters.game_q" class="input" placeholder="игра" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('game')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable cell--tight" @click="toggleDealSort('type')">
+                    <span class="th-title th-title--filter">
+                      Тип
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(dealFilters.type_q) }"
+                        type="button"
+                        aria-label="Фильтр по типу"
+                        title="Фильтр по типу"
+                        @click.stop="activeDealFilter = activeDealFilter === 'type' ? '' : 'type'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeDealFilter === 'type'" class="filter-pop filter-pop--center" @click.stop>
+                      <label class="field">
+                        <span class="label">Тип</span>
+                        <input v-model.trim="dealFilters.type_q" class="input" placeholder="тип сделки" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('type')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable cell--tight" @click="toggleDealSort('status')">
+                    <span class="th-title th-title--filter">
+                      Статус
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(dealFilters.status_q) }"
+                        type="button"
+                        aria-label="Фильтр по статусу"
+                        title="Фильтр по статусу"
+                        @click.stop="activeDealFilter = activeDealFilter === 'status' ? '' : 'status'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeDealFilter === 'status'" class="filter-pop filter-pop--center" @click.stop>
+                      <label class="field">
+                        <span class="label">Статус</span>
+                        <input v-model.trim="dealFilters.status_q" class="input" placeholder="статус" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('status')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable" @click="toggleDealSort('customer')">
+                    <span class="th-title th-title--filter">
+                      Польз.
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(dealFilters.customer_q) }"
+                        type="button"
+                        aria-label="Фильтр по пользователю"
+                        title="Фильтр по пользователю"
+                        @click.stop="activeDealFilter = activeDealFilter === 'customer' ? '' : 'customer'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeDealFilter === 'customer'" class="filter-pop filter-pop--center" @click.stop>
+                      <label class="field">
+                        <span class="label">Пользователь</span>
+                        <input v-model.trim="dealFilters.customer_q" class="input" placeholder="пользователь" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('customer')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable cell--tight" @click="toggleDealSort('source')">
+                    <span class="th-title th-title--filter">
+                      Откуда
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(dealFilters.source_q) }"
+                        type="button"
+                        aria-label="Фильтр по источнику"
+                        title="Фильтр по источнику"
+                        @click.stop="activeDealFilter = activeDealFilter === 'source' ? '' : 'source'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeDealFilter === 'source'" class="filter-pop filter-pop--center" @click.stop>
+                      <label class="field">
+                        <span class="label">Источник</span>
+                        <input v-model.trim="dealFilters.source_q" class="input" placeholder="источник" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('source')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable" @click="toggleDealSort('date')">
+                    <span class="th-title th-title--filter">
+                      Дата
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(dealFilters.purchase_from || dealFilters.purchase_to) }"
+                        type="button"
+                        aria-label="Фильтр по дате"
+                        title="Фильтр по дате"
+                        @click.stop="activeDealFilter = activeDealFilter === 'date' ? '' : 'date'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeDealFilter === 'date'" class="filter-pop filter-pop--right" @click.stop>
+                      <label class="field">
+                        <span class="label">С</span>
+                        <input v-model="dealFilters.purchase_from" class="input" type="date" />
+                      </label>
+                      <label class="field">
+                        <span class="label">По</span>
+                        <input v-model="dealFilters.purchase_to" class="input" type="date" />
+                      </label>
+                      <p v-if="dealFilterErrors.date" class="bad">{{ dealFilterErrors.date }}</p>
+                      <button
+                        class="ghost ghost--small"
+                        type="button"
+                        @click="validateDealRange('date') && (loadDeals(1), activeDealFilter = '')"
+                      >
+                        Применить
+                      </button>
+                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('date')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable cell--tight" @click="toggleDealSort('platform')">
+                    <span class="th-title th-title--filter">
+                      Платф.
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(dealFilters.platform_q) }"
+                        type="button"
+                        aria-label="Фильтр по платформе"
+                        title="Фильтр по платформе"
+                        @click.stop="activeDealFilter = activeDealFilter === 'platform' ? '' : 'platform'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeDealFilter === 'platform'" class="filter-pop filter-pop--right" @click.stop>
+                      <label class="field">
+                        <span class="label">Платформа</span>
+                        <input v-model.trim="dealFilters.platform_q" class="input" placeholder="платформа" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('platform')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable cell--tight cell--num" @click="toggleDealSort('price')">
+                    <span class="th-title th-title--filter">
+                      Цена
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(dealFilters.price_min || dealFilters.price_max) }"
+                        type="button"
+                        aria-label="Фильтр по цене"
+                        title="Фильтр по цене"
+                        @click.stop="activeDealFilter = activeDealFilter === 'price' ? '' : 'price'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeDealFilter === 'price'" class="filter-pop filter-pop--right" @click.stop>
+                      <label class="field">
+                        <span class="label">Цена от</span>
+                        <input v-model.trim="dealFilters.price_min" class="input" type="number" min="0" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Цена до</span>
+                        <input v-model.trim="dealFilters.price_max" class="input" type="number" min="0" />
+                      </label>
+                      <p v-if="dealFilterErrors.price" class="bad">{{ dealFilterErrors.price }}</p>
+                      <button
+                        class="ghost ghost--small"
+                        type="button"
+                        @click="validateDealRange('price') && (loadDeals(1), activeDealFilter = '')"
+                      >
+                        Применить
+                      </button>
+                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('price')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable cell--tight" @click="toggleDealSort('notes')">
+                    <span class="th-title th-title--filter">
+                      Комм.
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(dealFilters.notes_q) }"
+                        type="button"
+                        aria-label="Фильтр по комментарию"
+                        title="Фильтр по комментарию"
+                        @click.stop="activeDealFilter = activeDealFilter === 'notes' ? '' : 'notes'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeDealFilter === 'notes'" class="filter-pop filter-pop--right" @click.stop>
+                      <label class="field">
+                        <span class="label">Комментарий</span>
+                        <input v-model.trim="dealFilters.notes_q" class="input" placeholder="комментарий" />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('notes')">Сбросить</button>
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1116,20 +1558,20 @@
                   :class="{ 'row-active': editDeal.open && editDeal.deal_id === d.deal_id }"
                   @click="startEditDeal(d)"
                 >
-                  <td>
+                  <td class="cell--account">
                     <span class="clickable-cell" @click.stop="goToAccount(d.account_login)">{{ d.account_login || d.account_id }}</span>
                   </td>
                   <td>
                     <span class="clickable-cell" @click.stop="openDealGame(d)">{{ d.game_title || '—' }}</span>
                   </td>
-                  <td>{{ d.deal_type }}</td>
-                  <td>{{ d.status || '—' }}</td>
+                  <td class="cell--tight">{{ d.deal_type }}</td>
+                  <td class="cell--tight">{{ d.status || '—' }}</td>
                   <td>{{ d.customer_nickname || '—' }}</td>
-                  <td>{{ getSourceName(d.source_code) }}</td>
+                  <td class="cell--tight">{{ getSourceName(d.source_code) }}</td>
                   <td>{{ formatDate(d.purchase_at || d.created_at) }}</td>
-                  <td>{{ d.platform_code || '—' }}</td>
-                  <td>{{ d.price }}</td>
-                  <td>{{ d.notes || '—' }}</td>
+                  <td class="cell--tight">{{ d.platform_code || '—' }}</td>
+                  <td class="cell--tight cell--num">{{ d.price }}</td>
+                  <td class="cell--tight">{{ d.notes || '—' }}</td>
                 </tr>
               </tbody>
             </table>
@@ -1346,7 +1788,7 @@
             <p v-if="catalogsError" class="bad">{{ catalogsError }}</p>
             <p v-if="catalogsOk" class="ok">{{ catalogsOk }}</p>
 
-            <div v-if="catalogsLoading" class="loader-wrap">
+            <div v-if="catalogsLoading" class="loader-wrap loader-overlay">
               <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
                 <div class="wheel"></div>
                 <div class="hamster">
@@ -1365,7 +1807,6 @@
                 </div>
                 <div class="spoke"></div>
               </div>
-              <p class="muted">Загрузка справочников…</p>
             </div>
 
             <div v-else>
@@ -1998,7 +2439,6 @@
                 </div>
                 <div class="spoke"></div>
               </div>
-              <p class="muted">Загрузка пользователей…</p>
             </div>
             <table v-else-if="sortedUsers.length" class="table">
               <thead>
@@ -2103,6 +2543,60 @@ const getSourceName = (code) => {
 const accountGameTitles = computed(() => {
   const gameMap = new Map((games.value || []).map((g) => [g.game_id, g.title]))
   return (editAccount.game_ids || []).map((id) => gameMap.get(id)).filter(Boolean)
+})
+
+const activeDealChips = computed(() => {
+  const chips = []
+  if (dealFilters.account_q) chips.push({ key: 'account', label: 'Аккаунт', value: dealFilters.account_q })
+  if (dealFilters.game_q) chips.push({ key: 'game', label: 'Игра', value: dealFilters.game_q })
+  if (dealFilters.type_q) chips.push({ key: 'type', label: 'Тип', value: dealFilters.type_q })
+  if (dealFilters.status_q) chips.push({ key: 'status', label: 'Статус', value: dealFilters.status_q })
+  if (dealFilters.customer_q) chips.push({ key: 'customer', label: 'Пользователь', value: dealFilters.customer_q })
+  if (dealFilters.source_q) chips.push({ key: 'source', label: 'Откуда', value: dealFilters.source_q })
+  if (dealFilters.purchase_from || dealFilters.purchase_to) {
+    const from = dealFilters.purchase_from ? formatDateOnly(dealFilters.purchase_from) : '—'
+    const to = dealFilters.purchase_to ? formatDateOnly(dealFilters.purchase_to) : '—'
+    chips.push({ key: 'date', label: 'Дата', value: `${from} → ${to}` })
+  }
+  if (dealFilters.platform_q) chips.push({ key: 'platform', label: 'Платформа', value: dealFilters.platform_q })
+  if (dealFilters.price_min || dealFilters.price_max) {
+    const from = dealFilters.price_min || '—'
+    const to = dealFilters.price_max || '—'
+    chips.push({ key: 'price', label: 'Цена', value: `${from} → ${to}` })
+  }
+  if (dealFilters.notes_q) chips.push({ key: 'notes', label: 'Комментарий', value: dealFilters.notes_q })
+  return chips
+})
+
+const activeGameChips = computed(() => {
+  const chips = []
+  if (gameFilters.q) {
+    chips.push({ key: 'title', label: 'Игра', value: gameFilters.q })
+  }
+  if (gameFilters.platform_code) {
+    const platform = platforms.value.find((p) => p.code === gameFilters.platform_code)
+    chips.push({ key: 'platform', label: 'Платформа', value: platform?.name ? `${platform.name} (${platform.code})` : gameFilters.platform_code })
+  }
+  if (gameFilters.region_code) {
+    const region = regions.value.find((r) => r.code === gameFilters.region_code)
+    chips.push({ key: 'region', label: 'Регион', value: region?.name ? `${region.name} (${region.code})` : gameFilters.region_code })
+  }
+  return chips
+})
+
+const activeAccountChips = computed(() => {
+  const chips = []
+  if (accountFilters.login_q) chips.push({ key: 'login', label: 'Логин', value: accountFilters.login_q })
+  if (accountFilters.platform_q) chips.push({ key: 'platform', label: 'Платформа', value: accountFilters.platform_q })
+  if (accountFilters.region_q) chips.push({ key: 'region', label: 'Регион', value: accountFilters.region_q })
+  if (accountFilters.status_q) chips.push({ key: 'status', label: 'Статус', value: accountFilters.status_q })
+  if (accountFilters.slots_q) chips.push({ key: 'slots', label: 'Слоты', value: accountFilters.slots_q })
+  if (accountFilters.date_from || accountFilters.date_to) {
+    const from = accountFilters.date_from ? formatDateOnly(accountFilters.date_from) : '—'
+    const to = accountFilters.date_to ? formatDateOnly(accountFilters.date_to) : '—'
+    chips.push({ key: 'date', label: 'Дата', value: `${from} → ${to}` })
+  }
+  return chips
 })
 
 const globalSaving = computed(() => accountSaving.value || dealSaving.value || gameSaving.value || catalogSaving.value)
@@ -2217,10 +2711,18 @@ const editGame = reactive({
   region_code: '',
 })
 const dealFilters = reactive({
-  account_id: '',
-  game_id: '',
-  platform_code: '',
-  q: '',
+  account_q: '',
+  game_q: '',
+  type_q: '',
+  status_q: '',
+  customer_q: '',
+  source_q: '',
+  platform_q: '',
+  purchase_from: '',
+  purchase_to: '',
+  price_min: '',
+  price_max: '',
+  notes_q: '',
 })
 
 const totalPages = computed(() => {
@@ -2267,6 +2769,16 @@ const showPasswords = ref(false)
 const accountGameSearch = ref('')
 const editAccountGameSearch = ref('')
 const accountGamesLoading = ref(false)
+const activeAccountFilter = ref('')
+const accountFilterDraft = reactive({
+  login: '',
+  platform: '',
+  region: '',
+  status: '',
+  slots: '',
+  date_from: '',
+  date_to: '',
+})
 const editAccount = reactive({
   open: false,
   account_id: null,
@@ -2293,14 +2805,25 @@ const editAccount = reactive({
 const showGameForm = ref(false)
 const showGameFilters = ref(false)
 const showDealForm = ref(false)
-const showDealFilters = ref(false)
+const activeDealFilter = ref('')
+const activeGameFilter = ref('')
+const gameFilterDraft = reactive({
+  title: '',
+  platform: '',
+  region: '',
+})
 const showDomainForm = ref(false)
 const showSourceForm = ref(false)
 const showPlatformForm = ref(false)
 const showRegionForm = ref(false)
 const accountFilters = reactive({
-  q: '',
-  platform_code: '',
+  login_q: '',
+  platform_q: '',
+  region_q: '',
+  status_q: '',
+  slots_q: '',
+  date_from: '',
+  date_to: '',
 })
 const accountSort = ref('login_asc')
 const gamesSort = ref({ key: 'title', dir: 'asc' })
@@ -2311,16 +2834,49 @@ const sourcesSort = ref({ key: 'code', dir: 'asc' })
 const platformsSort = ref({ key: 'code', dir: 'asc' })
 const regionsSort = ref({ key: 'code', dir: 'asc' })
 
+const dealTypeOptions = [
+  { code: 'sale', name: 'Продажа' },
+  { code: 'rental', name: 'Аренда' },
+  { code: 'expense', name: 'Расходы' },
+  { code: 'adjustment', name: 'Корректирование' },
+]
+
+const dealStatusOptions = [
+  { code: 'draft', name: 'Черновик' },
+  { code: 'confirmed', name: 'Подтвержден' },
+  { code: 'cancelled', name: 'Отменен' },
+  { code: 'closed', name: 'Закрыт' },
+]
+
 const filteredAccounts = computed(() => {
   let list = [...accounts.value]
-  if (accountFilters.q) {
-    const q = accountFilters.q.toLowerCase()
+  if (accountFilters.login_q) {
+    const q = accountFilters.login_q.toLowerCase()
     list = list.filter((a) =>
       (a.login_full || '').toLowerCase().includes(q)
     )
   }
-  if (accountFilters.platform_code) {
-    list = list.filter((a) => a.platform_code === accountFilters.platform_code)
+  if (accountFilters.platform_q) {
+    const q = accountFilters.platform_q.toLowerCase()
+    list = list.filter((a) => (a.platform_code || '').toLowerCase().includes(q))
+  }
+  if (accountFilters.region_q) {
+    const q = accountFilters.region_q.toLowerCase()
+    list = list.filter((a) => (a.region_code || '').toLowerCase().includes(q))
+  }
+  if (accountFilters.status_q) {
+    const q = accountFilters.status_q.toLowerCase()
+    list = list.filter((a) => (a.status || '').toLowerCase().includes(q))
+  }
+  if (accountFilters.slots_q) {
+    const q = accountFilters.slots_q.toLowerCase()
+    list = list.filter((a) => `${a.occupied_slots}/${a.slot_capacity}`.toLowerCase().includes(q))
+  }
+  if (accountFilters.date_from) {
+    list = list.filter((a) => new Date(a.account_date || 0) >= new Date(accountFilters.date_from))
+  }
+  if (accountFilters.date_to) {
+    list = list.filter((a) => new Date(a.account_date || 0) <= new Date(accountFilters.date_to))
   }
   return list
 })
@@ -2360,7 +2916,7 @@ const dealAccountsForNew = computed(() => {
   if (newDeal.platform_code) {
     list = list.filter((a) => a.platform_code === newDeal.platform_code)
   }
-  return list
+  return list.filter((a) => (a.free_slots || 0) > 0)
 })
 
 const dealAccountsForEdit = computed(() => {
@@ -2368,8 +2924,10 @@ const dealAccountsForEdit = computed(() => {
   if (editDeal.platform_code) {
     list = list.filter((a) => a.platform_code === editDeal.platform_code)
   }
-  return list
+  return list.filter((a) => (a.free_slots || 0) > 0 || a.account_id === editDeal.account_id)
 })
+
+
 
 const filteredAccountGames = computed(() => {
   const q = accountGameSearch.value.trim().toLowerCase()
@@ -2396,10 +2954,12 @@ const filteredGames = computed(() => {
     list = list.filter((g) => (g.title || '').toLowerCase().includes(q))
   }
   if (gameFilters.platform_code) {
-    list = list.filter((g) => g.platform_code === gameFilters.platform_code)
+    const q = gameFilters.platform_code.toLowerCase()
+    list = list.filter((g) => (g.platform_code || '').toLowerCase().includes(q))
   }
   if (gameFilters.region_code) {
-    list = list.filter((g) => g.region_code === gameFilters.region_code)
+    const q = gameFilters.region_code.toLowerCase()
+    list = list.filter((g) => (g.region_code || '').toLowerCase().includes(q))
   }
   return list
 })
@@ -2741,7 +3301,7 @@ function refreshGameAccounts() {
 
 function goToAccount(login) {
   activeTab.value = 'accounts'
-  accountFilters.q = login || ''
+  accountFilters.login_q = login || ''
 }
 
 function openDealGame(deal) {
@@ -2751,6 +3311,209 @@ function openDealGame(deal) {
   if (game) {
     openGameAccounts(game)
   }
+}
+
+const onDealFilterOutside = (event) => {
+  if (!activeDealFilter.value) return
+  const target = event.target
+  if (target?.closest?.('.filter-pop') || target?.closest?.('.filter-icon')) return
+  activeDealFilter.value = ''
+}
+
+const resetDealFilter = (kind) => {
+  if (kind === 'account') {
+    dealFilters.account_q = ''
+  } else if (kind === 'game') {
+    dealFilters.game_q = ''
+  } else if (kind === 'type') {
+    dealFilters.type_q = ''
+  } else if (kind === 'status') {
+    dealFilters.status_q = ''
+  } else if (kind === 'customer') {
+    dealFilters.customer_q = ''
+  } else if (kind === 'source') {
+    dealFilters.source_q = ''
+  } else if (kind === 'date') {
+    dealFilters.purchase_from = ''
+    dealFilters.purchase_to = ''
+    dealFilterErrors.date = ''
+  } else if (kind === 'platform') {
+    dealFilters.platform_q = ''
+  } else if (kind === 'price') {
+    dealFilters.price_min = ''
+    dealFilters.price_max = ''
+    dealFilterErrors.price = ''
+  } else if (kind === 'notes') {
+    dealFilters.notes_q = ''
+  } else if (kind === 'all') {
+    dealFilters.account_q = ''
+    dealFilters.game_q = ''
+    dealFilters.type_q = ''
+    dealFilters.status_q = ''
+    dealFilters.customer_q = ''
+    dealFilters.source_q = ''
+    dealFilters.purchase_from = ''
+    dealFilters.purchase_to = ''
+    dealFilters.platform_q = ''
+    dealFilters.price_min = ''
+    dealFilters.price_max = ''
+    dealFilters.notes_q = ''
+    dealFilterErrors.date = ''
+    dealFilterErrors.price = ''
+  }
+  activeDealFilter.value = ''
+  loadDeals(1)
+}
+
+const validateDealRange = (kind) => {
+  let error = ''
+  if (kind === 'date') {
+    const from = dealFilters.purchase_from
+    const to = dealFilters.purchase_to
+    if (from && to && new Date(from) > new Date(to)) {
+      error = 'Дата "с" не может быть позже даты "по"'
+    }
+  }
+  if (kind === 'price') {
+    const from = Number(dealFilters.price_min)
+    const to = Number(dealFilters.price_max)
+    if (dealFilters.price_min !== '' && dealFilters.price_max !== '' && from > to) {
+      error = 'Цена "от" не может быть больше цены "до"'
+    }
+  }
+  dealFilterErrors[kind] = error
+  return !error
+}
+
+const dealFilterErrors = reactive({
+  date: '',
+  price: '',
+})
+
+const resetGameFilter = (kind) => {
+  if (kind === 'title') {
+    gameFilters.q = ''
+    gameFilterDraft.title = ''
+  } else if (kind === 'platform') {
+    gameFilters.platform_code = ''
+    gameFilterDraft.platform = ''
+  } else if (kind === 'region') {
+    gameFilters.region_code = ''
+    gameFilterDraft.region = ''
+  } else if (kind === 'all') {
+    gameFilters.q = ''
+    gameFilters.platform_code = ''
+    gameFilters.region_code = ''
+    gameFilterDraft.title = ''
+    gameFilterDraft.platform = ''
+    gameFilterDraft.region = ''
+  }
+  activeGameFilter.value = ''
+}
+
+const openGameFilter = (kind) => {
+  gameFilterDraft.title = gameFilters.q || ''
+  gameFilterDraft.platform = gameFilters.platform_code || ''
+  gameFilterDraft.region = gameFilters.region_code || ''
+  activeGameFilter.value = activeGameFilter.value === kind ? '' : kind
+}
+
+const applyGameFilter = (kind) => {
+  if (kind === 'title') {
+    gameFilters.q = gameFilterDraft.title.trim()
+  } else if (kind === 'platform') {
+    gameFilters.platform_code = gameFilterDraft.platform.trim()
+  } else if (kind === 'region') {
+    gameFilters.region_code = gameFilterDraft.region.trim()
+  }
+  activeGameFilter.value = ''
+}
+
+const resetAccountFilter = (kind) => {
+  if (kind === 'login') {
+    accountFilters.login_q = ''
+    accountFilterDraft.login = ''
+  } else if (kind === 'platform') {
+    accountFilters.platform_q = ''
+    accountFilterDraft.platform = ''
+  } else if (kind === 'region') {
+    accountFilters.region_q = ''
+    accountFilterDraft.region = ''
+  } else if (kind === 'status') {
+    accountFilters.status_q = ''
+    accountFilterDraft.status = ''
+  } else if (kind === 'slots') {
+    accountFilters.slots_q = ''
+    accountFilterDraft.slots = ''
+  } else if (kind === 'date') {
+    accountFilters.date_from = ''
+    accountFilters.date_to = ''
+    accountFilterDraft.date_from = ''
+    accountFilterDraft.date_to = ''
+    accountFilterErrors.date = ''
+  } else if (kind === 'all') {
+    accountFilters.login_q = ''
+    accountFilters.platform_q = ''
+    accountFilters.region_q = ''
+    accountFilters.status_q = ''
+    accountFilters.slots_q = ''
+    accountFilters.date_from = ''
+    accountFilters.date_to = ''
+    accountFilterDraft.login = ''
+    accountFilterDraft.platform = ''
+    accountFilterDraft.region = ''
+    accountFilterDraft.status = ''
+    accountFilterDraft.slots = ''
+    accountFilterDraft.date_from = ''
+    accountFilterDraft.date_to = ''
+    accountFilterErrors.date = ''
+  }
+  activeAccountFilter.value = ''
+}
+
+const openAccountFilter = (kind) => {
+  accountFilterDraft.login = accountFilters.login_q || ''
+  accountFilterDraft.platform = accountFilters.platform_q || ''
+  accountFilterDraft.region = accountFilters.region_q || ''
+  accountFilterDraft.status = accountFilters.status_q || ''
+  accountFilterDraft.slots = accountFilters.slots_q || ''
+  accountFilterDraft.date_from = accountFilters.date_from || ''
+  accountFilterDraft.date_to = accountFilters.date_to || ''
+  activeAccountFilter.value = activeAccountFilter.value === kind ? '' : kind
+}
+
+const applyAccountFilter = (kind) => {
+  if (kind === 'login') {
+    accountFilters.login_q = accountFilterDraft.login.trim()
+  } else if (kind === 'platform') {
+    accountFilters.platform_q = accountFilterDraft.platform.trim()
+  } else if (kind === 'region') {
+    accountFilters.region_q = accountFilterDraft.region.trim()
+  } else if (kind === 'status') {
+    accountFilters.status_q = accountFilterDraft.status.trim()
+  } else if (kind === 'slots') {
+    accountFilters.slots_q = accountFilterDraft.slots.trim()
+  } else if (kind === 'date') {
+    if (!validateAccountDateRange()) return
+    accountFilters.date_from = accountFilterDraft.date_from
+    accountFilters.date_to = accountFilterDraft.date_to
+  }
+  activeAccountFilter.value = ''
+}
+
+const accountFilterErrors = reactive({
+  date: '',
+})
+
+const validateAccountDateRange = () => {
+  let error = ''
+  if (accountFilterDraft.date_from && accountFilterDraft.date_to) {
+    if (new Date(accountFilterDraft.date_from) > new Date(accountFilterDraft.date_to)) {
+      error = 'Дата "с" не может быть позже даты "по"'
+    }
+  }
+  accountFilterErrors.date = error
+  return !error
 }
 
 function openCreateDealModal() {
@@ -3516,10 +4279,18 @@ async function loadDeals(page = 1) {
   dealListLoading.value = true
   try {
     const params = new URLSearchParams()
-    if (dealFilters.account_id) params.set('account_id', String(dealFilters.account_id))
-    if (dealFilters.game_id) params.set('game_id', String(dealFilters.game_id))
-    if (dealFilters.platform_code) params.set('platform_code', String(dealFilters.platform_code))
-    if (dealFilters.q) params.set('q', dealFilters.q)
+    if (dealFilters.account_q) params.set('account_q', dealFilters.account_q)
+    if (dealFilters.game_q) params.set('game_q', dealFilters.game_q)
+    if (dealFilters.type_q) params.set('type_q', dealFilters.type_q)
+    if (dealFilters.status_q) params.set('status_q', dealFilters.status_q)
+    if (dealFilters.customer_q) params.set('customer_q', dealFilters.customer_q)
+    if (dealFilters.source_q) params.set('source_q', dealFilters.source_q)
+    if (dealFilters.purchase_from) params.set('purchase_from', dealFilters.purchase_from)
+    if (dealFilters.purchase_to) params.set('purchase_to', dealFilters.purchase_to)
+    if (dealFilters.platform_q) params.set('platform_q', dealFilters.platform_q)
+    if (dealFilters.price_min) params.set('price_min', String(dealFilters.price_min))
+    if (dealFilters.price_max) params.set('price_max', String(dealFilters.price_max))
+    if (dealFilters.notes_q) params.set('notes_q', dealFilters.notes_q)
     params.set('page', String(page))
     params.set('page_size', String(dealPageSize.value))
     const res = await apiGet(`/deals?${params.toString()}`, { token: auth.state.token })
@@ -3929,6 +4700,44 @@ onMounted(async () => {
   }
 })
 
+watch(activeDealFilter, (val) => {
+  if (val) {
+    window.addEventListener('click', onDealFilterOutside)
+  } else {
+    window.removeEventListener('click', onDealFilterOutside)
+  }
+})
+
+const onGameFilterOutside = (event) => {
+  if (!activeGameFilter.value) return
+  const target = event.target
+  if (target?.closest?.('.filter-pop') || target?.closest?.('.filter-icon')) return
+  activeGameFilter.value = ''
+}
+
+watch(activeGameFilter, (val) => {
+  if (val) {
+    window.addEventListener('click', onGameFilterOutside)
+  } else {
+    window.removeEventListener('click', onGameFilterOutside)
+  }
+})
+
+const onAccountFilterOutside = (event) => {
+  if (!activeAccountFilter.value) return
+  const target = event.target
+  if (target?.closest?.('.filter-pop') || target?.closest?.('.filter-icon')) return
+  activeAccountFilter.value = ''
+}
+
+watch(activeAccountFilter, (val) => {
+  if (val) {
+    window.addEventListener('click', onAccountFilterOutside)
+  } else {
+    window.removeEventListener('click', onAccountFilterOutside)
+  }
+})
+
 watch(activeTab, async (tab) => {
   if (tab === 'dashboard') {
     checkApi()
@@ -3948,6 +4757,7 @@ watch(activeTab, async (tab) => {
     }
     showGameForm.value = false
     showGameFilters.value = false
+    activeGameFilter.value = ''
     editGame.open = false
     return
   }
@@ -3963,6 +4773,7 @@ watch(activeTab, async (tab) => {
     }
     await loadAccounts()
     showAccountFilters.value = false
+    activeAccountFilter.value = ''
     return
   }
   if (tab === 'deals') {
@@ -4085,6 +4896,7 @@ watch(
 :global(html),
 :global(body) {
   font-family: 'Space Grotesk', sans-serif;
+  scrollbar-gutter: stable;
 }
 
 .page {
@@ -4094,6 +4906,7 @@ watch(
     max(18px, env(safe-area-inset-right))
     max(18px, env(safe-area-inset-bottom))
     max(18px, env(safe-area-inset-left));
+  overflow-y: scroll;
   background:
     radial-gradient(900px 520px at 12% 10%, rgba(62, 232, 181, 0.16), transparent 70%),
     radial-gradient(900px 520px at 88% 12%, rgba(247, 185, 85, 0.18), transparent 70%),
@@ -4161,6 +4974,8 @@ watch(
   gap: 10px;
   flex-wrap: wrap;
   align-items: center;
+  flex: 1;
+  justify-content: flex-start;
 }
 
 
@@ -4168,6 +4983,10 @@ watch(
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.tabs--right {
+  margin-left: auto;
 }
 
 .tab {
@@ -4178,6 +4997,34 @@ watch(
   padding: 8px 12px;
   font-size: 12px;
   cursor: pointer;
+}
+
+.tab--icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab--icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+}
+
+.tab--danger {
+  background: rgba(255, 77, 79, 0.18);
+  border-color: rgba(255, 77, 79, 0.35);
+  color: #ffb3b3;
+}
+
+.tab--danger:hover {
+  background: rgba(255, 77, 79, 0.32);
+  color: #ffe5e5;
 }
 
 .tab:hover {
@@ -4296,6 +5143,11 @@ button {
   grid-column: auto;
 }
 
+.panel--wide {
+  min-height: 72svh;
+  overflow-x: auto;
+}
+
 .panel__toggle {
   width: 100%;
   text-align: left;
@@ -4383,6 +5235,10 @@ h2 {
   padding: 10px 0;
 }
 
+.loader-wrap .muted {
+  margin-top: -22px;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -4394,6 +5250,44 @@ h2 {
   z-index: 50;
   padding: 24px 18px;
   overflow: auto;
+}
+
+.loader-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  isolation: isolate;
+}
+
+.loader-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 10, 18, 0.6);
+  backdrop-filter: blur(8px);
+  z-index: 0;
+}
+
+.loader-overlay .wheel-and-hamster,
+.loader-overlay .muted {
+  position: relative;
+  z-index: 1;
+  filter: none;
+}
+
+.loader-overlay .wheel-and-hamster {
+  flex: 0 0 auto;
+  clip-path: circle(50% at 50% 50%);
+}
+
+.loader-overlay .muted {
+  margin: 0;
+  transform: none;
 }
 
 .modal {
@@ -4505,6 +5399,7 @@ h2 {
   width: 11.5em;
   height: 11.5em;
   font-size: 10px;
+  overflow: visible;
 }
 
 .wheel,
@@ -4534,7 +5429,7 @@ h2 {
   left: calc(50% - 3.5em);
   width: 7em;
   height: 3.75em;
-  transform: rotate(4deg) translate(-0.8em, 1.85em);
+  transform: rotate(4deg) translate(-0.8em, 1.4em);
   transform-origin: 50% 0;
   z-index: 1;
 }
@@ -4662,8 +5557,8 @@ h2 {
 }
 
 @keyframes hamster {
-  from, to { transform: rotate(4deg) translate(-0.8em, 1.85em); }
-  50% { transform: rotate(0) translate(-0.8em, 1.85em); }
+  from, to { transform: rotate(4deg) translate(-0.8em, 1.4em); }
+  50% { transform: rotate(0) translate(-0.8em, 1.4em); }
 }
 @keyframes hamsterHead {
   from, 25%, 50%, 75%, to { transform: rotate(0); }
@@ -4909,7 +5804,7 @@ h3 {
 .table--compact th,
 .table--compact td {
   padding: 6px 8px;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .btn--ghost {
@@ -4979,6 +5874,10 @@ h3 {
   background: linear-gradient(120deg, #f97316, #ef4444);
 }
 
+.btn--glow-danger {
+  background: linear-gradient(120deg, #ff6b6b, #ef4444);
+}
+
 .btn--glow svg {
   color: #fff;
 }
@@ -5024,9 +5923,10 @@ table.table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 8px;
-  font-size: 13px;
+  font-size: 12px;
+  table-layout: fixed;
   border-radius: 12px;
-  overflow: hidden;
+  overflow: visible;
   background: var(--table-bg);
   box-shadow:
     inset 0 0 0 1px var(--table-border),
@@ -5039,6 +5939,25 @@ table.table {
   padding: 8px 10px;
   border-bottom: 1px solid var(--table-border);
   border-right: 1px solid var(--table-border);
+  word-break: break-word;
+}
+
+.table th.cell--tight,
+.table td.cell--tight {
+  font-size: 11px;
+  padding: 6px 8px;
+  line-height: 1.2;
+}
+
+.table th.cell--account,
+.table td.cell--account {
+  min-width: 220px;
+  width: 22%;
+}
+
+.cell--num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .table th:last-child,
@@ -5050,6 +5969,188 @@ table.table {
   background: color-mix(in srgb, var(--table-bg) 80%, transparent);
   font-weight: 600;
   color: var(--ink);
+  position: relative;
+  overflow: visible;
+}
+
+.th-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.th-title--filter {
+  position: relative;
+}
+
+.filter-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 240px;
+  max-width: 320px;
+  z-index: 5;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(10, 16, 32, 0.95);
+  box-shadow:
+    0 18px 36px rgba(0, 0, 0, 0.4),
+    0 6px 16px rgba(0, 0, 0, 0.3);
+  display: grid;
+  gap: 10px;
+}
+
+.filter-pop .field {
+  grid-template-columns: 1fr;
+}
+
+.filter-pop .input {
+  height: 36px;
+  font-size: 12px;
+  background: rgba(6, 9, 18, 0.9);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.filter-pop .label {
+  color: rgba(238, 242, 255, 0.85);
+}
+
+.filter-results {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(6, 9, 18, 0.7);
+}
+
+.filter-result {
+  text-align: left;
+  border: 0;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.filter-result:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.filter-result--muted {
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 10px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 12px;
+}
+
+.chip--reset {
+  background: rgba(62, 232, 181, 0.16);
+  border-color: rgba(62, 232, 181, 0.45);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.chip__label {
+  color: var(--muted);
+}
+
+.chip__value {
+  color: var(--ink);
+}
+
+.chip__clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+  padding: 0;
+}
+
+.chip__clear svg {
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+}
+
+.chip__clear:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.filter-pop--right {
+  left: auto;
+  right: 0;
+}
+
+.filter-pop--center {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.ghost--small {
+  height: 34px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.filter-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  padding: 0;
+}
+
+.filter-icon--active {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(62, 232, 181, 0.15);
+}
+
+.filter-icon svg {
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+}
+
+.filter-icon:hover {
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .table tr:last-child td {

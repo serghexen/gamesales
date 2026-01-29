@@ -334,6 +334,23 @@ def build_deals_filters(
     game_id: Optional[int],
     platform_code: Optional[str],
     q: Optional[str],
+    deal_type_code: Optional[str],
+    status_code: Optional[str],
+    customer_q: Optional[str],
+    source_code: Optional[str],
+    purchase_from: Optional[date],
+    purchase_to: Optional[date],
+    price_min: Optional[float],
+    price_max: Optional[float],
+    notes_q: Optional[str],
+    account_q: Optional[str],
+    game_q: Optional[str],
+    platform_q: Optional[str],
+    type_q: Optional[str],
+    status_q: Optional[str],
+    source_q: Optional[str],
+    date_q: Optional[str],
+    price_q: Optional[str],
 ) -> Tuple[str, List]:
     where = []
     params: List = []
@@ -350,6 +367,62 @@ def build_deals_filters(
         where.append("(g.title ILIKE %s OR a.login_name ILIKE %s OR c.nickname ILIKE %s)")
         like = f"%{q}%"
         params.extend([like, like, like])
+    if deal_type_code:
+        where.append("d.deal_type_code = %s")
+        params.append(deal_type_code)
+    if status_code:
+        where.append("d.status_code = %s")
+        params.append(status_code)
+    if customer_q:
+        where.append("c.nickname ILIKE %s")
+        params.append(f"%{customer_q}%")
+    if source_code:
+        where.append("c.source_code = %s")
+        params.append(source_code)
+    if notes_q:
+        where.append("di.notes ILIKE %s")
+        params.append(f"%{notes_q}%")
+    if account_q:
+        like = f"%{account_q}%"
+        where.append("(a.login_name ILIKE %s OR dm.name ILIKE %s)")
+        params.extend([like, like])
+    if game_q:
+        where.append("g.title ILIKE %s")
+        params.append(f"%{game_q}%")
+    if platform_q:
+        like = f"%{platform_q}%"
+        where.append("(p.code ILIKE %s OR p.name ILIKE %s)")
+        params.extend([like, like])
+    if type_q:
+        like = f"%{type_q}%"
+        where.append("(dt.code ILIKE %s OR dt.name ILIKE %s)")
+        params.extend([like, like])
+    if status_q:
+        like = f"%{status_q}%"
+        where.append("(ds.code ILIKE %s OR ds.name ILIKE %s)")
+        params.extend([like, like])
+    if source_q:
+        like = f"%{source_q}%"
+        where.append("(c.source_code ILIKE %s OR src.name ILIKE %s)")
+        params.extend([like, like])
+    if date_q:
+        where.append("COALESCE(di.purchase_at, d.created_at)::text ILIKE %s")
+        params.append(f"%{date_q}%")
+    if price_q:
+        where.append("di.price::text ILIKE %s")
+        params.append(f"%{price_q}%")
+    if purchase_from:
+        where.append("COALESCE(di.purchase_at, d.created_at)::date >= %s")
+        params.append(purchase_from)
+    if purchase_to:
+        where.append("COALESCE(di.purchase_at, d.created_at)::date <= %s")
+        params.append(purchase_to)
+    if price_min is not None:
+        where.append("di.price >= %s")
+        params.append(price_min)
+    if price_max is not None:
+        where.append("di.price <= %s")
+        params.append(price_max)
     where_sql = "WHERE " + " AND ".join(where) if where else ""
     return where_sql, params
 
@@ -1344,6 +1417,23 @@ def list_deals(
     game_id: Optional[int] = None,
     platform_code: Optional[str] = None,
     q: Optional[str] = None,
+    deal_type_code: Optional[str] = None,
+    status_code: Optional[str] = None,
+    customer_q: Optional[str] = None,
+    source_code: Optional[str] = None,
+    purchase_from: Optional[date] = None,
+    purchase_to: Optional[date] = None,
+    price_min: Optional[float] = None,
+    price_max: Optional[float] = None,
+    notes_q: Optional[str] = None,
+    account_q: Optional[str] = None,
+    game_q: Optional[str] = None,
+    platform_q: Optional[str] = None,
+    type_q: Optional[str] = None,
+    status_q: Optional[str] = None,
+    source_q: Optional[str] = None,
+    date_q: Optional[str] = None,
+    price_q: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
     user: UserOut = Depends(get_current_user),
@@ -1355,7 +1445,29 @@ def list_deals(
     offset = (page - 1) * page_size
 
     with psycopg.connect(DB_DSN) as conn:
-        where_sql, params = build_deals_filters(account_id, game_id, platform_code, q)
+        where_sql, params = build_deals_filters(
+            account_id,
+            game_id,
+            platform_code,
+            q,
+            deal_type_code,
+            status_code,
+            customer_q,
+            source_code,
+            purchase_from,
+            purchase_to,
+            price_min,
+            price_max,
+            notes_q,
+            account_q,
+            game_q,
+            platform_q,
+            type_q,
+            status_q,
+            source_q,
+            date_q,
+            price_q,
+        )
 
         total_row = q1(conn, f"""
             SELECT COUNT(*)
@@ -1366,6 +1478,7 @@ def list_deals(
             LEFT JOIN app.game_titles g ON g.game_id = di.game_id
             LEFT JOIN app.platforms p ON p.platform_id = di.platform_id
             LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+            LEFT JOIN app.sources src ON src.code = c.source_code
             {where_sql}
         """, params)
         total = int(total_row[0]) if total_row else 0
@@ -1398,6 +1511,7 @@ def list_deals(
             LEFT JOIN app.game_titles g ON g.game_id = di.game_id
             LEFT JOIN app.platforms p ON p.platform_id = di.platform_id
             LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+            LEFT JOIN app.sources src ON src.code = c.source_code
             {where_sql}
             ORDER BY d.created_at DESC
             LIMIT %s OFFSET %s
