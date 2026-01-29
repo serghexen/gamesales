@@ -341,18 +341,34 @@
               <div v-if="editAccount.open" class="modal-backdrop" @click.self="cancelEditAccount">
                 <div ref="modalRef" class="modal" :style="modalStyle">
                   <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
-                    <h3>{{ accountModalMode === 'create' ? 'Новый аккаунт' : 'Редактирование аккаунта' }}</h3>
-                    <button
-                      class="btn btn--icon-plain"
-                      type="button"
-                      aria-label="Закрыть"
-                      title="Закрыть"
-                      @click="cancelEditAccount"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M6 6l12 12M18 6l-12 12" />
-                      </svg>
-                    </button>
+                    <h3>{{ accountModalMode === 'create' ? 'Новый аккаунт' : 'Аккаунт' }}</h3>
+                    <div class="toolbar-actions">
+                      <button
+                        v-if="accountModalMode === 'edit'"
+                        class="btn btn--icon-plain"
+                        type="button"
+                        aria-label="Редактировать"
+                        title="Редактировать"
+                        @click="accountEditMode = 'edit'"
+                        :disabled="accountEditMode === 'edit'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 20h4l10-10-4-4L4 16v4Z" />
+                          <path d="M13 6l4 4" />
+                        </svg>
+                      </button>
+                      <button
+                        class="btn btn--icon-plain"
+                        type="button"
+                        aria-label="Закрыть"
+                        title="Закрыть"
+                        @click="cancelEditAccount"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M6 6l12 12M18 6l-12 12" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                   <div class="modal__body">
                     <div v-if="accountModalMode === 'edit' && accountGamesLoading" class="loader-wrap">
@@ -379,11 +395,11 @@
                     <div v-else-if="accountModalMode === 'edit'" class="form form--stack form--compact">
                       <label class="field">
                         <span class="label">Логин (без домена)</span>
-                        <input v-model.trim="editAccount.login_name" class="input" placeholder="user" />
+                        <input v-model.trim="editAccount.login_name" class="input" placeholder="user" :disabled="accountEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Домен</span>
-                        <select v-model="editAccount.domain_code" class="input input--select">
+                        <select v-model="editAccount.domain_code" class="input input--select" :disabled="accountEditMode === 'view'">
                           <option value="">— не выбрано —</option>
                           <option v-for="d in domains" :key="d.name" :value="d.name">
                             {{ d.name }}
@@ -392,7 +408,7 @@
                       </label>
                       <label class="field">
                         <span class="label">Платформа</span>
-                        <select v-model="editAccount.platform_code" class="input input--select">
+                        <select v-model="editAccount.platform_code" class="input input--select" :disabled="accountEditMode === 'view'">
                           <option value="">— не выбрано —</option>
                           <option v-for="p in platforms" :key="p.code" :value="p.code">
                             {{ p.name }} ({{ p.code }}) — {{ p.slot_capacity }} сл.
@@ -401,7 +417,7 @@
                       </label>
                       <label class="field">
                         <span class="label">Регион</span>
-                        <select v-model="editAccount.region_code" class="input input--select">
+                        <select v-model="editAccount.region_code" class="input input--select" :disabled="accountEditMode === 'view'">
                           <option value="">— не выбрано —</option>
                           <option v-for="r in regions" :key="r.code" :value="r.code">
                             {{ r.name }} ({{ r.code }})
@@ -410,7 +426,7 @@
                       </label>
                       <label class="field">
                         <span class="label">Статус</span>
-                        <select v-model="editAccount.status_code" class="input input--select">
+                        <select v-model="editAccount.status_code" class="input input--select" :disabled="accountEditMode === 'view'">
                           <option value="active">active</option>
                           <option value="banned">banned</option>
                           <option value="archived">archived</option>
@@ -419,23 +435,23 @@
                       </label>
                       <label class="field">
                         <span class="label">Дата</span>
-                        <input v-model="editAccount.account_date" class="input" type="date" />
+                        <input v-model="editAccount.account_date" class="input" type="date" :disabled="accountEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Комментарий</span>
-                        <input v-model.trim="editAccount.notes" class="input" placeholder="заметки" />
+                        <input v-model.trim="editAccount.notes" class="input" placeholder="заметки" :disabled="accountEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Пароль почта</span>
-                        <input v-model.trim="editAccount.email_password" class="input" autocomplete="new-password" />
+                        <input v-model.trim="editAccount.email_password" class="input" autocomplete="new-password" :disabled="accountEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Пароль аккаунт</span>
-                        <input v-model.trim="editAccount.account_password" class="input" autocomplete="new-password" />
+                        <input v-model.trim="editAccount.account_password" class="input" autocomplete="new-password" :disabled="accountEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Код аутентификатора</span>
-                        <input v-model.trim="editAccount.auth_code" class="input" placeholder="код" />
+                        <input v-model.trim="editAccount.auth_code" class="input" placeholder="код" :disabled="accountEditMode === 'view'" />
                       </label>
                       <div class="field field--full">
                         <span class="label">Пароли резерв</span>
@@ -446,8 +462,10 @@
                             class="input"
                             autocomplete="new-password"
                             :placeholder="`Резерв ${idx + 1}`"
+                            :disabled="accountEditMode === 'view'"
                           />
                           <button
+                            v-if="accountEditMode === 'edit'"
                             class="btn btn--icon-plain btn--icon-tiny"
                             type="button"
                             aria-label="Убрать"
@@ -459,22 +477,74 @@
                             </svg>
                           </button>
                         </div>
-                        <button class="ghost" type="button" @click="addEditReserveSecret">+ Добавить резервный пароль</button>
+                        <button v-if="accountEditMode === 'edit'" class="ghost" type="button" @click="addEditReserveSecret">+ Добавить резервный пароль</button>
                       </div>
                       </div>
                       <div class="field field--full">
                         <span class="label">Игры</span>
-                        <input v-model.trim="editAccountGameSearch" class="input" placeholder="поиск игры" />
-                        <div class="check-list">
-                          <label v-for="g in filteredEditAccountGames" :key="g.game_id" class="check-item">
-                            <input type="checkbox" :value="g.game_id" v-model="editAccount.game_ids" />
-                            <span>{{ g.title }}</span>
-                          </label>
+                        <div v-if="accountEditMode === 'view'" class="pill-list">
+                          <span v-for="t in accountGameTitles" :key="t" class="pill">{{ t }}</span>
+                          <span v-if="!accountGameTitles.length" class="muted">Пока нет игр.</span>
                         </div>
+                        <div v-else>
+                          <input v-model.trim="editAccountGameSearch" class="input" placeholder="поиск игры" />
+                          <div class="check-list">
+                            <label v-for="g in filteredEditAccountGames" :key="g.game_id" class="check-item">
+                              <input type="checkbox" :value="g.game_id" v-model="editAccount.game_ids" />
+                              <span>{{ g.title }}</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="field field--full">
+                        <span class="label">Пользователи по сделкам</span>
+                        <p v-if="accountDealsError" class="bad">{{ accountDealsError }}</p>
+                        <div v-if="accountDealsLoading" class="loader-wrap loader-wrap--compact">
+                          <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                            <div class="wheel"></div>
+                            <div class="hamster">
+                              <div class="hamster__body">
+                                <div class="hamster__head">
+                                  <div class="hamster__ear"></div>
+                                  <div class="hamster__eye"></div>
+                                  <div class="hamster__nose"></div>
+                                </div>
+                                <div class="hamster__limb hamster__limb--fr"></div>
+                                <div class="hamster__limb hamster__limb--fl"></div>
+                                <div class="hamster__limb hamster__limb--br"></div>
+                                <div class="hamster__limb hamster__limb--bl"></div>
+                                <div class="hamster__tail"></div>
+                              </div>
+                            </div>
+                            <div class="spoke"></div>
+                          </div>
+                          <p class="muted">Загрузка сделок…</p>
+                        </div>
+                        <table v-else-if="accountDeals.length" class="table table--compact table--dense">
+                          <thead>
+                            <tr>
+                              <th>Пользователь</th>
+                              <th>Игра</th>
+                              <th>Тип</th>
+                              <th>Статус</th>
+                              <th>Дата покупки</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="d in accountDeals" :key="`${d.deal_id}-${d.game_id}`">
+                              <td>{{ d.customer_nickname || '—' }}</td>
+                              <td>{{ d.game_title || '—' }}</td>
+                              <td>{{ d.deal_type || '—' }}</td>
+                              <td>{{ d.status || '—' }}</td>
+                              <td>{{ formatDate(d.purchase_at || d.created_at) }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        <p v-else class="muted">Сделок по аккаунту пока нет.</p>
                       </div>
                       <p v-if="accountsError" class="bad">{{ accountsError }}</p>
                       <p v-if="accountsOk" class="ok">{{ accountsOk }}</p>
-                      <div class="toolbar-actions">
+                      <div v-if="accountEditMode === 'edit'" class="toolbar-actions">
                         <button
                           class="btn btn--icon-plain"
                           @click="updateAccount"
@@ -1055,7 +1125,7 @@
                   <td>{{ d.deal_type }}</td>
                   <td>{{ d.status || '—' }}</td>
                   <td>{{ d.customer_nickname || '—' }}</td>
-                  <td>{{ d.source_code || '—' }}</td>
+                  <td>{{ getSourceName(d.source_code) }}</td>
                   <td>{{ formatDate(d.purchase_at || d.created_at) }}</td>
                   <td>{{ d.platform_code || '—' }}</td>
                   <td>{{ d.price }}</td>
@@ -1972,6 +2042,9 @@ const accountsError = ref(null)
 const accountsOk = ref(null)
 const accountsLoading = ref(false)
 const accountSaving = ref(false)
+const accountDeals = ref([])
+const accountDealsLoading = ref(false)
+const accountDealsError = ref(null)
 const dealSaving = ref(false)
 const gameSaving = ref(false)
 const catalogSaving = ref(false)
@@ -2011,10 +2084,31 @@ const pwdError = ref(null)
 const pwdOk = ref(false)
 const pwdLoading = ref(false)
 const showPwdForm = ref(false)
+const accountEditMode = ref('view')
+
+const sourceNameByCode = computed(() => {
+  const map = new Map()
+  for (const s of sources.value || []) {
+    if (!s?.code) continue
+    map.set(s.code, s.name || s.code)
+  }
+  return map
+})
+
+const getSourceName = (code) => {
+  if (!code) return '—'
+  return sourceNameByCode.value.get(code) || code
+}
+
+const accountGameTitles = computed(() => {
+  const gameMap = new Map((games.value || []).map((g) => [g.game_id, g.title]))
+  return (editAccount.game_ids || []).map((id) => gameMap.get(id)).filter(Boolean)
+})
 
 const globalSaving = computed(() => accountSaving.value || dealSaving.value || gameSaving.value || catalogSaving.value)
 
 const isAdmin = computed(() => auth.state.role === 'admin')
+
 
 const modalRef = ref(null)
 const modalPos = reactive({ x: 0, y: 0 })
@@ -2866,9 +2960,28 @@ async function loadAccounts() {
   }
 }
 
+async function loadAccountDeals(accountId) {
+  accountDealsLoading.value = true
+  accountDealsError.value = null
+  try {
+    const params = new URLSearchParams()
+    params.set('account_id', String(accountId))
+    params.set('page', '1')
+    params.set('page_size', '200')
+    const res = await apiGet(`/deals?${params.toString()}`, { token: auth.state.token })
+    accountDeals.value = res?.items || []
+  } catch (e) {
+    accountDealsError.value = e?.message || 'Ошибка'
+    accountDeals.value = []
+  } finally {
+    accountDealsLoading.value = false
+  }
+}
+
 function startEditAccount(a) {
   resetModalPos()
   accountModalMode.value = 'edit'
+  accountEditMode.value = 'view'
   editAccount.open = true
   editAccount.account_id = a.account_id
   editAccount.login_name = a.login_name || ''
@@ -2898,11 +3011,13 @@ function startEditAccount(a) {
   editAccount.has_email = Boolean(email)
   editAccount.has_auth = Boolean(auth)
   loadAccountGames(a.account_id)
+  loadAccountDeals(a.account_id)
 }
 
 function openCreateAccountModal() {
   resetModalPos()
   accountModalMode.value = 'create'
+  accountEditMode.value = 'edit'
   editAccount.open = true
   accountGamesLoading.value = false
   accountsError.value = null
@@ -2945,6 +3060,10 @@ function cancelEditAccount() {
   editAccount.has_auth = false
   editAccount.game_ids = []
   editAccountGameSearch.value = ''
+  accountDeals.value = []
+  accountDealsError.value = null
+  accountDealsLoading.value = false
+  accountEditMode.value = 'view'
   newAccount.login_name = ''
   newAccount.domain_code = ''
   newAccount.platform_code = ''
@@ -3931,7 +4050,7 @@ watch(
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,650&display=swap');
 
-:root {
+:global(:root) {
   --bg-1: #0c1024;
   --bg-2: #151b35;
   --bg-3: #0f2431;
@@ -3941,6 +4060,31 @@ watch(
   --muted: rgba(238, 242, 255, 0.7);
   --card: rgba(10, 16, 32, 0.6);
   --stroke: rgba(255, 255, 255, 0.12);
+  --ghost-bg: rgba(11, 15, 25, 0.08);
+  --ghost-border: rgba(255, 255, 255, 0.12);
+  --ghost-text: #e8eefc;
+  --tab-bg: rgba(255, 255, 255, 0.06);
+  --tab-border: rgba(255, 255, 255, 0.12);
+  --tab-text: #c9d6ee;
+  --tab-hover-bg: rgba(255, 255, 255, 0.12);
+  --tab-hover-text: #f8fafc;
+  --tab-active-bg: linear-gradient(135deg, rgba(62, 232, 181, 0.45), rgba(247, 185, 85, 0.3));
+  --tab-active-text: #0b0f19;
+  --input-bg: rgba(8, 12, 24, 0.6);
+  --input-border: rgba(255, 255, 255, 0.16);
+  --table-bg: rgba(255, 255, 255, 0.08);
+  --table-border: rgba(255, 255, 255, 0.08);
+  --modal-bg: rgba(10, 16, 32, 0.92);
+  --modal-text: #eef2ff;
+  --btn-bg: linear-gradient(135deg, #3ee8b5, #7df0c6);
+  --btn-text: #0b0f19;
+  --danger-bg: #ff6b6b;
+  --glow-ring: rgba(12, 14, 24, 0.85);
+}
+
+:global(html),
+:global(body) {
+  font-family: 'Space Grotesk', sans-serif;
 }
 
 .page {
@@ -4019,6 +4163,7 @@ watch(
   align-items: center;
 }
 
+
 .tabs {
   display: flex;
   flex-wrap: wrap;
@@ -4026,9 +4171,9 @@ watch(
 }
 
 .tab {
-  background: rgba(11, 15, 25, 0.06);
-  border: 1px solid rgba(11, 15, 25, 0.12);
-  color: #4b5565;
+  background: var(--tab-bg);
+  border: 1px solid var(--tab-border);
+  color: var(--tab-text);
   border-radius: 999px;
   padding: 8px 12px;
   font-size: 12px;
@@ -4036,14 +4181,14 @@ watch(
 }
 
 .tab:hover {
-  background: rgba(11, 15, 25, 0.12);
-  color: #1f2937;
+  background: var(--tab-hover-bg);
+  color: var(--tab-hover-text);
 }
 
 .tab.active {
-  background: linear-gradient(135deg, rgba(62, 232, 181, 0.45), rgba(247, 185, 85, 0.3));
-  border-color: rgba(255, 255, 255, 0.3);
-  color: #0b0f19;
+  background: var(--tab-active-bg);
+  border-color: var(--stroke);
+  color: var(--tab-active-text);
 }
 
 button {
@@ -4056,14 +4201,14 @@ button {
 }
 
 .ghost {
-  background: rgba(11, 15, 25, 0.06);
-  border: 1px solid rgba(11, 15, 25, 0.12);
-  color: #2b3441;
+  background: var(--ghost-bg);
+  border: 1px solid var(--ghost-border);
+  color: var(--ghost-text);
 }
 
 .ghost:hover {
-  background: rgba(11, 15, 25, 0.12);
-  color: #111827;
+  background: var(--tab-hover-bg);
+  color: var(--tab-hover-text);
 }
 
 .ghost:disabled {
@@ -4072,8 +4217,14 @@ button {
 }
 
 .danger {
-  background: #ff6b6b;
-  color: white;
+  background: var(--danger-bg);
+  color: #fff;
+  box-shadow: 0 8px 16px rgba(255, 93, 93, 0.35);
+  border: 1px solid rgba(255, 77, 79, 0.4);
+}
+
+.danger:hover {
+  filter: brightness(0.98);
 }
 
 .hero {
@@ -4249,16 +4400,24 @@ h2 {
   width: min(980px, 96vw);
   height: min(92vh, 820px);
   overflow: hidden;
-  background: #f6f8fb;
-  color: #111827;
-  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: var(--modal-bg, rgba(10, 16, 32, 0.92));
+  color: var(--modal-text, #eef2ff);
+  border: 1px solid var(--stroke);
   border-radius: 20px;
   padding: 16px;
   display: flex;
   flex-direction: column;
+  font-family: inherit;
   box-shadow:
     0 24px 60px rgba(0, 0, 0, 0.35),
     0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+.modal input,
+.modal select,
+.modal textarea,
+.modal button {
+  font-family: inherit;
 }
 
 .modal--auto {
@@ -4271,24 +4430,24 @@ h2 {
 }
 
 .modal .label {
-  color: #4b5563;
+  color: var(--muted);
 }
 
 .modal .muted {
-  color: #6b7280;
+  color: var(--muted);
 }
 
 .modal .input {
-  background: #ffffff;
-  color: #111827;
-  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: var(--input-bg);
+  color: var(--ink);
+  border: 1px solid var(--input-border);
 }
 
 .modal .btn--ghost,
 .modal .ghost {
-  background: rgba(17, 24, 39, 0.06);
-  color: #1f2937;
-  border: 1px solid rgba(17, 24, 39, 0.1);
+  background: var(--ghost-bg);
+  color: var(--ghost-text);
+  border: 1px solid var(--ghost-border);
 }
 
 .modal__head {
@@ -4313,14 +4472,14 @@ h2 {
   padding: 0;
   display: grid;
   place-items: center;
-  background: #f2f4f8;
-  color: #1f2937;
-  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: var(--ghost-bg);
+  color: var(--ghost-text);
+  border: 1px solid var(--ghost-border);
   border-radius: 10px;
 }
 
 .btn--icon-plain:hover {
-  background: #e8ecf3;
+  background: var(--tab-hover-bg);
 }
 
 .btn--icon-plain svg {
@@ -4668,6 +4827,39 @@ h3 {
   background: rgba(255, 255, 255, 0.5);
 }
 
+.pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-size: 12px;
+}
+
+.table--dense th,
+.table--dense td {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.loader-wrap--compact {
+  min-height: 120px;
+  padding: 12px;
+}
+
+.wheel-and-hamster--mini {
+  width: 8em;
+  height: 8em;
+  font-size: 10px;
+}
+
 .check-item {
   display: flex;
   align-items: center;
@@ -4721,8 +4913,8 @@ h3 {
 }
 
 .btn--ghost {
-  background: rgba(255, 255, 255, 0.08);
-  color: #e8eefc;
+  background: var(--ghost-bg);
+  color: var(--ghost-text);
 }
 
 .btn--icon {
@@ -4758,7 +4950,7 @@ h3 {
   position: absolute;
   inset: -2px;
   border-radius: 50%;
-  background: rgba(12, 14, 24, 0.85);
+  background: var(--glow-ring);
   z-index: -1;
   transition: 0.35s ease;
 }
@@ -4807,8 +4999,8 @@ h3 {
   height: 42px;
   padding: 0 12px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(8, 12, 24, 0.6);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
   color: var(--ink);
   outline: none;
   font-size: 14px;
@@ -4835,9 +5027,9 @@ table.table {
   font-size: 13px;
   border-radius: 12px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--table-bg);
   box-shadow:
-    inset 0 0 0 1px rgba(17, 24, 39, 0.06),
+    inset 0 0 0 1px var(--table-border),
     0 6px 18px rgba(17, 24, 39, 0.04);
 }
 
@@ -4845,8 +5037,8 @@ table.table {
 .table td {
   text-align: left;
   padding: 8px 10px;
-  border-bottom: 1px solid rgba(17, 24, 39, 0.06);
-  border-right: 1px solid rgba(17, 24, 39, 0.04);
+  border-bottom: 1px solid var(--table-border);
+  border-right: 1px solid var(--table-border);
 }
 
 .table th:last-child,
@@ -4855,9 +5047,9 @@ table.table {
 }
 
 .table th {
-  background: rgba(17, 24, 39, 0.03);
+  background: color-mix(in srgb, var(--table-bg) 80%, transparent);
   font-weight: 600;
-  color: #1f2937;
+  color: var(--ink);
 }
 
 .table tr:last-child td {
@@ -4865,7 +5057,7 @@ table.table {
 }
 
 .table tbody tr:hover td {
-  background: rgba(62, 232, 181, 0.08);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .clickable-row {
@@ -4877,7 +5069,7 @@ table.table {
 }
 
 .clickable-row:hover td {
-  background: rgba(88, 130, 255, 0.08);
+  background: color-mix(in srgb, var(--accent-2) 10%, transparent);
 }
 
 .clickable-cell {
@@ -4894,7 +5086,7 @@ table.table {
 }
 
 .sortable:hover {
-  color: #0f172a;
+  color: var(--ink);
 }
 
 .row-active td {
@@ -4937,8 +5129,8 @@ table.table {
   height: 44px;
   border-radius: 12px;
   border: 0;
-  background: linear-gradient(135deg, #3ee8b5, #7df0c6);
-  color: #0b0f19;
+  background: var(--btn-bg);
+  color: var(--btn-text);
   font-weight: 700;
   font-size: 14px;
   cursor: pointer;
