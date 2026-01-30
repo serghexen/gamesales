@@ -42,6 +42,33 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 def now_utc():
     return datetime.now(timezone.utc)
 
+MIN_DATE = date(2020, 1, 1)
+
+def validate_date_in_range(value, field_name: str):
+    if value is None:
+        return
+    if isinstance(value, datetime):
+        check_date = value.date()
+    else:
+        check_date = value
+    max_date = now_utc().date()
+    if check_date < MIN_DATE or check_date > max_date:
+        raise HTTPException(400, f"{field_name} must be between {MIN_DATE.isoformat()} and {max_date.isoformat()}")
+
+def validate_date_range(start_value, end_value, field_name: str):
+    if not start_value or not end_value:
+        return
+    if isinstance(start_value, datetime):
+        start_date = start_value.date()
+    else:
+        start_date = start_value
+    if isinstance(end_value, datetime):
+        end_date = end_value.date()
+    else:
+        end_date = end_value
+    if end_date < start_date:
+        raise HTTPException(400, f"{field_name} must be >= start_at")
+
 # ----------------------------
 # Models
 # ----------------------------
@@ -79,18 +106,21 @@ class AccountOut(BaseModel):
 
 class GameCreate(BaseModel):
     title: str
-    platform_code: Optional[str] = None
+    short_title: Optional[str] = None
+    platform_codes: Optional[List[str]] = None
     region_code: Optional[str] = None
 
 class GameUpdate(BaseModel):
     title: Optional[str] = None
-    platform_code: Optional[str] = None
+    short_title: Optional[str] = None
+    platform_codes: Optional[List[str]] = None
     region_code: Optional[str] = None
 
 class GameOut(BaseModel):
     game_id: int
     title: str
-    platform_code: Optional[str]
+    short_title: Optional[str] = None
+    platform_codes: List[str]
     region_code: Optional[str]
 
 class PlatformOut(BaseModel):
@@ -198,6 +228,7 @@ class DealListItem(BaseModel):
     account_login: Optional[str]
     game_id: Optional[int]
     game_title: Optional[str]
+    game_short_title: Optional[str] = None
     platform_code: Optional[str]
     customer_nickname: Optional[str]
     source_code: Optional[str]
@@ -462,6 +493,59 @@ def get_account_platform_slots(conn, account_id: int) -> List[AccountPlatformSlo
         )
         for (r0, r1, r2, r3) in rows
     ]
+
+def normalize_platform_codes(codes: Optional[List[str]]) -> List[str]:
+    if not codes:
+        return []
+    uniq = []
+    seen = set()
+    for code in codes:
+        if not code:
+            continue
+        val = str(code).strip().lower()
+        if not val or val in seen:
+            continue
+        seen.add(val)
+        uniq.append(val)
+    return uniq
+
+def get_game_platform_codes(conn, game_id: int) -> List[str]:
+    rows = qall(
+        conn,
+        """
+        SELECT p.code
+        FROM app.game_platforms gp
+        JOIN app.platforms p ON p.platform_id = gp.platform_id
+        WHERE gp.game_id=%s
+        ORDER BY p.code
+        """,
+        (game_id,),
+    )
+    return [r[0] for r in rows]
+
+def find_game_title_platform_conflicts(conn, title: str, platform_codes: List[str], exclude_game_id: Optional[int] = None) -> List[str]:
+    if not title or not platform_codes:
+        return []
+    params = [title, platform_codes]
+    extra = ""
+    if exclude_game_id is not None:
+        extra = "AND g.game_id <> %s"
+        params.append(exclude_game_id)
+    rows = qall(
+        conn,
+        f"""
+        SELECT DISTINCT p.code
+        FROM app.game_titles g
+        JOIN app.game_platforms gp ON gp.game_id = g.game_id
+        JOIN app.platforms p ON p.platform_id = gp.platform_id
+        WHERE lower(g.title) = lower(%s)
+          AND p.code = ANY(%s)
+          {extra}
+        ORDER BY p.code
+        """,
+        params,
+    )
+    return [r[0] for r in rows]
 
 def init_auth_schema(conn):
     with conn.cursor() as cur:
@@ -874,6 +958,7 @@ def list_accounts(user: UserOut = Depends(get_current_user)):
 def create_account(payload: AccountCreate, user: UserOut = Depends(get_current_user)):
     if not payload.login_name or not payload.domain_code:
         raise HTTPException(400, "login_name and domain_code are required")
+    validate_date_in_range(payload.account_date, "account_date")
     with psycopg.connect(DB_DSN) as conn:
         region_id = get_region_id(conn, payload.region_code)
         domain_id = get_domain_id(conn, payload.domain_code)
@@ -917,6 +1002,7 @@ def update_account(
     payload: AccountUpdate,
     user: UserOut = Depends(require_role("admin")),
 ):
+    validate_date_in_range(payload.account_date, "account_date")
     with psycopg.connect(DB_DSN) as conn:
         current = q1(
             conn,
@@ -1057,17 +1143,20 @@ def list_account_games(account_id: int, user: UserOut = Depends(get_current_user
         rows = qall(
             conn,
             """
-            SELECT g.game_id, g.title, p.code, r.code
+            SELECT g.game_id, g.title, g.short_title, r.code,
+                   COALESCE(array_agg(p.code ORDER BY p.code) FILTER (WHERE p.code IS NOT NULL), '{}'::text[]) AS platform_codes
             FROM app.account_assets aa
             JOIN app.game_titles g ON g.game_id = aa.game_id
-            LEFT JOIN app.platforms p ON p.platform_id = g.platform_id
             LEFT JOIN app.regions r ON r.region_id = g.region_id
+            LEFT JOIN app.game_platforms gp ON gp.game_id = g.game_id
+            LEFT JOIN app.platforms p ON p.platform_id = gp.platform_id
             WHERE aa.account_id=%s AND aa.asset_type_code='game'
+            GROUP BY g.game_id, g.title, g.short_title, r.code
             ORDER BY g.title
             """,
             (account_id,),
         )
-    return [GameOut(game_id=r0, title=r1, platform_code=r2, region_code=r3) for (r0, r1, r2, r3) in rows]
+    return [GameOut(game_id=r0, title=r1, short_title=r2, platform_codes=list(r4 or []), region_code=r3) for (r0, r1, r2, r3, r4) in rows]
 
 @app.put("/accounts/{account_id}/games")
 def set_account_games(
@@ -1112,13 +1201,20 @@ def list_game_accounts(game_id: int, user: UserOut = Depends(get_current_user)):
               p.code as platform_code,
               s.free_slots,
               s.occupied_slots
-            FROM app.account_assets aa
-            JOIN app.accounts a ON a.account_id = aa.account_id
+            FROM (
+              SELECT DISTINCT ON (di.account_id, di.platform_id)
+                di.account_id,
+                di.platform_id
+              FROM app.deal_items di
+              WHERE di.game_id=%s
+                AND di.account_id IS NOT NULL
+                AND di.platform_id IS NOT NULL
+              ORDER BY di.account_id DESC, di.platform_id
+            ) dg
+            JOIN app.accounts a ON a.account_id = dg.account_id
             LEFT JOIN app.domains d ON d.domain_id = a.domain_id
-            JOIN app.account_platforms ap ON ap.account_id = a.account_id
-            JOIN app.platforms p ON p.platform_id = ap.platform_id
-            LEFT JOIN app.v_account_platform_slots s ON s.account_id = a.account_id AND s.platform_id = ap.platform_id
-            WHERE aa.game_id=%s AND aa.asset_type_code='game'
+            JOIN app.platforms p ON p.platform_id = dg.platform_id
+            LEFT JOIN app.v_account_platform_slots s ON s.account_id = dg.account_id AND s.platform_id = dg.platform_id
             ORDER BY a.account_id DESC, p.code
             """,
             (game_id,),
@@ -1139,40 +1235,62 @@ def list_games(q: Optional[str] = None, user: UserOut = Depends(get_current_user
     with psycopg.connect(DB_DSN) as conn:
         if q:
             rows = qall(conn, """
-                SELECT g.game_id, g.title, p.code, r.code
+                SELECT g.game_id, g.title, g.short_title, r.code,
+                       COALESCE(array_agg(p.code ORDER BY p.code) FILTER (WHERE p.code IS NOT NULL), '{}'::text[]) AS platform_codes
                 FROM app.game_titles g
-                LEFT JOIN app.platforms p ON p.platform_id = g.platform_id
                 LEFT JOIN app.regions r ON r.region_id = g.region_id
-                WHERE g.title ILIKE %s
+                LEFT JOIN app.game_platforms gp ON gp.game_id = g.game_id
+                LEFT JOIN app.platforms p ON p.platform_id = gp.platform_id
+                WHERE g.title ILIKE %s OR g.short_title ILIKE %s
+                GROUP BY g.game_id, g.title, g.short_title, r.code
                 ORDER BY g.game_id DESC
                 LIMIT 200
-            """, (f"%{q}%",))
+            """, (f"%{q}%", f"%{q}%"))
         else:
             rows = qall(conn, """
-                SELECT g.game_id, g.title, p.code, r.code
+                SELECT g.game_id, g.title, g.short_title, r.code,
+                       COALESCE(array_agg(p.code ORDER BY p.code) FILTER (WHERE p.code IS NOT NULL), '{}'::text[]) AS platform_codes
                 FROM app.game_titles g
-                LEFT JOIN app.platforms p ON p.platform_id = g.platform_id
                 LEFT JOIN app.regions r ON r.region_id = g.region_id
+                LEFT JOIN app.game_platforms gp ON gp.game_id = g.game_id
+                LEFT JOIN app.platforms p ON p.platform_id = gp.platform_id
+                GROUP BY g.game_id, g.title, g.short_title, r.code
                 ORDER BY g.game_id DESC
                 LIMIT 200
             """)
-    return [GameOut(game_id=r0, title=r1, platform_code=r2, region_code=r3) for (r0, r1, r2, r3) in rows]
+    return [GameOut(game_id=r0, title=r1, short_title=r2, platform_codes=list(r4 or []), region_code=r3) for (r0, r1, r2, r3, r4) in rows]
 
 @app.post("/games", response_model=GameOut)
 def create_game(payload: GameCreate, user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
-        platform_id = get_platform_id(conn, payload.platform_code) if payload.platform_code else None
+        platform_codes = normalize_platform_codes(payload.platform_codes)
+        conflicts = find_game_title_platform_conflicts(conn, payload.title, platform_codes)
+        if conflicts:
+            raise HTTPException(409, f"Game already exists for platforms: {', '.join(conflicts)}")
+        platform_ids = [get_platform_id(conn, code) for code in platform_codes]
         region_id = get_region_id(conn, payload.region_code)
 
         row = q1(conn, """
-            INSERT INTO app.game_titles(title, platform_id, region_id)
+            INSERT INTO app.game_titles(title, short_title, region_id)
             VALUES (%s, %s, %s)
             RETURNING game_id
-        """, (payload.title, platform_id, region_id))
+        """, (payload.title, payload.short_title, region_id))
         gid = int(row[0])
+        if platform_ids:
+            with conn.cursor() as cur:
+                cur.executemany(
+                    "INSERT INTO app.game_platforms(game_id, platform_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    [(gid, pid) for pid in platform_ids],
+                )
         conn.commit()
 
-    return GameOut(game_id=gid, title=payload.title, platform_code=payload.platform_code, region_code=payload.region_code)
+    return GameOut(
+        game_id=gid,
+        title=payload.title,
+        short_title=payload.short_title,
+        platform_codes=platform_codes,
+        region_code=payload.region_code,
+    )
 
 @app.put("/games/{game_id}", response_model=GameOut)
 def update_game(game_id: int, payload: GameUpdate, user: UserOut = Depends(get_current_user)):
@@ -1180,9 +1298,8 @@ def update_game(game_id: int, payload: GameUpdate, user: UserOut = Depends(get_c
         row = q1(
             conn,
             """
-            SELECT g.title, p.code, r.code
+            SELECT g.title, g.short_title, r.code
             FROM app.game_titles g
-            LEFT JOIN app.platforms p ON p.platform_id = g.platform_id
             LEFT JOIN app.regions r ON r.region_id = g.region_id
             WHERE g.game_id=%s
             """,
@@ -1194,32 +1311,60 @@ def update_game(game_id: int, payload: GameUpdate, user: UserOut = Depends(get_c
         new_title = payload.title if payload.title is not None else row[0]
         if not new_title:
             raise HTTPException(400, "title is required")
+        new_short = payload.short_title if payload.short_title is not None else row[1]
+        platform_codes = normalize_platform_codes(payload.platform_codes)
+        platforms_for_check = platform_codes if payload.platform_codes is not None else get_game_platform_codes(conn, game_id)
+        conflicts = find_game_title_platform_conflicts(conn, new_title, platforms_for_check, exclude_game_id=game_id)
+        if conflicts:
+            raise HTTPException(409, f"Game already exists for platforms: {', '.join(conflicts)}")
 
-        if payload.platform_code is None:
-            platform_code = row[1]
-        else:
-            platform_code = payload.platform_code or None
         if payload.region_code is None:
             region_code = row[2]
         else:
             region_code = payload.region_code or None
 
-        platform_id = get_platform_id_optional(conn, platform_code)
         region_id = get_region_id(conn, region_code)
 
         exec1(
             conn,
-            "UPDATE app.game_titles SET title=%s, platform_id=%s, region_id=%s WHERE game_id=%s",
-            (new_title, platform_id, region_id, game_id),
+            "UPDATE app.game_titles SET title=%s, short_title=%s, region_id=%s WHERE game_id=%s",
+            (new_title, new_short, region_id, game_id),
         )
+        if payload.platform_codes is not None:
+            exec1(conn, "DELETE FROM app.game_platforms WHERE game_id=%s", (game_id,))
+            if platform_codes:
+                platform_ids = [get_platform_id(conn, code) for code in platform_codes]
+                with conn.cursor() as cur:
+                    cur.executemany(
+                        "INSERT INTO app.game_platforms(game_id, platform_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                        [(game_id, pid) for pid in platform_ids],
+                    )
+        else:
+            rows = qall(conn, """
+                SELECT p.code
+                FROM app.game_platforms gp
+                JOIN app.platforms p ON p.platform_id = gp.platform_id
+                WHERE gp.game_id=%s
+                ORDER BY p.code
+            """, (game_id,))
+            platform_codes = [r[0] for r in rows]
         conn.commit()
-
-    return GameOut(game_id=game_id, title=new_title, platform_code=platform_code, region_code=region_code)
+    return GameOut(
+        game_id=game_id,
+        title=new_title,
+        short_title=new_short,
+        platform_codes=platform_codes,
+        region_code=region_code,
+    )
 
 @app.post("/rentals")
 def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_user)):
     if payload.slots_used <= 0:
         raise HTTPException(400, "slots_used must be >= 1")
+    validate_date_in_range(payload.purchase_at, "purchase_at")
+    validate_date_in_range(payload.start_at, "start_at")
+    validate_date_in_range(payload.end_at, "end_at")
+    validate_date_range(payload.start_at, payload.end_at, "end_at")
 
     start_at = payload.start_at or now_utc()
     end_at = payload.end_at
@@ -1286,6 +1431,10 @@ def create_deal(payload: DealCreate, user: UserOut = Depends(get_current_user)):
         raise HTTPException(400, "slots_used must be >= 1 for rental")
     if deal_type == "sale":
         payload.slots_used = 0
+    validate_date_in_range(payload.purchase_at, "purchase_at")
+    validate_date_in_range(payload.start_at, "start_at")
+    validate_date_in_range(payload.end_at, "end_at")
+    validate_date_range(payload.start_at, payload.end_at, "end_at")
 
     with psycopg.connect(DB_DSN) as conn:
         ensure_account_exists(conn, payload.account_id)
@@ -1342,6 +1491,12 @@ def create_deal(payload: DealCreate, user: UserOut = Depends(get_current_user)):
 
 @app.put("/deals/{deal_id}")
 def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_current_user)):
+    if payload.purchase_at is not None:
+        validate_date_in_range(payload.purchase_at, "purchase_at")
+    if payload.start_at is not None:
+        validate_date_in_range(payload.start_at, "start_at")
+    if payload.end_at is not None:
+        validate_date_in_range(payload.end_at, "end_at")
     with psycopg.connect(DB_DSN) as conn:
         row = q1(
             conn,
@@ -1405,6 +1560,7 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
             new_slots_used = 0
         if deal_type == "rental" and new_slots_used <= 0:
             raise HTTPException(400, "slots_used must be >= 1 for rental")
+        validate_date_range(new_start_at, new_end_at, "end_at")
 
         # check slots for rental
         if deal_type == "rental":
@@ -1540,6 +1696,7 @@ def list_deals(
               dm.name as domain_name,
               di.game_id,
               g.title,
+              g.short_title,
               p.code as platform_code,
               c.nickname,
               c.source_code,
@@ -1576,14 +1733,15 @@ def list_deals(
                 account_login=login_full,
                 game_id=r[7],
                 game_title=r[8],
-                platform_code=r[9],
-                customer_nickname=r[10],
-                source_code=r[11],
-                price=float(r[12] or 0),
-                purchase_at=r[13],
-                created_at=r[14],
-                slots_used=r[15],
-                notes=r[16],
+                game_short_title=r[9],
+                platform_code=r[10],
+                customer_nickname=r[11],
+                source_code=r[12],
+                price=float(r[13] or 0),
+                purchase_at=r[14],
+                created_at=r[15],
+                slots_used=r[16],
+                notes=r[17],
             )
         )
 

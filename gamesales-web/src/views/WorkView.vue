@@ -20,7 +20,6 @@
           </div>
           <div class="spoke"></div>
         </div>
-        <p class="muted">Сохраняем изменения…</p>
       </div>
     </div>
     <div class="shell">
@@ -439,11 +438,11 @@
                     <div v-if="activeAccountFilter === 'date'" class="filter-pop filter-pop--right" @click.stop>
                       <label class="field">
                         <span class="label">С</span>
-                        <input v-model="accountFilterDraft.date_from" class="input" type="date" />
+                        <input v-model="accountFilterDraft.date_from" class="input" type="date" :min="minDate" :max="maxDate" />
                       </label>
                       <label class="field">
                         <span class="label">По</span>
-                        <input v-model="accountFilterDraft.date_to" class="input" type="date" />
+                        <input v-model="accountFilterDraft.date_to" class="input" type="date" :min="minDate" :max="maxDate" />
                       </label>
                       <p v-if="accountFilterErrors.date" class="bad">{{ accountFilterErrors.date }}</p>
                       <button class="ghost ghost--small" type="button" @click="applyAccountFilter('date')">Применить</button>
@@ -461,7 +460,10 @@
                   <td class="cell--account">{{ a.login_full || '—' }}</td>
                   <td>{{ a.region_code || '—' }}</td>
                   <td>{{ a.status }}</td>
-                  <td>{{ formatAccountSlots(a) }}</td>
+                  <td class="cell--slots">
+                    <span class="slot-line">{{ formatAccountSlotsLine(a, 'ps4') }}</span>
+                    <span class="slot-line">{{ formatAccountSlotsLine(a, 'ps5') }}</span>
+                  </td>
                   <td>{{ formatDateOnly(a.account_date) }}</td>
                   <td>{{ formatSecret(getEmailSecret(a.account_id)) }}</td>
                   <td>{{ formatSecret(getAccountSecret(a.account_id)) }}</td>
@@ -562,7 +564,7 @@
                       </label>
                       <label class="field">
                         <span class="label">Дата</span>
-                        <input v-model="editAccount.account_date" class="input" type="date" :disabled="accountEditMode === 'view'" />
+                        <input v-model="editAccount.account_date" class="input" type="date" :min="minDate" :max="maxDate" :disabled="accountEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Комментарий</span>
@@ -659,7 +661,9 @@
                           <tbody>
                             <tr v-for="d in accountDeals" :key="`${d.deal_id}-${d.game_id}`">
                               <td>{{ d.customer_nickname || '—' }}</td>
-                              <td>{{ d.game_title || '—' }}</td>
+                              <td>
+                                <span :title="getDealGameTitleTooltip(d)">{{ getDealGameTitleDisplay(d) }}</span>
+                              </td>
                               <td>{{ d.deal_type || '—' }}</td>
                               <td>{{ d.status || '—' }}</td>
                               <td>{{ formatDate(d.purchase_at || d.created_at) }}</td>
@@ -713,7 +717,7 @@
                       </label>
                       <label class="field">
                         <span class="label">Дата</span>
-                        <input v-model="newAccount.account_date" class="input" type="date" />
+                        <input v-model="newAccount.account_date" class="input" type="date" :min="minDate" :max="maxDate" />
                       </label>
                       <label class="field">
                         <span class="label">Пароль почта</span>
@@ -885,6 +889,7 @@
                       <button class="ghost ghost--small" type="button" @click="resetGameFilter('title')">Сбросить</button>
                     </div>
                   </th>
+                  <th>Короткое</th>
                   <th class="sortable" @click="toggleGamesSort('platform')">
                     <span class="th-title th-title--filter">
                       Платформа
@@ -940,7 +945,8 @@
               <tbody>
                 <tr v-for="g in sortedGames" :key="g.game_id" class="clickable-row" @click="openGameAccounts(g)">
                   <td>{{ g.title }}</td>
-                  <td>{{ g.platform_code || '—' }}</td>
+                  <td>{{ g.short_title || '—' }}</td>
+                  <td>{{ formatGamePlatforms(g.platform_codes) }}</td>
                   <td>{{ g.region_code || '—' }}</td>
                 </tr>
               </tbody>
@@ -1077,14 +1083,18 @@
                         <input v-model.trim="editGame.title" class="input" placeholder="Например, GTA V" />
                       </label>
                       <label class="field">
-                        <span class="label">Платформа</span>
-                        <select v-model="editGame.platform_code" class="input input--select">
-                          <option value="">— не выбрано —</option>
-                          <option v-for="p in platforms" :key="p.code" :value="p.code">
-                            {{ p.name }} ({{ p.code }})
-                          </option>
-                        </select>
+                        <span class="label">Короткое название</span>
+                        <input v-model.trim="editGame.short_title" class="input" placeholder="Например, GTA V" />
                       </label>
+                      <div class="field field--full">
+                        <span class="label">Платформы</span>
+                        <div class="check-list check-list--compact">
+                          <label v-for="p in platforms" :key="p.code" class="check-item">
+                            <input type="checkbox" :value="p.code" v-model="editGame.platform_codes" />
+                            <span>{{ p.name }} ({{ p.code }})</span>
+                          </label>
+                        </div>
+                      </div>
                       <label class="field">
                         <span class="label">Регион</span>
                         <select v-model="editGame.region_code" class="input input--select">
@@ -1116,14 +1126,18 @@
                         <input v-model.trim="newGame.title" class="input" placeholder="Например, GTA V" />
                       </label>
                       <label class="field">
-                        <span class="label">Платформа (опционально)</span>
-                        <select v-model="newGame.platform_code" class="input input--select">
-                          <option value="">— не выбрано —</option>
-                          <option v-for="p in platforms" :key="p.code" :value="p.code">
-                            {{ p.name }} ({{ p.code }})
-                          </option>
-                        </select>
+                        <span class="label">Короткое название</span>
+                        <input v-model.trim="newGame.short_title" class="input" placeholder="Например, GTA V" />
                       </label>
+                      <div class="field field--full">
+                        <span class="label">Платформы (опционально)</span>
+                        <div class="check-list check-list--compact">
+                          <label v-for="p in platforms" :key="p.code" class="check-item">
+                            <input type="checkbox" :value="p.code" v-model="newGame.platform_codes" />
+                            <span>{{ p.name }} ({{ p.code }})</span>
+                          </label>
+                        </div>
+                      </div>
                       <label class="field">
                         <span class="label">Регион (опционально)</span>
                         <select v-model="newGame.region_code" class="input input--select">
@@ -1401,11 +1415,11 @@
                     <div v-if="activeDealFilter === 'date'" class="filter-pop filter-pop--right" @click.stop>
                       <label class="field">
                         <span class="label">С</span>
-                        <input v-model="dealFilters.purchase_from" class="input" type="date" />
+                        <input v-model="dealFilters.purchase_from" class="input" type="date" :min="minDate" :max="maxDate" />
                       </label>
                       <label class="field">
                         <span class="label">По</span>
-                        <input v-model="dealFilters.purchase_to" class="input" type="date" />
+                        <input v-model="dealFilters.purchase_to" class="input" type="date" :min="minDate" :max="maxDate" />
                       </label>
                       <p v-if="dealFilterErrors.date" class="bad">{{ dealFilterErrors.date }}</p>
                       <button
@@ -1462,11 +1476,25 @@
                     <div v-if="activeDealFilter === 'price'" class="filter-pop filter-pop--right" @click.stop>
                       <label class="field">
                         <span class="label">Цена от</span>
-                        <input v-model.trim="dealFilters.price_min" class="input" type="number" min="0" />
+                        <input
+                          v-model.trim="dealFilters.price_min"
+                          class="input"
+                          type="number"
+                          min="0"
+                          :max="maxPrice"
+                          @input="dealFilters.price_min = clampPriceFilter(dealFilters.price_min)"
+                        />
                       </label>
                       <label class="field">
                         <span class="label">Цена до</span>
-                        <input v-model.trim="dealFilters.price_max" class="input" type="number" min="0" />
+                        <input
+                          v-model.trim="dealFilters.price_max"
+                          class="input"
+                          type="number"
+                          min="0"
+                          :max="maxPrice"
+                          @input="dealFilters.price_max = clampPriceFilter(dealFilters.price_max)"
+                        />
                       </label>
                       <p v-if="dealFilterErrors.price" class="bad">{{ dealFilterErrors.price }}</p>
                       <button
@@ -1518,15 +1546,21 @@
                     <span class="clickable-cell" @click.stop="goToAccount(d.account_login)">{{ d.account_login || d.account_id }}</span>
                   </td>
                   <td>
-                    <span class="clickable-cell" @click.stop="openDealGame(d)">{{ d.game_title || '—' }}</span>
+                    <span
+                      class="clickable-cell"
+                      :title="getDealGameTitleTooltip(d)"
+                      @click.stop="openDealGame(d)"
+                    >
+                      {{ getDealGameTitleDisplay(d) }}
+                    </span>
                   </td>
                   <td class="cell--tight">{{ d.deal_type }}</td>
                   <td class="cell--tight">{{ d.status || '—' }}</td>
                   <td>{{ d.customer_nickname || '—' }}</td>
                   <td class="cell--tight">{{ getSourceName(d.source_code) }}</td>
-                  <td>{{ formatDate(d.purchase_at || d.created_at) }}</td>
+                  <td>{{ formatDateOnly(d.purchase_at || d.created_at) }}</td>
                   <td class="cell--tight">{{ d.platform_code || '—' }}</td>
-                  <td class="cell--tight cell--num">{{ d.price }}</td>
+                  <td class="cell--tight cell--num">{{ formatPrice(d.price) }}</td>
                   <td class="cell--tight">{{ d.notes || '—' }}</td>
                 </tr>
               </tbody>
@@ -1556,31 +1590,47 @@
               >
                 <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
                   <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
-                    <h3>{{ editDeal.open ? 'Редактирование сделки' : 'Новая сделка' }}</h3>
-                    <button
-                      class="btn btn--icon-plain"
-                      type="button"
-                      aria-label="Закрыть"
-                      title="Закрыть"
-                      @click="closeDealModal"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M6 6l12 12M18 6l-12 12" />
-                      </svg>
-                    </button>
+                    <h3>{{ dealModalTitle }}</h3>
+                    <div class="toolbar-actions">
+                      <button
+                        v-if="editDeal.open"
+                        class="btn btn--icon-plain"
+                        type="button"
+                        aria-label="Редактировать"
+                        title="Редактировать"
+                        @click="dealEditMode = 'edit'"
+                        :disabled="dealEditMode === 'edit'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 20h4l10-10-4-4L4 16v4Z" />
+                          <path d="M13 6l4 4" />
+                        </svg>
+                      </button>
+                      <button
+                        class="btn btn--icon-plain"
+                        type="button"
+                        aria-label="Закрыть"
+                        title="Закрыть"
+                        @click="closeDealModal"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M6 6l12 12M18 6l-12 12" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                   <div class="modal__body">
                     <div v-if="editDeal.open" class="form form--stack form--compact">
                       <label class="field">
                         <span class="label">Тип</span>
-                        <select v-model="editDeal.deal_type_code" class="input input--select">
+                        <select v-model="editDeal.deal_type_code" class="input input--select" :disabled="dealEditMode === 'view'">
                           <option value="sale">Продажа</option>
                           <option value="rental">Аренда</option>
                         </select>
                       </label>
                       <label class="field">
                         <span class="label">Аккаунт</span>
-                        <select v-model.number="editDeal.account_id" class="input input--select">
+                        <select v-model.number="editDeal.account_id" class="input input--select" :disabled="dealEditMode === 'view'">
                           <option value="">— не выбрано —</option>
                           <option v-for="a in dealAccountsForEdit" :key="a.account_id" :value="a.account_id">
                             {{ a.login_full || a.account_id }}
@@ -1589,7 +1639,7 @@
                       </label>
                       <label class="field">
                         <span class="label">Игра</span>
-                        <select v-model.number="editDeal.game_id" class="input input--select">
+                        <select v-model.number="editDeal.game_id" class="input input--select" :disabled="dealEditMode === 'view'">
                           <option value="">— не выбрано —</option>
                           <option v-for="g in games" :key="g.game_id" :value="g.game_id">
                             {{ g.title }}
@@ -1598,11 +1648,11 @@
                       </label>
                       <label class="field">
                         <span class="label">Пользователь</span>
-                        <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="nickname" />
+                        <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="nickname" :disabled="dealEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Откуда</span>
-                        <select v-model="editDeal.source_code" class="input input--select">
+                        <select v-model="editDeal.source_code" class="input input--select" :disabled="dealEditMode === 'view'">
                           <option value="">— не выбрано —</option>
                           <option v-for="s in sources" :key="s.code" :value="s.code">
                             {{ s.name }} ({{ s.code }})
@@ -1611,7 +1661,7 @@
                       </label>
                       <label class="field">
                         <span class="label">Платформа</span>
-                        <select v-model="editDeal.platform_code" class="input input--select">
+                        <select v-model="editDeal.platform_code" class="input input--select" :disabled="dealEditMode === 'view'">
                           <option value="">— не выбрано —</option>
                           <option v-for="p in platforms" :key="p.code" :value="p.code">
                             {{ p.name }} ({{ p.code }})
@@ -1620,19 +1670,39 @@
                       </label>
                       <label class="field">
                         <span class="label">Цена</span>
-                        <input v-model.number="editDeal.price" class="input" type="number" min="0" />
+                        <input
+                          v-model.number="editDeal.price"
+                          class="input"
+                          type="number"
+                          min="0"
+                          :max="maxPrice"
+                          @input="editDeal.price = clampPrice(editDeal.price)"
+                          :disabled="dealEditMode === 'view'"
+                        />
                       </label>
                       <label class="field">
                         <span class="label">Дата покупки</span>
-                        <input v-model="editDeal.purchase_at" class="input" type="date" />
+                        <input
+                          v-model="editDeal.purchase_at"
+                          class="input"
+                          type="date"
+                          :min="minDate"
+                          :max="maxDate"
+                          :disabled="dealEditMode === 'view'"
+                        />
                       </label>
                       <label class="field">
                         <span class="label">Комментарий</span>
-                        <input v-model.trim="editDeal.notes" class="input" />
+                        <textarea
+                          v-model.trim="editDeal.notes"
+                          class="input input--textarea"
+                          :rows="getNotesRows(editDeal.notes)"
+                          :disabled="dealEditMode === 'view'"
+                        />
                       </label>
                       <p v-if="dealError" class="bad">{{ dealError }}</p>
                       <p v-if="dealOk" class="ok">{{ dealOk }}</p>
-                      <div class="toolbar-actions">
+                      <div v-if="dealEditMode === 'edit'" class="toolbar-actions">
                         <button
                           class="btn btn--icon-plain"
                           @click="updateDeal"
@@ -1696,11 +1766,18 @@
                       </label>
                       <label class="field">
                         <span class="label">Цена</span>
-                        <input v-model.number="newDeal.price" class="input" type="number" min="0" />
+                        <input
+                          v-model.number="newDeal.price"
+                          class="input"
+                          type="number"
+                          min="0"
+                          :max="maxPrice"
+                          @input="newDeal.price = clampPrice(newDeal.price)"
+                        />
                       </label>
                       <label class="field">
                         <span class="label">Дата покупки</span>
-                        <input v-model="newDeal.purchase_at" class="input" type="date" />
+                        <input v-model="newDeal.purchase_at" class="input" type="date" :min="minDate" :max="maxDate" />
                       </label>
                       <label v-if="newDeal.deal_type_code === 'rental'" class="field">
                         <span class="label">Слотов используется</span>
@@ -1708,7 +1785,11 @@
                       </label>
                       <label class="field">
                         <span class="label">Комментарий</span>
-                        <input v-model.trim="newDeal.notes" class="input" />
+                        <textarea
+                          v-model.trim="newDeal.notes"
+                          class="input input--textarea"
+                          :rows="getNotesRows(newDeal.notes)"
+                        />
                       </label>
                       <p v-if="dealError" class="bad">{{ dealError }}</p>
                       <p v-if="dealOk" class="ok">{{ dealOk }}</p>
@@ -2481,6 +2562,7 @@ const pwdOk = ref(false)
 const pwdLoading = ref(false)
 const showPwdForm = ref(false)
 const accountEditMode = ref('view')
+const dealEditMode = ref('view')
 
 const sourceNameByCode = computed(() => {
   const map = new Map()
@@ -2558,6 +2640,13 @@ const globalSaving = computed(() => accountSaving.value || dealSaving.value || g
 
 const isAdmin = computed(() => auth.state.role === 'admin')
 
+const dealModalTitle = computed(() => {
+  if (showDealForm.value) return 'Новая сделка'
+  if (!editDeal.open) return 'Сделка'
+  const dateLabel = formatDateOnly(editDeal.purchase_at || editDeal.created_at)
+  return dateLabel === '—' ? 'Сделка' : `Сделка ${dateLabel}`
+})
+
 
 const modalRef = ref(null)
 const modalPos = reactive({ x: 0, y: 0 })
@@ -2624,7 +2713,8 @@ const activeTab = ref('deals')
 
 const newGame = reactive({
   title: '',
-  platform_code: '',
+  short_title: '',
+  platform_codes: [],
   region_code: '',
 })
 
@@ -2644,6 +2734,7 @@ const newDeal = reactive({
 const editDeal = reactive({
   open: false,
   deal_id: null,
+  created_at: '',
   deal_type_code: 'sale',
   account_id: '',
   game_id: '',
@@ -2662,7 +2753,8 @@ const editGame = reactive({
   open: false,
   game_id: null,
   title: '',
-  platform_code: '',
+  short_title: '',
+  platform_codes: [],
   region_code: '',
 })
 const dealFilters = reactive({
@@ -2799,6 +2891,11 @@ const dealStatusOptions = [
   { code: 'closed', name: 'Закрыт' },
 ]
 
+const minDate = '2020-01-01'
+const maxDate = new Date().toISOString().slice(0, 10)
+const maxPrice = 999999
+const maxGameTitleLength = 10
+
 const getAccountPlatformSlots = (account, platformCode) => {
   if (!account?.platform_slots || !platformCode) return null
   const code = String(platformCode).toLowerCase()
@@ -2813,6 +2910,14 @@ const getAccountSlotsText = (account) => {
   return `${ps4Text} · ${ps5Text}`
 }
 
+const formatAccountSlotsLine = (account, platformCode) => {
+  const slot = getAccountPlatformSlots(account, platformCode)
+  const label = String(platformCode || '').toUpperCase()
+  const occupied = slot?.occupied_slots || 0
+  const capacity = slot?.slot_capacity || 0
+  return `${label} - ${occupied}/${capacity}`
+}
+
 const getAccountFreeTotal = (account) =>
   (account?.platform_slots || []).reduce((sum, s) => sum + Number(s?.free_slots || 0), 0)
 
@@ -2821,6 +2926,96 @@ const formatAccountSlots = (account) => getAccountSlotsText(account)
 const getAccountFreeSlots = (account, platformCode) => {
   const slot = getAccountPlatformSlots(account, platformCode)
   return Number(slot?.free_slots || 0)
+}
+
+const clampPrice = (value) => {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return 0
+  return Math.min(Math.max(num, 0), maxPrice)
+}
+
+const clampPriceFilter = (value) => {
+  if (value === '' || value === null || value === undefined) return ''
+  const num = Number(value)
+  if (!Number.isFinite(num)) return ''
+  return String(Math.min(Math.max(num, 0), maxPrice))
+}
+
+const formatPrice = (value) => {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '—'
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 })
+    .format(num)
+    .replace(/\u00A0/g, ' ')
+}
+
+const getNotesRows = (value) => {
+  if (!value) return 2
+  const len = String(value).length
+  return Math.min(8, Math.max(3, Math.ceil(len / 60)))
+}
+
+const mapApiError = (message) => {
+  const text = String(message || '')
+  if (!text) return 'Ошибка'
+  if (text.includes('Not enough free slots.')) {
+    const free = text.match(/free_slots=([0-9]+)/)?.[1]
+    const req = text.match(/requested=([0-9]+)/)?.[1]
+    if (free && req) return `Недостаточно свободных слотов: свободно ${free}, нужно ${req}`
+    return 'Недостаточно свободных слотов'
+  }
+  if (text.includes('platform_code is required for rental')) return 'Для аренды нужно выбрать платформу'
+  if (text.includes('slots_used must be >= 1 for rental')) return 'Для аренды укажите количество слотов (минимум 1)'
+  if (text.includes('slots_used must be >= 1')) return 'Количество слотов должно быть не меньше 1'
+  if (text.includes('deal_type_code must be sale or rental')) return 'Тип сделки должен быть продажа или аренда'
+  if (text.includes('login_name and domain_code are required')) return 'Укажите логин и домен'
+  if (text.includes('title is required')) return 'Укажите название игры'
+  if (text.includes('account_date must be between')) return 'Дата аккаунта должна быть между 2020-01-01 и сегодня'
+  if (text.includes('purchase_at must be between')) return 'Дата покупки должна быть между 2020-01-01 и сегодня'
+  if (text.includes('start_at must be between')) return 'Дата начала должна быть между 2020-01-01 и сегодня'
+  if (text.includes('end_at must be between')) return 'Дата окончания должна быть между 2020-01-01 и сегодня'
+  if (text.includes('end_at must be >= start_at')) return 'Дата окончания не может быть раньше даты начала'
+  if (text.includes('Unknown platform_code')) return 'Неизвестная платформа'
+  if (text.includes('Unknown region_code')) return 'Неизвестный регион'
+  if (text.includes('Unknown domain')) return 'Неизвестный домен'
+  if (text.includes('User not found')) return 'Пользователь не найден'
+  if (text.includes('Account not found')) return 'Аккаунт не найден'
+  if (text.includes('Game not found')) return 'Игра не найдена'
+  if (text.includes('Source not found')) return 'Источник не найден'
+  if (text.includes('Domain not found')) return 'Домен не найден'
+  if (text.includes('Region not found')) return 'Регион не найден'
+  if (text.includes('Platform not found')) return 'Платформа не найдена'
+  if (text.includes('Game already exists for platforms:')) {
+    const list = text.split('Game already exists for platforms:')[1]?.trim()
+    return `Игра с таким названием уже есть на платформах: ${list || ''}`.trim()
+  }
+  return text
+}
+
+const getDealGameTitleDisplay = (deal) => {
+  if (!deal) return '—'
+  const title = String(deal.game_title || '')
+  const shortTitle = String(deal.game_short_title || '')
+  if (title.length > maxGameTitleLength && shortTitle) {
+    return shortTitle
+  }
+  return title || '—'
+}
+
+const getDealGameTitleTooltip = (deal) => {
+  if (!deal) return ''
+  const title = String(deal.game_title || '')
+  const shortTitle = String(deal.game_short_title || '')
+  if (title.length > maxGameTitleLength && shortTitle) {
+    return title
+  }
+  return ''
+}
+
+const formatGamePlatforms = (codes) => {
+  const list = Array.isArray(codes) ? codes : []
+  if (!list.length) return '—'
+  return list.join(', ')
 }
 
 const filteredAccounts = computed(() => {
@@ -2920,11 +3115,13 @@ const filteredGames = computed(() => {
   let list = [...games.value]
   if (gameFilters.q) {
     const q = gameFilters.q.toLowerCase()
-    list = list.filter((g) => (g.title || '').toLowerCase().includes(q))
+    list = list.filter((g) =>
+      (g.title || '').toLowerCase().includes(q) || (g.short_title || '').toLowerCase().includes(q)
+    )
   }
   if (gameFilters.platform_code) {
     const q = gameFilters.platform_code.toLowerCase()
-    list = list.filter((g) => (g.platform_code || '').toLowerCase().includes(q))
+    list = list.filter((g) => (g.platform_codes || []).some((c) => String(c || '').toLowerCase().includes(q)))
   }
   if (gameFilters.region_code) {
     const q = gameFilters.region_code.toLowerCase()
@@ -2937,8 +3134,16 @@ const sortedGames = computed(() => {
   const list = [...filteredGames.value]
   const { key, dir } = gamesSort.value
   list.sort((a, b) => {
-    const av = key === 'title' ? a.title : key === 'platform' ? a.platform_code : a.region_code
-    const bv = key === 'title' ? b.title : key === 'platform' ? b.platform_code : b.region_code
+    const av = key === 'title'
+      ? a.title
+      : key === 'platform'
+        ? formatGamePlatforms(a.platform_codes)
+        : a.region_code
+    const bv = key === 'title'
+      ? b.title
+      : key === 'platform'
+        ? formatGamePlatforms(b.platform_codes)
+        : b.region_code
     return dir === 'asc'
       ? String(av || '').localeCompare(String(bv || ''))
       : String(bv || '').localeCompare(String(av || ''))
@@ -3051,7 +3256,7 @@ async function checkApi() {
     apiOk.value = true
   } catch (e) {
     apiOk.value = false
-    error.value = e?.message || 'Ошибка'
+    error.value = mapApiError(e?.message)
   } finally {
     loading.value = false
   }
@@ -3067,7 +3272,7 @@ async function loadUsers() {
     const data = await apiGet('/users', { token: auth.state.token })
     users.value = data || []
   } catch (e) {
-    userError.value = e?.message || 'Ошибка'
+    userError.value = mapApiError(e?.message)
   } finally {
     userLoading.value = false
   }
@@ -3230,7 +3435,8 @@ function startEditGame(game) {
   editGame.open = true
   editGame.game_id = game.game_id
   editGame.title = game.title || ''
-  editGame.platform_code = game.platform_code || ''
+  editGame.short_title = game.short_title || ''
+  editGame.platform_codes = Array.isArray(game.platform_codes) ? [...game.platform_codes] : []
   editGame.region_code = game.region_code || ''
 }
 
@@ -3238,7 +3444,8 @@ function cancelEditGame() {
   editGame.open = false
   editGame.game_id = null
   editGame.title = ''
-  editGame.platform_code = ''
+  editGame.short_title = ''
+  editGame.platform_codes = []
   editGame.region_code = ''
 }
 
@@ -3256,7 +3463,8 @@ function closeGameModal() {
   gameError.value = null
   gameOk.value = null
   newGame.title = ''
-  newGame.platform_code = ''
+  newGame.short_title = ''
+  newGame.platform_codes = []
   newGame.region_code = ''
 }
 
@@ -3505,7 +3713,9 @@ function startEditDeal(deal) {
   resetModalPos()
   showDealForm.value = false
   editDeal.open = true
+  dealEditMode.value = 'view'
   editDeal.deal_id = deal.deal_id
+  editDeal.created_at = deal.created_at || ''
   editDeal.deal_type_code = deal.deal_type_code || (deal.deal_type === 'Аренда' ? 'rental' : 'sale')
   editDeal.account_id = deal.account_id
   editDeal.game_id = deal.game_id
@@ -3521,6 +3731,7 @@ function startEditDeal(deal) {
 function cancelEditDeal() {
   editDeal.open = false
   editDeal.deal_id = null
+  editDeal.created_at = ''
   editDeal.deal_type_code = 'sale'
   editDeal.account_id = ''
   editDeal.game_id = ''
@@ -3531,6 +3742,7 @@ function cancelEditDeal() {
   editDeal.purchase_at = ''
   editDeal.slots_used = 1
   editDeal.notes = ''
+  dealEditMode.value = 'view'
 }
 
 function formatDateOnly(value) {
@@ -3613,7 +3825,7 @@ async function loadGameAccounts(gameId) {
     const data = await apiGet(`/games/${gameId}/accounts`, { token: auth.state.token })
     gameAccounts.value = data || []
   } catch (e) {
-    gameAccountsError.value = e?.message || 'Ошибка'
+    gameAccountsError.value = mapApiError(e?.message)
     gameAccounts.value = []
   } finally {
     gameAccountsLoading.value = false
@@ -3677,7 +3889,7 @@ async function loadAccounts() {
     accounts.value = data || []
     await loadAccountSecrets(accounts.value)
   } catch (e) {
-    accountsError.value = e?.message || 'Ошибка'
+    accountsError.value = mapApiError(e?.message)
   } finally {
     accountsLoading.value = false
   }
@@ -3694,7 +3906,7 @@ async function loadAccountDeals(accountId) {
     const res = await apiGet(`/deals?${params.toString()}`, { token: auth.state.token })
     accountDeals.value = res?.items || []
   } catch (e) {
-    accountDealsError.value = e?.message || 'Ошибка'
+    accountDealsError.value = mapApiError(e?.message)
     accountDeals.value = []
   } finally {
     accountDealsLoading.value = false
@@ -3885,7 +4097,7 @@ async function createAccount() {
     await loadAccounts()
     cancelEditAccount()
   } catch (e) {
-    accountsError.value = e?.message || 'Ошибка'
+    accountsError.value = mapApiError(e?.message)
   } finally {
     accountsLoading.value = false
   }
@@ -3996,7 +4208,7 @@ async function updateAccount() {
     await loadAccounts()
     cancelEditAccount()
   } catch (e) {
-    accountsError.value = e?.message || 'Ошибка'
+    accountsError.value = mapApiError(e?.message)
   } finally {
     accountSaving.value = false
   }
@@ -4018,7 +4230,7 @@ async function createUser() {
     await loadUsers()
     closeUserModal()
   } catch (e) {
-    userError.value = e?.message || 'Ошибка'
+    userError.value = mapApiError(e?.message)
   } finally {
     userLoading.value = false
   }
@@ -4062,7 +4274,7 @@ async function changePassword() {
     pwdForm.next = ''
     pwdForm.next2 = ''
   } catch (e) {
-    pwdError.value = e?.message || 'Ошибка'
+    pwdError.value = mapApiError(e?.message)
   } finally {
     pwdLoading.value = false
   }
@@ -4098,19 +4310,21 @@ async function createGame() {
       '/games',
       {
         title: newGame.title,
-        platform_code: newGame.platform_code || null,
+        short_title: newGame.short_title || null,
+        platform_codes: newGame.platform_codes || [],
         region_code: newGame.region_code || null,
       },
       { token: auth.state.token }
     )
     gameOk.value = `Игра “${newGame.title}” добавлена`
     newGame.title = ''
-    newGame.platform_code = ''
+    newGame.short_title = ''
+    newGame.platform_codes = []
     newGame.region_code = ''
     await loadGames()
     closeGameModal()
   } catch (e) {
-    gameError.value = e?.message || 'Ошибка'
+    gameError.value = mapApiError(e?.message)
   } finally {
     gameLoading.value = false
     gameSaving.value = false
@@ -4132,7 +4346,8 @@ async function updateGame() {
       `/games/${editGame.game_id}`,
       {
         title: editGame.title,
-        platform_code: editGame.platform_code || null,
+        short_title: editGame.short_title || null,
+        platform_codes: editGame.platform_codes || [],
         region_code: editGame.region_code || null,
       },
       { token: auth.state.token }
@@ -4141,7 +4356,7 @@ async function updateGame() {
     await loadGames()
     cancelEditGame()
   } catch (e) {
-    gameError.value = e?.message || 'Ошибка'
+    gameError.value = mapApiError(e?.message)
   } finally {
     gameLoading.value = false
     gameSaving.value = false
@@ -4182,7 +4397,7 @@ async function createDeal() {
     await loadDeals(1)
     closeDealModal()
   } catch (e) {
-    dealError.value = e?.message || 'Ошибка'
+    dealError.value = mapApiError(e?.message)
   } finally {
     dealLoading.value = false
     dealSaving.value = false
@@ -4220,7 +4435,7 @@ async function updateDeal() {
     await loadDeals(dealPage.value)
     closeDealModal()
   } catch (e) {
-    dealError.value = e?.message || 'Ошибка'
+    dealError.value = mapApiError(e?.message)
   } finally {
     dealLoading.value = false
     dealSaving.value = false
@@ -4251,7 +4466,7 @@ async function loadDeals(page = 1) {
     dealTotal.value = res?.total || 0
     dealPage.value = page
   } catch (e) {
-    dealListError.value = e?.message || 'Ошибка'
+    dealListError.value = mapApiError(e?.message)
   } finally {
     dealListLoading.value = false
   }
@@ -4304,7 +4519,7 @@ async function saveEditDomain() {
     await loadDomains()
     closeDomainModal()
   } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
+    catalogsError.value = mapApiError(e?.message)
   } finally {
     catalogsLoading.value = false
     catalogSaving.value = false
@@ -4354,7 +4569,7 @@ async function saveEditSource() {
     await loadSources()
     closeSourceModal()
   } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
+    catalogsError.value = mapApiError(e?.message)
   } finally {
     catalogsLoading.value = false
     catalogSaving.value = false
@@ -4411,7 +4626,7 @@ async function saveEditPlatform() {
     await loadCatalogs()
     closePlatformModal()
   } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
+    catalogsError.value = mapApiError(e?.message)
   } finally {
     catalogsLoading.value = false
     catalogSaving.value = false
@@ -4461,7 +4676,7 @@ async function saveEditRegion() {
     await loadCatalogs()
     closeRegionModal()
   } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
+    catalogsError.value = mapApiError(e?.message)
   } finally {
     catalogsLoading.value = false
     catalogSaving.value = false
@@ -4484,7 +4699,7 @@ async function createDomain() {
     await loadDomains()
     closeDomainModal()
   } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
+    catalogsError.value = mapApiError(e?.message)
   } finally {
     catalogsLoading.value = false
     catalogSaving.value = false
@@ -4508,7 +4723,7 @@ async function createSource() {
     await loadSources()
     closeSourceModal()
   } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
+    catalogsError.value = mapApiError(e?.message)
   } finally {
     catalogsLoading.value = false
     catalogSaving.value = false
@@ -4533,7 +4748,7 @@ async function createPlatform() {
     await loadCatalogs()
     closePlatformModal()
   } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
+    catalogsError.value = mapApiError(e?.message)
   } finally {
     catalogsLoading.value = false
     catalogSaving.value = false
@@ -4557,7 +4772,7 @@ async function createRegion() {
     await loadCatalogs()
     closeRegionModal()
   } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
+    catalogsError.value = mapApiError(e?.message)
   } finally {
     catalogsLoading.value = false
     catalogSaving.value = false
@@ -4576,7 +4791,7 @@ async function deleteDomain(name) {
     await loadDomains()
     if (editDomain.open && editDomain.original === name) closeDomainModal()
   } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
+    catalogsError.value = mapApiError(e?.message)
   } finally {
     catalogsLoading.value = false
     catalogSaving.value = false
@@ -4595,7 +4810,7 @@ async function deleteSource(code) {
     await loadSources()
     if (editSource.open && editSource.code === code) closeSourceModal()
   } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
+    catalogsError.value = mapApiError(e?.message)
   } finally {
     catalogsLoading.value = false
     catalogSaving.value = false
@@ -4614,7 +4829,7 @@ async function deletePlatform(code) {
     await loadCatalogs()
     if (editPlatform.open && editPlatform.code === code) closePlatformModal()
   } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
+    catalogsError.value = mapApiError(e?.message)
   } finally {
     catalogsLoading.value = false
     catalogSaving.value = false
@@ -4633,7 +4848,7 @@ async function deleteRegion(code) {
     await loadCatalogs()
     if (editRegion.open && editRegion.code === code) closeRegionModal()
   } catch (e) {
-    catalogsError.value = e?.message || 'Ошибка'
+    catalogsError.value = mapApiError(e?.message)
   } finally {
     catalogsLoading.value = false
     catalogSaving.value = false
@@ -5814,6 +6029,13 @@ h3 {
   font-size: 14px;
 }
 
+.input--textarea {
+  height: auto;
+  min-height: 42px;
+  padding: 8px 12px;
+  resize: vertical;
+}
+
 .form--inline .btn {
   width: 100%;
   height: 44px;
@@ -5869,6 +6091,15 @@ table.table {
   font-variant-numeric: tabular-nums;
 }
 
+.cell--slots {
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.slot-line {
+  display: block;
+}
+
 .table th:last-child,
 .table td:last-child {
   border-right: 0;
@@ -5890,6 +6121,14 @@ table.table {
 
 .th-title--filter {
   position: relative;
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  padding-right: 4px;
+}
+
+.th-title--filter .filter-icon {
+  margin-left: auto;
 }
 
 .filter-pop {

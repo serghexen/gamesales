@@ -74,17 +74,26 @@ COMMENT ON COLUMN app.domains.name IS 'Домен (например, example.com
 CREATE TABLE IF NOT EXISTS app.game_titles (
   game_id      bigserial PRIMARY KEY,
   title        text NOT NULL,
-  platform_id  smallint REFERENCES app.platforms(platform_id),
+  short_title  text,
   region_id    smallint REFERENCES app.regions(region_id),
   created_at   timestamptz NOT NULL DEFAULT now()
 );
 COMMENT ON TABLE app.game_titles IS 'Справочник игровых тайтлов';
 COMMENT ON COLUMN app.game_titles.game_id IS 'Идентификатор тайтла';
 COMMENT ON COLUMN app.game_titles.title IS 'Название игры';
-COMMENT ON COLUMN app.game_titles.platform_id IS 'Платформа игры';
+COMMENT ON COLUMN app.game_titles.short_title IS 'Короткое название игры';
 COMMENT ON COLUMN app.game_titles.region_id IS 'Регион игры';
 COMMENT ON COLUMN app.game_titles.created_at IS 'Дата создания записи';
 CREATE INDEX IF NOT EXISTS ix_game_titles_title ON app.game_titles (title);
+
+CREATE TABLE IF NOT EXISTS app.game_platforms (
+  game_id     bigint NOT NULL REFERENCES app.game_titles(game_id) ON DELETE CASCADE,
+  platform_id smallint NOT NULL REFERENCES app.platforms(platform_id),
+  CONSTRAINT pk_game_platforms PRIMARY KEY (game_id, platform_id)
+);
+COMMENT ON TABLE app.game_platforms IS 'Платформы тайтлов (многие-ко-многим)';
+COMMENT ON COLUMN app.game_platforms.game_id IS 'Игра/тайтл';
+COMMENT ON COLUMN app.game_platforms.platform_id IS 'Платформа';
 
 CREATE TABLE IF NOT EXISTS app.accounts (
   account_id     bigserial PRIMARY KEY,

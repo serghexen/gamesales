@@ -1,10 +1,22 @@
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
+async function parseError(res, fallback) {
+  try {
+    const data = await res.json()
+    if (data?.detail) return String(data.detail)
+  } catch {
+    // ignore parse errors
+  }
+  return fallback
+}
+
 export async function apiGet(path, { token } = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   })
-  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`)
+  if (!res.ok) {
+    throw new Error(await parseError(res, `GET ${path} failed: ${res.status}`))
+  }
   return res.json()
 }
 
@@ -17,7 +29,9 @@ export async function apiPost(path, body, { token } = {}) {
     },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`)
+  if (!res.ok) {
+    throw new Error(await parseError(res, `POST ${path} failed: ${res.status}`))
+  }
   return res.json()
 }
 
@@ -26,7 +40,9 @@ export async function apiDelete(path, { token } = {}) {
     method: 'DELETE',
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   })
-  if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status}`)
+  if (!res.ok) {
+    throw new Error(await parseError(res, `DELETE ${path} failed: ${res.status}`))
+  }
   return res.json()
 }
 
@@ -39,6 +55,8 @@ export async function apiPut(path, body, { token } = {}) {
     },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`PUT ${path} failed: ${res.status}`)
+  if (!res.ok) {
+    throw new Error(await parseError(res, `PUT ${path} failed: ${res.status}`))
+  }
   return res.json()
 }
