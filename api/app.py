@@ -1,7 +1,8 @@
 from datetime import datetime, timezone, date
 from typing import Optional, List, Tuple
 
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import psycopg
@@ -11,6 +12,13 @@ from pathlib import Path
 import jwt
 from passlib.context import CryptContext
 import base64
+from io import BytesIO
+import urllib.request
+import urllib.error
+import imghdr
+import ssl
+import threading
+from openpyxl import Workbook, load_workbook
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env.dev", override=True)
@@ -107,12 +115,22 @@ class AccountOut(BaseModel):
 class GameCreate(BaseModel):
     title: str
     short_title: Optional[str] = None
+    link: Optional[str] = None
+    logo_url: Optional[str] = None
+    text_lang: Optional[str] = None
+    audio_lang: Optional[str] = None
+    vr_support: Optional[str] = None
     platform_codes: Optional[List[str]] = None
     region_code: Optional[str] = None
 
 class GameUpdate(BaseModel):
     title: Optional[str] = None
     short_title: Optional[str] = None
+    link: Optional[str] = None
+    logo_url: Optional[str] = None
+    text_lang: Optional[str] = None
+    audio_lang: Optional[str] = None
+    vr_support: Optional[str] = None
     platform_codes: Optional[List[str]] = None
     region_code: Optional[str] = None
 
@@ -120,6 +138,11 @@ class GameOut(BaseModel):
     game_id: int
     title: str
     short_title: Optional[str] = None
+    link: Optional[str] = None
+    logo_url: Optional[str] = None
+    text_lang: Optional[str] = None
+    audio_lang: Optional[str] = None
+    vr_support: Optional[str] = None
     platform_codes: List[str]
     region_code: Optional[str]
 
@@ -523,10 +546,60 @@ def get_game_platform_codes(conn, game_id: int) -> List[str]:
     )
     return [r[0] for r in rows]
 
+def encode_b64(value: bytes) -> str:
+    return base64.b64encode(value).decode("ascii")
+
+MAX_LOGO_BYTES = 5 * 1024 * 1024
+ALLOWED_LOGO_MIME = {"image/jpeg", "image/png", "image/webp"}
+IMPORT_PROGRESS = {}
+IMPORT_PROGRESS_LOCK = threading.Lock()
+
+def set_import_progress(username: str, payload: dict):
+    with IMPORT_PROGRESS_LOCK:
+        IMPORT_PROGRESS[username] = dict(payload)
+
+def get_import_progress(username: str) -> dict:
+    with IMPORT_PROGRESS_LOCK:
+        return dict(IMPORT_PROGRESS.get(username, {}))
+
+def clear_import_progress(username: str):
+    with IMPORT_PROGRESS_LOCK:
+        IMPORT_PROGRESS.pop(username, None)
+
+GAME_IMPORT_HEADERS = [
+    "Название",
+    "Ссылка",
+    "Логотип",
+    "Платформа",
+    "Язык текста",
+    "Язык озвучки",
+    "Поддержка VR",
+]
+
+GAME_IMPORT_HEADER_MAP = {
+    "Название": "title",
+    "Ссылка": "link",
+    "Логотип": "logo",
+    "Платформа": "platform_codes",
+    "Язык текста": "text_lang",
+    "Язык озвучки": "audio_lang",
+    "Поддержка VR": "vr_support",
+    # legacy/tech headers
+    "title": "title",
+    "short_title": "short_title",
+    "platform_codes": "platform_codes",
+    "region_code": "region_code",
+    "link": "link",
+    "text_lang": "text_lang",
+    "audio_lang": "audio_lang",
+    "vr_support": "vr_support",
+}
+
 def find_game_title_platform_conflicts(conn, title: str, platform_codes: List[str], exclude_game_id: Optional[int] = None) -> List[str]:
     if not title or not platform_codes:
         return []
-    params = [title, platform_codes]
+    normalized_codes = normalize_platform_codes(platform_codes)
+    params = [title, normalized_codes]
     extra = ""
     if exclude_game_id is not None:
         extra = "AND g.game_id <> %s"
@@ -539,13 +612,123 @@ def find_game_title_platform_conflicts(conn, title: str, platform_codes: List[st
         JOIN app.game_platforms gp ON gp.game_id = g.game_id
         JOIN app.platforms p ON p.platform_id = gp.platform_id
         WHERE lower(g.title) = lower(%s)
-          AND p.code = ANY(%s)
+          AND lower(p.code) = ANY(%s)
           {extra}
         ORDER BY p.code
         """,
         params,
     )
     return [r[0] for r in rows]
+
+def find_game_id_by_title_platforms(conn, title: str, platform_codes: List[str]) -> Optional[int]:
+    if not title or not platform_codes:
+        return None
+    normalized_codes = normalize_platform_codes(platform_codes)
+    target_count = len(normalized_codes)
+    row = q1(
+        conn,
+        """
+        SELECT g.game_id
+        FROM app.game_titles g
+        JOIN app.game_platforms gp ON gp.game_id = g.game_id
+        JOIN app.platforms p ON p.platform_id = gp.platform_id
+        WHERE lower(g.title) = lower(%s)
+        GROUP BY g.game_id
+        HAVING count(DISTINCT lower(p.code)) = %s
+           AND bool_and(lower(p.code) = ANY(%s))
+        ORDER BY g.game_id
+        LIMIT 1
+        """,
+        (title, target_count, normalized_codes),
+    )
+    return int(row[0]) if row else None
+
+def parse_import_platforms(value: str) -> List[str]:
+    if not value:
+        return []
+    raw = str(value).strip()
+    if raw in {"-", "—"}:
+        return []
+    parts = []
+    for chunk in raw.replace(";", ",").split(","):
+        val = chunk.strip().lower()
+        if val:
+            parts.append(val)
+    return normalize_platform_codes(parts)
+
+def fetch_logo_from_url(url: str) -> Tuple[bytes, str]:
+    if not url:
+        raise ValueError("logo url is empty")
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "gamesales-import"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10, context=context) as resp:
+            content_type = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            data = resp.read(MAX_LOGO_BYTES + 1)
+    except urllib.error.URLError as exc:
+        raise ValueError(f"logo download failed: {exc}") from exc
+    if len(data) > MAX_LOGO_BYTES:
+        raise ValueError("logo too large")
+    mime = content_type if content_type in ALLOWED_LOGO_MIME else ""
+    if not mime:
+        kind = imghdr.what(None, data)
+        if kind == "jpeg":
+            mime = "image/jpeg"
+        elif kind == "png":
+            mime = "image/png"
+        elif kind == "webp":
+            mime = "image/webp"
+    if mime not in ALLOWED_LOGO_MIME:
+        raise ValueError("logo type not allowed")
+    return data, mime
+
+def validate_game_import_rows(conn, rows: List[dict], progress_cb=None, check_logo=False) -> List[dict]:
+    errors = []
+    platform_rows = qall(conn, "SELECT code FROM app.platforms")
+    platforms = {str(r[0]).strip().lower() for r in platform_rows}
+    for idx, row in enumerate(rows, start=2):
+        title = (row.get("title") or "").strip()
+        platform_codes = parse_import_platforms(row.get("platform_codes") or "")
+        logo_url = (row.get("logo") or "").strip()
+        if not title:
+            errors.append({"row": idx, "field": "Название", "message": "Название обязательно"})
+        if not platform_codes:
+            errors.append({"row": idx, "field": "Платформа", "message": "Укажите платформы"})
+        for code in platform_codes:
+            if code not in platforms:
+                errors.append({"row": idx, "field": "Платформа", "message": f"Неизвестная платформа: {code}"})
+        if logo_url and not logo_url.lower().startswith(("http://", "https://")):
+            errors.append({"row": idx, "field": "Логотип", "message": "Ссылка должна начинаться с http:// или https://"})
+        if progress_cb:
+            progress_cb(idx - 1)
+    return errors
+
+def read_games_from_excel(content: bytes) -> List[dict]:
+    wb = load_workbook(BytesIO(content), data_only=True)
+    ws = wb.active
+    headers = []
+    for cell in ws[1]:
+        if cell.value is None:
+            headers.append("")
+        else:
+            raw = str(cell.value).strip()
+            headers.append(GAME_IMPORT_HEADER_MAP.get(raw, raw))
+    data = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not any(row):
+            continue
+        item = {}
+        for idx, key in enumerate(headers):
+            if not key:
+                continue
+            item[key] = row[idx] if idx < len(row) else None
+        data.append(item)
+    return data
 
 def init_auth_schema(conn):
     with conn.cursor() as cur:
@@ -1143,7 +1326,7 @@ def list_account_games(account_id: int, user: UserOut = Depends(get_current_user
         rows = qall(
             conn,
             """
-            SELECT g.game_id, g.title, g.short_title, r.code,
+            SELECT g.game_id, g.title, g.short_title, g.link, g.logo_url, g.text_lang, g.audio_lang, g.vr_support, r.code,
                    COALESCE(array_agg(p.code ORDER BY p.code) FILTER (WHERE p.code IS NOT NULL), '{}'::text[]) AS platform_codes
             FROM app.account_assets aa
             JOIN app.game_titles g ON g.game_id = aa.game_id
@@ -1151,12 +1334,26 @@ def list_account_games(account_id: int, user: UserOut = Depends(get_current_user
             LEFT JOIN app.game_platforms gp ON gp.game_id = g.game_id
             LEFT JOIN app.platforms p ON p.platform_id = gp.platform_id
             WHERE aa.account_id=%s AND aa.asset_type_code='game'
-            GROUP BY g.game_id, g.title, g.short_title, r.code
+            GROUP BY g.game_id, g.title, g.short_title, g.link, g.logo_url, g.text_lang, g.audio_lang, g.vr_support, r.code
             ORDER BY g.title
             """,
             (account_id,),
         )
-    return [GameOut(game_id=r0, title=r1, short_title=r2, platform_codes=list(r4 or []), region_code=r3) for (r0, r1, r2, r3, r4) in rows]
+    return [
+        GameOut(
+            game_id=r0,
+            title=r1,
+            short_title=r2,
+            link=r3,
+            logo_url=r4,
+            text_lang=r5,
+            audio_lang=r6,
+            vr_support=r7,
+            platform_codes=list(r9 or []),
+            region_code=r8,
+        )
+        for (r0, r1, r2, r3, r4, r5, r6, r7, r8, r9) in rows
+    ]
 
 @app.put("/accounts/{account_id}/games")
 def set_account_games(
@@ -1235,30 +1432,44 @@ def list_games(q: Optional[str] = None, user: UserOut = Depends(get_current_user
     with psycopg.connect(DB_DSN) as conn:
         if q:
             rows = qall(conn, """
-                SELECT g.game_id, g.title, g.short_title, r.code,
+                SELECT g.game_id, g.title, g.short_title, g.link, g.logo_url, g.text_lang, g.audio_lang, g.vr_support, r.code,
                        COALESCE(array_agg(p.code ORDER BY p.code) FILTER (WHERE p.code IS NOT NULL), '{}'::text[]) AS platform_codes
                 FROM app.game_titles g
                 LEFT JOIN app.regions r ON r.region_id = g.region_id
                 LEFT JOIN app.game_platforms gp ON gp.game_id = g.game_id
                 LEFT JOIN app.platforms p ON p.platform_id = gp.platform_id
                 WHERE g.title ILIKE %s OR g.short_title ILIKE %s
-                GROUP BY g.game_id, g.title, g.short_title, r.code
+                GROUP BY g.game_id, g.title, g.short_title, g.link, g.logo_url, g.text_lang, g.audio_lang, g.vr_support, r.code
                 ORDER BY g.game_id DESC
                 LIMIT 200
             """, (f"%{q}%", f"%{q}%"))
         else:
             rows = qall(conn, """
-                SELECT g.game_id, g.title, g.short_title, r.code,
+                SELECT g.game_id, g.title, g.short_title, g.link, g.logo_url, g.text_lang, g.audio_lang, g.vr_support, r.code,
                        COALESCE(array_agg(p.code ORDER BY p.code) FILTER (WHERE p.code IS NOT NULL), '{}'::text[]) AS platform_codes
                 FROM app.game_titles g
                 LEFT JOIN app.regions r ON r.region_id = g.region_id
                 LEFT JOIN app.game_platforms gp ON gp.game_id = g.game_id
                 LEFT JOIN app.platforms p ON p.platform_id = gp.platform_id
-                GROUP BY g.game_id, g.title, g.short_title, r.code
+                GROUP BY g.game_id, g.title, g.short_title, g.link, g.logo_url, g.text_lang, g.audio_lang, g.vr_support, r.code
                 ORDER BY g.game_id DESC
                 LIMIT 200
             """)
-    return [GameOut(game_id=r0, title=r1, short_title=r2, platform_codes=list(r4 or []), region_code=r3) for (r0, r1, r2, r3, r4) in rows]
+    return [
+        GameOut(
+            game_id=r0,
+            title=r1,
+            short_title=r2,
+            link=r3,
+            logo_url=r4,
+            text_lang=r5,
+            audio_lang=r6,
+            vr_support=r7,
+            platform_codes=list(r9 or []),
+            region_code=r8,
+        )
+        for (r0, r1, r2, r3, r4, r5, r6, r7, r8, r9) in rows
+    ]
 
 @app.post("/games", response_model=GameOut)
 def create_game(payload: GameCreate, user: UserOut = Depends(get_current_user)):
@@ -1271,10 +1482,19 @@ def create_game(payload: GameCreate, user: UserOut = Depends(get_current_user)):
         region_id = get_region_id(conn, payload.region_code)
 
         row = q1(conn, """
-            INSERT INTO app.game_titles(title, short_title, region_id)
-            VALUES (%s, %s, %s)
+            INSERT INTO app.game_titles(title, short_title, link, logo_url, text_lang, audio_lang, vr_support, region_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING game_id
-        """, (payload.title, payload.short_title, region_id))
+        """, (
+            payload.title,
+            payload.short_title,
+            payload.link,
+            payload.logo_url,
+            payload.text_lang,
+            payload.audio_lang,
+            payload.vr_support,
+            region_id,
+        ))
         gid = int(row[0])
         if platform_ids:
             with conn.cursor() as cur:
@@ -1288,6 +1508,11 @@ def create_game(payload: GameCreate, user: UserOut = Depends(get_current_user)):
         game_id=gid,
         title=payload.title,
         short_title=payload.short_title,
+        link=payload.link,
+        logo_url=payload.logo_url,
+        text_lang=payload.text_lang,
+        audio_lang=payload.audio_lang,
+        vr_support=payload.vr_support,
         platform_codes=platform_codes,
         region_code=payload.region_code,
     )
@@ -1298,7 +1523,7 @@ def update_game(game_id: int, payload: GameUpdate, user: UserOut = Depends(get_c
         row = q1(
             conn,
             """
-            SELECT g.title, g.short_title, r.code
+            SELECT g.title, g.short_title, g.link, g.logo_url, g.text_lang, g.audio_lang, g.vr_support, r.code
             FROM app.game_titles g
             LEFT JOIN app.regions r ON r.region_id = g.region_id
             WHERE g.game_id=%s
@@ -1312,6 +1537,11 @@ def update_game(game_id: int, payload: GameUpdate, user: UserOut = Depends(get_c
         if not new_title:
             raise HTTPException(400, "title is required")
         new_short = payload.short_title if payload.short_title is not None else row[1]
+        new_link = payload.link if payload.link is not None else row[2]
+        new_logo = payload.logo_url if payload.logo_url is not None else row[3]
+        new_text_lang = payload.text_lang if payload.text_lang is not None else row[4]
+        new_audio_lang = payload.audio_lang if payload.audio_lang is not None else row[5]
+        new_vr_support = payload.vr_support if payload.vr_support is not None else row[6]
         platform_codes = normalize_platform_codes(payload.platform_codes)
         platforms_for_check = platform_codes if payload.platform_codes is not None else get_game_platform_codes(conn, game_id)
         conflicts = find_game_title_platform_conflicts(conn, new_title, platforms_for_check, exclude_game_id=game_id)
@@ -1319,7 +1549,7 @@ def update_game(game_id: int, payload: GameUpdate, user: UserOut = Depends(get_c
             raise HTTPException(409, f"Game already exists for platforms: {', '.join(conflicts)}")
 
         if payload.region_code is None:
-            region_code = row[2]
+            region_code = row[7]
         else:
             region_code = payload.region_code or None
 
@@ -1327,8 +1557,19 @@ def update_game(game_id: int, payload: GameUpdate, user: UserOut = Depends(get_c
 
         exec1(
             conn,
-            "UPDATE app.game_titles SET title=%s, short_title=%s, region_id=%s WHERE game_id=%s",
-            (new_title, new_short, region_id, game_id),
+            """
+            UPDATE app.game_titles
+            SET title=%s,
+                short_title=%s,
+                link=%s,
+                logo_url=%s,
+                text_lang=%s,
+                audio_lang=%s,
+                vr_support=%s,
+                region_id=%s
+            WHERE game_id=%s
+            """,
+            (new_title, new_short, new_link, new_logo, new_text_lang, new_audio_lang, new_vr_support, region_id, game_id),
         )
         if payload.platform_codes is not None:
             exec1(conn, "DELETE FROM app.game_platforms WHERE game_id=%s", (game_id,))
@@ -1353,9 +1594,232 @@ def update_game(game_id: int, payload: GameUpdate, user: UserOut = Depends(get_c
         game_id=game_id,
         title=new_title,
         short_title=new_short,
+        link=new_link,
+        logo_url=new_logo,
+        text_lang=new_text_lang,
+        audio_lang=new_audio_lang,
+        vr_support=new_vr_support,
         platform_codes=platform_codes,
         region_code=region_code,
     )
+
+@app.get("/games/{game_id}/logo")
+def get_game_logo(game_id: int, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        row = q1(
+            conn,
+            "SELECT logo_blob, logo_mime FROM app.game_titles WHERE game_id=%s",
+            (game_id,),
+        )
+        if not row:
+            raise HTTPException(404, "Game not found")
+        blob, mime = row
+        if not blob or not mime:
+            raise HTTPException(404, "Logo not found")
+    return {"mime": mime, "data_b64": encode_b64(blob)}
+
+@app.post("/games/{game_id}/logo")
+def upload_game_logo(game_id: int, file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
+    if not file or not file.content_type:
+        raise HTTPException(400, "file is required")
+    if file.content_type not in ("image/jpeg", "image/png", "image/webp"):
+        raise HTTPException(400, "Only jpg, png, webp are allowed")
+    content = file.file.read()
+    if content is None:
+        raise HTTPException(400, "file is required")
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(400, "File too large. Max 5MB")
+    with psycopg.connect(DB_DSN) as conn:
+        ensure_game_exists(conn, game_id)
+        exec1(
+            conn,
+            "UPDATE app.game_titles SET logo_blob=%s, logo_mime=%s WHERE game_id=%s",
+            (content, file.content_type, game_id),
+        )
+        conn.commit()
+    return {"ok": True}
+
+@app.delete("/games/{game_id}/logo")
+def delete_game_logo(game_id: int, user: UserOut = Depends(require_role("admin"))):
+    with psycopg.connect(DB_DSN) as conn:
+        ensure_game_exists(conn, game_id)
+        exec1(conn, "UPDATE app.game_titles SET logo_blob=NULL, logo_mime=NULL WHERE game_id=%s", (game_id,))
+        conn.commit()
+    return {"ok": True}
+
+@app.get("/games/import/template")
+def games_import_template(user: UserOut = Depends(require_role("admin"))):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "games"
+    ws.append(GAME_IMPORT_HEADERS)
+    for col in range(1, len(GAME_IMPORT_HEADERS) + 1):
+        ws.column_dimensions[chr(64 + col)].width = 20
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return Response(
+        content=buf.read(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=games_import_template.xlsx"},
+    )
+
+@app.get("/games/import/status")
+def games_import_status(user: UserOut = Depends(require_role("admin"))):
+    status = get_import_progress(user.username)
+    if not status:
+        return {"phase": "idle", "current": 0, "total": 0, "done": True}
+    return status
+
+@app.post("/games/import/validate")
+def games_import_validate(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
+    if not file or not file.filename:
+        raise HTTPException(400, "file is required")
+    if not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(400, "Only .xlsx/.xls are supported")
+    content = file.file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(400, "File too large. Max 5MB")
+    with psycopg.connect(DB_DSN) as conn:
+        rows = read_games_from_excel(content)
+        total = len(rows)
+        set_import_progress(user.username, {"phase": "validate", "current": 0, "total": total, "done": False})
+        def _progress(current):
+            set_import_progress(user.username, {"phase": "validate", "current": min(current, total), "total": total, "done": False})
+        errors = validate_game_import_rows(conn, rows, progress_cb=_progress, check_logo=False)
+        set_import_progress(user.username, {"phase": "validate", "current": total, "total": total, "done": True})
+    return {"ok": len(errors) == 0, "total": len(rows), "errors": errors}
+
+@app.post("/games/import")
+def games_import(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
+    if not file or not file.filename:
+        raise HTTPException(400, "file is required")
+    if not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(400, "Only .xlsx/.xls are supported")
+    content = file.file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(400, "File too large. Max 5MB")
+    with psycopg.connect(DB_DSN) as conn:
+        rows = read_games_from_excel(content)
+        errors = validate_game_import_rows(conn, rows)
+        if errors:
+            return {"ok": False, "total": len(rows), "errors": errors}
+        total = len(rows)
+        set_import_progress(user.username, {"phase": "download", "current": 0, "total": total, "done": False})
+        logo_errors = []
+        logo_payloads = {}
+        existing_game_by_row = {}
+        existing_logo_by_row = {}
+        for idx, item in enumerate(rows, start=2):
+            title = (item.get("title") or "").strip()
+            platform_codes = parse_import_platforms(item.get("platform_codes") or "")
+            existing_game_id = find_game_id_by_title_platforms(conn, title, platform_codes)
+            if existing_game_id:
+                existing_game_by_row[idx] = existing_game_id
+                row = q1(conn, "SELECT logo_blob IS NOT NULL FROM app.game_titles WHERE game_id=%s", (existing_game_id,))
+                existing_logo_by_row[idx] = bool(row[0]) if row else False
+
+        download_candidates = []
+        for idx, item in enumerate(rows, start=2):
+            logo_url = (item.get("logo") or "").strip()
+            if not logo_url:
+                continue
+            if existing_logo_by_row.get(idx):
+                continue
+            download_candidates.append(idx)
+
+        total_download = len(download_candidates)
+        download_done = 0
+        set_import_progress(user.username, {"phase": "download", "current": 0, "total": total_download, "done": False})
+
+        for idx in download_candidates:
+            item = rows[idx - 2]
+            logo_url = (item.get("logo") or "").strip()
+            try:
+                logo_payloads[idx] = fetch_logo_from_url(logo_url)
+            except Exception:
+                logo_errors.append({"row": idx, "field": "Логотип", "message": "Не удалось загрузить логотип"})
+            download_done += 1
+            set_import_progress(user.username, {"phase": "download", "current": download_done, "total": total_download, "done": False})
+        if logo_errors:
+            set_import_progress(user.username, {"phase": "download", "current": total_download, "total": total_download, "done": True})
+            return {"ok": False, "total": len(rows), "errors": logo_errors}
+        set_import_progress(user.username, {"phase": "upload", "current": 0, "total": total, "done": False})
+        created = 0
+        updated = 0
+        skipped = 0
+        upload_done = 0
+        for idx, item in enumerate(rows, start=2):
+            title = (item.get("title") or "").strip()
+            link = (item.get("link") or "").strip() or None
+            text_lang = (item.get("text_lang") or "").strip() or None
+            audio_lang = (item.get("audio_lang") or "").strip() or None
+            vr_support = (item.get("vr_support") or "").strip() or None
+            platform_codes = parse_import_platforms(item.get("platform_codes") or "")
+            logo_payload = logo_payloads.get(idx)
+            existing_game_id = existing_game_by_row.get(idx) or find_game_id_by_title_platforms(conn, title, platform_codes)
+            if existing_game_id:
+                if not any([link, text_lang, audio_lang, vr_support, logo_payload]):
+                    game_id = existing_game_id
+                    skipped += 1
+                else:
+                    exec1(
+                        conn,
+                        """
+                        UPDATE app.game_titles
+                        SET link = COALESCE(%s, link),
+                            text_lang = COALESCE(%s, text_lang),
+                            audio_lang = COALESCE(%s, audio_lang),
+                            vr_support = COALESCE(%s, vr_support),
+                            logo_blob = COALESCE(%s, logo_blob),
+                            logo_mime = COALESCE(%s, logo_mime)
+                        WHERE game_id = %s
+                        """,
+                        (
+                            link,
+                            text_lang,
+                            audio_lang,
+                            vr_support,
+                            logo_payload[0] if logo_payload else None,
+                            logo_payload[1] if logo_payload else None,
+                            existing_game_id,
+                        ),
+                    )
+                    game_id = existing_game_id
+                    updated += 1
+            else:
+                row = q1(
+                    conn,
+                    """
+                    INSERT INTO app.game_titles(title, link, text_lang, audio_lang, vr_support, region_id, logo_blob, logo_mime)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING game_id
+                    """,
+                    (
+                        title,
+                        link,
+                        text_lang,
+                        audio_lang,
+                        vr_support,
+                        None,
+                        logo_payload[0] if logo_payload else None,
+                        logo_payload[1] if logo_payload else None,
+                    ),
+                )
+                game_id = int(row[0])
+                created += 1
+            if platform_codes:
+                platform_ids = [get_platform_id(conn, code) for code in platform_codes]
+                with conn.cursor() as cur:
+                    cur.executemany(
+                        "INSERT INTO app.game_platforms(game_id, platform_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                        [(game_id, pid) for pid in platform_ids],
+                    )
+            upload_done += 1
+            set_import_progress(user.username, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+        conn.commit()
+        set_import_progress(user.username, {"phase": "upload", "current": total, "total": total, "done": True})
+    return {"ok": True, "total": len(rows), "created": created, "updated": updated, "skipped": skipped}
 
 @app.post("/rentals")
 def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_user)):

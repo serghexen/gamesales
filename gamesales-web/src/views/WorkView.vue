@@ -807,6 +807,30 @@
                 </svg>
               </button>
               <button
+                class="btn btn--icon btn--glow btn--glow-import"
+                title="Импорт игр"
+                aria-label="Импорт игр"
+                @click="openGameImport"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 3v12" />
+                  <path d="M7 10l5 5 5-5" />
+                  <path d="M5 21h14" />
+                </svg>
+              </button>
+              <button
+                class="btn btn--icon btn--glow btn--glow-export"
+                title="Выгрузить игры"
+                aria-label="Выгрузить игры"
+                @click="downloadGamesExport"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 21V9" />
+                  <path d="M7 14l5-5 5 5" />
+                  <path d="M5 3h14" />
+                </svg>
+              </button>
+              <button
                 class="btn btn--icon btn--glow btn--glow-refresh"
                 title="Обновить список"
                 aria-label="Обновить список"
@@ -861,6 +885,166 @@
                 </button>
               </span>
             </div>
+            <teleport to="body">
+              <div
+                v-if="showGameImport"
+                class="modal-backdrop"
+                @click.self="closeGameImport"
+              >
+                <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
+                  <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
+                    <h3>Импорт игр из файла</h3>
+                    <button
+                      class="btn btn--icon-plain"
+                      type="button"
+                      aria-label="Закрыть"
+                      title="Закрыть"
+                      @click="closeGameImport"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 6l12 12M18 6l-12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="modal__body">
+                    <div class="form form--stack form--compact">
+                      <label class="field field--full">
+                        <span class="label">Файл (xlsx/xls)</span>
+                        <input
+                          class="input input--file"
+                          type="file"
+                          accept=".xlsx,.xls"
+                          @change="onGameImportFile"
+                        />
+                      </label>
+                      <div class="toolbar-actions">
+                        <button class="ghost" type="button" @click="downloadGameTemplate">
+                          Шаблон
+                        </button>
+                        <button class="ghost" type="button" @click="validateGameImport" :disabled="!gameImportFile || gameImportLoading">
+                          <span v-if="gameImportLoading && gameImportAction === 'validate'" class="spinner spinner--small"></span>
+                          Проверка
+                        </button>
+                        <button
+                          class="ghost"
+                          type="button"
+                          @click="uploadGameImport"
+                          :disabled="!gameImportValidated || !gameImportFile || gameImportLoading"
+                          title="Загрузить"
+                          aria-label="Загрузить"
+                        >
+                          <span v-if="gameImportLoading && gameImportAction === 'upload'" class="spinner spinner--small"></span>
+                          Загрузить
+                        </button>
+                      </div>
+                      <div v-if="gameImportLoading" class="loader-wrap loader-overlay">
+                        <div class="container_SevMini" aria-hidden="true">
+                          <div class="SevMini">
+                            <svg width="74" height="90" viewBox="0 0 74 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M40 76.5L72 57V69.8615C72 70.5673 71.628 71.2209 71.0211 71.5812L40 90V76.5Z" fill="#396CAA"></path>
+                              <path d="M34 75.7077L2 57V69.8615C2 70.5673 2.37203 71.2209 2.97892 71.5812L34 90V75.7077Z" fill="#396DAC"></path>
+                              <path d="M34 76.5H40V90H34V76.5Z" fill="#396CAA"></path>
+                              <path d="M3.27905 55.593L35.2806 37.5438C36.3478 36.9419 37.6522 36.9419 38.7194 37.5438L70.721 55.593C71.7294 56.1618 71.7406 57.6102 70.7411 58.1945L39.2712 76.593C37.8682 77.4133 36.1318 77.4133 34.7288 76.593L3.25887 58.1945C2.25937 57.6102 2.27061 56.1618 3.27905 55.593Z" fill="#163C79" stroke="#396CAA"></path>
+                              <path d="M40 79L72 60V70.4001C72 71.1151 71.6183 71.7758 70.9987 72.1329L40 90V79Z" fill="#173D7A"></path>
+                              <path d="M34 79L3 61V71.5751L34 90V79Z" fill="#0665B2"></path>
+                              <path id="strobe_color1" d="M58 72.5L60.5 71V74L58 75.5V72.5Z" fill="#FF715E"></path>
+                              <path id="strobe_color2" d="M63 69.5L65.5 68V71L63 72.5V69.5Z" fill="#17e300b4"></path>
+                              <path d="M68 66.5L70.5 65V68L68 69.5V66.5Z" fill="#FF715E"></path>
+                              <path d="M40 58.5L72 39V51.8615C72 52.5673 71.628 53.2209 71.0211 53.5812L40 72V58.5Z" fill="#396CAA"></path>
+                              <path d="M34 57.7077L2 39V51.8615C2 52.5673 2.37203 53.2209 2.97892 53.5812L34 72V57.7077Z" fill="#396DAC"></path>
+                              <path d="M34 58.5H40V72H34V58.5Z" fill="#396CAA"></path>
+                              <path d="M3.27905 37.593L35.2806 19.5438C36.3478 18.9419 37.6522 18.9419 38.7194 19.5438L70.721 37.593C71.7294 38.1618 71.7406 39.6102 70.7411 40.1945L39.2712 58.593C37.8682 59.4133 36.1318 59.4133 34.7288 58.593L3.25887 40.1945C2.25937 39.6102 2.27061 38.1618 3.27905 37.593Z" fill="#163C79" stroke="#396CAA"></path>
+                              <path d="M40 61L72 42V52.4001C72 53.1151 71.6183 53.7758 70.9987 54.1329L40 72V61Z" fill="#173D7A"></path>
+                              <path d="M34 61L3 43V53.5751L34 72V61Z" fill="#0665B2"></path>
+                              <path d="M58 54.5L60.5 53V56L58 57.5V54.5Z" fill="#FF715E"></path>
+                              <path id="strobe_color1" d="M63 51.5L65.5 50V53L63 54.5V51.5Z" fill="#FF715E"></path>
+                              <path d="M68 48.5L70.5 47V50L68 51.5V48.5Z" fill="#FF715E"></path>
+                              <path d="M40 40.5L72 21V33.8615C72 34.5673 71.628 35.2209 71.0211 35.5812L40 54V40.5Z" fill="#396CAA"></path>
+                              <path d="M34 39.7077L2 21V33.8615C2 34.5673 2.37203 35.2209 2.97892 35.5812L34 54V39.7077Z" fill="#396DAC"></path>
+                              <path d="M34 40.5H40V54H34V40.5Z" fill="#396CAA"></path>
+                              <path d="M3.27905 19.593L35.2806 1.54381C36.3478 0.941872 37.6522 0.941872 38.7194 1.54381L70.721 19.593C71.7294 20.1618 71.7406 21.6102 70.7411 22.1945L39.2712 40.593C37.8682 41.4133 36.1318 41.4133 34.7288 40.593L3.25887 22.1945C2.25937 21.6102 2.27061 20.1618 3.27905 19.593Z" fill="#124E89" stroke="#396CAA"></path>
+                              <path d="M40 43L72 24V34.4001C72 35.1151 71.6183 35.7758 70.9987 36.1329L40 54V43Z" fill="#173D7A"></path>
+                              <path d="M34 43L3 25V35.5751L34 54V43Z" fill="#0665B2"></path>
+                              <path d="M68 30.5L70.5 29V32L68 33.5V30.5Z" fill="#FF715E"></path>
+                              <path id="strobe_color3" d="M58 36.5L60.5 35V38L58 39.5V36.5Z" fill="#FF715E"></path>
+                              <path d="M63 33.5L65.5 32V35L63 36.5V33.5Z" fill="#FF715E"></path>
+                              <path d="M20.1902 22.0719C18.8101 21.3026 18.8252 19.3119 20.2168 18.5636L36.1054 10.0189C37.2884 9.3827 38.7116 9.3827 39.8946 10.0189L55.7832 18.5636C57.1748 19.3119 57.1899 21.3026 55.8098 22.0719L40.4345 30.6429C38.9211 31.4865 37.0789 31.4865 35.5655 30.6429L20.1902 22.0719Z" fill="#396CAA"></path>
+                              <path d="M11 52.755C11 51.9801 11.8432 51.4997 12.5098 51.8947L23.5196 58.419C24.1273 58.7792 24.5 59.4332 24.5 60.1396V60.245C24.5 61.0199 23.6568 61.5003 22.9902 61.1053L11.9804 54.581C11.3727 54.2208 11 53.5668 11 52.8604V52.755Z" fill="#396CAA"></path>
+                              <mask id="mask0_2_176" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="11" y="51" width="14" height="11">
+                                <path d="M11 52.755C11 51.9801 11.8432 51.4997 12.5098 51.8947L23.5196 58.419C24.1273 58.7792 24.5 59.4332 24.5 60.1396V60.245C24.5 61.0199 23.6568 61.5003 22.9902 61.1053L11.9804 54.581C11.3727 54.2208 11 53.5668 11 52.8604V52.755Z" fill="#396CAA"></path>
+                              </mask>
+                              <g mask="url(#mask0_2_176)">
+                                <path d="M11.5 52.7417C11.5 51.9803 12.3349 51.5138 12.9833 51.9128L23.5482 58.4143C24.1397 58.7783 24.5 59.4231 24.5 60.1176V61.5L12.4598 54.4195C11.8651 54.0698 11.5 53.4315 11.5 52.7417V52.7417Z" fill="#163874"></path>
+                              </g>
+                              <mask id="mask1_2_176" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="19" y="9" width="38" height="23">
+                                <path d="M20.1902 22.0719C18.8101 21.3026 18.8252 19.3119 20.2168 18.5636L36.1054 10.0189C37.2884 9.3827 38.7116 9.3827 39.8946 10.0189L55.7832 18.5636C57.1748 19.3119 57.1899 21.3026 55.8098 22.0719L40.4345 30.6429C38.9211 31.4865 37.0789 31.4865 35.5655 30.6429L20.1902 22.0719Z" fill="#396CAA"></path>
+                              </mask>
+                              <g mask="url(#mask1_2_176)">
+                                <path d="M18 21.3115L36.167 11.9451C37.3171 11.3521 38.6829 11.3521 39.833 11.9451L58 21.3115L40.3567 30.7405C38.8841 31.5275 37.1159 31.5275 35.6433 30.7405L18 21.3115Z" fill="#173D7A"></path>
+                              </g>
+                              <path d="M37.447 21.565L35 19.9799L37.6941 18.66L40.141 20.245L37.447 21.565Z" fill="#FF715E"></path>
+                              <path d="M48.9738 30.8646L47.0741 29.7745L49.1792 28.684L51.0789 29.7741L48.9738 30.8646Z" fill="#173E7B"></path>
+                              <path d="M52.0661 29.0093L50.1635 27.9242L52.2657 26.8282L54.1682 27.9133L52.0661 29.0093Z" fill="#173E7B"></path>
+                              <path id="strobe_led1" d="M55.1521 27.1464L53.2538 26.054L55.3602 24.9661L57.2585 26.0586L55.1521 27.1464Z" fill="#3A6DAB"></path>
+                            </svg>
+                          </div>
+                          <div class="Ghost">
+                            <svg width="60" height="36" viewBox="0 0 60 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M1.96545 19.4296C0.643777 18.6484 0.658726 16.7309 1.99242 15.9705L28.0186 1.12982C29.2467 0.429534 30.7533 0.429533 31.9814 1.12982L58.0076 15.9704C59.3413 16.7309 59.3562 18.6484 58.0346 19.4296L32.5442 34.4962C30.9749 35.4238 29.0251 35.4238 27.4558 34.4962L1.96545 19.4296Z" fill="#3C4F6D"></path>
+                            </svg>
+                          </div>
+                        </div>
+                        <p
+                          v-if="gameImportAction === 'validate' && (gameImportProgress.total || gameImportProgress.current)"
+                          class="muted"
+                        >
+                          Проверено {{ gameImportProgress.current }} из {{ gameImportProgress.total || '?' }}
+                        </p>
+                        <p
+                          v-else-if="gameImportAction === 'upload' && gameImportProgress.phase === 'download'"
+                          class="muted"
+                        >
+                          Скачивание логотипов…
+                        </p>
+                        <p
+                          v-else-if="gameImportAction === 'upload' && (gameImportProgress.total || gameImportProgress.current)"
+                          class="muted"
+                        >
+                          <span v-if="gameImportProgress.total">
+                            Загрузка: {{ gameImportProgress.current }} из {{ gameImportProgress.total }}
+                          </span>
+                          <span v-else>Загрузка…</span>
+                        </p>
+                      </div>
+                      <p v-if="gameImportMessage" class="ok">{{ gameImportMessage }}</p>
+                      <p v-if="gameImportStats" class="muted">
+                        Итог: создано {{ gameImportStats.created }}, обновлено {{ gameImportStats.updated }}, пропущено {{ gameImportStats.skipped }}, всего {{ gameImportStats.total }}
+                      </p>
+                      <div v-if="gameImportErrors.length" class="import-errors">
+                        <p class="bad">Ошибки: {{ gameImportErrors.length }}</p>
+                        <table class="table table--compact table--dense">
+                          <thead>
+                            <tr>
+                              <th>Строка</th>
+                              <th>Поле</th>
+                              <th>Ошибка</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="(e, idx) in gameImportErrors" :key="idx">
+                              <td>{{ e.row }}</td>
+                              <td>{{ e.field }}</td>
+                              <td>{{ e.message }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </teleport>
+
             <table v-if="sortedGames.length" class="table table--compact">
               <thead>
                 <tr>
@@ -943,7 +1127,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="g in sortedGames" :key="g.game_id" class="clickable-row" @click="openGameAccounts(g)">
+                <tr v-for="g in pagedGames" :key="g.game_id" class="clickable-row" @click="openGameAccounts(g)">
                   <td>{{ g.title }}</td>
                   <td>{{ g.short_title || '—' }}</td>
                   <td>{{ formatGamePlatforms(g.platform_codes) }}</td>
@@ -953,105 +1137,23 @@
             </table>
             <p v-else class="muted">Пока нет игр.</p>
 
-            <teleport to="body">
-              <div v-if="selectedGame" class="modal-backdrop" @click.self="selectedGame = null">
-                <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
-                  <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
-                    <div>
-                      <h3>{{ selectedGame.title }}</h3>
-                      <p class="muted">Аккаунты с игрой и свободные слоты.</p>
-                    </div>
-                    <div class="toolbar-actions">
-                      <button
-                        class="btn btn--icon-plain"
-                        @click="refreshGameAccounts"
-                        :disabled="gameAccountsLoading"
-                        aria-label="Обновить список"
-                        title="Обновить список"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M20 12a8 8 0 1 1-2.3-5.7" />
-                          <path d="M20 4v6h-6" />
-                        </svg>
-                      </button>
-                      <button
-                        class="btn btn--icon-plain"
-                        @click="startEditGame(selectedGame)"
-                        aria-label="Редактировать игру"
-                        title="Редактировать игру"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 20h4l10-10-4-4L4 16v4Z" />
-                          <path d="M13 6l4 4" />
-                        </svg>
-                      </button>
-                      <button
-                        class="btn btn--icon-plain"
-                        aria-label="Закрыть"
-                        title="Закрыть"
-                        @click="selectedGame = null"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M6 6l12 12M18 6l-12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                  <div class="modal__body">
-                    <p v-if="gameAccountsError" class="bad">{{ gameAccountsError }}</p>
-                    <div v-if="gameAccountsLoading" class="loader-wrap">
-                      <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
-                        <div class="wheel"></div>
-                        <div class="hamster">
-                          <div class="hamster__body">
-                            <div class="hamster__head">
-                              <div class="hamster__ear"></div>
-                              <div class="hamster__eye"></div>
-                              <div class="hamster__nose"></div>
-                            </div>
-                            <div class="hamster__limb hamster__limb--fr"></div>
-                            <div class="hamster__limb hamster__limb--fl"></div>
-                            <div class="hamster__limb hamster__limb--br"></div>
-                            <div class="hamster__limb hamster__limb--bl"></div>
-                            <div class="hamster__tail"></div>
-                          </div>
-                        </div>
-                        <div class="spoke"></div>
-                      </div>
-                    </div>
-                    <table v-else-if="pagedGameAccounts.length" class="table table--compact">
-                      <thead>
-                        <tr>
-                          <th class="sortable" @click="sortGameAccounts('login_full')">Аккаунт</th>
-                          <th class="sortable" @click="sortGameAccounts('platform_code')">Платформа</th>
-                          <th class="sortable" @click="sortGameAccounts('free_slots')">Свободно</th>
-                          <th class="sortable" @click="sortGameAccounts('occupied_slots')">Занято</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr v-for="a in pagedGameAccounts" :key="a.account_id" class="clickable-row" @click="goToAccount(a.login_full)">
-                          <td>{{ a.login_full || a.account_id }}</td>
-                          <td>{{ a.platform_code }}</td>
-                          <td>{{ a.free_slots }}</td>
-                          <td>{{ a.occupied_slots }}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                    <p v-else class="muted">Пока нет аккаунтов.</p>
-
-                    <div v-if="gameAccountsTotalPages > 1" class="pager">
-                      <button class="ghost" @click="prevGameAccountsPage" :disabled="gameAccountsPage <= 1">
-                        ← Назад
-                      </button>
-                      <span class="muted">Страница {{ gameAccountsPage }} из {{ gameAccountsTotalPages }}</span>
-                      <button class="ghost" @click="nextGameAccountsPage" :disabled="gameAccountsPage >= gameAccountsTotalPages">
-                        Вперёд →
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </teleport>
+            <div v-if="sortedGames.length" class="pager">
+              <label class="pager__size">
+                <span class="label">Показывать</span>
+                <select v-model.number="gamesPageSize" class="input input--select input--compact">
+                  <option :value="20">20</option>
+                  <option :value="50">50</option>
+                  <option :value="100">100</option>
+                </select>
+              </label>
+              <button class="ghost" @click="prevGamesPage" :disabled="gamesPage <= 1">
+                ← Назад
+              </button>
+              <span class="muted">Страница {{ gamesPage }} из {{ gamesTotalPages }}</span>
+              <button class="ghost" @click="nextGamesPage" :disabled="gamesPage >= gamesTotalPages">
+                Вперёд →
+              </button>
+            </div>
 
             <div class="divider"></div>
 
@@ -1061,52 +1163,177 @@
                 class="modal-backdrop"
                 @click.self="closeGameModal"
               >
-                <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
+                <div
+                  ref="modalRef"
+                  :class="['modal', editGame.open ? 'modal--full' : 'modal--auto']"
+                  :style="modalStyle"
+                >
                   <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
-                    <h3>{{ editGame.open ? 'Редактирование игры' : 'Новая игра' }}</h3>
-                    <button
-                      class="btn btn--icon-plain"
-                      type="button"
-                      aria-label="Закрыть"
-                      title="Закрыть"
-                      @click="closeGameModal"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M6 6l12 12M18 6l-12 12" />
-                      </svg>
-                    </button>
+                    <h3>{{ editGame.open ? (editGame.title ? `Игра ${editGame.title}` : 'Игра') : 'Новая игра' }}</h3>
+                    <div class="toolbar-actions">
+                      <button
+                        v-if="editGame.open"
+                        class="btn btn--icon-plain"
+                        type="button"
+                        aria-label="Редактировать"
+                        title="Редактировать"
+                        @click="gameEditMode = 'edit'"
+                        :disabled="gameEditMode === 'edit'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 20h4l10-10-4-4L4 16v4Z" />
+                          <path d="M13 6l4 4" />
+                        </svg>
+                      </button>
+                      <button
+                        class="btn btn--icon-plain"
+                        type="button"
+                        aria-label="Закрыть"
+                        title="Закрыть"
+                        @click="closeGameModal"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M6 6l12 12M18 6l-12 12" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                   <div class="modal__body">
                     <div v-if="editGame.open" class="form form--stack form--compact">
+                      <div class="field field--full">
+                        <span class="label">Логотип</span>
+                        <div class="logo-upload">
+                          <div v-if="editGame.logo_b64" class="logo-preview">
+                            <img :src="gameLogoSrc" alt="logo" />
+                          </div>
+                          <div v-else-if="gameLogoLoading" class="logo-preview logo-preview--loading">
+                            <span class="muted">Загрузка…</span>
+                          </div>
+                          <div class="logo-actions">
+                            <input
+                              class="input input--file"
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              @change="onGameLogoSelected"
+                              :disabled="gameEditMode === 'view'"
+                            />
+                            <span v-if="gameLogoUploading" class="muted">Загрузка {{ gameLogoProgress }}%</span>
+                            <button
+                              v-if="editGame.logo_b64"
+                              class="ghost ghost--small"
+                              type="button"
+                              @click="removeGameLogo"
+                              :disabled="gameEditMode === 'view'"
+                            >
+                              Удалить
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                       <label class="field">
                         <span class="label">Название</span>
-                        <input v-model.trim="editGame.title" class="input" placeholder="Например, GTA V" />
+                        <input v-model.trim="editGame.title" class="input" placeholder="Например, GTA V" :disabled="gameEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Короткое название</span>
-                        <input v-model.trim="editGame.short_title" class="input" placeholder="Например, GTA V" />
+                        <input v-model.trim="editGame.short_title" class="input" placeholder="Например, GTA V" :disabled="gameEditMode === 'view'" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Ссылка</span>
+                        <input v-model.trim="editGame.link" class="input" placeholder="https://..." :disabled="gameEditMode === 'view'" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Язык текста</span>
+                        <input v-model.trim="editGame.text_lang" class="input" placeholder="RU/EN/..." :disabled="gameEditMode === 'view'" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Язык озвучки</span>
+                        <input v-model.trim="editGame.audio_lang" class="input" placeholder="RU/EN/..." :disabled="gameEditMode === 'view'" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Поддержка VR</span>
+                        <input v-model.trim="editGame.vr_support" class="input" placeholder="например: есть/нет" :disabled="gameEditMode === 'view'" />
                       </label>
                       <div class="field field--full">
                         <span class="label">Платформы</span>
                         <div class="check-list check-list--compact">
                           <label v-for="p in platforms" :key="p.code" class="check-item">
-                            <input type="checkbox" :value="p.code" v-model="editGame.platform_codes" />
+                            <input type="checkbox" :value="p.code" v-model="editGame.platform_codes" :disabled="gameEditMode === 'view'" />
                             <span>{{ p.name }} ({{ p.code }})</span>
                           </label>
                         </div>
                       </div>
                       <label class="field">
                         <span class="label">Регион</span>
-                        <select v-model="editGame.region_code" class="input input--select">
+                        <select v-model="editGame.region_code" class="input input--select" :disabled="gameEditMode === 'view'">
                           <option value="">— не выбрано —</option>
                           <option v-for="r in regions" :key="r.code" :value="r.code">
                             {{ r.name }} ({{ r.code }})
                           </option>
                         </select>
                       </label>
+                      <div class="divider"></div>
+                      <div class="field field--full">
+                        <span class="label">Аккаунты по сделкам</span>
+                        <p v-if="gameAccountsError" class="bad">{{ gameAccountsError }}</p>
+                        <div v-if="gameAccountsLoading" class="loader-wrap loader-wrap--compact">
+                          <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                            <div class="wheel"></div>
+                            <div class="hamster">
+                              <div class="hamster__body">
+                                <div class="hamster__head">
+                                  <div class="hamster__ear"></div>
+                                  <div class="hamster__eye"></div>
+                                  <div class="hamster__nose"></div>
+                                </div>
+                                <div class="hamster__limb hamster__limb--fr"></div>
+                                <div class="hamster__limb hamster__limb--fl"></div>
+                                <div class="hamster__limb hamster__limb--br"></div>
+                                <div class="hamster__limb hamster__limb--bl"></div>
+                                <div class="hamster__tail"></div>
+                              </div>
+                            </div>
+                            <div class="spoke"></div>
+                          </div>
+                        </div>
+                        <table v-else-if="pagedGameAccounts.length" class="table table--compact table--dense">
+                          <thead>
+                            <tr>
+                              <th class="sortable" @click="sortGameAccounts('login_full')">Аккаунт</th>
+                              <th class="sortable" @click="sortGameAccounts('platform_code')">Платформа</th>
+                              <th class="sortable cell--num" @click="sortGameAccounts('free_slots')">Свободно</th>
+                              <th class="sortable cell--num" @click="sortGameAccounts('occupied_slots')">Занято</th>
+                              <th class="cell--tight"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="a in pagedGameAccounts" :key="`${a.account_id}-${a.platform_code}`">
+                              <td>{{ a.login_full || '—' }}</td>
+                              <td>{{ (a.platform_code || '—').toUpperCase() }}</td>
+                              <td class="cell--num">{{ a.free_slots ?? 0 }}</td>
+                              <td class="cell--num">{{ a.occupied_slots ?? 0 }}</td>
+                              <td class="cell--tight">
+                                <button class="ghost ghost--small" type="button" @click="openAccountFromGame(a.login_full)">
+                                  Открыть
+                                </button>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        <p v-else class="muted">Сделок по игре пока нет.</p>
+                        <div v-if="gameAccountsTotalPages > 1" class="pager">
+                          <button class="ghost" @click="prevGameAccountsPage" :disabled="gameAccountsPage <= 1">
+                            ← Назад
+                          </button>
+                          <span class="muted">Страница {{ gameAccountsPage }} из {{ gameAccountsTotalPages }}</span>
+                          <button class="ghost" @click="nextGameAccountsPage" :disabled="gameAccountsPage >= gameAccountsTotalPages">
+                            Вперёд →
+                          </button>
+                        </div>
+                      </div>
                       <p v-if="gameError" class="bad">{{ gameError }}</p>
                       <p v-if="gameOk" class="ok">{{ gameOk }}</p>
-                      <div class="toolbar-actions">
+                      <div v-if="gameEditMode === 'edit'" class="toolbar-actions">
                         <button
                           class="btn btn--icon-plain"
                           @click="updateGame"
@@ -1121,6 +1348,10 @@
                       </div>
                     </div>
                     <div v-else class="form form--stack form--compact">
+                      <div class="field field--full">
+                        <span class="label">Логотип</span>
+                        <p class="muted">Логотип можно загрузить после создания игры.</p>
+                      </div>
                       <label class="field">
                         <span class="label">Название</span>
                         <input v-model.trim="newGame.title" class="input" placeholder="Например, GTA V" />
@@ -1128,6 +1359,22 @@
                       <label class="field">
                         <span class="label">Короткое название</span>
                         <input v-model.trim="newGame.short_title" class="input" placeholder="Например, GTA V" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Ссылка</span>
+                        <input v-model.trim="newGame.link" class="input" placeholder="https://..." />
+                      </label>
+                      <label class="field">
+                        <span class="label">Язык текста</span>
+                        <input v-model.trim="newGame.text_lang" class="input" placeholder="RU/EN/..." />
+                      </label>
+                      <label class="field">
+                        <span class="label">Язык озвучки</span>
+                        <input v-model.trim="newGame.audio_lang" class="input" placeholder="RU/EN/..." />
+                      </label>
+                      <label class="field">
+                        <span class="label">Поддержка VR</span>
+                        <input v-model.trim="newGame.vr_support" class="input" placeholder="например: есть/нет" />
                       </label>
                       <div class="field field--full">
                         <span class="label">Платформы (опционально)</span>
@@ -2505,7 +2752,7 @@
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../stores/auth'
-import { apiGet, apiPost, apiDelete, apiPut } from '../api/http'
+import { apiGet, apiPost, apiDelete, apiPut, apiPostForm, apiGetFile, apiPostFormWithProgress } from '../api/http'
 
 const router = useRouter()
 const auth = useAuth()
@@ -2544,7 +2791,6 @@ const gameLoading = ref(false)
 const gameAccounts = ref([])
 const gameAccountsLoading = ref(false)
 const gameAccountsError = ref(null)
-const selectedGame = ref(null)
 const gameAccountsSort = ref({ key: 'free_slots', dir: 'desc' })
 const gameAccountsPage = ref(1)
 const gameAccountsPageSize = 15
@@ -2563,6 +2809,7 @@ const pwdLoading = ref(false)
 const showPwdForm = ref(false)
 const accountEditMode = ref('view')
 const dealEditMode = ref('view')
+const gameEditMode = ref('view')
 
 const sourceNameByCode = computed(() => {
   const map = new Map()
@@ -2714,6 +2961,11 @@ const activeTab = ref('deals')
 const newGame = reactive({
   title: '',
   short_title: '',
+  link: '',
+  logo_url: '',
+  text_lang: '',
+  audio_lang: '',
+  vr_support: '',
   platform_codes: [],
   region_code: '',
 })
@@ -2754,6 +3006,13 @@ const editGame = reactive({
   game_id: null,
   title: '',
   short_title: '',
+  link: '',
+  logo_url: '',
+  logo_b64: '',
+  logo_mime: '',
+  text_lang: '',
+  audio_lang: '',
+  vr_support: '',
   platform_codes: [],
   region_code: '',
 })
@@ -2856,6 +3115,23 @@ const gameFilterDraft = reactive({
   platform: '',
   region: '',
 })
+const showGameImport = ref(false)
+const gameImportFile = ref(null)
+const gameImportValidated = ref(false)
+const gameImportErrors = ref([])
+const gameImportTotal = ref(0)
+const gameImportLoading = ref(false)
+const gameImportMessage = ref('')
+const gameImportAction = ref('')
+const gameImportStats = ref(null)
+const gameImportProgress = reactive({ current: 0, total: 0, phase: '' })
+let gameImportStatusTimer = null
+const gameLogoLoading = ref(false)
+const gameLogoCache = new Map()
+const gameLogoUploading = ref(false)
+const gameLogoProgress = ref(0)
+const GAME_LOGO_CACHE_KEY = 'gamesales_game_logo_cache_v1'
+const GAME_LOGO_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 const showDomainForm = ref(false)
 const showSourceForm = ref(false)
 const showPlatformForm = ref(false)
@@ -2876,6 +3152,8 @@ const domainsSortAsc = ref(true)
 const sourcesSort = ref({ key: 'code', dir: 'asc' })
 const platformsSort = ref({ key: 'code', dir: 'asc' })
 const regionsSort = ref({ key: 'code', dir: 'asc' })
+const gamesPage = ref(1)
+const gamesPageSize = ref(20)
 
 const dealTypeOptions = [
   { code: 'sale', name: 'Продажа' },
@@ -2990,6 +3268,54 @@ const mapApiError = (message) => {
     return `Игра с таким названием уже есть на платформах: ${list || ''}`.trim()
   }
   return text
+}
+
+const gameLogoSrc = computed(() => {
+  if (!editGame.logo_b64 || !editGame.logo_mime) return ''
+  return `data:${editGame.logo_mime};base64,${editGame.logo_b64}`
+})
+
+const getLogoCacheStore = () => {
+  try {
+    const raw = localStorage.getItem(GAME_LOGO_CACHE_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+const saveLogoCacheStore = (store) => {
+  try {
+    localStorage.setItem(GAME_LOGO_CACHE_KEY, JSON.stringify(store))
+  } catch {
+    // ignore storage errors
+  }
+}
+
+const readLogoCache = (gameId) => {
+  const store = getLogoCacheStore()
+  const item = store[gameId]
+  if (!item) return null
+  if (Date.now() - item.ts > GAME_LOGO_CACHE_TTL_MS) {
+    delete store[gameId]
+    saveLogoCacheStore(store)
+    return null
+  }
+  return item
+}
+
+const writeLogoCache = (gameId, value) => {
+  const store = getLogoCacheStore()
+  store[gameId] = { ...value, ts: Date.now() }
+  saveLogoCacheStore(store)
+}
+
+const clearLogoCache = (gameId) => {
+  const store = getLogoCacheStore()
+  if (store[gameId]) {
+    delete store[gameId]
+    saveLogoCacheStore(store)
+  }
 }
 
 const getDealGameTitleDisplay = (deal) => {
@@ -3149,6 +3475,24 @@ const sortedGames = computed(() => {
       : String(bv || '').localeCompare(String(av || ''))
   })
   return list
+})
+
+const gamesTotalPages = computed(() => {
+  const pages = Math.ceil(sortedGames.value.length / gamesPageSize.value)
+  return pages > 0 ? pages : 1
+})
+
+const pagedGames = computed(() => {
+  const start = (gamesPage.value - 1) * gamesPageSize.value
+  return sortedGames.value.slice(start, start + gamesPageSize.value)
+})
+
+watch(gamesTotalPages, (total) => {
+  if (gamesPage.value > total) gamesPage.value = total
+})
+
+watch(gamesPageSize, () => {
+  gamesPage.value = 1
 })
 
 const sortedDeals = computed(() => {
@@ -3353,7 +3697,8 @@ function formatSecret(value, isList = false) {
 
 function openGameAccounts(game) {
   resetModalPos()
-  selectedGame.value = game
+  startEditGame(game)
+  gameAccounts.value = []
   gameAccountsPage.value = 1
   loadGameAccounts(game.game_id)
 }
@@ -3429,32 +3774,228 @@ function toggleRegionsSort(key) {
   }
 }
 
+function prevGamesPage() {
+  if (gamesPage.value > 1) gamesPage.value -= 1
+}
+
+function nextGamesPage() {
+  if (gamesPage.value < gamesTotalPages.value) gamesPage.value += 1
+}
+
 function startEditGame(game) {
   resetModalPos()
   showGameForm.value = false
   editGame.open = true
+  gameEditMode.value = 'view'
   editGame.game_id = game.game_id
   editGame.title = game.title || ''
   editGame.short_title = game.short_title || ''
+  editGame.link = game.link || ''
+  editGame.logo_url = game.logo_url || ''
+  editGame.logo_b64 = ''
+  editGame.logo_mime = ''
+  editGame.text_lang = game.text_lang || ''
+  editGame.audio_lang = game.audio_lang || ''
+  editGame.vr_support = game.vr_support || ''
   editGame.platform_codes = Array.isArray(game.platform_codes) ? [...game.platform_codes] : []
   editGame.region_code = game.region_code || ''
+  loadGameLogo(game.game_id)
 }
 
 function cancelEditGame() {
   editGame.open = false
   editGame.game_id = null
+  gameEditMode.value = 'view'
   editGame.title = ''
   editGame.short_title = ''
+  editGame.link = ''
+  editGame.logo_url = ''
+  editGame.logo_b64 = ''
+  editGame.logo_mime = ''
+  editGame.text_lang = ''
+  editGame.audio_lang = ''
+  editGame.vr_support = ''
   editGame.platform_codes = []
   editGame.region_code = ''
+  gameLogoLoading.value = false
+  gameLogoUploading.value = false
+  gameLogoProgress.value = 0
 }
 
 function openCreateGameModal() {
   resetModalPos()
   showGameForm.value = true
+  gameEditMode.value = 'edit'
   cancelEditGame()
   gameError.value = null
   gameOk.value = null
+}
+
+function openGameImport() {
+  resetModalPos()
+  showGameImport.value = true
+  gameImportFile.value = null
+  gameImportValidated.value = false
+  gameImportErrors.value = []
+  gameImportTotal.value = 0
+  gameImportLoading.value = false
+  gameImportMessage.value = ''
+  gameImportAction.value = ''
+  gameImportStats.value = null
+  gameImportProgress.current = 0
+  gameImportProgress.total = 0
+  gameImportProgress.phase = ''
+  stopGameImportStatusPolling()
+}
+
+function closeGameImport() {
+  showGameImport.value = false
+  gameImportFile.value = null
+  gameImportValidated.value = false
+  gameImportErrors.value = []
+  gameImportTotal.value = 0
+  gameImportLoading.value = false
+  gameImportMessage.value = ''
+  gameImportAction.value = ''
+  gameImportStats.value = null
+  gameImportProgress.current = 0
+  gameImportProgress.total = 0
+  gameImportProgress.phase = ''
+  stopGameImportStatusPolling()
+}
+
+async function pollGameImportStatusOnce() {
+  try {
+    const status = await apiGet('/games/import/status', { token: auth.state.token })
+    if (!status) return
+    gameImportProgress.current = Number(status.current || 0)
+    gameImportProgress.total = Number(status.total || 0)
+    gameImportProgress.phase = status.phase || ''
+  } catch {
+    // ignore polling errors
+  }
+}
+
+function startGameImportStatusPolling() {
+  stopGameImportStatusPolling()
+  pollGameImportStatusOnce()
+  gameImportStatusTimer = setInterval(async () => {
+    try {
+      const status = await apiGet('/games/import/status', { token: auth.state.token })
+      if (!status) return
+      gameImportProgress.current = Number(status.current || 0)
+      gameImportProgress.total = Number(status.total || 0)
+      gameImportProgress.phase = status.phase || ''
+      if (status.done && !gameImportLoading.value) {
+        stopGameImportStatusPolling()
+      }
+    } catch {
+      // ignore polling errors
+    }
+  }, 600)
+}
+
+function stopGameImportStatusPolling() {
+  if (!gameImportStatusTimer) return
+  clearInterval(gameImportStatusTimer)
+  gameImportStatusTimer = null
+}
+
+function onGameImportFile(event) {
+  const file = event?.target?.files?.[0]
+  gameImportFile.value = file || null
+  gameImportValidated.value = false
+  gameImportErrors.value = []
+  gameImportTotal.value = 0
+  gameImportMessage.value = ''
+  gameImportAction.value = ''
+  gameImportStats.value = null
+  gameImportProgress.current = 0
+  gameImportProgress.total = 0
+  gameImportProgress.phase = ''
+  stopGameImportStatusPolling()
+}
+
+async function downloadGameTemplate() {
+  try {
+    const blob = await apiGetFile('/games/import/template', { token: auth.state.token })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'games_import_template.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    gameImportMessage.value = mapApiError(e?.message)
+  }
+}
+
+async function validateGameImport() {
+  if (!gameImportFile.value) return
+  const form = new FormData()
+  form.append('file', gameImportFile.value)
+  gameImportValidated.value = false
+  gameImportAction.value = 'validate'
+  gameImportLoading.value = true
+  gameImportProgress.current = 0
+  gameImportProgress.total = gameImportTotal.value || 0
+  gameImportProgress.phase = ''
+  startGameImportStatusPolling()
+  try {
+    const res = await apiPostForm('/games/import/validate', form, { token: auth.state.token })
+    gameImportErrors.value = res?.errors || []
+    gameImportTotal.value = res?.total || 0
+    gameImportValidated.value = Boolean(res?.ok)
+    if (res?.ok) {
+      gameImportMessage.value = `Файл корректный. Строк: ${gameImportTotal.value}. Можно загружать.`
+    } else {
+      gameImportMessage.value = 'Файл не корректен. Исправьте ошибки ниже.'
+    }
+  } catch (e) {
+    gameImportValidated.value = false
+    gameImportErrors.value = []
+    gameImportMessage.value = mapApiError(e?.message)
+  } finally {
+    gameImportLoading.value = false
+    gameImportAction.value = ''
+    stopGameImportStatusPolling()
+  }
+}
+
+async function uploadGameImport() {
+  if (!gameImportFile.value || !gameImportValidated.value) return
+  const form = new FormData()
+  form.append('file', gameImportFile.value)
+  gameImportAction.value = 'upload'
+  gameImportLoading.value = true
+  gameImportProgress.current = 0
+  gameImportProgress.total = gameImportTotal.value || 0
+  gameImportProgress.phase = ''
+  startGameImportStatusPolling()
+  try {
+    const res = await apiPostForm('/games/import', form, { token: auth.state.token })
+    if (res?.ok) {
+      const created = res?.created || 0
+      const updated = res?.updated || 0
+      const skipped = res?.skipped || 0
+      gameImportMessage.value = `Загружено. Создано: ${created}, обновлено: ${updated}, пропущено: ${skipped}`
+      gameImportStats.value = { created, updated, skipped, total: res?.total || 0 }
+      await loadGames()
+    } else {
+      gameImportErrors.value = res?.errors || []
+    }
+  } catch (e) {
+    gameImportMessage.value = mapApiError(e?.message)
+  } finally {
+    gameImportLoading.value = false
+    gameImportAction.value = ''
+    stopGameImportStatusPolling()
+  }
+}
+
+function downloadGamesExport() {
+  gameImportMessage.value = 'Выгрузка будет добавлена позже'
+  showGameImport.value = true
 }
 
 function closeGameModal() {
@@ -3462,22 +4003,110 @@ function closeGameModal() {
   cancelEditGame()
   gameError.value = null
   gameOk.value = null
+  gameAccounts.value = []
+  gameAccountsError.value = null
+  gameAccountsLoading.value = false
   newGame.title = ''
   newGame.short_title = ''
+  newGame.link = ''
+  newGame.logo_url = ''
+  newGame.text_lang = ''
+  newGame.audio_lang = ''
+  newGame.vr_support = ''
   newGame.platform_codes = []
   newGame.region_code = ''
 }
 
 function refreshGameAccounts() {
-  if (selectedGame.value) {
+  if (editGame.game_id) {
     gameAccountsPage.value = 1
-    loadGameAccounts(selectedGame.value.game_id)
+    loadGameAccounts(editGame.game_id)
+  }
+}
+
+async function loadGameLogo(gameId) {
+  editGame.logo_b64 = ''
+  editGame.logo_mime = ''
+  gameLogoLoading.value = true
+  if (gameLogoCache.has(gameId)) {
+    const cached = gameLogoCache.get(gameId)
+    editGame.logo_b64 = cached?.data_b64 || ''
+    editGame.logo_mime = cached?.mime || ''
+    gameLogoLoading.value = false
+    return
+  }
+  const stored = readLogoCache(gameId)
+  if (stored) {
+    editGame.logo_b64 = stored?.data_b64 || ''
+    editGame.logo_mime = stored?.mime || ''
+    gameLogoCache.set(gameId, { data_b64: editGame.logo_b64, mime: editGame.logo_mime })
+    gameLogoLoading.value = false
+    return
+  }
+  try {
+    const res = await apiGet(`/games/${gameId}/logo`, { token: auth.state.token })
+    editGame.logo_b64 = res?.data_b64 || ''
+    editGame.logo_mime = res?.mime || ''
+    gameLogoCache.set(gameId, { data_b64: editGame.logo_b64, mime: editGame.logo_mime })
+    writeLogoCache(gameId, { data_b64: editGame.logo_b64, mime: editGame.logo_mime })
+  } catch {
+    // no logo or error, ignore
+  } finally {
+    gameLogoLoading.value = false
+  }
+}
+
+async function onGameLogoSelected(event) {
+  const file = event?.target?.files?.[0]
+  if (!file || !editGame.game_id) return
+  const form = new FormData()
+  form.append('file', file)
+  gameLogoLoading.value = true
+  gameLogoUploading.value = true
+  gameLogoProgress.value = 0
+  try {
+    await apiPostFormWithProgress(`/games/${editGame.game_id}/logo`, form, {
+      token: auth.state.token,
+      onProgress: (p) => { gameLogoProgress.value = p },
+    })
+    gameLogoCache.delete(editGame.game_id)
+    clearLogoCache(editGame.game_id)
+    await loadGameLogo(editGame.game_id)
+  } catch (e) {
+    gameError.value = mapApiError(e?.message)
+    gameLogoLoading.value = false
+  } finally {
+    gameLogoUploading.value = false
+    event.target.value = ''
+  }
+}
+
+async function removeGameLogo() {
+  if (!editGame.game_id) return
+  gameLogoLoading.value = true
+  gameLogoUploading.value = false
+  try {
+    await apiDelete(`/games/${editGame.game_id}/logo`, { token: auth.state.token })
+    editGame.logo_b64 = ''
+    editGame.logo_mime = ''
+    gameLogoCache.delete(editGame.game_id)
+    clearLogoCache(editGame.game_id)
+  } catch (e) {
+    gameError.value = mapApiError(e?.message)
+  } finally {
+    gameLogoLoading.value = false
   }
 }
 
 function goToAccount(login) {
   activeTab.value = 'accounts'
   accountFilters.login_q = login || ''
+}
+
+function openAccountFromGame(login) {
+  if (!login) return
+  closeGameModal()
+  goToAccount(login)
 }
 
 function openDealGame(deal) {
@@ -3584,6 +4213,7 @@ const resetGameFilter = (kind) => {
     gameFilterDraft.platform = ''
     gameFilterDraft.region = ''
   }
+  gamesPage.value = 1
   activeGameFilter.value = ''
 }
 
@@ -3602,6 +4232,7 @@ const applyGameFilter = (kind) => {
   } else if (kind === 'region') {
     gameFilters.region_code = gameFilterDraft.region.trim()
   }
+  gamesPage.value = 1
   activeGameFilter.value = ''
 }
 
@@ -4311,6 +4942,11 @@ async function createGame() {
       {
         title: newGame.title,
         short_title: newGame.short_title || null,
+        link: newGame.link || null,
+        logo_url: newGame.logo_url || null,
+        text_lang: newGame.text_lang || null,
+        audio_lang: newGame.audio_lang || null,
+        vr_support: newGame.vr_support || null,
         platform_codes: newGame.platform_codes || [],
         region_code: newGame.region_code || null,
       },
@@ -4319,6 +4955,11 @@ async function createGame() {
     gameOk.value = `Игра “${newGame.title}” добавлена`
     newGame.title = ''
     newGame.short_title = ''
+    newGame.link = ''
+    newGame.logo_url = ''
+    newGame.text_lang = ''
+    newGame.audio_lang = ''
+    newGame.vr_support = ''
     newGame.platform_codes = []
     newGame.region_code = ''
     await loadGames()
@@ -4347,6 +4988,11 @@ async function updateGame() {
       {
         title: editGame.title,
         short_title: editGame.short_title || null,
+        link: editGame.link || null,
+        logo_url: editGame.logo_url || null,
+        text_lang: editGame.text_lang || null,
+        audio_lang: editGame.audio_lang || null,
+        vr_support: editGame.vr_support || null,
         platform_codes: editGame.platform_codes || [],
         region_code: editGame.region_code || null,
       },
@@ -4923,6 +5569,7 @@ watch(activeTab, async (tab) => {
     if (!games.value.length) {
       await loadGames()
     }
+    gamesPage.value = 1
     showGameForm.value = false
     showGameFilters.value = false
     activeGameFilter.value = ''
@@ -5404,6 +6051,11 @@ h2 {
   filter: none;
 }
 
+.loader-overlay .container_SevMini {
+  position: relative;
+  z-index: 1;
+}
+
 .loader-overlay .wheel-and-hamster {
   flex: 0 0 auto;
   clip-path: circle(50% at 50% 50%);
@@ -5445,6 +6097,14 @@ h2 {
 
 .modal--auto .modal__body {
   max-height: min(74vh, 560px);
+}
+
+.modal--full {
+  height: min(92vh, 880px);
+}
+
+.modal--full .modal__body {
+  max-height: min(78vh, 680px);
 }
 
 .modal .label {
@@ -5508,6 +6168,29 @@ h2 {
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
+}
+
+.spinner--small {
+  width: 12px;
+  height: 12px;
+}
+
+.ghost .spinner {
+  margin-right: 6px;
+}
+
+.btn--icon-plain .spinner {
+  margin: 0;
 }
 
 .btn--icon-tiny {
@@ -5724,6 +6407,9 @@ h2 {
   from { transform: rotate(0); }
   to { transform: rotate(-1turn); }
 }
+@keyframes spin {
+  to { transform: rotate(1turn); }
+}
 
 .list {
   margin: 0;
@@ -5873,6 +6559,108 @@ h3 {
   padding: 12px;
 }
 
+.container_SevMini {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+}
+
+.Ghost {
+  transform: translate(0px, -25px);
+  z-index: -1;
+  animation: opacidad 4s infinite ease-in-out;
+}
+
+@keyframes opacidad {
+  0% {
+    opacity: 1;
+    scale: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+    scale: 0.9;
+  }
+
+  100% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes estroboscopico {
+  0% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+
+  51% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes rebote {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes estroboscopico1 {
+  0%,
+  50%,
+  100% {
+    fill: rgb(255, 95, 74);
+  }
+
+  25%,
+  75% {
+    fill: rgb(16, 53, 115);
+  }
+}
+
+@keyframes estroboscopico2 {
+  0%,
+  50%,
+  100% {
+    fill: #17e300;
+  }
+
+  25%,
+  75% {
+    fill: #17e300b4;
+  }
+}
+
+.SevMini {
+  animation: rebote 4s infinite ease-in-out;
+}
+
+#strobe_led1 {
+  animation: estroboscopico 0.5s infinite;
+}
+
+#strobe_color1 {
+  animation: estroboscopico2 0.8s infinite;
+}
+
+#strobe_color3 {
+  animation: estroboscopico1 0.8s infinite;
+  animation-delay: 3s;
+}
+
 .wheel-and-hamster--mini {
   width: 8em;
   height: 8em;
@@ -5986,6 +6774,14 @@ h3 {
   background: linear-gradient(120deg, #02ff2c, #008a12);
 }
 
+.btn--glow-import {
+  background: linear-gradient(120deg, #38bdf8, #2563eb);
+}
+
+.btn--glow-export {
+  background: linear-gradient(120deg, #facc15, #fb7185);
+}
+
 .btn--glow-filter {
   background: linear-gradient(120deg, #3b82f6, #06b6d4);
 }
@@ -6034,6 +6830,49 @@ h3 {
   min-height: 42px;
   padding: 8px 12px;
   resize: vertical;
+}
+
+.input--file {
+  height: auto;
+  padding: 8px 10px;
+}
+
+.logo-upload {
+  display: grid;
+  gap: 10px;
+}
+
+.logo-preview {
+  width: 140px;
+  height: 140px;
+  border-radius: 12px;
+  border: 1px solid var(--input-border);
+  background: rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.logo-preview--loading {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.logo-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.logo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.import-errors {
+  display: grid;
+  gap: 8px;
 }
 
 .form--inline .btn {
@@ -6301,6 +7140,19 @@ table.table {
   background: rgba(255, 255, 255, 0.16);
 }
 
+.pager__size {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input--compact {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  border-radius: 10px;
+}
+
 .table tr:last-child td {
   border-bottom: 0;
 }
@@ -6398,6 +7250,14 @@ table.table {
 
 .btn.btn--glow-add {
   background: linear-gradient(120deg, #02ff2c, #008a12);
+}
+
+.btn.btn--glow-import {
+  background: linear-gradient(120deg, #38bdf8, #2563eb);
+}
+
+.btn.btn--glow-export {
+  background: linear-gradient(120deg, #facc15, #fb7185);
 }
 
 .btn.btn--glow-filter {

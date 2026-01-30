@@ -75,6 +75,13 @@ CREATE TABLE IF NOT EXISTS app.game_titles (
   game_id      bigserial PRIMARY KEY,
   title        text NOT NULL,
   short_title  text,
+  link         text,
+  logo_url     text,
+  logo_blob    bytea,
+  logo_mime    text,
+  text_lang    text,
+  audio_lang   text,
+  vr_support   text,
   region_id    smallint REFERENCES app.regions(region_id),
   created_at   timestamptz NOT NULL DEFAULT now()
 );
@@ -82,6 +89,13 @@ COMMENT ON TABLE app.game_titles IS 'Справочник игровых тай�
 COMMENT ON COLUMN app.game_titles.game_id IS 'Идентификатор тайтла';
 COMMENT ON COLUMN app.game_titles.title IS 'Название игры';
 COMMENT ON COLUMN app.game_titles.short_title IS 'Короткое название игры';
+COMMENT ON COLUMN app.game_titles.link IS 'Ссылка на игру';
+COMMENT ON COLUMN app.game_titles.logo_url IS 'Обложка игры';
+COMMENT ON COLUMN app.game_titles.logo_blob IS 'Обложка игры (файл)';
+COMMENT ON COLUMN app.game_titles.logo_mime IS 'MIME обложки';
+COMMENT ON COLUMN app.game_titles.text_lang IS 'Язык текста';
+COMMENT ON COLUMN app.game_titles.audio_lang IS 'Язык озвучки';
+COMMENT ON COLUMN app.game_titles.vr_support IS 'Поддержка VR';
 COMMENT ON COLUMN app.game_titles.region_id IS 'Регион игры';
 COMMENT ON COLUMN app.game_titles.created_at IS 'Дата создания записи';
 CREATE INDEX IF NOT EXISTS ix_game_titles_title ON app.game_titles (title);
