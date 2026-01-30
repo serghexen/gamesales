@@ -202,7 +202,7 @@
                       </label>
                       <p v-if="pwdError" class="bad">{{ pwdError }}</p>
                       <p v-if="pwdOk" class="ok">Пароль обновлён</p>
-                      <div class="toolbar-actions">
+                      <div class="toolbar-actions import-actions">
                         <button
                           class="btn btn--icon-plain"
                           @click="changePassword"
@@ -473,6 +473,42 @@
               </tbody>
             </table>
             <p v-else class="muted">Пока нет аккаунтов.</p>
+            <div v-if="accountsTotal > 0" class="pager">
+              <span class="muted">Всего: {{ accountsTotal }}</span>
+              <label class="pager__size">
+                <span class="muted">На странице</span>
+                <select v-model.number="accountsPageSize" class="input input--select input--compact">
+                  <option :value="20">20</option>
+                  <option :value="50">50</option>
+                  <option :value="100">100</option>
+                </select>
+              </label>
+              <button class="ghost" @click="setAccountsPage(1)" :disabled="accountsPage <= 1">
+                «
+              </button>
+              <button class="ghost" @click="prevAccountsPage" :disabled="accountsPage <= 1">
+                ← Назад
+              </button>
+              <label class="pager__jump">
+                <span class="muted">Стр.</span>
+                <input
+                  v-model.number="accountsPageInput"
+                  class="input input--compact input--page"
+                  type="number"
+                  min="1"
+                  :max="accountsTotalPages"
+                  @keydown.enter.prevent="jumpAccountsPage"
+                  @blur="jumpAccountsPage"
+                />
+              </label>
+              <span class="muted">из {{ accountsTotalPages }}</span>
+              <button class="ghost" @click="nextAccountsPage" :disabled="accountsPage >= accountsTotalPages">
+                Вперёд →
+              </button>
+              <button class="ghost" @click="setAccountsPage(accountsTotalPages)" :disabled="accountsPage >= accountsTotalPages">
+                »
+              </button>
+            </div>
 
             <div class="divider"></div>
 
@@ -907,6 +943,32 @@
                     </button>
                   </div>
                   <div class="modal__body">
+                    <div class="toolbar-actions import-actions import-actions--fixed">
+                      <button class="ghost" type="button" @click="downloadGameTemplate">
+                        Шаблон
+                      </button>
+                      <button class="ghost" type="button" @click="validateGameImport" :disabled="!gameImportFile || gameImportLoading">
+                        <span v-if="gameImportLoading && gameImportAction === 'validate'" class="spinner spinner--small"></span>
+                        Проверка
+                      </button>
+                      <button
+                        class="ghost"
+                        type="button"
+                        @click="uploadGameImport"
+                        :disabled="!gameImportValidated || !gameImportFile || gameImportLoading"
+                        title="Загрузить"
+                        aria-label="Загрузить"
+                      >
+                        <span v-if="gameImportLoading && gameImportAction === 'upload'" class="spinner spinner--small"></span>
+                        Загрузить
+                      </button>
+                      <button v-if="gameImportLoading" class="import-status" type="button" @click="scrollToImportDetails">
+                        <span v-if="gameImportAction === 'validate'">Проверка…</span>
+                        <span v-else-if="gameImportAction === 'upload' && gameImportProgress.phase === 'download'">Скачивание логотипов…</span>
+                        <span v-else-if="gameImportAction === 'upload' && gameImportProgress.total">Загрузка: {{ gameImportProgress.current }} из {{ gameImportProgress.total }}</span>
+                        <span v-else-if="gameImportAction === 'upload'">Загрузка…</span>
+                      </button>
+                    </div>
                     <div class="form form--stack form--compact">
                       <label class="field field--full">
                         <span class="label">Файл (xlsx/xls)</span>
@@ -915,34 +977,9 @@
                           type="file"
                           accept=".xlsx,.xls"
                           @change="onGameImportFile"
+                          :disabled="gameImportLoading"
                         />
                       </label>
-                      <div class="toolbar-actions">
-                        <button class="ghost" type="button" @click="downloadGameTemplate">
-                          Шаблон
-                        </button>
-                        <button class="ghost" type="button" @click="validateGameImport" :disabled="!gameImportFile || gameImportLoading">
-                          <span v-if="gameImportLoading && gameImportAction === 'validate'" class="spinner spinner--small"></span>
-                          Проверка
-                        </button>
-                        <button
-                          class="ghost"
-                          type="button"
-                          @click="uploadGameImport"
-                          :disabled="!gameImportValidated || !gameImportFile || gameImportLoading"
-                          title="Загрузить"
-                          aria-label="Загрузить"
-                        >
-                          <span v-if="gameImportLoading && gameImportAction === 'upload'" class="spinner spinner--small"></span>
-                          Загрузить
-                        </button>
-                        <button v-if="gameImportLoading" class="import-status" type="button" @click="scrollToImportDetails">
-                          <span v-if="gameImportAction === 'validate'">Проверка…</span>
-                          <span v-else-if="gameImportAction === 'upload' && gameImportProgress.phase === 'download'">Скачивание логотипов…</span>
-                          <span v-else-if="gameImportAction === 'upload' && gameImportProgress.total">Загрузка: {{ gameImportProgress.current }} из {{ gameImportProgress.total }}</span>
-                          <span v-else-if="gameImportAction === 'upload'">Загрузка…</span>
-                        </button>
-                      </div>
                       <div ref="importDetailsRef">
                         <p v-if="gameImportMessage" class="ok">{{ gameImportMessage }}</p>
                       <p v-if="gameImportStats" class="muted">
@@ -1085,7 +1122,8 @@
             </table>
             <p v-else class="muted">Пока нет игр.</p>
 
-            <div v-if="sortedGames.length" class="pager">
+            <div v-if="gamesTotal > 0" class="pager">
+              <span class="muted">Всего: {{ gamesTotal }}</span>
               <label class="pager__size">
                 <span class="label">Показывать</span>
                 <select v-model.number="gamesPageSize" class="input input--select input--compact">
@@ -1094,12 +1132,30 @@
                   <option :value="100">100</option>
                 </select>
               </label>
+              <button class="ghost" @click="setGamesPage(1)" :disabled="gamesPage <= 1">
+                «
+              </button>
               <button class="ghost" @click="prevGamesPage" :disabled="gamesPage <= 1">
                 ← Назад
               </button>
-              <span class="muted">Страница {{ gamesPage }} из {{ gamesTotalPages }}</span>
+              <label class="pager__jump">
+                <span class="muted">Стр.</span>
+                <input
+                  v-model.number="gamesPageInput"
+                  class="input input--compact input--page"
+                  type="number"
+                  min="1"
+                  :max="gamesTotalPages"
+                  @keydown.enter.prevent="jumpGamesPage"
+                  @blur="jumpGamesPage"
+                />
+              </label>
+              <span class="muted">из {{ gamesTotalPages }}</span>
               <button class="ghost" @click="nextGamesPage" :disabled="gamesPage >= gamesTotalPages">
                 Вперёд →
+              </button>
+              <button class="ghost" @click="setGamesPage(gamesTotalPages)" :disabled="gamesPage >= gamesTotalPages">
+                »
               </button>
             </div>
 
@@ -1836,7 +1892,7 @@
                         <span class="label">Игра</span>
                         <select v-model.number="editDeal.game_id" class="input input--select" :disabled="dealEditMode === 'view'">
                           <option value="">— не выбрано —</option>
-                          <option v-for="g in games" :key="g.game_id" :value="g.game_id">
+                          <option v-for="g in gamesAll" :key="g.game_id" :value="g.game_id">
                             {{ g.title }}
                           </option>
                         </select>
@@ -1932,7 +1988,7 @@
                         <span class="label">Игра</span>
                         <select v-model.number="newDeal.game_id" class="input input--select">
                           <option value="">— не выбрано —</option>
-                          <option v-for="g in games" :key="g.game_id" :value="g.game_id">
+                          <option v-for="g in gamesAll" :key="g.game_id" :value="g.game_id">
                             {{ g.title }}
                           </option>
                         </select>
@@ -2709,6 +2765,11 @@ const apiOk = ref(null)
 const loading = ref(false)
 const error = ref(null)
 const accounts = ref([])
+const accountsAll = ref([])
+const accountsTotal = ref(0)
+const accountsPage = ref(1)
+const accountsPageInput = ref(1)
+const accountsPageSize = ref(50)
 const accountSecrets = ref({})
 const accountsError = ref(null)
 const accountsOk = ref(null)
@@ -2774,7 +2835,7 @@ const getSourceName = (code) => {
 }
 
 const accountGameTitles = computed(() => {
-  const gameMap = new Map((games.value || []).map((g) => [g.game_id, g.title]))
+  const gameMap = new Map((gamesAll.value || []).map((g) => [g.game_id, g.title]))
   return (editAccount.game_ids || []).map((id) => gameMap.get(id)).filter(Boolean)
 })
 
@@ -2948,6 +3009,8 @@ const editDeal = reactive({
 })
 
 const games = ref([])
+const gamesAll = ref([])
+const gamesTotal = ref(0)
 const gamesLoading = ref(false)
 const editGame = reactive({
   open: false,
@@ -3105,6 +3168,7 @@ const sourcesSort = ref({ key: 'code', dir: 'asc' })
 const platformsSort = ref({ key: 'code', dir: 'asc' })
 const regionsSort = ref({ key: 'code', dir: 'asc' })
 const gamesPage = ref(1)
+const gamesPageInput = ref(1)
 const gamesPageSize = ref(20)
 
 const dealTypeOptions = [
@@ -3296,63 +3360,10 @@ const formatGamePlatforms = (codes) => {
   return list.join(', ')
 }
 
-const filteredAccounts = computed(() => {
-  let list = [...accounts.value]
-  if (accountFilters.login_q) {
-    const q = accountFilters.login_q.toLowerCase()
-    list = list.filter((a) =>
-      (a.login_full || '').toLowerCase().includes(q)
-    )
-  }
-  if (accountFilters.region_q) {
-    const q = accountFilters.region_q.toLowerCase()
-    list = list.filter((a) => (a.region_code || '').toLowerCase().includes(q))
-  }
-  if (accountFilters.status_q) {
-    const q = accountFilters.status_q.toLowerCase()
-    list = list.filter((a) => (a.status || '').toLowerCase().includes(q))
-  }
-  if (accountFilters.slots_q) {
-    const q = accountFilters.slots_q.toLowerCase()
-    list = list.filter((a) => getAccountSlotsText(a).toLowerCase().includes(q))
-  }
-  if (accountFilters.date_from) {
-    list = list.filter((a) => new Date(a.account_date || 0) >= new Date(accountFilters.date_from))
-  }
-  if (accountFilters.date_to) {
-    list = list.filter((a) => new Date(a.account_date || 0) <= new Date(accountFilters.date_to))
-  }
-  return list
-})
-
-const sortedAccounts = computed(() => {
-  const list = [...filteredAccounts.value]
-  if (accountSort.value === 'login_asc') {
-    list.sort((a, b) => (a.login_full || '').localeCompare(b.login_full || ''))
-  } else if (accountSort.value === 'login_desc') {
-    list.sort((a, b) => (b.login_full || '').localeCompare(a.login_full || ''))
-  } else if (accountSort.value === 'region_asc') {
-    list.sort((a, b) => (a.region_code || '').localeCompare(b.region_code || ''))
-  } else if (accountSort.value === 'region_desc') {
-    list.sort((a, b) => (b.region_code || '').localeCompare(a.region_code || ''))
-  } else if (accountSort.value === 'status_asc') {
-    list.sort((a, b) => (a.status || '').localeCompare(b.status || ''))
-  } else if (accountSort.value === 'status_desc') {
-    list.sort((a, b) => (b.status || '').localeCompare(a.status || ''))
-  } else if (accountSort.value === 'slots_desc') {
-    list.sort((a, b) => getAccountFreeTotal(b) - getAccountFreeTotal(a))
-  } else if (accountSort.value === 'slots_asc') {
-    list.sort((a, b) => getAccountFreeTotal(a) - getAccountFreeTotal(b))
-  } else if (accountSort.value === 'date_desc') {
-    list.sort((a, b) => new Date(b.account_date || 0) - new Date(a.account_date || 0))
-  } else if (accountSort.value === 'date_asc') {
-    list.sort((a, b) => new Date(a.account_date || 0) - new Date(b.account_date || 0))
-  }
-  return list
-})
+const sortedAccounts = computed(() => [...accounts.value])
 
 const dealAccountsForNew = computed(() => {
-  let list = [...accounts.value]
+  let list = [...accountsAll.value]
   if (newDeal.platform_code) {
     return list.filter((a) => getAccountFreeSlots(a, newDeal.platform_code) > 0)
   }
@@ -3360,7 +3371,7 @@ const dealAccountsForNew = computed(() => {
 })
 
 const dealAccountsForEdit = computed(() => {
-  let list = [...accounts.value]
+  let list = [...accountsAll.value]
   if (editDeal.platform_code) {
     return list.filter(
       (a) => getAccountFreeSlots(a, editDeal.platform_code) > 0 || a.account_id === editDeal.account_id
@@ -3373,14 +3384,14 @@ const dealAccountsForEdit = computed(() => {
 
 const filteredAccountGames = computed(() => {
   const q = accountGameSearch.value.trim().toLowerCase()
-  if (!q) return games.value
-  return games.value.filter((g) => (g.title || '').toLowerCase().includes(q))
+  if (!q) return gamesAll.value
+  return gamesAll.value.filter((g) => (g.title || '').toLowerCase().includes(q))
 })
 
 const filteredEditAccountGames = computed(() => {
   const q = editAccountGameSearch.value.trim().toLowerCase()
-  if (!q) return games.value
-  return games.value.filter((g) => (g.title || '').toLowerCase().includes(q))
+  if (!q) return gamesAll.value
+  return gamesAll.value.filter((g) => (g.title || '').toLowerCase().includes(q))
 })
 
 const gameFilters = reactive({
@@ -3389,62 +3400,46 @@ const gameFilters = reactive({
   region_code: '',
 })
 
-const filteredGames = computed(() => {
-  let list = [...games.value]
-  if (gameFilters.q) {
-    const q = gameFilters.q.toLowerCase()
-    list = list.filter((g) =>
-      (g.title || '').toLowerCase().includes(q) || (g.short_title || '').toLowerCase().includes(q)
-    )
-  }
-  if (gameFilters.platform_code) {
-    const q = gameFilters.platform_code.toLowerCase()
-    list = list.filter((g) => (g.platform_codes || []).some((c) => String(c || '').toLowerCase().includes(q)))
-  }
-  if (gameFilters.region_code) {
-    const q = gameFilters.region_code.toLowerCase()
-    list = list.filter((g) => (g.region_code || '').toLowerCase().includes(q))
-  }
-  return list
-})
-
-const sortedGames = computed(() => {
-  const list = [...filteredGames.value]
-  const { key, dir } = gamesSort.value
-  list.sort((a, b) => {
-    const av = key === 'title'
-      ? a.title
-      : key === 'platform'
-        ? formatGamePlatforms(a.platform_codes)
-        : a.region_code
-    const bv = key === 'title'
-      ? b.title
-      : key === 'platform'
-        ? formatGamePlatforms(b.platform_codes)
-        : b.region_code
-    return dir === 'asc'
-      ? String(av || '').localeCompare(String(bv || ''))
-      : String(bv || '').localeCompare(String(av || ''))
-  })
-  return list
-})
+const sortedGames = computed(() => [...games.value])
 
 const gamesTotalPages = computed(() => {
-  const pages = Math.ceil(sortedGames.value.length / gamesPageSize.value)
+  const pages = Math.ceil(gamesTotal.value / gamesPageSize.value)
   return pages > 0 ? pages : 1
 })
 
 const pagedGames = computed(() => {
-  const start = (gamesPage.value - 1) * gamesPageSize.value
-  return sortedGames.value.slice(start, start + gamesPageSize.value)
+  return sortedGames.value
+})
+
+const accountsTotalPages = computed(() => {
+  const pages = Math.ceil(accountsTotal.value / accountsPageSize.value)
+  return pages > 0 ? pages : 1
 })
 
 watch(gamesTotalPages, (total) => {
   if (gamesPage.value > total) gamesPage.value = total
 })
 
+watch(gamesPage, (val) => {
+  gamesPageInput.value = val
+})
+
 watch(gamesPageSize, () => {
   gamesPage.value = 1
+  loadGames()
+})
+
+watch(accountsTotalPages, (total) => {
+  if (accountsPage.value > total) accountsPage.value = total
+})
+
+watch(accountsPage, (val) => {
+  accountsPageInput.value = val
+})
+
+watch(accountsPageSize, () => {
+  accountsPage.value = 1
+  loadAccounts()
 })
 
 const sortedDeals = computed(() => {
@@ -3666,6 +3661,8 @@ function toggleAccountSort(key) {
   const [asc, desc] = map[key] || []
   if (!asc) return
   accountSort.value = accountSort.value === asc ? desc : asc
+  accountsPage.value = 1
+  loadAccounts()
 }
 
 function toggleGamesSort(key) {
@@ -3675,6 +3672,8 @@ function toggleGamesSort(key) {
   } else {
     gamesSort.value = { key, dir: 'asc' }
   }
+  gamesPage.value = 1
+  loadGames()
 }
 
 function toggleDealSort(key) {
@@ -3726,12 +3725,42 @@ function toggleRegionsSort(key) {
   }
 }
 
+function setGamesPage(page) {
+  const target = Math.min(Math.max(1, Number(page) || 1), gamesTotalPages.value)
+  if (target === gamesPage.value) return
+  gamesPage.value = target
+  loadGames()
+}
+
+function jumpGamesPage() {
+  setGamesPage(gamesPageInput.value)
+}
+
 function prevGamesPage() {
-  if (gamesPage.value > 1) gamesPage.value -= 1
+  setGamesPage(gamesPage.value - 1)
 }
 
 function nextGamesPage() {
-  if (gamesPage.value < gamesTotalPages.value) gamesPage.value += 1
+  setGamesPage(gamesPage.value + 1)
+}
+
+function setAccountsPage(page) {
+  const target = Math.min(Math.max(1, Number(page) || 1), accountsTotalPages.value)
+  if (target === accountsPage.value) return
+  accountsPage.value = target
+  loadAccounts()
+}
+
+function jumpAccountsPage() {
+  setAccountsPage(accountsPageInput.value)
+}
+
+function prevAccountsPage() {
+  setAccountsPage(accountsPage.value - 1)
+}
+
+function nextAccountsPage() {
+  setAccountsPage(accountsPage.value + 1)
 }
 
 function startEditGame(game) {
@@ -3896,6 +3925,7 @@ async function applyGameImportResult(res) {
   localStorage.removeItem(GAME_IMPORT_JOB_KEY)
   stopGameImportStatusPolling()
   await loadGames()
+  await loadGamesAll()
 }
 
 function onGameImportFile(event) {
@@ -4109,10 +4139,21 @@ function openAccountFromGame(login) {
   goToAccount(login)
 }
 
-function openDealGame(deal) {
+async function openDealGame(deal) {
   if (!deal || !deal.game_id) return
   activeTab.value = 'games'
-  const game = games.value.find((g) => g.game_id === deal.game_id)
+  gameFilters.q = deal.game_title || ''
+  gameFilters.platform_code = ''
+  gameFilters.region_code = ''
+  gameFilterDraft.title = gameFilters.q
+  gameFilterDraft.platform = ''
+  gameFilterDraft.region = ''
+  gamesPage.value = 1
+  await loadGames()
+  if (!gamesAll.value.length) {
+    await loadGamesAll()
+  }
+  const game = gamesAll.value.find((g) => g.game_id === deal.game_id) || games.value.find((g) => g.game_id === deal.game_id)
   if (game) {
     openGameAccounts(game)
   }
@@ -4215,6 +4256,7 @@ const resetGameFilter = (kind) => {
   }
   gamesPage.value = 1
   activeGameFilter.value = ''
+  loadGames()
 }
 
 const openGameFilter = (kind) => {
@@ -4234,6 +4276,7 @@ const applyGameFilter = (kind) => {
   }
   gamesPage.value = 1
   activeGameFilter.value = ''
+  loadGames()
 }
 
 const resetAccountFilter = (kind) => {
@@ -4271,6 +4314,8 @@ const resetAccountFilter = (kind) => {
     accountFilterErrors.date = ''
   }
   activeAccountFilter.value = ''
+  accountsPage.value = 1
+  loadAccounts()
 }
 
 const openAccountFilter = (kind) => {
@@ -4298,6 +4343,8 @@ const applyAccountFilter = (kind) => {
     accountFilters.date_to = accountFilterDraft.date_to
   }
   activeAccountFilter.value = ''
+  accountsPage.value = 1
+  loadAccounts()
 }
 
 const accountFilterErrors = reactive({
@@ -4440,12 +4487,35 @@ async function loadAccountGames(accountId) {
 async function loadGames() {
   gamesLoading.value = true
   try {
-    const g = await apiGet('/games', { token: auth.state.token })
-    games.value = g || []
+    const params = new URLSearchParams()
+    if (gameFilters.q) params.set('q', gameFilters.q)
+    if (gameFilters.platform_code) params.set('platform_code', gameFilters.platform_code)
+    if (gameFilters.region_code) params.set('region_code', gameFilters.region_code)
+    params.set('sort_key', gamesSort.value.key)
+    params.set('sort_dir', gamesSort.value.dir)
+    params.set('page', String(gamesPage.value))
+    params.set('page_size', String(gamesPageSize.value))
+    const res = await apiGet(`/games?${params.toString()}`, { token: auth.state.token })
+    games.value = res?.items || []
+    gamesTotal.value = Number(res?.total || 0)
   } catch {
     games.value = []
+    gamesTotal.value = 0
   } finally {
     gamesLoading.value = false
+  }
+}
+
+async function loadGamesAll() {
+  try {
+    const params = new URLSearchParams()
+    params.set('all', 'true')
+    params.set('sort_key', 'title')
+    params.set('sort_dir', 'asc')
+    const res = await apiGet(`/games?${params.toString()}`, { token: auth.state.token })
+    gamesAll.value = res?.items || []
+  } catch {
+    gamesAll.value = []
   }
 }
 
@@ -4516,13 +4586,52 @@ async function loadAccounts() {
   accountsError.value = null
   accountsOk.value = null
   try {
-    const data = await apiGet('/accounts', { token: auth.state.token })
-    accounts.value = data || []
+    const params = new URLSearchParams()
+    if (accountFilters.login_q) params.set('login_q', accountFilters.login_q)
+    if (accountFilters.region_q) params.set('region_q', accountFilters.region_q)
+    if (accountFilters.status_q) params.set('status_q', accountFilters.status_q)
+    if (accountFilters.slots_q) params.set('slots_q', accountFilters.slots_q)
+    if (accountFilters.date_from) params.set('date_from', accountFilters.date_from)
+    if (accountFilters.date_to) params.set('date_to', accountFilters.date_to)
+    const sortMap = {
+      login_asc: { key: 'login', dir: 'asc' },
+      login_desc: { key: 'login', dir: 'desc' },
+      region_asc: { key: 'region', dir: 'asc' },
+      region_desc: { key: 'region', dir: 'desc' },
+      status_asc: { key: 'status', dir: 'asc' },
+      status_desc: { key: 'status', dir: 'desc' },
+      slots_asc: { key: 'slots', dir: 'asc' },
+      slots_desc: { key: 'slots', dir: 'desc' },
+      date_asc: { key: 'date', dir: 'asc' },
+      date_desc: { key: 'date', dir: 'desc' },
+    }
+    const sort = sortMap[accountSort.value] || sortMap.login_asc
+    params.set('sort_key', sort.key)
+    params.set('sort_dir', sort.dir)
+    params.set('page', String(accountsPage.value))
+    params.set('page_size', String(accountsPageSize.value))
+    const data = await apiGet(`/accounts?${params.toString()}`, { token: auth.state.token })
+    accounts.value = data?.items || []
+    accountsTotal.value = Number(data?.total || 0)
     await loadAccountSecrets(accounts.value)
   } catch (e) {
     accountsError.value = mapApiError(e?.message)
+    accountsTotal.value = 0
   } finally {
     accountsLoading.value = false
+  }
+}
+
+async function loadAccountsAll() {
+  try {
+    const params = new URLSearchParams()
+    params.set('all', 'true')
+    params.set('sort_key', 'login')
+    params.set('sort_dir', 'asc')
+    const data = await apiGet(`/accounts?${params.toString()}`, { token: auth.state.token })
+    accountsAll.value = data?.items || []
+  } catch {
+    accountsAll.value = []
   }
 }
 
@@ -4726,6 +4835,7 @@ async function createAccount() {
     newAccount.game_ids = []
     accountGameSearch.value = ''
     await loadAccounts()
+    await loadAccountsAll()
     cancelEditAccount()
   } catch (e) {
     accountsError.value = mapApiError(e?.message)
@@ -4837,6 +4947,7 @@ async function updateAccount() {
 
     accountsOk.value = 'Аккаунт обновлён'
     await loadAccounts()
+    await loadAccountsAll()
     cancelEditAccount()
   } catch (e) {
     accountsError.value = mapApiError(e?.message)
@@ -4963,6 +5074,7 @@ async function createGame() {
     newGame.platform_codes = []
     newGame.region_code = ''
     await loadGames()
+    await loadGamesAll()
     closeGameModal()
   } catch (e) {
     gameError.value = mapApiError(e?.message)
@@ -5000,6 +5112,7 @@ async function updateGame() {
     )
     gameOk.value = 'Игра обновлена'
     await loadGames()
+    await loadGamesAll()
     cancelEditGame()
   } catch (e) {
     gameError.value = mapApiError(e?.message)
@@ -5041,6 +5154,7 @@ async function createDeal() {
     newDeal.purchase_at = ''
     newDeal.notes = ''
     await loadDeals(1)
+    await loadAccountsAll()
     closeDealModal()
   } catch (e) {
     dealError.value = mapApiError(e?.message)
@@ -5079,6 +5193,7 @@ async function updateDeal() {
     )
     dealOk.value = 'Сделка обновлена'
     await loadDeals(dealPage.value)
+    await loadAccountsAll()
     closeDealModal()
   } catch (e) {
     dealError.value = mapApiError(e?.message)
@@ -5566,10 +5681,13 @@ watch(activeTab, async (tab) => {
     if (!platforms.value.length || !regions.value.length) {
       await loadCatalogs()
     }
+    gamesPage.value = 1
     if (!games.value.length) {
       await loadGames()
     }
-    gamesPage.value = 1
+    if (!gamesAll.value.length) {
+      await loadGamesAll()
+    }
     showGameForm.value = false
     showGameFilters.value = false
     activeGameFilter.value = ''
@@ -5583,9 +5701,10 @@ watch(activeTab, async (tab) => {
     if (!domains.value.length) {
       await loadDomains()
     }
-    if (!games.value.length) {
-      await loadGames()
+    if (!gamesAll.value.length) {
+      await loadGamesAll()
     }
+    accountsPage.value = 1
     await loadAccounts()
     showAccountFilters.value = false
     activeAccountFilter.value = ''
@@ -5594,8 +5713,8 @@ watch(activeTab, async (tab) => {
   if (tab === 'deals') {
     // стартуем список сразу, остальное догружаем параллельно
     const tasks = [loadDeals(1)]
-    if (!accounts.value.length) tasks.push(loadAccounts())
-    if (!games.value.length) tasks.push(loadGames())
+    if (!accountsAll.value.length) tasks.push(loadAccountsAll())
+    if (!gamesAll.value.length) tasks.push(loadGamesAll())
     if (!platforms.value.length || !regions.value.length) tasks.push(loadCatalogs())
     if (!sources.value.length) tasks.push(loadSources())
     await Promise.all(tasks)
@@ -6616,6 +6735,22 @@ h3 {
   flex-wrap: wrap;
 }
 
+.import-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  align-self: flex-start;
+  padding: 8px 0;
+  background: linear-gradient(0deg, rgba(10, 16, 32, 0.95) 0%, rgba(10, 16, 32, 0.7) 70%, rgba(10, 16, 32, 0) 100%);
+}
+
+.import-actions--fixed {
+  top: 0;
+  bottom: auto;
+  margin-bottom: 8px;
+  background: linear-gradient(180deg, rgba(10, 16, 32, 0.95) 0%, rgba(10, 16, 32, 0.7) 70%, rgba(10, 16, 32, 0) 100%);
+}
+
 .field,
 .input {
   box-sizing: border-box;
@@ -7058,11 +7193,22 @@ table.table {
   gap: 8px;
 }
 
+.pager__jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .input--compact {
   height: 32px;
   padding: 0 10px;
   font-size: 12px;
   border-radius: 10px;
+}
+
+.input--page {
+  width: 70px;
+  text-align: center;
 }
 
 .table tr:last-child td {

@@ -118,6 +118,10 @@ class AccountOut(BaseModel):
     account_date: Optional[date] = None
     notes: Optional[str] = None
 
+class AccountListOut(BaseModel):
+    total: int
+    items: List[AccountOut]
+
 class GameCreate(BaseModel):
     title: str
     short_title: Optional[str] = None
@@ -151,6 +155,10 @@ class GameOut(BaseModel):
     vr_support: Optional[str] = None
     platform_codes: List[str]
     region_code: Optional[str]
+
+class GameListOut(BaseModel):
+    total: int
+    items: List[GameOut]
 
 class PlatformOut(BaseModel):
     code: str
@@ -1131,39 +1139,123 @@ def reset_password(username: str, payload: ResetPasswordIn, user: UserOut = Depe
         conn.commit()
     return {"ok": True}
 
-@app.get("/accounts", response_model=List[AccountOut])
-def list_accounts(user: UserOut = Depends(get_current_user)):
+@app.get("/accounts", response_model=AccountListOut)
+def list_accounts(
+    login_q: Optional[str] = None,
+    region_q: Optional[str] = None,
+    status_q: Optional[str] = None,
+    slots_q: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    sort_key: str = "login",
+    sort_dir: str = "asc",
+    page: int = 1,
+    page_size: int = 50,
+    all: bool = False,
+    user: UserOut = Depends(get_current_user),
+):
+    page = max(1, page)
+    if all:
+        page_size = 0
+        offset = 0
+    else:
+        page_size = max(1, min(int(page_size or 50), 200))
+        offset = (page - 1) * page_size
+
+    sort_map = {
+        "login": "login_name",
+        "region": "region_code",
+        "status": "status_code",
+        "slots": "free_total",
+        "date": "account_date",
+    }
+    sort_col = sort_map.get(sort_key, "login_name")
+    sort_dir = "desc" if str(sort_dir).lower() == "desc" else "asc"
+
+    filters = []
+    params = []
+    if login_q:
+        filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s)")
+        params.extend([f"%{login_q}%", f"%{login_q}%"])
+    if region_q:
+        filters.append("r.code ILIKE %s")
+        params.append(f"%{region_q}%")
+    if status_q:
+        filters.append("a.status_code ILIKE %s")
+        params.append(f"%{status_q}%")
+    if date_from:
+        filters.append("a.account_date >= %s")
+        params.append(date_from)
+    if date_to:
+        filters.append("a.account_date <= %s")
+        params.append(date_to)
+
+    where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
+
     with psycopg.connect(DB_DSN) as conn:
-        rows = qall(conn, """
-            WITH acc AS (
-              SELECT account_id, region_id, status_code, login_name, domain_id, account_date, notes
-              FROM app.accounts
-              ORDER BY account_id DESC
-              LIMIT 200
+        rows = qall(
+            conn,
+            f"""
+            WITH base AS (
+              SELECT
+                a.account_id,
+                a.region_id,
+                a.status_code,
+                a.login_name,
+                a.domain_id,
+                a.account_date,
+                a.notes,
+                r.code as region_code,
+                d.name as domain_name,
+                COALESCE(SUM(s.free_slots), 0) as free_total,
+                COALESCE(string_agg(upper(p.code) || ' ' || s.occupied_slots || '/' || s.slot_capacity, ' · ' ORDER BY p.code), '') as slots_text
+              FROM app.accounts a
+              LEFT JOIN app.regions r ON r.region_id = a.region_id
+              LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+              LEFT JOIN app.v_account_platform_slots s ON s.account_id = a.account_id
+              LEFT JOIN app.platforms p ON p.platform_id = s.platform_id
+              {where_sql}
+              GROUP BY a.account_id, a.region_id, a.status_code, a.login_name, a.domain_id, a.account_date, a.notes, r.code, d.name
+            ),
+            filtered AS (
+              SELECT * FROM base
+              {"WHERE slots_text ILIKE %s" if slots_q else ""}
+            ),
+            total AS (
+              SELECT COUNT(*) FROM filtered
+            ),
+            page AS (
+              SELECT * FROM filtered
+              ORDER BY {sort_col} {sort_dir}, account_id DESC
+              {"" if all else "LIMIT %s OFFSET %s"}
             )
             SELECT
-              acc.account_id,
-              r.code as region_code,
-              acc.status_code,
-              acc.login_name,
-              d.name as domain_name,
-              acc.account_date,
-              acc.notes,
+              page.account_id,
+              page.region_code,
+              page.status_code,
+              page.login_name,
+              page.domain_name,
+              page.account_date,
+              page.notes,
               p.code as platform_code,
               s.slot_capacity,
               s.occupied_slots,
-              s.free_slots
-            FROM acc
-            LEFT JOIN app.regions r ON r.region_id = acc.region_id
-            LEFT JOIN app.domains d ON d.domain_id = acc.domain_id
-            LEFT JOIN app.v_account_platform_slots s ON s.account_id = acc.account_id
+              s.free_slots,
+              (SELECT COUNT(*) FROM total) as total_count
+            FROM page
+            LEFT JOIN app.v_account_platform_slots s ON s.account_id = page.account_id
             LEFT JOIN app.platforms p ON p.platform_id = s.platform_id
-            ORDER BY acc.account_id DESC, p.code
-        """)
+            ORDER BY {sort_col} {sort_dir}, page.account_id DESC, p.code
+            """,
+            params + ([f"%{slots_q}%"] if slots_q else []) + ([] if all else [page_size, offset]),
+        )
+
     acc_map = {}
     acc_list = []
+    total = 0
     for row in rows:
         account_id = row[0]
+        total = int(row[11] or 0)
         if account_id not in acc_map:
             acc = AccountOut(
                 account_id=account_id,
@@ -1188,7 +1280,33 @@ def list_accounts(user: UserOut = Depends(get_current_user)):
                     free_slots=int(row[10] or 0),
                 )
             )
-    return acc_list
+    if not rows:
+        with psycopg.connect(DB_DSN) as conn:
+            total_row = q1(
+                conn,
+                f"""
+                WITH base AS (
+                  SELECT
+                    a.account_id,
+                    r.code as region_code,
+                    d.name as domain_name,
+                    COALESCE(SUM(s.free_slots), 0) as free_total,
+                    COALESCE(string_agg(upper(p.code) || ' ' || s.occupied_slots || '/' || s.slot_capacity, ' · ' ORDER BY p.code), '') as slots_text
+                  FROM app.accounts a
+                  LEFT JOIN app.regions r ON r.region_id = a.region_id
+                  LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+                  LEFT JOIN app.v_account_platform_slots s ON s.account_id = a.account_id
+                  LEFT JOIN app.platforms p ON p.platform_id = s.platform_id
+                  {where_sql}
+                  GROUP BY a.account_id, r.code, d.name
+                )
+                SELECT COUNT(*) FROM base
+                {"WHERE slots_text ILIKE %s" if slots_q else ""}
+                """,
+                params + ([f"%{slots_q}%"] if slots_q else []),
+            )
+            total = int(total_row[0] or 0) if total_row else 0
+    return {"total": total, "items": acc_list}
 
 @app.post("/accounts", response_model=AccountOut)
 def create_account(payload: AccountCreate, user: UserOut = Depends(get_current_user)):
@@ -1480,49 +1598,146 @@ def list_game_accounts(game_id: int, user: UserOut = Depends(get_current_user)):
         for (r0, r1, r2, r3, r4, r5) in rows
     ]
 
-@app.get("/games", response_model=List[GameOut])
-def list_games(q: Optional[str] = None, user: UserOut = Depends(get_current_user)):
+@app.get("/games", response_model=GameListOut)
+def list_games(
+    q: Optional[str] = None,
+    platform_code: Optional[str] = None,
+    region_code: Optional[str] = None,
+    sort_key: str = "id",
+    sort_dir: str = "desc",
+    page: int = 1,
+    page_size: int = 50,
+    all: bool = False,
+    user: UserOut = Depends(get_current_user),
+):
+    page = max(1, page)
+    if all:
+        page_size = 0
+        offset = 0
+    else:
+        page_size = max(1, min(int(page_size or 50), 200))
+        offset = (page - 1) * page_size
+
+    sort_map = {
+        "id": "game_id",
+        "title": "title",
+        "platform": "platform_sort",
+        "region": "region_code",
+    }
+    sort_col = sort_map.get(sort_key, "g.game_id")
+    sort_dir = "desc" if str(sort_dir).lower() == "desc" else "asc"
+
+    filters = []
+    params = []
+    if q:
+        filters.append("(g.title ILIKE %s OR g.short_title ILIKE %s)")
+        params.extend([f"%{q}%", f"%{q}%"])
+    if region_code:
+        filters.append("r.code ILIKE %s")
+        params.append(f"%{region_code}%")
+    if platform_code:
+        filters.append("""
+            EXISTS (
+              SELECT 1
+              FROM app.game_platforms gp2
+              JOIN app.platforms p2 ON p2.platform_id = gp2.platform_id
+              WHERE gp2.game_id = g.game_id AND lower(p2.code) = lower(%s)
+            )
+        """)
+        params.append(platform_code)
+
+    where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
+
     with psycopg.connect(DB_DSN) as conn:
-        if q:
-            rows = qall(conn, """
-                SELECT g.game_id, g.title, g.short_title, g.link, g.logo_url, g.text_lang, g.audio_lang, g.vr_support, r.code,
-                       COALESCE(array_agg(p.code ORDER BY p.code) FILTER (WHERE p.code IS NOT NULL), '{}'::text[]) AS platform_codes
-                FROM app.game_titles g
-                LEFT JOIN app.regions r ON r.region_id = g.region_id
-                LEFT JOIN app.game_platforms gp ON gp.game_id = g.game_id
-                LEFT JOIN app.platforms p ON p.platform_id = gp.platform_id
-                WHERE g.title ILIKE %s OR g.short_title ILIKE %s
-                GROUP BY g.game_id, g.title, g.short_title, g.link, g.logo_url, g.text_lang, g.audio_lang, g.vr_support, r.code
-                ORDER BY g.game_id DESC
-                LIMIT 200
-            """, (f"%{q}%", f"%{q}%"))
-        else:
-            rows = qall(conn, """
-                SELECT g.game_id, g.title, g.short_title, g.link, g.logo_url, g.text_lang, g.audio_lang, g.vr_support, r.code,
-                       COALESCE(array_agg(p.code ORDER BY p.code) FILTER (WHERE p.code IS NOT NULL), '{}'::text[]) AS platform_codes
-                FROM app.game_titles g
-                LEFT JOIN app.regions r ON r.region_id = g.region_id
-                LEFT JOIN app.game_platforms gp ON gp.game_id = g.game_id
-                LEFT JOIN app.platforms p ON p.platform_id = gp.platform_id
-                GROUP BY g.game_id, g.title, g.short_title, g.link, g.logo_url, g.text_lang, g.audio_lang, g.vr_support, r.code
-                ORDER BY g.game_id DESC
-                LIMIT 200
-            """)
-    return [
-        GameOut(
-            game_id=r0,
-            title=r1,
-            short_title=r2,
-            link=r3,
-            logo_url=r4,
-            text_lang=r5,
-            audio_lang=r6,
-            vr_support=r7,
-            platform_codes=list(r9 or []),
-            region_code=r8,
+        rows = qall(
+            conn,
+            f"""
+            WITH base AS (
+              SELECT
+                g.game_id,
+                g.title,
+                g.short_title,
+                g.link,
+                g.logo_url,
+                g.text_lang,
+                g.audio_lang,
+                g.vr_support,
+                r.code as region_code,
+                MIN(p.code) as platform_sort
+              FROM app.game_titles g
+              LEFT JOIN app.regions r ON r.region_id = g.region_id
+              LEFT JOIN app.game_platforms gp ON gp.game_id = g.game_id
+              LEFT JOIN app.platforms p ON p.platform_id = gp.platform_id
+              {where_sql}
+              GROUP BY g.game_id, g.title, g.short_title, g.link, g.logo_url, g.text_lang, g.audio_lang, g.vr_support, r.code
+            ),
+            total AS (
+              SELECT COUNT(*) AS total_count FROM base
+            ),
+            page AS (
+              SELECT * FROM base
+              ORDER BY {sort_col} {sort_dir}, game_id DESC
+              {"" if all else "LIMIT %s OFFSET %s"}
+            )
+            SELECT
+              page.game_id,
+              page.title,
+              page.short_title,
+              page.link,
+              page.logo_url,
+              page.text_lang,
+              page.audio_lang,
+              page.vr_support,
+              page.region_code,
+              page.platform_sort,
+              COALESCE(array_agg(p2.code ORDER BY p2.code) FILTER (WHERE p2.code IS NOT NULL), '{{}}'::text[]) AS platform_codes,
+              (SELECT total_count FROM total) as total_count
+            FROM page
+            LEFT JOIN app.game_platforms gp2 ON gp2.game_id = page.game_id
+            LEFT JOIN app.platforms p2 ON p2.platform_id = gp2.platform_id
+            GROUP BY page.game_id, page.title, page.short_title, page.link, page.logo_url, page.text_lang, page.audio_lang, page.vr_support, page.region_code, page.platform_sort
+            ORDER BY {sort_col} {sort_dir}, page.game_id DESC
+            """,
+            params + ([] if all else [page_size, offset]),
         )
-        for (r0, r1, r2, r3, r4, r5, r6, r7, r8, r9) in rows
-    ]
+
+    items = []
+    total = 0
+    for (r0, r1, r2, r3, r4, r5, r6, r7, r8, _platform_sort, r9, r10) in rows:
+        total = int(r10 or 0)
+        items.append(
+            GameOut(
+                game_id=r0,
+                title=r1,
+                short_title=r2,
+                link=r3,
+                logo_url=r4,
+                text_lang=r5,
+                audio_lang=r6,
+                vr_support=r7,
+                platform_codes=list(r9 or []),
+                region_code=r8,
+            )
+        )
+    if not rows:
+        with psycopg.connect(DB_DSN) as conn:
+            total_row = q1(
+                conn,
+                f"""
+                SELECT COUNT(*) FROM (
+                  SELECT g.game_id
+                  FROM app.game_titles g
+                  LEFT JOIN app.regions r ON r.region_id = g.region_id
+                  LEFT JOIN app.game_platforms gp ON gp.game_id = g.game_id
+                  LEFT JOIN app.platforms p ON p.platform_id = gp.platform_id
+                  {where_sql}
+                  GROUP BY g.game_id
+                ) t
+                """,
+                params,
+            )
+            total = int(total_row[0] or 0) if total_row else 0
+    return {"total": total, "items": items}
 
 @app.post("/games", response_model=GameOut)
 def create_game(payload: GameCreate, user: UserOut = Depends(get_current_user)):
