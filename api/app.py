@@ -687,8 +687,9 @@ def fetch_logo_from_url(url: str) -> Tuple[bytes, str]:
         raise ValueError("logo type not allowed")
     return data, mime
 
-def validate_game_import_rows(conn, rows: List[dict], progress_cb=None, check_logo=False) -> List[dict]:
+def validate_game_import_rows(conn, rows: List[dict], progress_cb=None, check_logo=False) -> Tuple[List[dict], List[dict]]:
     errors = []
+    warnings = []
     platform_rows = qall(conn, "SELECT code FROM app.platforms")
     platforms = {str(r[0]).strip().lower() for r in platform_rows}
     for idx, row in enumerate(rows, start=2):
@@ -698,7 +699,7 @@ def validate_game_import_rows(conn, rows: List[dict], progress_cb=None, check_lo
         if not title:
             errors.append({"row": idx, "field": "Название", "message": "Название обязательно"})
         if not platform_codes:
-            errors.append({"row": idx, "field": "Платформа", "message": "Укажите платформы"})
+            warnings.append({"row": idx, "field": "Платформа", "message": "Платформы не указаны — строка будет пропущена"})
         for code in platform_codes:
             if code not in platforms:
                 errors.append({"row": idx, "field": "Платформа", "message": f"Неизвестная платформа: {code}"})
@@ -706,7 +707,7 @@ def validate_game_import_rows(conn, rows: List[dict], progress_cb=None, check_lo
             errors.append({"row": idx, "field": "Логотип", "message": "Ссылка должна начинаться с http:// или https://"})
         if progress_cb:
             progress_cb(idx - 1)
-    return errors
+    return errors, warnings
 
 def read_games_from_excel(content: bytes) -> List[dict]:
     wb = load_workbook(BytesIO(content), data_only=True)
@@ -1686,9 +1687,9 @@ def games_import_validate(file: UploadFile = File(...), user: UserOut = Depends(
         set_import_progress(user.username, {"phase": "validate", "current": 0, "total": total, "done": False})
         def _progress(current):
             set_import_progress(user.username, {"phase": "validate", "current": min(current, total), "total": total, "done": False})
-        errors = validate_game_import_rows(conn, rows, progress_cb=_progress, check_logo=False)
+        errors, warnings = validate_game_import_rows(conn, rows, progress_cb=_progress, check_logo=False)
         set_import_progress(user.username, {"phase": "validate", "current": total, "total": total, "done": True})
-    return {"ok": len(errors) == 0, "total": len(rows), "errors": errors}
+    return {"ok": len(errors) == 0, "total": len(rows), "errors": errors, "warnings": warnings}
 
 @app.post("/games/import")
 def games_import(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
@@ -1701,9 +1702,9 @@ def games_import(file: UploadFile = File(...), user: UserOut = Depends(require_r
         raise HTTPException(400, "File too large. Max 5MB")
     with psycopg.connect(DB_DSN) as conn:
         rows = read_games_from_excel(content)
-        errors = validate_game_import_rows(conn, rows)
+        errors, warnings = validate_game_import_rows(conn, rows)
         if errors:
-            return {"ok": False, "total": len(rows), "errors": errors}
+            return {"ok": False, "total": len(rows), "errors": errors, "warnings": warnings}
         total = len(rows)
         set_import_progress(user.username, {"phase": "download", "current": 0, "total": total, "done": False})
         logo_errors = []
@@ -1757,6 +1758,11 @@ def games_import(file: UploadFile = File(...), user: UserOut = Depends(require_r
             vr_support = (item.get("vr_support") or "").strip() or None
             platform_codes = parse_import_platforms(item.get("platform_codes") or "")
             logo_payload = logo_payloads.get(idx)
+            if not platform_codes:
+                skipped += 1
+                upload_done += 1
+                set_import_progress(user.username, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+                continue
             existing_game_id = existing_game_by_row.get(idx) or find_game_id_by_title_platforms(conn, title, platform_codes)
             if existing_game_id:
                 if not any([link, text_lang, audio_lang, vr_support, logo_payload]):

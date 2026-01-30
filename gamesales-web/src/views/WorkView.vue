@@ -1020,6 +1020,25 @@
                       <p v-if="gameImportStats" class="muted">
                         Итог: создано {{ gameImportStats.created }}, обновлено {{ gameImportStats.updated }}, пропущено {{ gameImportStats.skipped }}, всего {{ gameImportStats.total }}
                       </p>
+                      <div v-if="gameImportWarnings.length" class="import-errors">
+                        <p class="muted">Предупреждения: {{ gameImportWarnings.length }}</p>
+                        <table class="table table--compact table--dense">
+                          <thead>
+                            <tr>
+                              <th>Строка</th>
+                              <th>Поле</th>
+                              <th>Предупреждение</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="(e, idx) in gameImportWarnings" :key="`w-${idx}`">
+                              <td>{{ e.row }}</td>
+                              <td>{{ e.field }}</td>
+                              <td>{{ e.message }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
                       <div v-if="gameImportErrors.length" class="import-errors">
                         <p class="bad">Ошибки: {{ gameImportErrors.length }}</p>
                         <table class="table table--compact table--dense">
@@ -3119,6 +3138,7 @@ const showGameImport = ref(false)
 const gameImportFile = ref(null)
 const gameImportValidated = ref(false)
 const gameImportErrors = ref([])
+const gameImportWarnings = ref([])
 const gameImportTotal = ref(0)
 const gameImportLoading = ref(false)
 const gameImportMessage = ref('')
@@ -3837,6 +3857,7 @@ function openGameImport() {
   gameImportFile.value = null
   gameImportValidated.value = false
   gameImportErrors.value = []
+  gameImportWarnings.value = []
   gameImportTotal.value = 0
   gameImportLoading.value = false
   gameImportMessage.value = ''
@@ -3853,6 +3874,7 @@ function closeGameImport() {
   gameImportFile.value = null
   gameImportValidated.value = false
   gameImportErrors.value = []
+  gameImportWarnings.value = []
   gameImportTotal.value = 0
   gameImportLoading.value = false
   gameImportMessage.value = ''
@@ -3906,6 +3928,7 @@ function onGameImportFile(event) {
   gameImportFile.value = file || null
   gameImportValidated.value = false
   gameImportErrors.value = []
+  gameImportWarnings.value = []
   gameImportTotal.value = 0
   gameImportMessage.value = ''
   gameImportAction.value = ''
@@ -3944,16 +3967,20 @@ async function validateGameImport() {
   try {
     const res = await apiPostForm('/games/import/validate', form, { token: auth.state.token })
     gameImportErrors.value = res?.errors || []
+    gameImportWarnings.value = res?.warnings || []
     gameImportTotal.value = res?.total || 0
     gameImportValidated.value = Boolean(res?.ok)
     if (res?.ok) {
-      gameImportMessage.value = `Файл корректный. Строк: ${gameImportTotal.value}. Можно загружать.`
+      gameImportMessage.value = gameImportWarnings.value.length
+        ? `Файл корректный. Некоторые строки будут пропущены: ${gameImportWarnings.value.length}.`
+        : `Файл корректный. Строк: ${gameImportTotal.value}. Можно загружать.`
     } else {
       gameImportMessage.value = 'Файл не корректен. Исправьте ошибки ниже.'
     }
   } catch (e) {
     gameImportValidated.value = false
     gameImportErrors.value = []
+    gameImportWarnings.value = []
     gameImportMessage.value = mapApiError(e?.message)
   } finally {
     gameImportLoading.value = false
@@ -3983,6 +4010,7 @@ async function uploadGameImport() {
       await loadGames()
     } else {
       gameImportErrors.value = res?.errors || []
+      gameImportWarnings.value = res?.warnings || []
     }
   } catch (e) {
     gameImportMessage.value = mapApiError(e?.message)
