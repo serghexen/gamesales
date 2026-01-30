@@ -18,6 +18,7 @@ import urllib.error
 import imghdr
 import ssl
 import threading
+import time
 from openpyxl import Workbook, load_workbook
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -551,6 +552,7 @@ def encode_b64(value: bytes) -> str:
 
 MAX_LOGO_BYTES = 5 * 1024 * 1024
 ALLOWED_LOGO_MIME = {"image/jpeg", "image/png", "image/webp"}
+LOGO_DOWNLOAD_DELAY_SEC = 0.25
 IMPORT_PROGRESS = {}
 IMPORT_PROGRESS_LOCK = threading.Lock()
 
@@ -1739,11 +1741,17 @@ def games_import(file: UploadFile = File(...), user: UserOut = Depends(require_r
             logo_url = (item.get("logo") or "").strip()
             try:
                 logo_payloads[idx] = fetch_logo_from_url(logo_url)
-            except Exception:
+            except Exception as exc:
                 logo_failed_rows.add(idx)
-                logo_errors.append({"row": idx, "field": "Логотип", "message": "Не удалось загрузить логотип"})
+                logo_errors.append({
+                    "row": idx,
+                    "field": "Логотип",
+                    "message": f"Не удалось загрузить логотип: {exc}",
+                })
             download_done += 1
             set_import_progress(user.username, {"phase": "download", "current": download_done, "total": total_download, "done": False})
+            if LOGO_DOWNLOAD_DELAY_SEC > 0:
+                time.sleep(LOGO_DOWNLOAD_DELAY_SEC)
         set_import_progress(user.username, {"phase": "upload", "current": 0, "total": total, "done": False})
         created = 0
         updated = 0
