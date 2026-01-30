@@ -22,6 +22,8 @@ import time
 import uuid
 import json
 import redis
+import urllib.request
+import urllib.error
 from openpyxl import Workbook, load_workbook
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -558,6 +560,8 @@ ALLOWED_LOGO_MIME = {"image/jpeg", "image/png", "image/webp"}
 LOGO_DOWNLOAD_DELAY_SEC = 0.25
 IMPORT_STATUS_TTL_SEC = 24 * 60 * 60
 _REDIS_CLIENT = None
+_QUEUE_API_URL = os.getenv("QUEUE_API_URL", "")
+_QUEUE_API_KEY = os.getenv("QUEUE_API_KEY", "")
 
 def get_redis():
     global _REDIS_CLIENT
@@ -569,21 +573,48 @@ def get_redis():
 def _job_key(job_id: str) -> str:
     return f"games_import:{job_id}"
 
+def _queue_api_request(method: str, path: str, data: Optional[dict] = None) -> Optional[dict]:
+    if not _QUEUE_API_URL:
+        return None
+    url = _QUEUE_API_URL.rstrip("/") + path
+    body = None
+    headers = {"Content-Type": "application/json"}
+    if _QUEUE_API_KEY:
+        headers["X-API-Key"] = _QUEUE_API_KEY
+    if data is not None:
+        body = json.dumps(data).encode("utf-8")
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        content = resp.read()
+        if not content:
+            return None
+        return json.loads(content.decode("utf-8"))
+
 def set_import_progress(job_id: str, owner: str, payload: dict):
-    r = get_redis()
-    key = _job_key(job_id)
     data = {"owner": owner}
-    data.update({k: json.dumps(v) if isinstance(v, (dict, list)) else v for k, v in payload.items()})
-    r.hset(key, mapping=data)
-    r.expire(key, IMPORT_STATUS_TTL_SEC)
+    data.update(payload)
+    if _QUEUE_API_URL:
+        _queue_api_request("POST", f"/status/{job_id}", {"data": data})
+        return
+    r = get_redis()
+    r.setex(_job_key(job_id), IMPORT_STATUS_TTL_SEC, json.dumps(data))
 
 def get_import_progress(job_id: str) -> dict:
+    if _QUEUE_API_URL:
+        return _queue_api_request("GET", f"/status/{job_id}") or {}
     r = get_redis()
-    key = _job_key(job_id)
-    data = r.hgetall(key)
-    return data or {}
+    raw = r.get(_job_key(job_id))
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {}
 
 def clear_import_progress(job_id: str):
+    if _QUEUE_API_URL:
+        _queue_api_request("DELETE", f"/status/{job_id}")
+        return
     r = get_redis()
     r.delete(_job_key(job_id))
 
@@ -1867,19 +1898,12 @@ def games_import_status(job_id: str, user: UserOut = Depends(require_role("admin
         return {"phase": "idle", "current": 0, "total": 0, "done": True}
     if status.get("owner") and status.get("owner") != user.username:
         raise HTTPException(403, "job not found")
-    result_raw = status.get("result")
-    result = None
-    if result_raw:
-        try:
-            result = json.loads(result_raw)
-        except Exception:
-            result = None
     return {
         "phase": status.get("phase", "idle"),
         "current": int(status.get("current") or 0),
         "total": int(status.get("total") or 0),
-        "done": str(status.get("done")).lower() == "true",
-        "result": result,
+        "done": bool(status.get("done")),
+        "result": status.get("result"),
     }
 
 @app.post("/games/import/validate")
