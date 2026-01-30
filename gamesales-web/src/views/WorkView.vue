@@ -1018,7 +1018,7 @@
                       </div>
                       <p v-if="gameImportMessage" class="ok">{{ gameImportMessage }}</p>
                       <p v-if="gameImportStats" class="muted">
-                        Итог: создано {{ gameImportStats.created }}, обновлено {{ gameImportStats.updated }}, пропущено {{ gameImportStats.skipped }}, всего {{ gameImportStats.total }}
+                        Итог: создано {{ gameImportStats.created }}, обновлено {{ gameImportStats.updated }}, пропущено {{ gameImportStats.skipped }}, ошибок {{ gameImportStats.failed }}, всего {{ gameImportStats.total }}
                       </p>
                       <div v-if="gameImportWarnings.length" class="import-errors">
                         <p class="muted">Предупреждения: {{ gameImportWarnings.length }}</p>
@@ -4001,17 +4001,20 @@ async function uploadGameImport() {
   startGameImportStatusPolling()
   try {
     const res = await apiPostForm('/games/import', form, { token: auth.state.token })
+    const created = res?.created || 0
+    const updated = res?.updated || 0
+    const skipped = res?.skipped || 0
+    const failed = res?.failed || 0
+    gameImportErrors.value = res?.errors || []
+    gameImportWarnings.value = res?.warnings || []
     if (res?.ok) {
-      const created = res?.created || 0
-      const updated = res?.updated || 0
-      const skipped = res?.skipped || 0
       gameImportMessage.value = `Загружено. Создано: ${created}, обновлено: ${updated}, пропущено: ${skipped}`
-      gameImportStats.value = { created, updated, skipped, total: res?.total || 0 }
-      await loadGames()
     } else {
-      gameImportErrors.value = res?.errors || []
-      gameImportWarnings.value = res?.warnings || []
+      const until = res?.success_until_row ? `до строки ${res.success_until_row}` : 'до строки —'
+      gameImportMessage.value = `Загрузка с ошибками, успешно ${until}. Ошибок: ${failed}`
     }
+    gameImportStats.value = { created, updated, skipped, total: res?.total || 0, failed }
+    await loadGames()
   } catch (e) {
     gameImportMessage.value = mapApiError(e?.message)
   } finally {

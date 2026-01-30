@@ -1708,6 +1708,7 @@ def games_import(file: UploadFile = File(...), user: UserOut = Depends(require_r
         total = len(rows)
         set_import_progress(user.username, {"phase": "download", "current": 0, "total": total, "done": False})
         logo_errors = []
+        logo_failed_rows = set()
         logo_payloads = {}
         existing_game_by_row = {}
         existing_logo_by_row = {}
@@ -1739,93 +1740,120 @@ def games_import(file: UploadFile = File(...), user: UserOut = Depends(require_r
             try:
                 logo_payloads[idx] = fetch_logo_from_url(logo_url)
             except Exception:
+                logo_failed_rows.add(idx)
                 logo_errors.append({"row": idx, "field": "Логотип", "message": "Не удалось загрузить логотип"})
             download_done += 1
             set_import_progress(user.username, {"phase": "download", "current": download_done, "total": total_download, "done": False})
-        if logo_errors:
-            set_import_progress(user.username, {"phase": "download", "current": total_download, "total": total_download, "done": True})
-            return {"ok": False, "total": len(rows), "errors": logo_errors}
         set_import_progress(user.username, {"phase": "upload", "current": 0, "total": total, "done": False})
         created = 0
         updated = 0
         skipped = 0
+        failed = 0
+        last_success_row = None
+        row_errors = []
+        if logo_errors:
+            row_errors.extend(logo_errors)
         upload_done = 0
         for idx, item in enumerate(rows, start=2):
-            title = (item.get("title") or "").strip()
-            link = (item.get("link") or "").strip() or None
-            text_lang = (item.get("text_lang") or "").strip() or None
-            audio_lang = (item.get("audio_lang") or "").strip() or None
-            vr_support = (item.get("vr_support") or "").strip() or None
-            platform_codes = parse_import_platforms(item.get("platform_codes") or "")
-            logo_payload = logo_payloads.get(idx)
-            if not platform_codes:
-                skipped += 1
-                upload_done += 1
-                set_import_progress(user.username, {"phase": "upload", "current": upload_done, "total": total, "done": False})
-                continue
-            existing_game_id = existing_game_by_row.get(idx) or find_game_id_by_title_platforms(conn, title, platform_codes)
-            if existing_game_id:
-                if not any([link, text_lang, audio_lang, vr_support, logo_payload]):
-                    game_id = existing_game_id
+            try:
+                title = (item.get("title") or "").strip()
+                link = (item.get("link") or "").strip() or None
+                text_lang = (item.get("text_lang") or "").strip() or None
+                audio_lang = (item.get("audio_lang") or "").strip() or None
+                vr_support = (item.get("vr_support") or "").strip() or None
+                platform_codes = parse_import_platforms(item.get("platform_codes") or "")
+                logo_payload = logo_payloads.get(idx)
+                if idx in logo_failed_rows:
+                    failed += 1
+                    upload_done += 1
+                    set_import_progress(user.username, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+                    continue
+                if not platform_codes:
                     skipped += 1
+                    upload_done += 1
+                    set_import_progress(user.username, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+                    continue
+                existing_game_id = existing_game_by_row.get(idx) or find_game_id_by_title_platforms(conn, title, platform_codes)
+                if existing_game_id:
+                    if not any([link, text_lang, audio_lang, vr_support, logo_payload]):
+                        game_id = existing_game_id
+                        skipped += 1
+                    else:
+                        exec1(
+                            conn,
+                            """
+                            UPDATE app.game_titles
+                            SET link = COALESCE(%s, link),
+                                text_lang = COALESCE(%s, text_lang),
+                                audio_lang = COALESCE(%s, audio_lang),
+                                vr_support = COALESCE(%s, vr_support),
+                                logo_blob = COALESCE(%s, logo_blob),
+                                logo_mime = COALESCE(%s, logo_mime)
+                            WHERE game_id = %s
+                            """,
+                            (
+                                link,
+                                text_lang,
+                                audio_lang,
+                                vr_support,
+                                logo_payload[0] if logo_payload else None,
+                                logo_payload[1] if logo_payload else None,
+                                existing_game_id,
+                            ),
+                        )
+                        game_id = existing_game_id
+                        updated += 1
                 else:
-                    exec1(
+                    row = q1(
                         conn,
                         """
-                        UPDATE app.game_titles
-                        SET link = COALESCE(%s, link),
-                            text_lang = COALESCE(%s, text_lang),
-                            audio_lang = COALESCE(%s, audio_lang),
-                            vr_support = COALESCE(%s, vr_support),
-                            logo_blob = COALESCE(%s, logo_blob),
-                            logo_mime = COALESCE(%s, logo_mime)
-                        WHERE game_id = %s
+                        INSERT INTO app.game_titles(title, link, text_lang, audio_lang, vr_support, region_id, logo_blob, logo_mime)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING game_id
                         """,
                         (
+                            title,
                             link,
                             text_lang,
                             audio_lang,
                             vr_support,
+                            None,
                             logo_payload[0] if logo_payload else None,
                             logo_payload[1] if logo_payload else None,
-                            existing_game_id,
                         ),
                     )
-                    game_id = existing_game_id
-                    updated += 1
-            else:
-                row = q1(
-                    conn,
-                    """
-                    INSERT INTO app.game_titles(title, link, text_lang, audio_lang, vr_support, region_id, logo_blob, logo_mime)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING game_id
-                    """,
-                    (
-                        title,
-                        link,
-                        text_lang,
-                        audio_lang,
-                        vr_support,
-                        None,
-                        logo_payload[0] if logo_payload else None,
-                        logo_payload[1] if logo_payload else None,
-                    ),
-                )
-                game_id = int(row[0])
-                created += 1
-            if platform_codes:
-                platform_ids = [get_platform_id(conn, code) for code in platform_codes]
-                with conn.cursor() as cur:
-                    cur.executemany(
-                        "INSERT INTO app.game_platforms(game_id, platform_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-                        [(game_id, pid) for pid in platform_ids],
-                    )
-            upload_done += 1
-            set_import_progress(user.username, {"phase": "upload", "current": upload_done, "total": total, "done": False})
-        conn.commit()
+                    game_id = int(row[0])
+                    created += 1
+                if platform_codes:
+                    platform_ids = [get_platform_id(conn, code) for code in platform_codes]
+                    with conn.cursor() as cur:
+                        cur.executemany(
+                            "INSERT INTO app.game_platforms(game_id, platform_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                            [(game_id, pid) for pid in platform_ids],
+                        )
+                conn.commit()
+                upload_done += 1
+                last_success_row = idx
+                set_import_progress(user.username, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+            except Exception as exc:
+                conn.rollback()
+                failed += 1
+                row_errors.append({"row": idx, "field": "Импорт", "message": str(exc)})
+                upload_done += 1
+                set_import_progress(user.username, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+                continue
         set_import_progress(user.username, {"phase": "upload", "current": total, "total": total, "done": True})
-    return {"ok": True, "total": len(rows), "created": created, "updated": updated, "skipped": skipped}
+    return {
+        "ok": len(row_errors) == 0,
+        "total": len(rows),
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "failed": failed,
+        "errors": row_errors,
+        "warnings": warnings,
+        "success_until_row": last_success_row,
+    }
 
 @app.post("/rentals")
 def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_user)):
