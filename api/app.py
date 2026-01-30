@@ -46,7 +46,6 @@ def now_utc():
 # Models
 # ----------------------------
 class AccountCreate(BaseModel):
-    platform_code: str = Field(..., description="steam/psn/xbox/epic")
     region_code: Optional[str] = Field(None, description="RU/TR/US/EU")
     login_name: Optional[str] = None
     domain_code: Optional[str] = Field(None, description="email domain, e.g. example.com")
@@ -54,7 +53,6 @@ class AccountCreate(BaseModel):
     notes: Optional[str] = None
 
 class AccountUpdate(BaseModel):
-    platform_code: Optional[str] = None
     region_code: Optional[str] = None
     login_name: Optional[str] = None
     domain_code: Optional[str] = None
@@ -62,17 +60,20 @@ class AccountUpdate(BaseModel):
     account_date: Optional[date] = None
     notes: Optional[str] = None
 
+class AccountPlatformSlots(BaseModel):
+    platform_code: str
+    slot_capacity: int
+    occupied_slots: int
+    free_slots: int
+
 class AccountOut(BaseModel):
     account_id: int
-    platform_code: str
     region_code: Optional[str]
     status: str
     login_name: Optional[str]
     domain_code: Optional[str]
     login_full: Optional[str]
-    slot_capacity: int
-    occupied_slots: int
-    free_slots: int
+    platform_slots: List[AccountPlatformSlots]
     account_date: Optional[date] = None
     notes: Optional[str] = None
 
@@ -426,11 +427,41 @@ def build_deals_filters(
     where_sql = "WHERE " + " AND ".join(where) if where else ""
     return where_sql, params
 
-def slots_summary(conn, account_id: int):
-    row = q1(conn, "SELECT occupied_slots, free_slots FROM app.v_account_slots WHERE account_id=%s", (account_id,))
+def slots_summary(conn, account_id: int, platform_id: int):
+    row = q1(
+        conn,
+        """
+        SELECT occupied_slots, free_slots
+        FROM app.v_account_platform_slots
+        WHERE account_id=%s AND platform_id=%s
+        """,
+        (account_id, platform_id),
+    )
     if not row:
         return (0, 0)
     return int(row[0]), int(row[1])
+
+def get_account_platform_slots(conn, account_id: int) -> List[AccountPlatformSlots]:
+    rows = qall(
+        conn,
+        """
+        SELECT p.code, s.slot_capacity, s.occupied_slots, s.free_slots
+        FROM app.v_account_platform_slots s
+        JOIN app.platforms p ON p.platform_id = s.platform_id
+        WHERE s.account_id=%s
+        ORDER BY p.code
+        """,
+        (account_id,),
+    )
+    return [
+        AccountPlatformSlots(
+            platform_code=r0,
+            slot_capacity=int(r1 or 0),
+            occupied_slots=int(r2 or 0),
+            free_slots=int(r3 or 0),
+        )
+        for (r0, r1, r2, r3) in rows
+    ]
 
 def init_auth_schema(conn):
     with conn.cursor() as cur:
@@ -784,71 +815,98 @@ def reset_password(username: str, payload: ResetPasswordIn, user: UserOut = Depe
 def list_accounts(user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
         rows = qall(conn, """
+            WITH acc AS (
+              SELECT account_id, region_id, status_code, login_name, domain_id, account_date, notes
+              FROM app.accounts
+              ORDER BY account_id DESC
+              LIMIT 200
+            )
             SELECT
-              a.account_id,
-              p.code as platform_code,
+              acc.account_id,
               r.code as region_code,
-              a.status_code,
-              a.login_name,
+              acc.status_code,
+              acc.login_name,
               d.name as domain_name,
-              s.occupied_slots,
-              s.free_slots,
+              acc.account_date,
+              acc.notes,
+              p.code as platform_code,
               s.slot_capacity,
-              a.account_date,
-              a.notes
-            FROM app.accounts a
-            JOIN app.platforms p ON p.platform_id = a.platform_id
-            LEFT JOIN app.regions r ON r.region_id = a.region_id
-            LEFT JOIN app.domains d ON d.domain_id = a.domain_id
-            LEFT JOIN app.v_account_slots s ON s.account_id = a.account_id
-            ORDER BY a.account_id DESC
-            LIMIT 200
+              s.occupied_slots,
+              s.free_slots
+            FROM acc
+            LEFT JOIN app.regions r ON r.region_id = acc.region_id
+            LEFT JOIN app.domains d ON d.domain_id = acc.domain_id
+            LEFT JOIN app.v_account_platform_slots s ON s.account_id = acc.account_id
+            LEFT JOIN app.platforms p ON p.platform_id = s.platform_id
+            ORDER BY acc.account_id DESC, p.code
         """)
-    return [
-        AccountOut(
-            account_id=row[0], platform_code=row[1], region_code=row[2],
-            status=row[3], login_name=row[4], domain_code=row[5],
-            login_full=f"{row[4]}@{row[5]}" if row[4] and row[5] else None,
-            slot_capacity=row[8] or 0,
-            occupied_slots=row[6] or 0, free_slots=row[7] or 0,
-            account_date=row[9],
-            notes=row[10]
-        )
-        for row in rows
-    ]
+    acc_map = {}
+    acc_list = []
+    for row in rows:
+        account_id = row[0]
+        if account_id not in acc_map:
+            acc = AccountOut(
+                account_id=account_id,
+                region_code=row[1],
+                status=row[2],
+                login_name=row[3],
+                domain_code=row[4],
+                login_full=f"{row[3]}@{row[4]}" if row[3] and row[4] else None,
+                platform_slots=[],
+                account_date=row[5],
+                notes=row[6],
+            )
+            acc_map[account_id] = acc
+            acc_list.append(acc)
+        platform_code = row[7]
+        if platform_code:
+            acc_map[account_id].platform_slots.append(
+                AccountPlatformSlots(
+                    platform_code=platform_code,
+                    slot_capacity=int(row[8] or 0),
+                    occupied_slots=int(row[9] or 0),
+                    free_slots=int(row[10] or 0),
+                )
+            )
+    return acc_list
 
 @app.post("/accounts", response_model=AccountOut)
 def create_account(payload: AccountCreate, user: UserOut = Depends(get_current_user)):
     if not payload.login_name or not payload.domain_code:
         raise HTTPException(400, "login_name and domain_code are required")
     with psycopg.connect(DB_DSN) as conn:
-        platform_id, platform_slots = get_platform_info(conn, payload.platform_code)
         region_id = get_region_id(conn, payload.region_code)
         domain_id = get_domain_id(conn, payload.domain_code)
 
         row = q1(conn, """
-            INSERT INTO app.accounts(login_name, domain_id, platform_id, region_id, slot_capacity, slot_reserved, notes, account_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO app.accounts(login_name, domain_id, region_id, notes, account_date)
+            VALUES (%s, %s, %s, %s, %s)
             RETURNING account_id
-        """, (
-            payload.login_name, domain_id,
-            platform_id, region_id, platform_slots, 0, payload.notes, payload.account_date
-        ))
+        """, (payload.login_name, domain_id, region_id, payload.notes, payload.account_date))
         account_id = int(row[0])
+
+        ps4_id, ps4_slots = get_platform_info(conn, "ps4")
+        ps5_id, ps5_slots = get_platform_info(conn, "ps5")
+        exec1(
+            conn,
+            """
+            INSERT INTO app.account_platforms(account_id, platform_id, slot_capacity)
+            VALUES (%s, %s, %s), (%s, %s, %s)
+            ON CONFLICT (account_id, platform_id) DO UPDATE SET slot_capacity=excluded.slot_capacity
+            """,
+            (account_id, ps4_id, ps4_slots, account_id, ps5_id, ps5_slots),
+        )
         conn.commit()
 
-        occ, free = slots_summary(conn, account_id)
+        platform_slots = get_account_platform_slots(conn, account_id)
         return AccountOut(
             account_id=account_id,
-            platform_code=payload.platform_code,
             region_code=payload.region_code,
             status="active",
             login_name=payload.login_name,
             domain_code=payload.domain_code,
             login_full=f"{payload.login_name}@{payload.domain_code}" if payload.login_name and payload.domain_code else None,
-            slot_capacity=platform_slots,
-            occupied_slots=occ,
-            free_slots=free,
+            platform_slots=platform_slots,
             account_date=payload.account_date,
             notes=payload.notes
         )
@@ -863,7 +921,7 @@ def update_account(
         current = q1(
             conn,
             """
-            SELECT login_name, domain_id, platform_id, region_id, status_code, account_date, notes
+            SELECT login_name, domain_id, region_id, status_code, account_date, notes
             FROM app.accounts
             WHERE account_id=%s
             """,
@@ -872,20 +930,13 @@ def update_account(
         if not current:
             raise HTTPException(404, "Account not found")
 
-        platform_id = current[2]
-        platform_slots = None
-        if payload.platform_code:
-            platform_id, platform_slots = get_platform_info(conn, payload.platform_code)
-        else:
-            platform_slots = q1(conn, "SELECT slot_capacity FROM app.platforms WHERE platform_id=%s", (platform_id,))[0]
-
-        region_id = get_region_id(conn, payload.region_code) if payload.region_code else current[3]
+        region_id = get_region_id(conn, payload.region_code) if payload.region_code else current[2]
         domain_id = get_domain_id(conn, payload.domain_code) if payload.domain_code else current[1]
 
         new_login = payload.login_name if payload.login_name is not None else current[0]
-        new_status = payload.status_code if payload.status_code is not None else current[4]
-        new_date = payload.account_date if payload.account_date is not None else current[5]
-        new_notes = payload.notes if payload.notes is not None else current[6]
+        new_status = payload.status_code if payload.status_code is not None else current[3]
+        new_date = payload.account_date if payload.account_date is not None else current[4]
+        new_notes = payload.notes if payload.notes is not None else current[5]
 
         exec1(
             conn,
@@ -893,11 +944,8 @@ def update_account(
             UPDATE app.accounts
             SET login_name=%s,
                 domain_id=%s,
-                platform_id=%s,
                 region_id=%s,
                 status_code=%s,
-                slot_capacity=%s,
-                slot_reserved=%s,
                 notes=%s,
                 account_date=%s
             WHERE account_id=%s
@@ -905,11 +953,8 @@ def update_account(
             (
                 new_login,
                 domain_id,
-                platform_id,
                 region_id,
                 new_status,
-                int(platform_slots or 0),
-                0,
                 new_notes,
                 new_date,
                 account_id,
@@ -922,21 +967,15 @@ def update_account(
             """
             SELECT
               a.account_id,
-              p.code as platform_code,
               r.code as region_code,
               a.status_code,
               a.login_name,
               d.name as domain_name,
-              s.occupied_slots,
-              s.free_slots,
-              s.slot_capacity,
               a.account_date,
               a.notes
             FROM app.accounts a
-            JOIN app.platforms p ON p.platform_id = a.platform_id
             LEFT JOIN app.regions r ON r.region_id = a.region_id
             LEFT JOIN app.domains d ON d.domain_id = a.domain_id
-            LEFT JOIN app.v_account_slots s ON s.account_id = a.account_id
             WHERE a.account_id=%s
             """,
             (account_id,),
@@ -944,15 +983,15 @@ def update_account(
         if not row:
             raise HTTPException(404, "Account not found")
 
-    return AccountOut(
-        account_id=row[0], platform_code=row[1], region_code=row[2],
-        status=row[3], login_name=row[4], domain_code=row[5],
-        login_full=f"{row[4]}@{row[5]}" if row[4] and row[5] else None,
-        slot_capacity=row[8] or 0,
-        occupied_slots=row[6] or 0, free_slots=row[7] or 0,
-        account_date=row[9],
-        notes=row[10]
-    )
+        platform_slots = get_account_platform_slots(conn, row[0])
+        return AccountOut(
+            account_id=row[0], region_code=row[1],
+            status=row[2], login_name=row[3], domain_code=row[4],
+            login_full=f"{row[3]}@{row[4]}" if row[3] and row[4] else None,
+            platform_slots=platform_slots,
+            account_date=row[5],
+            notes=row[6]
+        )
 
 @app.get("/accounts/{account_id}/secrets", response_model=List[AccountSecretOut])
 def list_account_secrets(account_id: int, user: UserOut = Depends(require_role("admin"))):
@@ -1076,10 +1115,11 @@ def list_game_accounts(game_id: int, user: UserOut = Depends(get_current_user)):
             FROM app.account_assets aa
             JOIN app.accounts a ON a.account_id = aa.account_id
             LEFT JOIN app.domains d ON d.domain_id = a.domain_id
-            JOIN app.platforms p ON p.platform_id = a.platform_id
-            LEFT JOIN app.v_account_slots s ON s.account_id = a.account_id
+            JOIN app.account_platforms ap ON ap.account_id = a.account_id
+            JOIN app.platforms p ON p.platform_id = ap.platform_id
+            LEFT JOIN app.v_account_platform_slots s ON s.account_id = a.account_id AND s.platform_id = ap.platform_id
             WHERE aa.game_id=%s AND aa.asset_type_code='game'
-            ORDER BY a.account_id DESC
+            ORDER BY a.account_id DESC, p.code
             """,
             (game_id,),
         )
@@ -1189,6 +1229,8 @@ def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_use
         ensure_game_exists(conn, payload.game_id)
         ensure_source_exists(conn, payload.source_code)
         platform_id = get_platform_id_optional(conn, payload.platform_code)
+        if not platform_id:
+            raise HTTPException(400, "platform_code is required for rental")
         # ensure customer exists
         row = q1(conn, "SELECT customer_id, source_code FROM app.customers WHERE nickname=%s", (payload.customer_nickname,))
         if row:
@@ -1208,7 +1250,7 @@ def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_use
             customer_id = int(row[0])
 
         # check slots
-        occ, free = slots_summary(conn, payload.account_id)
+        occ, free = slots_summary(conn, payload.account_id, platform_id)
         if free < payload.slots_used:
             raise HTTPException(409, f"Not enough free slots. free_slots={free}, requested={payload.slots_used}")
 
@@ -1232,7 +1274,7 @@ def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_use
         conn.commit()
 
         # return updated slots
-        occ2, free2 = slots_summary(conn, payload.account_id)
+        occ2, free2 = slots_summary(conn, payload.account_id, platform_id)
         return {"deal_id": deal_id, "account_id": payload.account_id, "occupied_slots": occ2, "free_slots": free2}
 
 @app.post("/deals")
@@ -1269,7 +1311,9 @@ def create_deal(payload: DealCreate, user: UserOut = Depends(get_current_user)):
             customer_id = int(row[0])
 
         if deal_type == "rental":
-            occ, free = slots_summary(conn, payload.account_id)
+            if not platform_id:
+                raise HTTPException(400, "platform_code is required for rental")
+            occ, free = slots_summary(conn, payload.account_id, platform_id)
             if free < payload.slots_used:
                 raise HTTPException(409, f"Not enough free slots. free_slots={free}, requested={payload.slots_used}")
 
@@ -1364,7 +1408,9 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
 
         # check slots for rental
         if deal_type == "rental":
-            occ, free = slots_summary(conn, new_account_id)
+            if not new_platform_id:
+                raise HTTPException(400, "platform_code is required for rental")
+            occ, free = slots_summary(conn, new_account_id, new_platform_id)
             free_adjusted = free + (slots_used if new_account_id == account_id else 0)
             if free_adjusted < new_slots_used:
                 raise HTTPException(409, f"Not enough free slots. free_slots={free_adjusted}, requested={new_slots_used}")

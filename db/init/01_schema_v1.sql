@@ -90,30 +90,34 @@ CREATE TABLE IF NOT EXISTS app.accounts (
   account_id     bigserial PRIMARY KEY,
   login_name     text,
   domain_id      smallint REFERENCES app.domains(domain_id),
-  platform_id    smallint NOT NULL REFERENCES app.platforms(platform_id),
   region_id      smallint REFERENCES app.regions(region_id),
   status_code    text NOT NULL DEFAULT 'active' REFERENCES app.account_statuses(code),
   created_at     timestamptz NOT NULL DEFAULT now(),
   account_date   date,
   notes          text,
-  slot_capacity  integer NOT NULL DEFAULT 1,
-  slot_reserved  integer NOT NULL DEFAULT 0,
-  CONSTRAINT ck_slots_nonneg CHECK (slot_capacity >= 0 AND slot_reserved >= 0),
-  CONSTRAINT ck_slots_capacity CHECK (slot_capacity >= slot_reserved),
   CONSTRAINT uq_account_login UNIQUE (login_name, domain_id)
 );
 COMMENT ON TABLE app.accounts IS 'Аккаунты для продаж/аренд';
 COMMENT ON COLUMN app.accounts.account_id IS 'Идентификатор аккаунта';
 COMMENT ON COLUMN app.accounts.login_name IS 'Логин аккаунта (без домена)';
 COMMENT ON COLUMN app.accounts.domain_id IS 'Домен аккаунта';
-COMMENT ON COLUMN app.accounts.platform_id IS 'Платформа аккаунта';
 COMMENT ON COLUMN app.accounts.region_id IS 'Регион аккаунта';
 COMMENT ON COLUMN app.accounts.status_code IS 'Статус аккаунта';
 COMMENT ON COLUMN app.accounts.created_at IS 'Дата создания аккаунта';
 COMMENT ON COLUMN app.accounts.account_date IS 'Дата аккаунта';
 COMMENT ON COLUMN app.accounts.notes IS 'Заметки';
-COMMENT ON COLUMN app.accounts.slot_capacity IS 'Всего слотов';
-COMMENT ON COLUMN app.accounts.slot_reserved IS 'Зарезервировано слотов';
+
+CREATE TABLE IF NOT EXISTS app.account_platforms (
+  account_id     bigint NOT NULL REFERENCES app.accounts(account_id) ON DELETE CASCADE,
+  platform_id    smallint NOT NULL REFERENCES app.platforms(platform_id),
+  slot_capacity  integer NOT NULL DEFAULT 0,
+  CONSTRAINT pk_account_platforms PRIMARY KEY (account_id, platform_id),
+  CONSTRAINT ck_account_platform_slots CHECK (slot_capacity >= 0)
+);
+COMMENT ON TABLE app.account_platforms IS 'Слоты аккаунтов по платформам';
+COMMENT ON COLUMN app.account_platforms.account_id IS 'Аккаунт';
+COMMENT ON COLUMN app.account_platforms.platform_id IS 'Платформа';
+COMMENT ON COLUMN app.account_platforms.slot_capacity IS 'Всего слотов на платформе';
 
 CREATE TABLE IF NOT EXISTS app.account_assets (
   account_asset_id bigserial PRIMARY KEY,
@@ -223,10 +227,11 @@ COMMENT ON COLUMN app.deal_items.returned_at IS 'Факт возврата';
 COMMENT ON COLUMN app.deal_items.slots_used IS 'Количество занятых слотов';
 COMMENT ON COLUMN app.deal_items.notes IS 'Заметки';
 
-CREATE OR REPLACE VIEW app.v_account_slots AS
+CREATE OR REPLACE VIEW app.v_account_platform_slots AS
 SELECT
-  a.account_id,
-  p.slot_capacity,
+  ap.account_id,
+  ap.platform_id,
+  ap.slot_capacity,
   COALESCE(SUM(
     CASE
       WHEN d.deal_type_code = 'rental'
@@ -239,7 +244,7 @@ SELECT
     END
   ), 0) AS occupied_slots,
   GREATEST(
-    p.slot_capacity - COALESCE(SUM(
+    ap.slot_capacity - COALESCE(SUM(
     CASE
       WHEN d.deal_type_code = 'rental'
        AND d.status_code = 'confirmed'
@@ -252,15 +257,14 @@ SELECT
     ), 0),
     0
   ) AS free_slots
-FROM app.accounts a
-JOIN app.platforms p ON p.platform_id = a.platform_id
-LEFT JOIN app.deal_items di ON di.account_id = a.account_id
+FROM app.account_platforms ap
+LEFT JOIN app.deal_items di ON di.account_id = ap.account_id AND di.platform_id = ap.platform_id
 LEFT JOIN app.deals d ON d.deal_id = di.deal_id
-GROUP BY a.account_id, p.slot_capacity;
+GROUP BY ap.account_id, ap.platform_id, ap.slot_capacity;
 
-INSERT INTO app.platforms(code, name)
-VALUES ('ps4','PlayStation'),('ps5','PlayStation')
-ON CONFLICT (code) DO NOTHING;
+INSERT INTO app.platforms(code, name, slot_capacity)
+VALUES ('ps4','PlayStation 4', 6),('ps5','PlayStation 5', 3)
+ON CONFLICT (code) DO UPDATE SET name=excluded.name, slot_capacity=excluded.slot_capacity;
 
 INSERT INTO app.regions(code, name)
 VALUES ('RU','Russia'),('TR','Turkey'),('US','USA'),('EU','Europe')

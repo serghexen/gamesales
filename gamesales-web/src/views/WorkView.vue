@@ -345,31 +345,6 @@
                       <button class="ghost ghost--small" type="button" @click="resetAccountFilter('login')">Сбросить</button>
                     </div>
                   </th>
-                  <th class="sortable" @click="toggleAccountSort('platform')">
-                    <span class="th-title th-title--filter">
-                      Платф.
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(accountFilters.platform_q) }"
-                        type="button"
-                        aria-label="Фильтр по платформе"
-                        title="Фильтр по платформе"
-                        @click.stop="openAccountFilter('platform')"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
-                    </span>
-                    <div v-if="activeAccountFilter === 'platform'" class="filter-pop filter-pop--center" @click.stop>
-                      <label class="field">
-                        <span class="label">Платформа</span>
-                        <input v-model.trim="accountFilterDraft.platform" class="input" placeholder="платформа" />
-                      </label>
-                      <button class="ghost ghost--small" type="button" @click="applyAccountFilter('platform')">Применить</button>
-                      <button class="ghost ghost--small" type="button" @click="resetAccountFilter('platform')">Сбросить</button>
-                    </div>
-                  </th>
                   <th class="sortable" @click="toggleAccountSort('region')">
                     <span class="th-title th-title--filter">
                       Рег.
@@ -439,7 +414,7 @@
                     <div v-if="activeAccountFilter === 'slots'" class="filter-pop filter-pop--center" @click.stop>
                       <label class="field">
                         <span class="label">Слоты</span>
-                        <input v-model.trim="accountFilterDraft.slots" class="input" placeholder="например 2/6" />
+                        <input v-model.trim="accountFilterDraft.slots" class="input" placeholder="например ps4 2/6" />
                       </label>
                       <button class="ghost ghost--small" type="button" @click="applyAccountFilter('slots')">Применить</button>
                       <button class="ghost ghost--small" type="button" @click="resetAccountFilter('slots')">Сбросить</button>
@@ -484,10 +459,9 @@
               <tbody>
                 <tr v-for="a in sortedAccounts" :key="a.account_id" class="clickable-row" @click="startEditAccount(a)">
                   <td class="cell--account">{{ a.login_full || '—' }}</td>
-                  <td>{{ a.platform_code }}</td>
                   <td>{{ a.region_code || '—' }}</td>
                   <td>{{ a.status }}</td>
-                  <td>{{ a.occupied_slots }}/{{ a.slot_capacity }}</td>
+                  <td>{{ formatAccountSlots(a) }}</td>
                   <td>{{ formatDateOnly(a.account_date) }}</td>
                   <td>{{ formatSecret(getEmailSecret(a.account_id)) }}</td>
                   <td>{{ formatSecret(getAccountSecret(a.account_id)) }}</td>
@@ -565,15 +539,6 @@
                           <option value="">— не выбрано —</option>
                           <option v-for="d in domains" :key="d.name" :value="d.name">
                             {{ d.name }}
-                          </option>
-                        </select>
-                      </label>
-                      <label class="field">
-                        <span class="label">Платформа</span>
-                        <select v-model="editAccount.platform_code" class="input input--select" :disabled="accountEditMode === 'view'">
-                          <option value="">— не выбрано —</option>
-                          <option v-for="p in platforms" :key="p.code" :value="p.code">
-                            {{ p.name }} ({{ p.code }}) — {{ p.slot_capacity }} сл.
                           </option>
                         </select>
                       </label>
@@ -730,15 +695,6 @@
                           <option value="">— не выбрано —</option>
                           <option v-for="d in domains" :key="d.name" :value="d.name">
                             {{ d.name }}
-                          </option>
-                        </select>
-                      </label>
-                      <label class="field">
-                        <span class="label">Платформа</span>
-                        <select v-model="newAccount.platform_code" class="input input--select">
-                          <option value="">— не выбрано —</option>
-                          <option v-for="p in platforms" :key="p.code" :value="p.code">
-                            {{ p.name }} ({{ p.code }}) — {{ p.slot_capacity }} сл.
                           </option>
                         </select>
                       </label>
@@ -2587,7 +2543,6 @@ const activeGameChips = computed(() => {
 const activeAccountChips = computed(() => {
   const chips = []
   if (accountFilters.login_q) chips.push({ key: 'login', label: 'Логин', value: accountFilters.login_q })
-  if (accountFilters.platform_q) chips.push({ key: 'platform', label: 'Платформа', value: accountFilters.platform_q })
   if (accountFilters.region_q) chips.push({ key: 'region', label: 'Регион', value: accountFilters.region_q })
   if (accountFilters.status_q) chips.push({ key: 'status', label: 'Статус', value: accountFilters.status_q })
   if (accountFilters.slots_q) chips.push({ key: 'slots', label: 'Слоты', value: accountFilters.slots_q })
@@ -2752,7 +2707,6 @@ const editRegion = reactive({ open: false, code: '', name: '' })
 const newAccount = reactive({
   login_name: '',
   domain_code: '',
-  platform_code: '',
   region_code: '',
   notes: '',
   account_date: '',
@@ -2772,7 +2726,6 @@ const accountGamesLoading = ref(false)
 const activeAccountFilter = ref('')
 const accountFilterDraft = reactive({
   login: '',
-  platform: '',
   region: '',
   status: '',
   slots: '',
@@ -2784,7 +2737,6 @@ const editAccount = reactive({
   account_id: null,
   login_name: '',
   domain_code: '',
-  platform_code: '',
   region_code: '',
   status_code: 'active',
   notes: '',
@@ -2818,7 +2770,6 @@ const showPlatformForm = ref(false)
 const showRegionForm = ref(false)
 const accountFilters = reactive({
   login_q: '',
-  platform_q: '',
   region_q: '',
   status_q: '',
   slots_q: '',
@@ -2848,6 +2799,30 @@ const dealStatusOptions = [
   { code: 'closed', name: 'Закрыт' },
 ]
 
+const getAccountPlatformSlots = (account, platformCode) => {
+  if (!account?.platform_slots || !platformCode) return null
+  const code = String(platformCode).toLowerCase()
+  return account.platform_slots.find((s) => String(s.platform_code || '').toLowerCase() === code) || null
+}
+
+const getAccountSlotsText = (account) => {
+  const ps4 = getAccountPlatformSlots(account, 'ps4')
+  const ps5 = getAccountPlatformSlots(account, 'ps5')
+  const ps4Text = `PS4 ${ps4?.occupied_slots || 0}/${ps4?.slot_capacity || 0}`
+  const ps5Text = `PS5 ${ps5?.occupied_slots || 0}/${ps5?.slot_capacity || 0}`
+  return `${ps4Text} · ${ps5Text}`
+}
+
+const getAccountFreeTotal = (account) =>
+  (account?.platform_slots || []).reduce((sum, s) => sum + Number(s?.free_slots || 0), 0)
+
+const formatAccountSlots = (account) => getAccountSlotsText(account)
+
+const getAccountFreeSlots = (account, platformCode) => {
+  const slot = getAccountPlatformSlots(account, platformCode)
+  return Number(slot?.free_slots || 0)
+}
+
 const filteredAccounts = computed(() => {
   let list = [...accounts.value]
   if (accountFilters.login_q) {
@@ -2855,10 +2830,6 @@ const filteredAccounts = computed(() => {
     list = list.filter((a) =>
       (a.login_full || '').toLowerCase().includes(q)
     )
-  }
-  if (accountFilters.platform_q) {
-    const q = accountFilters.platform_q.toLowerCase()
-    list = list.filter((a) => (a.platform_code || '').toLowerCase().includes(q))
   }
   if (accountFilters.region_q) {
     const q = accountFilters.region_q.toLowerCase()
@@ -2870,7 +2841,7 @@ const filteredAccounts = computed(() => {
   }
   if (accountFilters.slots_q) {
     const q = accountFilters.slots_q.toLowerCase()
-    list = list.filter((a) => `${a.occupied_slots}/${a.slot_capacity}`.toLowerCase().includes(q))
+    list = list.filter((a) => getAccountSlotsText(a).toLowerCase().includes(q))
   }
   if (accountFilters.date_from) {
     list = list.filter((a) => new Date(a.account_date || 0) >= new Date(accountFilters.date_from))
@@ -2887,10 +2858,6 @@ const sortedAccounts = computed(() => {
     list.sort((a, b) => (a.login_full || '').localeCompare(b.login_full || ''))
   } else if (accountSort.value === 'login_desc') {
     list.sort((a, b) => (b.login_full || '').localeCompare(a.login_full || ''))
-  } else if (accountSort.value === 'platform_asc') {
-    list.sort((a, b) => (a.platform_code || '').localeCompare(b.platform_code || ''))
-  } else if (accountSort.value === 'platform_desc') {
-    list.sort((a, b) => (b.platform_code || '').localeCompare(a.platform_code || ''))
   } else if (accountSort.value === 'region_asc') {
     list.sort((a, b) => (a.region_code || '').localeCompare(b.region_code || ''))
   } else if (accountSort.value === 'region_desc') {
@@ -2900,9 +2867,9 @@ const sortedAccounts = computed(() => {
   } else if (accountSort.value === 'status_desc') {
     list.sort((a, b) => (b.status || '').localeCompare(a.status || ''))
   } else if (accountSort.value === 'slots_desc') {
-    list.sort((a, b) => (b.slot_capacity || 0) - (a.slot_capacity || 0))
+    list.sort((a, b) => getAccountFreeTotal(b) - getAccountFreeTotal(a))
   } else if (accountSort.value === 'slots_asc') {
-    list.sort((a, b) => (a.slot_capacity || 0) - (b.slot_capacity || 0))
+    list.sort((a, b) => getAccountFreeTotal(a) - getAccountFreeTotal(b))
   } else if (accountSort.value === 'date_desc') {
     list.sort((a, b) => new Date(b.account_date || 0) - new Date(a.account_date || 0))
   } else if (accountSort.value === 'date_asc') {
@@ -2914,17 +2881,19 @@ const sortedAccounts = computed(() => {
 const dealAccountsForNew = computed(() => {
   let list = [...accounts.value]
   if (newDeal.platform_code) {
-    list = list.filter((a) => a.platform_code === newDeal.platform_code)
+    return list.filter((a) => getAccountFreeSlots(a, newDeal.platform_code) > 0)
   }
-  return list.filter((a) => (a.free_slots || 0) > 0)
+  return list
 })
 
 const dealAccountsForEdit = computed(() => {
   let list = [...accounts.value]
   if (editDeal.platform_code) {
-    list = list.filter((a) => a.platform_code === editDeal.platform_code)
+    return list.filter(
+      (a) => getAccountFreeSlots(a, editDeal.platform_code) > 0 || a.account_id === editDeal.account_id
+    )
   }
-  return list.filter((a) => (a.free_slots || 0) > 0 || a.account_id === editDeal.account_id)
+  return list
 })
 
 
@@ -3187,7 +3156,6 @@ function openGameAccounts(game) {
 function toggleAccountSort(key) {
   const map = {
     login: ['login_asc', 'login_desc'],
-    platform: ['platform_asc', 'platform_desc'],
     region: ['region_asc', 'region_desc'],
     status: ['status_asc', 'status_desc'],
     slots: ['slots_asc', 'slots_desc'],
@@ -3433,9 +3401,6 @@ const resetAccountFilter = (kind) => {
   if (kind === 'login') {
     accountFilters.login_q = ''
     accountFilterDraft.login = ''
-  } else if (kind === 'platform') {
-    accountFilters.platform_q = ''
-    accountFilterDraft.platform = ''
   } else if (kind === 'region') {
     accountFilters.region_q = ''
     accountFilterDraft.region = ''
@@ -3453,14 +3418,12 @@ const resetAccountFilter = (kind) => {
     accountFilterErrors.date = ''
   } else if (kind === 'all') {
     accountFilters.login_q = ''
-    accountFilters.platform_q = ''
     accountFilters.region_q = ''
     accountFilters.status_q = ''
     accountFilters.slots_q = ''
     accountFilters.date_from = ''
     accountFilters.date_to = ''
     accountFilterDraft.login = ''
-    accountFilterDraft.platform = ''
     accountFilterDraft.region = ''
     accountFilterDraft.status = ''
     accountFilterDraft.slots = ''
@@ -3473,7 +3436,6 @@ const resetAccountFilter = (kind) => {
 
 const openAccountFilter = (kind) => {
   accountFilterDraft.login = accountFilters.login_q || ''
-  accountFilterDraft.platform = accountFilters.platform_q || ''
   accountFilterDraft.region = accountFilters.region_q || ''
   accountFilterDraft.status = accountFilters.status_q || ''
   accountFilterDraft.slots = accountFilters.slots_q || ''
@@ -3485,8 +3447,6 @@ const openAccountFilter = (kind) => {
 const applyAccountFilter = (kind) => {
   if (kind === 'login') {
     accountFilters.login_q = accountFilterDraft.login.trim()
-  } else if (kind === 'platform') {
-    accountFilters.platform_q = accountFilterDraft.platform.trim()
   } else if (kind === 'region') {
     accountFilters.region_q = accountFilterDraft.region.trim()
   } else if (kind === 'status') {
@@ -3749,7 +3709,6 @@ function startEditAccount(a) {
   editAccount.account_id = a.account_id
   editAccount.login_name = a.login_name || ''
   editAccount.domain_code = a.domain_code || ''
-  editAccount.platform_code = a.platform_code || ''
   editAccount.region_code = a.region_code || ''
   editAccount.status_code = a.status || 'active'
   editAccount.notes = a.notes || ''
@@ -3787,7 +3746,6 @@ function openCreateAccountModal() {
   accountsOk.value = null
   newAccount.login_name = ''
   newAccount.domain_code = ''
-  newAccount.platform_code = ''
   newAccount.region_code = ''
   newAccount.notes = ''
   newAccount.account_date = ''
@@ -3805,7 +3763,6 @@ function cancelEditAccount() {
   editAccount.account_id = null
   editAccount.login_name = ''
   editAccount.domain_code = ''
-  editAccount.platform_code = ''
   editAccount.region_code = ''
   editAccount.status_code = 'active'
   editAccount.notes = ''
@@ -3829,7 +3786,6 @@ function cancelEditAccount() {
   accountEditMode.value = 'view'
   newAccount.login_name = ''
   newAccount.domain_code = ''
-  newAccount.platform_code = ''
   newAccount.region_code = ''
   newAccount.notes = ''
   newAccount.account_date = ''
@@ -3844,8 +3800,8 @@ function cancelEditAccount() {
 async function createAccount() {
   accountsError.value = null
   accountsOk.value = null
-  if (!newAccount.login_name || !newAccount.domain_code || !newAccount.platform_code) {
-    accountsError.value = 'Укажите логин, домен и платформу'
+  if (!newAccount.login_name || !newAccount.domain_code) {
+    accountsError.value = 'Укажите логин и домен'
     return
   }
   accountsLoading.value = true
@@ -3853,7 +3809,6 @@ async function createAccount() {
     const created = await apiPost(
       '/accounts',
       {
-        platform_code: newAccount.platform_code,
         region_code: newAccount.region_code || null,
         login_name: newAccount.login_name || null,
         domain_code: newAccount.domain_code || null,
@@ -3918,7 +3873,6 @@ async function createAccount() {
     accountsOk.value = `Аккаунт ${newAccount.login_name}@${newAccount.domain_code} создан`
     newAccount.login_name = ''
     newAccount.domain_code = ''
-    newAccount.platform_code = ''
     newAccount.region_code = ''
     newAccount.notes = ''
     newAccount.account_date = ''
@@ -3941,8 +3895,8 @@ async function updateAccount() {
   accountsError.value = null
   accountsOk.value = null
   if (!editAccount.account_id) return
-  if (!editAccount.login_name || !editAccount.domain_code || !editAccount.platform_code) {
-    accountsError.value = 'Укажите логин, домен и платформу'
+  if (!editAccount.login_name || !editAccount.domain_code) {
+    accountsError.value = 'Укажите логин и домен'
     return
   }
   accountSaving.value = true
@@ -3950,7 +3904,6 @@ async function updateAccount() {
     await apiPut(
       `/accounts/${editAccount.account_id}`,
       {
-        platform_code: editAccount.platform_code,
         region_code: editAccount.region_code || null,
         login_name: editAccount.login_name || null,
         domain_code: editAccount.domain_code || null,
@@ -4802,50 +4755,6 @@ watch([() => editAccount.open], async ([showEdit]) => {
     await loadDomains()
   }
 })
-
-const syncDealPlatformFromAccount = (deal, accountsList) => {
-  if (!deal.account_id) return
-  const acc = accountsList.find((a) => a.account_id === deal.account_id)
-  if (acc) {
-    deal.platform_code = acc.platform_code || ''
-  }
-}
-
-const clearDealAccountIfMismatch = (deal, accountsList) => {
-  if (!deal.account_id) return
-  const acc = accountsList.find((a) => a.account_id === deal.account_id)
-  if (acc && deal.platform_code && acc.platform_code !== deal.platform_code) {
-    deal.account_id = ''
-  }
-}
-
-watch(
-  () => newDeal.account_id,
-  () => {
-    syncDealPlatformFromAccount(newDeal, accounts.value)
-  }
-)
-
-watch(
-  () => newDeal.platform_code,
-  () => {
-    clearDealAccountIfMismatch(newDeal, accounts.value)
-  }
-)
-
-watch(
-  () => editDeal.account_id,
-  () => {
-    syncDealPlatformFromAccount(editDeal, accounts.value)
-  }
-)
-
-watch(
-  () => editDeal.platform_code,
-  () => {
-    clearDealAccountIfMismatch(editDeal, accounts.value)
-  }
-)
 
 watch(
   () => editAccount.open,
