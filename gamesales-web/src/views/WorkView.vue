@@ -3145,6 +3145,7 @@ const gameImportMessage = ref('')
 const gameImportAction = ref('')
 const gameImportStats = ref(null)
 const gameImportProgress = reactive({ current: 0, total: 0, phase: '' })
+const gameImportJobId = ref('')
 let gameImportStatusTimer = null
 const gameLogoLoading = ref(false)
 const gameLogoCache = new Map()
@@ -3866,6 +3867,7 @@ function openGameImport() {
   gameImportProgress.current = 0
   gameImportProgress.total = 0
   gameImportProgress.phase = ''
+  gameImportJobId.value = ''
   stopGameImportStatusPolling()
 }
 
@@ -3883,16 +3885,21 @@ function closeGameImport() {
   gameImportProgress.current = 0
   gameImportProgress.total = 0
   gameImportProgress.phase = ''
+  gameImportJobId.value = ''
   stopGameImportStatusPolling()
 }
 
 async function pollGameImportStatusOnce() {
+  if (!gameImportJobId.value) return
   try {
-    const status = await apiGet('/games/import/status', { token: auth.state.token })
+    const status = await apiGet(`/games/import/status?job_id=${encodeURIComponent(gameImportJobId.value)}`, { token: auth.state.token })
     if (!status) return
     gameImportProgress.current = Number(status.current || 0)
     gameImportProgress.total = Number(status.total || 0)
     gameImportProgress.phase = status.phase || ''
+    if (status.done && status.result) {
+      applyGameImportResult(status.result)
+    }
   } catch {
     // ignore polling errors
   }
@@ -3903,14 +3910,16 @@ function startGameImportStatusPolling() {
   pollGameImportStatusOnce()
   gameImportStatusTimer = setInterval(async () => {
     try {
-      const status = await apiGet('/games/import/status', { token: auth.state.token })
+      if (!gameImportJobId.value) return
+      const status = await apiGet(`/games/import/status?job_id=${encodeURIComponent(gameImportJobId.value)}`, { token: auth.state.token })
       if (!status) return
       gameImportProgress.current = Number(status.current || 0)
       gameImportProgress.total = Number(status.total || 0)
       gameImportProgress.phase = status.phase || ''
-      if (status.done && !gameImportLoading.value) {
-        stopGameImportStatusPolling()
+      if (status.done && status.result) {
+        applyGameImportResult(status.result)
       }
+      if (status.done && !gameImportLoading.value) stopGameImportStatusPolling()
     } catch {
       // ignore polling errors
     }
@@ -3921,6 +3930,27 @@ function stopGameImportStatusPolling() {
   if (!gameImportStatusTimer) return
   clearInterval(gameImportStatusTimer)
   gameImportStatusTimer = null
+}
+
+async function applyGameImportResult(res) {
+  if (!res) return
+  const created = res?.created || 0
+  const updated = res?.updated || 0
+  const skipped = res?.skipped || 0
+  const failed = res?.failed || 0
+  gameImportErrors.value = res?.errors || []
+  gameImportWarnings.value = res?.warnings || []
+  if (res?.ok) {
+    gameImportMessage.value = `Загружено. Создано: ${created}, обновлено: ${updated}, пропущено: ${skipped}`
+  } else {
+    const until = res?.success_until_row ? `до строки ${res.success_until_row}` : 'до строки —'
+    gameImportMessage.value = `Загрузка с ошибками, успешно ${until}. Ошибок: ${failed}`
+  }
+  gameImportStats.value = { created, updated, skipped, failed, total: res?.total || 0 }
+  gameImportLoading.value = false
+  gameImportAction.value = ''
+  stopGameImportStatusPolling()
+  await loadGames()
 }
 
 function onGameImportFile(event) {
@@ -3936,6 +3966,7 @@ function onGameImportFile(event) {
   gameImportProgress.current = 0
   gameImportProgress.total = 0
   gameImportProgress.phase = ''
+  gameImportJobId.value = ''
   stopGameImportStatusPolling()
 }
 
@@ -3963,7 +3994,6 @@ async function validateGameImport() {
   gameImportProgress.current = 0
   gameImportProgress.total = gameImportTotal.value || 0
   gameImportProgress.phase = ''
-  startGameImportStatusPolling()
   try {
     const res = await apiPostForm('/games/import/validate', form, { token: auth.state.token })
     gameImportErrors.value = res?.errors || []
@@ -3998,29 +4028,22 @@ async function uploadGameImport() {
   gameImportProgress.current = 0
   gameImportProgress.total = gameImportTotal.value || 0
   gameImportProgress.phase = ''
-  startGameImportStatusPolling()
   try {
     const res = await apiPostForm('/games/import', form, { token: auth.state.token })
-    const created = res?.created || 0
-    const updated = res?.updated || 0
-    const skipped = res?.skipped || 0
-    const failed = res?.failed || 0
-    gameImportErrors.value = res?.errors || []
-    gameImportWarnings.value = res?.warnings || []
-    if (res?.ok) {
-      gameImportMessage.value = `Загружено. Создано: ${created}, обновлено: ${updated}, пропущено: ${skipped}`
+    if (res?.job_id) {
+      gameImportJobId.value = res.job_id
+      startGameImportStatusPolling()
     } else {
-      const until = res?.success_until_row ? `до строки ${res.success_until_row}` : 'до строки —'
-      gameImportMessage.value = `Загрузка с ошибками, успешно ${until}. Ошибок: ${failed}`
+      gameImportMessage.value = 'Не удалось запустить импорт'
+      gameImportLoading.value = false
+      gameImportAction.value = ''
     }
-    gameImportStats.value = { created, updated, skipped, total: res?.total || 0, failed }
-    await loadGames()
   } catch (e) {
     gameImportMessage.value = mapApiError(e?.message)
-  } finally {
     gameImportLoading.value = false
     gameImportAction.value = ''
-    stopGameImportStatusPolling()
+  } finally {
+    // wait for background job result
   }
 }
 
