@@ -39,6 +39,9 @@
             <button class="tab" :class="{ active: activeTab === 'deals' }" @click="activeTab = 'deals'">
               Продажи/Шеринг
             </button>
+            <button class="tab" :class="{ active: activeTab === 'accounts' }" @click="activeTab = 'accounts'">
+              Аккаунты
+            </button>
             <button class="tab" :class="{ active: activeTab === 'games' }" @click="activeTab = 'games'">
               Игры
             </button>
@@ -49,9 +52,6 @@
               @click="activeTab = 'catalogs'"
             >
               Справочники
-            </button>
-            <button class="tab" :class="{ active: activeTab === 'accounts' }" @click="activeTab = 'accounts'">
-              Аккаунты
             </button>
             <button
               v-if="isAdmin"
@@ -226,8 +226,6 @@
         <section v-if="activeTab === 'accounts'" class="panel panel--wide">
           <div class="panel__head">
             <div>
-              <h2>Аккаунты</h2>
-              <p class="muted">Создание аккаунтов и контроль слотов.</p>
             </div>
             <div class="toolbar-actions">
               <button
@@ -695,6 +693,8 @@
                               <th>Статус</th>
                               <th>Назначено</th>
                               <th>Снято</th>
+                              <th>Кем снято</th>
+                              <th class="cell--tight"></th>
                             </tr>
                           </thead>
                           <tbody>
@@ -705,6 +705,18 @@
                               <td>{{ getSlotAssignmentStatus(s) }}</td>
                               <td>{{ formatDateTimeMinutes(s.assigned_at) }}</td>
                               <td>{{ s.released_at ? formatDateTimeMinutes(s.released_at) : '—' }}</td>
+                              <td>{{ s.released_by || '—' }}</td>
+                              <td class="cell--tight">
+                                <button
+                                  v-if="!s.released_at"
+                                  class="ghost ghost--small"
+                                  type="button"
+                                  :disabled="accountSlotReleaseLoading"
+                                  @click="releaseSlotAssignment(s.assignment_id)"
+                                >
+                                  Снять
+                                </button>
+                              </td>
                             </tr>
                           </tbody>
                         </table>
@@ -2003,6 +2015,56 @@
                             v-if="dealEditMode !== 'view' && editDeal.game_id && dealAccountsForEdit.length === 0"
                             class="quick-create"
                           >
+                            <div class="quick-create__title">Нет свободных слотов — можно снять занятый</div>
+                            <div v-if="dealGameAssignmentsLoadingEdit" class="loader-wrap loader-wrap--compact">
+                              <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                                <div class="wheel"></div>
+                                <div class="hamster">
+                                  <div class="hamster__body">
+                                    <div class="hamster__head">
+                                      <div class="hamster__ear"></div>
+                                      <div class="hamster__eye"></div>
+                                      <div class="hamster__nose"></div>
+                                    </div>
+                                    <div class="hamster__limb hamster__limb--fr"></div>
+                                    <div class="hamster__limb hamster__limb--fl"></div>
+                                    <div class="hamster__limb hamster__limb--br"></div>
+                                    <div class="hamster__limb hamster__limb--bl"></div>
+                                    <div class="hamster__tail"></div>
+                                  </div>
+                                </div>
+                                <div class="spoke"></div>
+                              </div>
+                            </div>
+                            <table v-else-if="dealGameAssignmentsEdit.filter((s) => !s.released_at).length" class="table table--compact table--dense">
+                              <thead>
+                                <tr>
+                                  <th>Аккаунт</th>
+                                  <th>Слот</th>
+                                  <th>Пользователь</th>
+                                  <th class="cell--tight"></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr v-for="s in dealGameAssignmentsEdit.filter((s) => !s.released_at)" :key="s.assignment_id">
+                                  <td>{{ getAccountLabelById(s.account_id) }}</td>
+                                  <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
+                                  <td>{{ s.customer_nickname || '—' }}</td>
+                                  <td class="cell--tight">
+                                    <button
+                                      v-if="!s.released_at"
+                                      class="ghost ghost--small"
+                                      type="button"
+                                      :disabled="accountSlotReleaseLoading"
+                                      @click="releaseSlotFromDeal(s, 'edit')"
+                                    >
+                                      Снять
+                                    </button>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <p v-else class="muted">Нет активных слотов по игре.</p>
                             <div class="quick-create__title">Быстро создать аккаунт</div>
                             <input v-model.trim="quickEditAccount.login_name" class="input input--compact" placeholder="Логин" />
                             <select v-model="quickEditAccount.domain_code" class="input input--select input--compact">
@@ -2062,22 +2124,20 @@
                               <div class="spoke"></div>
                             </div>
                           </div>
-                          <table v-else-if="dealAccountAssignmentsEdit.length" class="table table--compact table--dense">
+                          <table v-else-if="dealAccountAssignmentsEdit.filter((s) => !s.released_at).length" class="table table--compact table--dense">
                             <thead>
                               <tr>
                                 <th>Слот</th>
                                 <th>Игра</th>
                                 <th>Пользователь</th>
-                                <th>Статус</th>
                                 <th>Назначено</th>
                               </tr>
                             </thead>
                             <tbody>
-                              <tr v-for="s in dealAccountAssignmentsEdit" :key="s.assignment_id">
+                              <tr v-for="s in dealAccountAssignmentsEdit.filter((s) => !s.released_at)" :key="s.assignment_id">
                                 <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
                                 <td>{{ s.game_title || '—' }}</td>
                                 <td>{{ s.customer_nickname || '—' }}</td>
-                                <td>{{ getSlotAssignmentStatus(s) }}</td>
                                 <td>{{ formatDateTimeMinutes(s.assigned_at) }}</td>
                               </tr>
                             </tbody>
@@ -2274,6 +2334,56 @@
                             v-if="newDeal.game_id && dealAccountsForNew.length === 0"
                             class="quick-create"
                           >
+                            <div class="quick-create__title">Нет свободных слотов — можно снять занятый</div>
+                            <div v-if="dealGameAssignmentsLoadingNew" class="loader-wrap loader-wrap--compact">
+                              <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                                <div class="wheel"></div>
+                                <div class="hamster">
+                                  <div class="hamster__body">
+                                    <div class="hamster__head">
+                                      <div class="hamster__ear"></div>
+                                      <div class="hamster__eye"></div>
+                                      <div class="hamster__nose"></div>
+                                    </div>
+                                    <div class="hamster__limb hamster__limb--fr"></div>
+                                    <div class="hamster__limb hamster__limb--fl"></div>
+                                    <div class="hamster__limb hamster__limb--br"></div>
+                                    <div class="hamster__limb hamster__limb--bl"></div>
+                                    <div class="hamster__tail"></div>
+                                  </div>
+                                </div>
+                                <div class="spoke"></div>
+                              </div>
+                            </div>
+                            <table v-else-if="dealGameAssignmentsNew.filter((s) => !s.released_at).length" class="table table--compact table--dense">
+                              <thead>
+                                <tr>
+                                  <th>Аккаунт</th>
+                                  <th>Слот</th>
+                                  <th>Пользователь</th>
+                                  <th class="cell--tight"></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr v-for="s in dealGameAssignmentsNew.filter((s) => !s.released_at)" :key="s.assignment_id">
+                                  <td>{{ getAccountLabelById(s.account_id) }}</td>
+                                  <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
+                                  <td>{{ s.customer_nickname || '—' }}</td>
+                                  <td class="cell--tight">
+                                    <button
+                                      v-if="!s.released_at"
+                                      class="ghost ghost--small"
+                                      type="button"
+                                      :disabled="accountSlotReleaseLoading"
+                                      @click="releaseSlotFromDeal(s, 'new')"
+                                    >
+                                      Снять
+                                    </button>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <p v-else class="muted">Нет активных слотов по игре.</p>
                             <div class="quick-create__title">Быстро создать аккаунт</div>
                             <input v-model.trim="quickNewAccount.login_name" class="input input--compact" placeholder="Логин" />
                             <select v-model="quickNewAccount.domain_code" class="input input--select input--compact">
@@ -2333,22 +2443,20 @@
                               <div class="spoke"></div>
                             </div>
                           </div>
-                          <table v-else-if="dealAccountAssignmentsNew.length" class="table table--compact table--dense">
+                          <table v-else-if="dealAccountAssignmentsNew.filter((s) => !s.released_at).length" class="table table--compact table--dense">
                             <thead>
                               <tr>
                                 <th>Слот</th>
                                 <th>Игра</th>
                                 <th>Пользователь</th>
-                                <th>Статус</th>
                                 <th>Назначено</th>
                               </tr>
                             </thead>
                             <tbody>
-                              <tr v-for="s in dealAccountAssignmentsNew" :key="s.assignment_id">
+                              <tr v-for="s in dealAccountAssignmentsNew.filter((s) => !s.released_at)" :key="s.assignment_id">
                                 <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
                                 <td>{{ s.game_title || '—' }}</td>
                                 <td>{{ s.customer_nickname || '—' }}</td>
-                                <td>{{ getSlotAssignmentStatus(s) }}</td>
                                 <td>{{ formatDateTimeMinutes(s.assigned_at) }}</td>
                               </tr>
                             </tbody>
@@ -2490,10 +2598,6 @@
 
         <section v-if="isAdmin && activeTab === 'catalogs'" class="panel panel--wide">
           <div class="panel__head">
-            <div>
-              <h2>Справочники</h2>
-              <p class="muted">Домены, источники, платформы, регионы.</p>
-            </div>
           </div>
           <div class="panel__body">
             <p v-if="catalogsError" class="bad">{{ catalogsError }}</p>
@@ -3204,6 +3308,7 @@ const accountDealsError = ref(null)
 const accountSlotAssignments = ref([])
 const accountSlotAssignmentsLoading = ref(false)
 const accountSlotAssignmentsError = ref(null)
+const accountSlotReleaseLoading = ref(false)
 const dealSaving = ref(false)
 const gameSaving = ref(false)
 const catalogSaving = ref(false)
@@ -3229,6 +3334,10 @@ const gameAccountsError = ref(null)
 const gameSlotAssignments = ref([])
 const gameSlotAssignmentsLoading = ref(false)
 const gameSlotAssignmentsError = ref(null)
+const dealGameAssignmentsNew = ref([])
+const dealGameAssignmentsEdit = ref([])
+const dealGameAssignmentsLoadingNew = ref(false)
+const dealGameAssignmentsLoadingEdit = ref(false)
 const gameAccountsSort = ref({ key: 'free_slots', dir: 'desc' })
 const gameAccountsPage = ref(1)
 const gameAccountsPageSize = 15
@@ -3707,6 +3816,12 @@ const getSlotTypeLabel = (code) => {
 }
 
 const getSlotAssignmentStatus = (item) => (item?.released_at ? 'Снят' : 'Занят')
+
+const getAccountLabelById = (accountId) => {
+  if (!accountId) return '—'
+  const found = (accountsAll.value || []).find((a) => a.account_id === accountId)
+  return found?.login_full || found?.login_name || String(accountId)
+}
 
 const getAvailableSlotTypes = (statusList, selected) => {
   const list = Array.isArray(statusList) ? statusList : []
@@ -6058,6 +6173,19 @@ async function createQuickAccount(target) {
         newDeal.account_id = created.account_id
       }
     }
+    if (created?.account_id) {
+      const targetList = isEdit ? dealAccountsForGameEdit : dealAccountsForGameNew
+      const exists = (targetList.value || []).some((a) => a.account_id === created.account_id)
+      if (!exists) {
+        const fallback = (accountsAll.value || []).find((a) => a.account_id === created.account_id) || created
+        targetList.value = [fallback, ...(targetList.value || [])]
+      }
+      if (isEdit) {
+        dealGameAssignmentsEdit.value = []
+      } else {
+        dealGameAssignmentsNew.value = []
+      }
+    }
     state.login_name = ''
     state.domain_code = ''
     state.platform_codes = []
@@ -6196,6 +6324,90 @@ async function loadGameSlotAssignments(gameId) {
     gameSlotAssignments.value = []
   } finally {
     gameSlotAssignmentsLoading.value = false
+  }
+}
+
+async function loadDealGameAssignments(target) {
+  const isEdit = target === 'edit'
+  const gameId = isEdit ? editDeal.game_id : newDeal.game_id
+  if (!gameId) {
+    if (isEdit) dealGameAssignmentsEdit.value = []
+    else dealGameAssignmentsNew.value = []
+    return
+  }
+  const loading = isEdit ? dealGameAssignmentsLoadingEdit : dealGameAssignmentsLoadingNew
+  loading.value = true
+  try {
+    const data = await apiGet(`/games/${gameId}/slot-assignments`, { token: auth.state.token })
+    if (isEdit) dealGameAssignmentsEdit.value = data || []
+    else dealGameAssignmentsNew.value = data || []
+  } catch {
+    if (isEdit) dealGameAssignmentsEdit.value = []
+    else dealGameAssignmentsNew.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+async function releaseSlotAssignment(assignmentId) {
+  if (!assignmentId) return
+  if (!window.confirm('Снять слот у пользователя?')) return
+  accountSlotReleaseLoading.value = true
+  try {
+    await apiPost(`/slot-assignments/${assignmentId}/release`, {}, { token: auth.state.token })
+    if (editAccount.open && editAccount.account_id) {
+      await loadAccountSlotAssignments(editAccount.account_id)
+    }
+    if (editDeal.open && editDeal.account_id) {
+      await loadAccountSlotStatus('edit')
+      await loadDealAccountAssignments('edit')
+      await loadDealAccountsForGame('edit')
+    }
+    if (showDealForm.value && newDeal.account_id) {
+      await loadAccountSlotStatus('new')
+      await loadDealAccountAssignments('new')
+      await loadDealAccountsForGame('new')
+    }
+    if (editDeal.open) {
+      await loadDealGameAssignments('edit')
+    }
+    if (showDealForm.value) {
+      await loadDealGameAssignments('new')
+    }
+  } catch (e) {
+    dealError.value = mapApiError(e?.message)
+  } finally {
+    accountSlotReleaseLoading.value = false
+  }
+}
+
+async function releaseSlotFromDeal(item, target) {
+  if (!item?.assignment_id) return
+  if (!window.confirm('Снять слот у пользователя?')) return
+  accountSlotReleaseLoading.value = true
+  try {
+    await apiPost(`/slot-assignments/${item.assignment_id}/release`, {}, { token: auth.state.token })
+    const accountId = item.account_id
+    const slotTypeCode = item.slot_type_code
+    if (target === 'edit') {
+      editDeal.account_id = accountId || ''
+      editDeal.slot_type_code = slotTypeCode || ''
+      await loadAccountSlotStatus('edit')
+      await loadDealAccountAssignments('edit')
+      await loadDealAccountsForGame('edit')
+      await loadDealGameAssignments('edit')
+    } else {
+      newDeal.account_id = accountId || ''
+      newDeal.slot_type_code = slotTypeCode || ''
+      await loadAccountSlotStatus('new')
+      await loadDealAccountAssignments('new')
+      await loadDealAccountsForGame('new')
+      await loadDealGameAssignments('new')
+    }
+  } catch (e) {
+    dealError.value = mapApiError(e?.message)
+  } finally {
+    accountSlotReleaseLoading.value = false
   }
 }
 
@@ -6721,6 +6933,7 @@ watch(
   () => [newDeal.game_id, newDeal.slot_type_code],
   () => {
     loadDealAccountsForGame('new')
+    if (newDeal.game_id) loadDealGameAssignments('new')
   }
 )
 
@@ -6728,6 +6941,7 @@ watch(
   () => [editDeal.game_id, editDeal.slot_type_code],
   () => {
     if (editDeal.open) loadDealAccountsForGame('edit')
+    if (editDeal.open && editDeal.game_id) loadDealGameAssignments('edit')
   }
 )
 
