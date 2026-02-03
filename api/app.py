@@ -230,12 +230,15 @@ class RoleOut(BaseModel):
 
 class DealCreate(BaseModel):
     deal_type_code: str = Field(..., description="sale/rental")
-    account_id: int
+    account_id: Optional[int] = None
     game_id: Optional[int] = None
     customer_nickname: str
     source_code: Optional[str] = None
+    region_code: Optional[str] = None
     platform_code: Optional[str] = None
     price: float = 0
+    purchase_cost: float = 0
+    game_link: Optional[str] = None
     purchase_at: Optional[datetime] = None
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
@@ -248,21 +251,28 @@ class DealUpdate(BaseModel):
     game_id: Optional[int] = None
     customer_nickname: Optional[str] = None
     source_code: Optional[str] = None
+    region_code: Optional[str] = None
     platform_code: Optional[str] = None
     price: Optional[float] = None
+    purchase_cost: Optional[float] = None
+    game_link: Optional[str] = None
     purchase_at: Optional[datetime] = None
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
     slots_used: Optional[int] = None
     notes: Optional[str] = None
+    flow_status_code: Optional[str] = None
 
 class DealListItem(BaseModel):
     deal_id: int
     deal_type: str
     deal_type_code: Optional[str] = None
     status: str
-    account_id: int
+    flow_status: Optional[str] = None
+    flow_status_code: Optional[str] = None
+    account_id: Optional[int] = None
     account_login: Optional[str]
+    region_code: Optional[str]
     game_id: Optional[int]
     game_title: Optional[str]
     game_short_title: Optional[str] = None
@@ -270,6 +280,8 @@ class DealListItem(BaseModel):
     customer_nickname: Optional[str]
     source_code: Optional[str]
     price: float
+    purchase_cost: Optional[float] = None
+    game_link: Optional[str] = None
     purchase_at: Optional[datetime]
     created_at: datetime
     slots_used: Optional[int] = None
@@ -405,6 +417,7 @@ def build_deals_filters(
     q: Optional[str],
     deal_type_code: Optional[str],
     status_code: Optional[str],
+    flow_status_code: Optional[str],
     customer_q: Optional[str],
     source_code: Optional[str],
     purchase_from: Optional[date],
@@ -413,10 +426,12 @@ def build_deals_filters(
     price_max: Optional[float],
     notes_q: Optional[str],
     account_q: Optional[str],
+    region_q: Optional[str],
     game_q: Optional[str],
     platform_q: Optional[str],
     type_q: Optional[str],
     status_q: Optional[str],
+    flow_status_q: Optional[str],
     source_q: Optional[str],
     date_q: Optional[str],
     price_q: Optional[str],
@@ -433,15 +448,28 @@ def build_deals_filters(
         where.append("p.code = %s")
         params.append(platform_code)
     if q:
-        where.append("(g.title ILIKE %s OR a.login_name ILIKE %s OR c.nickname ILIKE %s)")
+        where.append("""
+          (
+            c.nickname ILIKE %s
+            OR COALESCE(rd.code, ra.code) ILIKE %s
+            OR dt.name ILIKE %s
+            OR dt.code ILIKE %s
+            OR fs.name ILIKE %s
+            OR fs.code ILIKE %s
+            OR COALESCE(di.purchase_at, d.created_at)::text ILIKE %s
+          )
+        """)
         like = f"%{q}%"
-        params.extend([like, like, like])
+        params.extend([like, like, like, like, like, like, like])
     if deal_type_code:
         where.append("d.deal_type_code = %s")
         params.append(deal_type_code)
     if status_code:
         where.append("d.status_code = %s")
         params.append(status_code)
+    if flow_status_code:
+        where.append("d.flow_status_code = %s")
+        params.append(flow_status_code)
     if customer_q:
         where.append("c.nickname ILIKE %s")
         params.append(f"%{customer_q}%")
@@ -455,6 +483,10 @@ def build_deals_filters(
         like = f"%{account_q}%"
         where.append("(a.login_name ILIKE %s OR dm.name ILIKE %s)")
         params.extend([like, like])
+    if region_q:
+        like = f"%{region_q}%"
+        where.append("COALESCE(rd.code, ra.code) ILIKE %s")
+        params.append(like)
     if game_q:
         where.append("g.title ILIKE %s")
         params.append(f"%{game_q}%")
@@ -469,6 +501,10 @@ def build_deals_filters(
     if status_q:
         like = f"%{status_q}%"
         where.append("(ds.code ILIKE %s OR ds.name ILIKE %s)")
+        params.extend([like, like])
+    if flow_status_q:
+        like = f"%{flow_status_q}%"
+        where.append("(fs.code ILIKE %s OR fs.name ILIKE %s)")
         params.extend([like, like])
     if source_q:
         like = f"%{source_q}%"
@@ -592,24 +628,45 @@ def _queue_api_request(method: str, path: str, data: Optional[dict] = None) -> O
     if data is not None:
         body = json.dumps(data).encode("utf-8")
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        content = resp.read()
-        if not content:
-            return None
-        return json.loads(content.decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            content = resp.read()
+            if not content:
+                return None
+            return json.loads(content.decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raw = exc.read()
+        details = raw.decode("utf-8", errors="ignore") if raw else ""
+        message = f"Queue API {method} {path} failed: {exc.code} {exc.reason}"
+        if details:
+            message = f"{message}. {details}"
+        raise RuntimeError(message) from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Queue API {method} {path} failed: {exc.reason}") from exc
+
+def is_import_cancelled(job_id: str) -> bool:
+    status = get_import_progress(job_id)
+    return bool(status.get("cancelled"))
 
 def set_import_progress(job_id: str, owner: str, payload: dict):
     data = {"owner": owner}
     data.update(payload)
     if _QUEUE_API_URL:
-        _queue_api_request("POST", f"/status/{job_id}", {"data": data})
+        try:
+            _queue_api_request("POST", f"/status/{job_id}", {"data": data})
+        except Exception as exc:
+            print(f"Queue API status update failed: {exc}")
         return
     r = get_redis()
     r.setex(_job_key(job_id), IMPORT_STATUS_TTL_SEC, json.dumps(data))
 
 def get_import_progress(job_id: str) -> dict:
     if _QUEUE_API_URL:
-        return _queue_api_request("GET", f"/status/{job_id}") or {}
+        try:
+            return _queue_api_request("GET", f"/status/{job_id}") or {}
+        except Exception as exc:
+            print(f"Queue API status read failed: {exc}")
+            return {}
     r = get_redis()
     raw = r.get(_job_key(job_id))
     if not raw:
@@ -621,38 +678,25 @@ def get_import_progress(job_id: str) -> dict:
 
 def clear_import_progress(job_id: str):
     if _QUEUE_API_URL:
-        _queue_api_request("DELETE", f"/status/{job_id}")
+        try:
+            _queue_api_request("DELETE", f"/status/{job_id}")
+        except Exception as exc:
+            print(f"Queue API status delete failed: {exc}")
         return
     r = get_redis()
     r.delete(_job_key(job_id))
 
 GAME_IMPORT_HEADERS = [
-    "Название",
-    "Ссылка",
-    "Логотип",
+    "Игра",
     "Платформа",
-    "Язык текста",
-    "Язык озвучки",
-    "Поддержка VR",
 ]
 
 GAME_IMPORT_HEADER_MAP = {
-    "Название": "title",
-    "Ссылка": "link",
-    "Логотип": "logo",
+    "Игра": "title",
     "Платформа": "platform_codes",
-    "Язык текста": "text_lang",
-    "Язык озвучки": "audio_lang",
-    "Поддержка VR": "vr_support",
     # legacy/tech headers
     "title": "title",
-    "short_title": "short_title",
     "platform_codes": "platform_codes",
-    "region_code": "region_code",
-    "link": "link",
-    "text_lang": "text_lang",
-    "audio_lang": "audio_lang",
-    "vr_support": "vr_support",
 }
 
 def find_game_title_platform_conflicts(conn, title: str, platform_codes: List[str], exclude_game_id: Optional[int] = None) -> List[str]:
@@ -755,16 +799,13 @@ def validate_game_import_rows(conn, rows: List[dict], progress_cb=None, check_lo
     for idx, row in enumerate(rows, start=2):
         title = (row.get("title") or "").strip()
         platform_codes = parse_import_platforms(row.get("platform_codes") or "")
-        logo_url = (row.get("logo") or "").strip()
         if not title:
-            errors.append({"row": idx, "field": "Название", "message": "Название обязательно"})
+            errors.append({"row": idx, "field": "Игра", "message": "Название обязательно"})
         if not platform_codes:
             warnings.append({"row": idx, "field": "Платформа", "message": "Платформы не указаны — строка будет пропущена"})
         for code in platform_codes:
             if code not in platforms:
                 errors.append({"row": idx, "field": "Платформа", "message": f"Неизвестная платформа: {code}"})
-        if logo_url and not logo_url.lower().startswith(("http://", "https://")):
-            errors.append({"row": idx, "field": "Логотип", "message": "Ссылка должна начинаться с http:// или https://"})
         if progress_cb:
             progress_cb(idx - 1)
     return errors, warnings
@@ -1929,52 +1970,17 @@ def run_games_import_job(job_id: str, content: bytes, owner: str):
                     "result": {"ok": False, "total": len(rows), "errors": errors, "warnings": warnings},
                 })
                 return
+            if is_import_cancelled(job_id):
+                set_import_progress(job_id, owner, {
+                    "phase": "cancelled",
+                    "current": 0,
+                    "total": len(rows),
+                    "done": True,
+                    "cancelled": True,
+                    "result": {"ok": False, "cancelled": True},
+                })
+                return
             total = len(rows)
-            set_import_progress(job_id, owner, {"phase": "download", "current": 0, "total": 0, "done": False})
-            logo_errors = []
-            logo_failed_rows = set()
-            logo_payloads = {}
-            existing_game_by_row = {}
-            existing_logo_by_row = {}
-            for idx, item in enumerate(rows, start=2):
-                title = (item.get("title") or "").strip()
-                platform_codes = parse_import_platforms(item.get("platform_codes") or "")
-                existing_game_id = find_game_id_by_title_platforms(conn, title, platform_codes)
-                if existing_game_id:
-                    existing_game_by_row[idx] = existing_game_id
-                    row = q1(conn, "SELECT logo_blob IS NOT NULL FROM app.game_titles WHERE game_id=%s", (existing_game_id,))
-                    existing_logo_by_row[idx] = bool(row[0]) if row else False
-
-            download_candidates = []
-            for idx, item in enumerate(rows, start=2):
-                logo_url = (item.get("logo") or "").strip()
-                if not logo_url:
-                    continue
-                if existing_logo_by_row.get(idx):
-                    continue
-                download_candidates.append(idx)
-
-            total_download = len(download_candidates)
-            download_done = 0
-            set_import_progress(job_id, owner, {"phase": "download", "current": 0, "total": total_download, "done": False})
-
-            for idx in download_candidates:
-                item = rows[idx - 2]
-                logo_url = (item.get("logo") or "").strip()
-                try:
-                    logo_payloads[idx] = fetch_logo_from_url(logo_url)
-                except Exception as exc:
-                    logo_failed_rows.add(idx)
-                    logo_errors.append({
-                        "row": idx,
-                        "field": "Логотип",
-                        "message": f"Не удалось загрузить логотип ({type(exc).__name__}): {exc} [{logo_url}]",
-                    })
-                download_done += 1
-                set_import_progress(job_id, owner, {"phase": "download", "current": download_done, "total": total_download, "done": False})
-                if LOGO_DOWNLOAD_DELAY_SEC > 0:
-                    time.sleep(LOGO_DOWNLOAD_DELAY_SEC)
-
             set_import_progress(job_id, owner, {"phase": "upload", "current": 0, "total": total, "done": False})
             created = 0
             updated = 0
@@ -1982,23 +1988,29 @@ def run_games_import_job(job_id: str, content: bytes, owner: str):
             failed = 0
             last_success_row = None
             row_errors = []
-            if logo_errors:
-                row_errors.extend(logo_errors)
             upload_done = 0
+            existing_game_by_row = {}
             for idx, item in enumerate(rows, start=2):
+                title = (item.get("title") or "").strip()
+                platform_codes = parse_import_platforms(item.get("platform_codes") or "")
+                existing_game_id = find_game_id_by_title_platforms(conn, title, platform_codes)
+                if existing_game_id:
+                    existing_game_by_row[idx] = existing_game_id
+
+            for idx, item in enumerate(rows, start=2):
+                if is_import_cancelled(job_id):
+                    set_import_progress(job_id, owner, {
+                        "phase": "cancelled",
+                        "current": upload_done,
+                        "total": total,
+                        "done": True,
+                        "cancelled": True,
+                        "result": {"ok": False, "cancelled": True},
+                    })
+                    return
                 try:
                     title = (item.get("title") or "").strip()
-                    link = (item.get("link") or "").strip() or None
-                    text_lang = (item.get("text_lang") or "").strip() or None
-                    audio_lang = (item.get("audio_lang") or "").strip() or None
-                    vr_support = (item.get("vr_support") or "").strip() or None
                     platform_codes = parse_import_platforms(item.get("platform_codes") or "")
-                    logo_payload = logo_payloads.get(idx)
-                    if idx in logo_failed_rows:
-                        failed += 1
-                        upload_done += 1
-                        set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
-                        continue
                     if not platform_codes:
                         skipped += 1
                         upload_done += 1
@@ -2006,52 +2018,13 @@ def run_games_import_job(job_id: str, content: bytes, owner: str):
                         continue
                     existing_game_id = existing_game_by_row.get(idx) or find_game_id_by_title_platforms(conn, title, platform_codes)
                     if existing_game_id:
-                        if not any([link, text_lang, audio_lang, vr_support, logo_payload]):
-                            game_id = existing_game_id
-                            skipped += 1
-                        else:
-                            exec1(
-                                conn,
-                                """
-                                UPDATE app.game_titles
-                                SET link = COALESCE(%s, link),
-                                    text_lang = COALESCE(%s, text_lang),
-                                    audio_lang = COALESCE(%s, audio_lang),
-                                    vr_support = COALESCE(%s, vr_support),
-                                    logo_blob = COALESCE(%s, logo_blob),
-                                    logo_mime = COALESCE(%s, logo_mime)
-                                WHERE game_id = %s
-                                """,
-                                (
-                                    link,
-                                    text_lang,
-                                    audio_lang,
-                                    vr_support,
-                                    logo_payload[0] if logo_payload else None,
-                                    logo_payload[1] if logo_payload else None,
-                                    existing_game_id,
-                                ),
-                            )
-                            game_id = existing_game_id
-                            updated += 1
+                        game_id = existing_game_id
+                        updated += 1
                     else:
                         row = q1(
                             conn,
-                            """
-                            INSERT INTO app.game_titles(title, link, text_lang, audio_lang, vr_support, region_id, logo_blob, logo_mime)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                            RETURNING game_id
-                            """,
-                            (
-                                title,
-                                link,
-                                text_lang,
-                                audio_lang,
-                                vr_support,
-                                None,
-                                logo_payload[0] if logo_payload else None,
-                                logo_payload[1] if logo_payload else None,
-                            ),
+                            "INSERT INTO app.game_titles(title) VALUES (%s) RETURNING game_id",
+                            (title,),
                         )
                         game_id = int(row[0])
                         created += 1
@@ -2150,6 +2123,23 @@ def games_import(file: UploadFile = File(...), user: UserOut = Depends(require_r
     thread.start()
     return {"ok": True, "job_id": job_id}
 
+@app.post("/games/import/cancel")
+def games_import_cancel(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    status = get_import_progress(job_id)
+    if not status:
+        return {"ok": True}
+    if status.get("owner") and status.get("owner") != user.username:
+        raise HTTPException(403, "job not found")
+    set_import_progress(job_id, user.username, {
+        "phase": "cancelled",
+        "current": int(status.get("current") or 0),
+        "total": int(status.get("total") or 0),
+        "done": True,
+        "cancelled": True,
+        "result": {"ok": False, "cancelled": True},
+    })
+    return {"ok": True}
+
 @app.post("/rentals")
 def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_user)):
     if payload.slots_used <= 0:
@@ -2193,20 +2183,25 @@ def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_use
             raise HTTPException(409, f"Not enough free slots. free_slots={free}, requested={payload.slots_used}")
 
         # create deal + item
+        region_row = q1(conn, "SELECT region_id FROM app.accounts WHERE account_id=%s", (payload.account_id,))
+        region_id = int(region_row[0]) if region_row and region_row[0] is not None else None
         deal_row = q1(conn, """
-            INSERT INTO app.deals(deal_type_code, status_code, customer_id, currency, total_amount)
-            VALUES ('rental', 'confirmed', %s, 'RUB', %s)
+            INSERT INTO app.deals(deal_type_code, status_code, flow_status_code, region_id, customer_id, currency, total_amount)
+            VALUES ('rental', 'confirmed', 'pending', %s, %s, 'RUB', %s)
             RETURNING deal_id
-        """, (customer_id, payload.price))
+        """, (region_id, customer_id, payload.price))
         deal_id = int(deal_row[0])
 
         q1(conn, """
-            INSERT INTO app.deal_items(deal_id, account_id, game_id, platform_id, qty, price, start_at, end_at, slots_used, purchase_at, notes)
-            VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, %s)
+            INSERT INTO app.deal_items(
+              deal_id, account_id, game_id, platform_id,
+              qty, price, purchase_cost, start_at, end_at, slots_used, purchase_at, notes, game_link
+            )
+            VALUES (%s, %s, %s, %s, 1, %s, 0, %s, %s, %s, %s, %s, %s)
             RETURNING deal_item_id
         """, (
             deal_id, payload.account_id, payload.game_id, platform_id,
-            payload.price, start_at, end_at, payload.slots_used, payload.purchase_at, None
+            payload.price, start_at, end_at, payload.slots_used, payload.purchase_at, None, None
         ))
 
         conn.commit()
@@ -2220,20 +2215,38 @@ def create_deal(payload: DealCreate, user: UserOut = Depends(get_current_user)):
     deal_type = payload.deal_type_code.strip().lower()
     if deal_type not in ("sale", "rental"):
         raise HTTPException(400, "deal_type_code must be sale or rental")
-    if deal_type == "rental" and payload.slots_used <= 0:
-        raise HTTPException(400, "slots_used must be >= 1 for rental")
+    if deal_type == "rental":
+        if payload.slots_used <= 0:
+            raise HTTPException(400, "slots_used must be >= 1 for rental")
+        if not payload.account_id:
+            raise HTTPException(400, "account_id is required for rental")
+        if not payload.game_id:
+            raise HTTPException(400, "game_id is required for rental")
+        if not payload.platform_code:
+            raise HTTPException(400, "platform_code is required for rental")
+    if deal_type == "sale":
+        if not payload.region_code:
+            raise HTTPException(400, "region_code is required for sale")
     if deal_type == "sale":
         payload.slots_used = 0
+        if not payload.purchase_at:
+            payload.purchase_at = now_utc()
     validate_date_in_range(payload.purchase_at, "purchase_at")
     validate_date_in_range(payload.start_at, "start_at")
     validate_date_in_range(payload.end_at, "end_at")
     validate_date_range(payload.start_at, payload.end_at, "end_at")
 
     with psycopg.connect(DB_DSN) as conn:
-        ensure_account_exists(conn, payload.account_id)
-        ensure_game_exists(conn, payload.game_id)
+        if deal_type == "rental":
+            ensure_account_exists(conn, payload.account_id)
+            ensure_game_exists(conn, payload.game_id)
         ensure_source_exists(conn, payload.source_code)
-        platform_id = get_platform_id_optional(conn, payload.platform_code)
+        platform_id = get_platform_id_optional(conn, payload.platform_code) if deal_type == "rental" else None
+        region_id = get_region_id(conn, payload.region_code)
+        if region_id is None:
+            if payload.account_id:
+                region_row = q1(conn, "SELECT region_id FROM app.accounts WHERE account_id=%s", (payload.account_id,))
+                region_id = int(region_row[0]) if region_row and region_row[0] is not None else None
 
         row = q1(conn, "SELECT customer_id, source_code FROM app.customers WHERE nickname=%s", (payload.customer_nickname,))
         if row:
@@ -2253,30 +2266,28 @@ def create_deal(payload: DealCreate, user: UserOut = Depends(get_current_user)):
             customer_id = int(row[0])
 
         if deal_type == "rental":
-            if not platform_id:
-                raise HTTPException(400, "platform_code is required for rental")
             occ, free = slots_summary(conn, payload.account_id, platform_id)
             if free < payload.slots_used:
                 raise HTTPException(409, f"Not enough free slots. free_slots={free}, requested={payload.slots_used}")
 
         deal_row = q1(conn, """
-            INSERT INTO app.deals(deal_type_code, status_code, customer_id, currency, total_amount)
-            VALUES (%s, 'confirmed', %s, 'RUB', %s)
+            INSERT INTO app.deals(deal_type_code, status_code, flow_status_code, region_id, customer_id, currency, total_amount)
+            VALUES (%s, 'confirmed', 'pending', %s, %s, 'RUB', %s)
             RETURNING deal_id
-        """, (deal_type, customer_id, payload.price))
+        """, (deal_type, region_id, customer_id, payload.price))
         deal_id = int(deal_row[0])
 
         q1(conn, """
             INSERT INTO app.deal_items(
               deal_id, account_id, game_id, platform_id,
-              qty, price, fee, purchase_at, start_at, end_at, slots_used, notes
+              qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, notes, game_link
             )
-            VALUES (%s, %s, %s, %s, 1, %s, 0, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, 1, %s, %s, 0, %s, %s, %s, %s, %s, %s)
             RETURNING deal_item_id
         """, (
             deal_id, payload.account_id, payload.game_id, platform_id,
-            payload.price, payload.purchase_at, payload.start_at, payload.end_at,
-            payload.slots_used, payload.notes
+            payload.price, payload.purchase_cost, payload.purchase_at, payload.start_at, payload.end_at,
+            payload.slots_used, payload.notes, payload.game_link
         ))
         conn.commit()
 
@@ -2291,12 +2302,16 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
     if payload.end_at is not None:
         validate_date_in_range(payload.end_at, "end_at")
     with psycopg.connect(DB_DSN) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT set_config('app.user', %s, true)", (user.username,))
         row = q1(
             conn,
             """
             SELECT
               d.deal_type_code,
               d.status_code,
+              d.flow_status_code,
+              d.region_id,
               d.customer_id,
               d.total_amount,
               di.deal_item_id,
@@ -2304,11 +2319,13 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
               di.game_id,
               di.platform_id,
               di.price,
+              di.purchase_cost,
               di.purchase_at,
               di.start_at,
               di.end_at,
               di.slots_used,
-              di.notes
+              di.notes,
+              di.game_link
             FROM app.deals d
             JOIN app.deal_items di ON di.deal_id = d.deal_id
             WHERE d.deal_id=%s
@@ -2320,8 +2337,8 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
         if not row:
             raise HTTPException(404, "Deal not found")
 
-        current_type, status_code, customer_id, total_amount, deal_item_id, \
-            account_id, game_id, platform_id, price, purchase_at, start_at, end_at, slots_used, notes = row
+        current_type, status_code, flow_status_code, region_id, customer_id, total_amount, deal_item_id, \
+            account_id, game_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, notes, game_link = row
 
         deal_type = (payload.deal_type_code or current_type or "").strip().lower()
         if deal_type not in ("sale", "rental"):
@@ -2329,9 +2346,9 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
 
         new_account_id = payload.account_id if payload.account_id is not None else account_id
         new_game_id = payload.game_id if payload.game_id is not None else game_id
-        ensure_account_exists(conn, new_account_id)
-        ensure_game_exists(conn, new_game_id)
         ensure_source_exists(conn, payload.source_code if payload.source_code is not None else None)
+        if payload.region_code is not None:
+            region_id = get_region_id(conn, payload.region_code)
 
         new_platform_id = platform_id
         if payload.platform_code is not None:
@@ -2344,21 +2361,39 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
             customer_id = ensure_customer(conn, cust_nickname, cust_source)
 
         new_price = payload.price if payload.price is not None else price
+        new_purchase_cost = payload.purchase_cost if payload.purchase_cost is not None else purchase_cost
         new_purchase_at = payload.purchase_at if payload.purchase_at is not None else purchase_at
         new_start_at = payload.start_at if payload.start_at is not None else start_at
         new_end_at = payload.end_at if payload.end_at is not None else end_at
         new_notes = payload.notes if payload.notes is not None else notes
+        new_game_link = payload.game_link if payload.game_link is not None else game_link
         new_slots_used = payload.slots_used if payload.slots_used is not None else slots_used
+        new_flow_status = payload.flow_status_code if payload.flow_status_code is not None else flow_status_code
+        if payload.flow_status_code is not None:
+            row = q1(conn, "SELECT 1 FROM app.deal_flow_statuses WHERE code=%s", (payload.flow_status_code,))
+            if not row:
+                raise HTTPException(400, "Unknown flow_status_code")
         if deal_type == "sale":
             new_slots_used = 0
+            new_account_id = None
+            new_game_id = None
+            new_platform_id = None
+            if region_id is None:
+                raise HTTPException(400, "region_code is required for sale")
         if deal_type == "rental" and new_slots_used <= 0:
             raise HTTPException(400, "slots_used must be >= 1 for rental")
         validate_date_range(new_start_at, new_end_at, "end_at")
 
         # check slots for rental
         if deal_type == "rental":
+            if not new_account_id:
+                raise HTTPException(400, "account_id is required for rental")
+            if not new_game_id:
+                raise HTTPException(400, "game_id is required for rental")
             if not new_platform_id:
                 raise HTTPException(400, "platform_code is required for rental")
+            ensure_account_exists(conn, new_account_id)
+            ensure_game_exists(conn, new_game_id)
             occ, free = slots_summary(conn, new_account_id, new_platform_id)
             free_adjusted = free + (slots_used if new_account_id == account_id else 0)
             if free_adjusted < new_slots_used:
@@ -2368,10 +2403,10 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
             conn,
             """
             UPDATE app.deals
-            SET deal_type_code=%s, customer_id=%s, total_amount=%s
+            SET deal_type_code=%s, customer_id=%s, total_amount=%s, flow_status_code=%s, region_id=%s
             WHERE deal_id=%s
             """,
-            (deal_type, customer_id, new_price, deal_id),
+            (deal_type, customer_id, new_price, new_flow_status, region_id, deal_id),
         )
 
         exec1(
@@ -2382,11 +2417,13 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
                 game_id=%s,
                 platform_id=%s,
                 price=%s,
+                purchase_cost=%s,
                 purchase_at=%s,
                 start_at=%s,
                 end_at=%s,
                 slots_used=%s,
-                notes=%s
+                notes=%s,
+                game_link=%s
             WHERE deal_item_id=%s
             """,
             (
@@ -2394,11 +2431,13 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
                 new_game_id,
                 new_platform_id,
                 new_price,
+                new_purchase_cost,
                 new_purchase_at,
                 new_start_at,
                 new_end_at,
                 new_slots_used,
                 new_notes,
+                new_game_link,
                 deal_item_id,
             ),
         )
@@ -2414,6 +2453,7 @@ def list_deals(
     q: Optional[str] = None,
     deal_type_code: Optional[str] = None,
     status_code: Optional[str] = None,
+    flow_status_code: Optional[str] = None,
     customer_q: Optional[str] = None,
     source_code: Optional[str] = None,
     purchase_from: Optional[date] = None,
@@ -2422,10 +2462,12 @@ def list_deals(
     price_max: Optional[float] = None,
     notes_q: Optional[str] = None,
     account_q: Optional[str] = None,
+    region_q: Optional[str] = None,
     game_q: Optional[str] = None,
     platform_q: Optional[str] = None,
     type_q: Optional[str] = None,
     status_q: Optional[str] = None,
+    flow_status_q: Optional[str] = None,
     source_q: Optional[str] = None,
     date_q: Optional[str] = None,
     price_q: Optional[str] = None,
@@ -2447,6 +2489,7 @@ def list_deals(
             q,
             deal_type_code,
             status_code,
+            flow_status_code,
             customer_q,
             source_code,
             purchase_from,
@@ -2455,10 +2498,12 @@ def list_deals(
             price_max,
             notes_q,
             account_q,
+            region_q,
             game_q,
             platform_q,
             type_q,
             status_q,
+            flow_status_q,
             source_q,
             date_q,
             price_q,
@@ -2470,10 +2515,15 @@ def list_deals(
             JOIN app.deals d ON d.deal_id = di.deal_id
             LEFT JOIN app.accounts a ON a.account_id = di.account_id
             LEFT JOIN app.domains dm ON dm.domain_id = a.domain_id
+            LEFT JOIN app.regions ra ON ra.region_id = a.region_id
+            LEFT JOIN app.regions rd ON rd.region_id = d.region_id
             LEFT JOIN app.game_titles g ON g.game_id = di.game_id
             LEFT JOIN app.platforms p ON p.platform_id = di.platform_id
             LEFT JOIN app.customers c ON c.customer_id = d.customer_id
             LEFT JOIN app.sources src ON src.code = c.source_code
+            LEFT JOIN app.deal_flow_statuses fs ON fs.code = d.flow_status_code
+            LEFT JOIN app.deal_statuses ds ON ds.code = d.status_code
+            LEFT JOIN app.deal_types dt ON dt.code = d.deal_type_code
             {where_sql}
         """, params)
         total = int(total_row[0]) if total_row else 0
@@ -2484,6 +2534,9 @@ def list_deals(
               dt.name as deal_type_name,
               dt.code as deal_type_code,
               ds.name as status_name,
+              d.flow_status_code,
+              fs.name as flow_status_name,
+              COALESCE(rd.code, ra.code) as region_code,
               di.account_id,
               a.login_name,
               dm.name as domain_name,
@@ -2494,16 +2547,21 @@ def list_deals(
               c.nickname,
               c.source_code,
               di.price,
+              di.purchase_cost,
               di.purchase_at,
               d.created_at,
               di.slots_used,
-              di.notes
+              di.notes,
+              di.game_link
             FROM app.deal_items di
             JOIN app.deals d ON d.deal_id = di.deal_id
             LEFT JOIN app.deal_types dt ON dt.code = d.deal_type_code
             LEFT JOIN app.deal_statuses ds ON ds.code = d.status_code
+            LEFT JOIN app.deal_flow_statuses fs ON fs.code = d.flow_status_code
             LEFT JOIN app.accounts a ON a.account_id = di.account_id
             LEFT JOIN app.domains dm ON dm.domain_id = a.domain_id
+            LEFT JOIN app.regions ra ON ra.region_id = a.region_id
+            LEFT JOIN app.regions rd ON rd.region_id = d.region_id
             LEFT JOIN app.game_titles g ON g.game_id = di.game_id
             LEFT JOIN app.platforms p ON p.platform_id = di.platform_id
             LEFT JOIN app.customers c ON c.customer_id = d.customer_id
@@ -2515,26 +2573,31 @@ def list_deals(
 
     items = []
     for r in rows:
-        login_full = f"{r[5]}@{r[6]}" if r[5] and r[6] else None
+        login_full = f"{r[8]}@{r[9]}" if r[8] and r[9] else None
         items.append(
             DealListItem(
                 deal_id=r[0],
                 deal_type=r[1],
                 deal_type_code=r[2],
                 status=r[3],
-                account_id=r[4],
+                flow_status_code=r[4],
+                flow_status=r[5],
+                region_code=r[6],
+                account_id=r[7],
                 account_login=login_full,
-                game_id=r[7],
-                game_title=r[8],
-                game_short_title=r[9],
-                platform_code=r[10],
-                customer_nickname=r[11],
-                source_code=r[12],
-                price=float(r[13] or 0),
-                purchase_at=r[14],
-                created_at=r[15],
-                slots_used=r[16],
-                notes=r[17],
+                game_id=r[10],
+                game_title=r[11],
+                game_short_title=r[12],
+                platform_code=r[13],
+                customer_nickname=r[14],
+                source_code=r[15],
+                price=float(r[16] or 0),
+                purchase_cost=float(r[17] or 0),
+                purchase_at=r[18],
+                created_at=r[19],
+                slots_used=r[20],
+                notes=r[21],
+                game_link=r[22],
             )
         )
 

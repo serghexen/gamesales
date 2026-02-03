@@ -37,7 +37,7 @@
         <div class="actions">
           <nav class="tabs">
             <button class="tab" :class="{ active: activeTab === 'deals' }" @click="activeTab = 'deals'">
-              Продажа/аренда
+              Продажи/Шеринг
             </button>
             <button class="tab" :class="{ active: activeTab === 'games' }" @click="activeTab = 'games'">
               Игры
@@ -476,7 +476,7 @@
             <div v-if="accountsTotal > 0" class="pager">
               <span class="muted">Всего: {{ accountsTotal }}</span>
               <label class="pager__size">
-                <span class="muted">На странице</span>
+                <span class="muted">Показывать</span>
                 <select v-model.number="accountsPageSize" class="input input--select input--compact">
                   <option :value="20">20</option>
                   <option :value="50">50</option>
@@ -646,7 +646,7 @@
                       </div>
                       </div>
                       <div class="field field--full">
-                        <span class="label">Игры</span>
+                        <span class="label">Игры (необязательно)</span>
                         <div v-if="accountEditMode === 'view'" class="pill-list">
                           <span v-for="t in accountGameTitles" :key="t" class="pill">{{ t }}</span>
                           <span v-if="!accountGameTitles.length" class="muted">Пока нет игр.</span>
@@ -701,7 +701,7 @@
                                 <span :title="getDealGameTitleTooltip(d)">{{ getDealGameTitleDisplay(d) }}</span>
                               </td>
                               <td>{{ d.deal_type || '—' }}</td>
-                              <td>{{ d.status || '—' }}</td>
+                              <td>{{ d.flow_status || '—' }}</td>
                               <td>{{ formatDate(d.purchase_at || d.created_at) }}</td>
                             </tr>
                           </tbody>
@@ -793,7 +793,7 @@
                         </div>
                       </div>
                       <div class="field field--full">
-                        <span class="label">Игры</span>
+                        <span class="label">Игры (необязательно)</span>
                         <input v-model.trim="accountGameSearch" class="input" placeholder="поиск" />
                         <div class="check-list">
                           <label v-for="g in filteredAccountGames" :key="g.game_id" class="check-item">
@@ -962,9 +962,19 @@
                         <span v-if="gameImportLoading && gameImportAction === 'upload'" class="spinner spinner--small"></span>
                         Загрузить
                       </button>
+                      <button
+                        v-if="gameImportLoading && gameImportJobId"
+                        class="ghost"
+                        type="button"
+                        @click="cancelGameImport"
+                        title="Отменить импорт"
+                        aria-label="Отменить импорт"
+                      >
+                        Отмена
+                      </button>
                       <button v-if="gameImportLoading" class="import-status" type="button" @click="scrollToImportDetails">
                         <span v-if="gameImportAction === 'validate'">Проверка…</span>
-                        <span v-else-if="gameImportAction === 'upload' && gameImportProgress.phase === 'download'">Скачивание логотипов…</span>
+                        <span v-else-if="gameImportAction === 'cancel'">Отмена…</span>
                         <span v-else-if="gameImportAction === 'upload' && gameImportProgress.total">Загрузка: {{ gameImportProgress.current }} из {{ gameImportProgress.total }}</span>
                         <span v-else-if="gameImportAction === 'upload'">Загрузка…</span>
                       </button>
@@ -1424,10 +1434,40 @@
         <section v-if="activeTab === 'deals'" class="panel panel--wide">
           <div class="panel__head">
             <div>
-              <h2>Продажа / аренда</h2>
-              <p class="muted">Фиксация выдач и продаж по аккаунтам.</p>
+              <div class="toolbar-actions">
+                <label class="field field--compact">
+                  <input
+                    v-model.trim="dealFilters.search_q"
+                    class="input input--compact"
+                    placeholder="пользователь, регион, дата, статус, тип"
+                    @keydown.enter.prevent="applyDealSearch"
+                  />
+                </label>
+                <button class="btn btn--icon btn--glow btn--glow-filter" type="button" @click="applyDealSearch" aria-label="Найти" title="Найти">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 21l-4.2-4.2" />
+                    <circle cx="11" cy="11" r="7" />
+                  </svg>
+                </button>
+              </div>
             </div>
             <div class="toolbar-actions">
+              <div class="switch-wrap">
+                <label class="switch">
+                  <input v-model="dealShowCompleted" type="checkbox" @change="loadDeals(1)" />
+                  <div class="slider">
+                    <div class="circle">
+                      <svg class="cross" viewBox="0 0 365.696 365.696" aria-hidden="true">
+                        <path fill="currentColor" d="M243.188 182.86 356.32 69.726c12.5-12.5 12.5-32.766 0-45.247L341.238 9.398c-12.504-12.503-32.77-12.503-45.25 0L182.86 122.528 69.727 9.374c-12.5-12.5-32.766-12.5-45.247 0L9.375 24.457c-12.5 12.504-12.5 32.77 0 45.25l113.152 113.152L9.398 295.99c-12.503 12.503-12.503 32.769 0 45.25L24.48 356.32c12.5 12.5 32.766 12.5 45.247 0l113.132-113.132L295.99 356.32c12.503 12.5 32.769 12.5 45.25 0l15.081-15.082c12.5-12.504 12.5-32.77 0-45.25zm0 0"></path>
+                      </svg>
+                      <svg class="checkmark" viewBox="0 0 24 24" aria-hidden="true">
+                        <path fill="currentColor" d="M9.707 19.121a.997.997 0 0 1-1.414 0l-5.646-5.647a1.5 1.5 0 0 1 0-2.121l.707-.707a1.5 1.5 0 0 1 2.121 0L9 14.171l9.525-9.525a1.5 1.5 0 0 1 2.121 0l.707.707a1.5 1.5 0 0 1 0 2.121z"></path>
+                      </svg>
+                    </div>
+                  </div>
+                </label>
+                <span class="switch-label">Показать завершенные</span>
+              </div>
               <button
                 class="btn btn--icon btn--glow btn--glow-add"
                 title="Добавить продажу"
@@ -1497,56 +1537,6 @@
             <table v-if="sortedDeals.length" class="table">
               <thead>
                 <tr>
-                  <th class="sortable cell--account" @click="toggleDealSort('account')">
-                    <span class="th-title th-title--filter">
-                      Аккаунт
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(dealFilters.account_q) }"
-                        type="button"
-                        aria-label="Фильтр по аккаунту"
-                        title="Фильтр по аккаунту"
-                        @click.stop="activeDealFilter = activeDealFilter === 'account' ? '' : 'account'"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
-                    </span>
-                    <div v-if="activeDealFilter === 'account'" class="filter-pop filter-pop--left" @click.stop>
-                      <label class="field">
-                        <span class="label">Аккаунт</span>
-                        <input v-model.trim="dealFilters.account_q" class="input" placeholder="аккаунт" />
-                      </label>
-                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
-                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('account')">Сбросить</button>
-                    </div>
-                  </th>
-                  <th class="sortable" @click="toggleDealSort('game')">
-                    <span class="th-title th-title--filter">
-                      Игра
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(dealFilters.game_q) }"
-                        type="button"
-                        aria-label="Фильтр по игре"
-                        title="Фильтр по игре"
-                        @click.stop="activeDealFilter = activeDealFilter === 'game' ? '' : 'game'"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
-                    </span>
-                    <div v-if="activeDealFilter === 'game'" class="filter-pop filter-pop--center" @click.stop>
-                      <label class="field">
-                        <span class="label">Игра</span>
-                        <input v-model.trim="dealFilters.game_q" class="input" placeholder="игра" />
-                      </label>
-                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
-                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('game')">Сбросить</button>
-                    </div>
-                  </th>
                   <th class="sortable cell--tight" @click="toggleDealSort('type')">
                     <span class="th-title th-title--filter">
                       Тип
@@ -1563,13 +1553,128 @@
                         </svg>
                       </button>
                     </span>
-                    <div v-if="activeDealFilter === 'type'" class="filter-pop filter-pop--center" @click.stop>
+                    <div v-if="activeDealFilter === 'type'" class="filter-pop filter-pop--left" @click.stop>
                       <label class="field">
                         <span class="label">Тип</span>
-                        <input v-model.trim="dealFilters.type_q" class="input" placeholder="тип сделки" />
+                        <input
+                          v-model.trim="dealFilters.type_q"
+                          class="input"
+                          placeholder="тип"
+                          @keydown.enter.prevent="loadDeals(1); activeDealFilter = ''"
+                        />
                       </label>
                       <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
                       <button class="ghost ghost--small" type="button" @click="resetDealFilter('type')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable" @click="toggleDealSort('customer')">
+                    <span class="th-title th-title--filter">
+                      Пользователь
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(dealFilters.customer_q) }"
+                        type="button"
+                        aria-label="Фильтр по пользователю"
+                        title="Фильтр по пользователю"
+                        @click.stop="activeDealFilter = activeDealFilter === 'customer' ? '' : 'customer'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeDealFilter === 'customer'" class="filter-pop filter-pop--center" @click.stop>
+                      <label class="field">
+                        <span class="label">Пользователь</span>
+                        <input
+                          v-model.trim="dealFilters.customer_q"
+                          class="input"
+                          placeholder="пользователь"
+                          @keydown.enter.prevent="loadDeals(1); activeDealFilter = ''"
+                        />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('customer')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable cell--tight" @click="toggleDealSort('region')">
+                    <span class="th-title th-title--filter">
+                      Регион
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(dealFilters.region_q) }"
+                        type="button"
+                        aria-label="Фильтр по региону"
+                        title="Фильтр по региону"
+                        @click.stop="activeDealFilter = activeDealFilter === 'region' ? '' : 'region'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeDealFilter === 'region'" class="filter-pop filter-pop--center" @click.stop>
+                      <label class="field">
+                        <span class="label">Регион</span>
+                        <input
+                          v-model.trim="dealFilters.region_q"
+                          class="input"
+                          placeholder="регион"
+                          @keydown.enter.prevent="loadDeals(1); activeDealFilter = ''"
+                        />
+                      </label>
+                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('region')">Сбросить</button>
+                    </div>
+                  </th>
+                  <th class="sortable" @click="toggleDealSort('date')">
+                    <span class="th-title th-title--filter">
+                      Дата/время
+                      <button
+                        class="filter-icon"
+                        :class="{ 'filter-icon--active': Boolean(dealFilters.purchase_from || dealFilters.purchase_to) }"
+                        type="button"
+                        aria-label="Фильтр по дате"
+                        title="Фильтр по дате"
+                        @click.stop="activeDealFilter = activeDealFilter === 'date' ? '' : 'date'"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16M7 12h10M10 18h4" />
+                        </svg>
+                      </button>
+                    </span>
+                    <div v-if="activeDealFilter === 'date'" class="filter-pop filter-pop--right" @click.stop>
+                      <label class="field">
+                        <span class="label">С</span>
+                        <input
+                          v-model="dealFilters.purchase_from"
+                          class="input"
+                          type="date"
+                          :min="minDate"
+                          :max="maxDate"
+                          @keydown.enter.prevent="validateDealRange('date') && (loadDeals(1), activeDealFilter = '')"
+                        />
+                      </label>
+                      <label class="field">
+                        <span class="label">По</span>
+                        <input
+                          v-model="dealFilters.purchase_to"
+                          class="input"
+                          type="date"
+                          :min="minDate"
+                          :max="maxDate"
+                          @keydown.enter.prevent="validateDealRange('date') && (loadDeals(1), activeDealFilter = '')"
+                        />
+                      </label>
+                      <p v-if="dealFilterErrors.date" class="bad">{{ dealFilterErrors.date }}</p>
+                      <button
+                        class="ghost ghost--small"
+                        type="button"
+                        @click="validateDealRange('date') && (loadDeals(1), activeDealFilter = '')"
+                      >
+                        Применить
+                      </button>
+                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('date')">Сбросить</button>
                     </div>
                   </th>
                   <th class="sortable cell--tight" @click="toggleDealSort('status')">
@@ -1588,201 +1693,21 @@
                         </svg>
                       </button>
                     </span>
-                    <div v-if="activeDealFilter === 'status'" class="filter-pop filter-pop--center" @click.stop>
+                    <div v-if="activeDealFilter === 'status'" class="filter-pop filter-pop--right" @click.stop>
                       <label class="field">
                         <span class="label">Статус</span>
-                        <input v-model.trim="dealFilters.status_q" class="input" placeholder="статус" />
+                        <input
+                          v-model.trim="dealFilters.status_q"
+                          class="input"
+                          placeholder="статус"
+                          @keydown.enter.prevent="loadDeals(1); activeDealFilter = ''"
+                        />
                       </label>
                       <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
                       <button class="ghost ghost--small" type="button" @click="resetDealFilter('status')">Сбросить</button>
                     </div>
                   </th>
-                  <th class="sortable" @click="toggleDealSort('customer')">
-                    <span class="th-title th-title--filter">
-                      Польз.
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(dealFilters.customer_q) }"
-                        type="button"
-                        aria-label="Фильтр по пользователю"
-                        title="Фильтр по пользователю"
-                        @click.stop="activeDealFilter = activeDealFilter === 'customer' ? '' : 'customer'"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
-                    </span>
-                    <div v-if="activeDealFilter === 'customer'" class="filter-pop filter-pop--center" @click.stop>
-                      <label class="field">
-                        <span class="label">Пользователь</span>
-                        <input v-model.trim="dealFilters.customer_q" class="input" placeholder="пользователь" />
-                      </label>
-                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
-                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('customer')">Сбросить</button>
-                    </div>
-                  </th>
-                  <th class="sortable cell--tight" @click="toggleDealSort('source')">
-                    <span class="th-title th-title--filter">
-                      Откуда
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(dealFilters.source_q) }"
-                        type="button"
-                        aria-label="Фильтр по источнику"
-                        title="Фильтр по источнику"
-                        @click.stop="activeDealFilter = activeDealFilter === 'source' ? '' : 'source'"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
-                    </span>
-                    <div v-if="activeDealFilter === 'source'" class="filter-pop filter-pop--center" @click.stop>
-                      <label class="field">
-                        <span class="label">Источник</span>
-                        <input v-model.trim="dealFilters.source_q" class="input" placeholder="источник" />
-                      </label>
-                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
-                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('source')">Сбросить</button>
-                    </div>
-                  </th>
-                  <th class="sortable" @click="toggleDealSort('date')">
-                    <span class="th-title th-title--filter">
-                      Дата
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(dealFilters.purchase_from || dealFilters.purchase_to) }"
-                        type="button"
-                        aria-label="Фильтр по дате"
-                        title="Фильтр по дате"
-                        @click.stop="activeDealFilter = activeDealFilter === 'date' ? '' : 'date'"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
-                    </span>
-                    <div v-if="activeDealFilter === 'date'" class="filter-pop filter-pop--right" @click.stop>
-                      <label class="field">
-                        <span class="label">С</span>
-                        <input v-model="dealFilters.purchase_from" class="input" type="date" :min="minDate" :max="maxDate" />
-                      </label>
-                      <label class="field">
-                        <span class="label">По</span>
-                        <input v-model="dealFilters.purchase_to" class="input" type="date" :min="minDate" :max="maxDate" />
-                      </label>
-                      <p v-if="dealFilterErrors.date" class="bad">{{ dealFilterErrors.date }}</p>
-                      <button
-                        class="ghost ghost--small"
-                        type="button"
-                        @click="validateDealRange('date') && (loadDeals(1), activeDealFilter = '')"
-                      >
-                        Применить
-                      </button>
-                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('date')">Сбросить</button>
-                    </div>
-                  </th>
-                  <th class="sortable cell--tight" @click="toggleDealSort('platform')">
-                    <span class="th-title th-title--filter">
-                      Платф.
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(dealFilters.platform_q) }"
-                        type="button"
-                        aria-label="Фильтр по платформе"
-                        title="Фильтр по платформе"
-                        @click.stop="activeDealFilter = activeDealFilter === 'platform' ? '' : 'platform'"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
-                    </span>
-                    <div v-if="activeDealFilter === 'platform'" class="filter-pop filter-pop--right" @click.stop>
-                      <label class="field">
-                        <span class="label">Платформа</span>
-                        <input v-model.trim="dealFilters.platform_q" class="input" placeholder="платформа" />
-                      </label>
-                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
-                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('platform')">Сбросить</button>
-                    </div>
-                  </th>
-                  <th class="sortable cell--tight cell--num" @click="toggleDealSort('price')">
-                    <span class="th-title th-title--filter">
-                      Цена
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(dealFilters.price_min || dealFilters.price_max) }"
-                        type="button"
-                        aria-label="Фильтр по цене"
-                        title="Фильтр по цене"
-                        @click.stop="activeDealFilter = activeDealFilter === 'price' ? '' : 'price'"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
-                    </span>
-                    <div v-if="activeDealFilter === 'price'" class="filter-pop filter-pop--right" @click.stop>
-                      <label class="field">
-                        <span class="label">Цена от</span>
-                        <input
-                          v-model.trim="dealFilters.price_min"
-                          class="input"
-                          type="number"
-                          min="0"
-                          :max="maxPrice"
-                          @input="dealFilters.price_min = clampPriceFilter(dealFilters.price_min)"
-                        />
-                      </label>
-                      <label class="field">
-                        <span class="label">Цена до</span>
-                        <input
-                          v-model.trim="dealFilters.price_max"
-                          class="input"
-                          type="number"
-                          min="0"
-                          :max="maxPrice"
-                          @input="dealFilters.price_max = clampPriceFilter(dealFilters.price_max)"
-                        />
-                      </label>
-                      <p v-if="dealFilterErrors.price" class="bad">{{ dealFilterErrors.price }}</p>
-                      <button
-                        class="ghost ghost--small"
-                        type="button"
-                        @click="validateDealRange('price') && (loadDeals(1), activeDealFilter = '')"
-                      >
-                        Применить
-                      </button>
-                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('price')">Сбросить</button>
-                    </div>
-                  </th>
-                  <th class="sortable cell--tight" @click="toggleDealSort('notes')">
-                    <span class="th-title th-title--filter">
-                      Комм.
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(dealFilters.notes_q) }"
-                        type="button"
-                        aria-label="Фильтр по комментарию"
-                        title="Фильтр по комментарию"
-                        @click.stop="activeDealFilter = activeDealFilter === 'notes' ? '' : 'notes'"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
-                    </span>
-                    <div v-if="activeDealFilter === 'notes'" class="filter-pop filter-pop--right" @click.stop>
-                      <label class="field">
-                        <span class="label">Комментарий</span>
-                        <input v-model.trim="dealFilters.notes_q" class="input" placeholder="комментарий" />
-                      </label>
-                      <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
-                      <button class="ghost ghost--small" type="button" @click="resetDealFilter('notes')">Сбросить</button>
-                    </div>
-                  </th>
+                  <th v-if="!dealShowCompleted" class="cell--tight">Действие</th>
                 </tr>
               </thead>
               <tbody>
@@ -1793,42 +1718,59 @@
                   :class="{ 'row-active': editDeal.open && editDeal.deal_id === d.deal_id }"
                   @click="startEditDeal(d)"
                 >
-                  <td class="cell--account">
-                    <span class="clickable-cell" @click.stop="goToAccount(d.account_login)">{{ d.account_login || d.account_id }}</span>
-                  </td>
-                  <td>
-                    <span
-                      class="clickable-cell"
-                      :title="getDealGameTitleTooltip(d)"
-                      @click.stop="openDealGame(d)"
-                    >
-                      {{ getDealGameTitleDisplay(d) }}
-                    </span>
-                  </td>
-                  <td class="cell--tight">{{ d.deal_type }}</td>
-                  <td class="cell--tight">{{ d.status || '—' }}</td>
+                  <td class="cell--tight">{{ d.deal_type || '—' }}</td>
                   <td>{{ d.customer_nickname || '—' }}</td>
-                  <td class="cell--tight">{{ getSourceName(d.source_code) }}</td>
-                  <td>{{ formatDateOnly(d.purchase_at || d.created_at) }}</td>
-                  <td class="cell--tight">{{ d.platform_code || '—' }}</td>
-                  <td class="cell--tight cell--num">{{ formatPrice(d.price) }}</td>
-                  <td class="cell--tight">{{ d.notes || '—' }}</td>
+                  <td class="cell--tight">{{ d.region_code || '—' }}</td>
+                  <td>{{ formatDateTimeMinutes(d.purchase_at || d.created_at) }}</td>
+                  <td class="cell--tight">{{ d.flow_status || '—' }}</td>
+                  <td v-if="!dealShowCompleted" class="cell--tight">
+                    <button class="mini-btn" type="button" @click.stop="markDealCompleted(d)" :disabled="dealSaving">
+                      Завершить
+                    </button>
+                  </td>
                 </tr>
               </tbody>
             </table>
             <p v-else class="muted">Пока нет сделок.</p>
 
-            <div v-if="totalPages > 1" class="pager">
-              <button class="ghost" @click="loadDeals(dealPage - 1)" :disabled="dealPage <= 1 || dealListLoading">
+            <div v-if="dealTotal > 0" class="pager">
+              <span class="muted">Всего: {{ dealTotal }}</span>
+              <label class="pager__size">
+                <span class="muted">Показывать</span>
+                <select v-model.number="dealPageSize" class="input input--select input--compact">
+                  <option :value="20">20</option>
+                  <option :value="50">50</option>
+                  <option :value="100">100</option>
+                </select>
+              </label>
+              <button class="ghost" @click="setDealPage(1)" :disabled="dealPage <= 1 || dealListLoading">
+                «
+              </button>
+              <button class="ghost" @click="prevDealPage" :disabled="dealPage <= 1 || dealListLoading">
                 ← Назад
               </button>
-              <span class="muted">Страница {{ dealPage }} из {{ totalPages }}</span>
+              <label class="pager__jump">
+                <span class="muted">Стр.</span>
+                <input
+                  v-model.number="dealPageInput"
+                  class="input input--compact input--page"
+                  type="number"
+                  min="1"
+                  :max="totalPages"
+                  @keydown.enter.prevent="jumpDealPage"
+                  @blur="jumpDealPage"
+                />
+              </label>
+              <span class="muted">из {{ totalPages }}</span>
               <button
                 class="ghost"
-                @click="loadDeals(dealPage + 1)"
+                @click="nextDealPage"
                 :disabled="dealPage >= totalPages || dealListLoading"
               >
                 Вперёд →
+              </button>
+              <button class="ghost" @click="setDealPage(totalPages)" :disabled="dealPage >= totalPages || dealListLoading">
+                »
               </button>
             </div>
 
@@ -1876,10 +1818,10 @@
                         <span class="label">Тип</span>
                         <select v-model="editDeal.deal_type_code" class="input input--select" :disabled="dealEditMode === 'view'">
                           <option value="sale">Продажа</option>
-                          <option value="rental">Аренда</option>
+                          <option value="rental">Шеринг</option>
                         </select>
                       </label>
-                      <label class="field">
+                      <label v-if="editDeal.deal_type_code === 'rental'" class="field">
                         <span class="label">Аккаунт</span>
                         <select v-model.number="editDeal.account_id" class="input input--select" :disabled="dealEditMode === 'view'">
                           <option value="">— не выбрано —</option>
@@ -1888,7 +1830,7 @@
                           </option>
                         </select>
                       </label>
-                      <label class="field">
+                      <label v-if="editDeal.deal_type_code === 'rental'" class="field">
                         <span class="label">Игра</span>
                         <select v-model.number="editDeal.game_id" class="input input--select" :disabled="dealEditMode === 'view'">
                           <option value="">— не выбрано —</option>
@@ -1902,6 +1844,15 @@
                         <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="nickname" :disabled="dealEditMode === 'view'" />
                       </label>
                       <label class="field">
+                        <span class="label">Регион</span>
+                        <select v-model="editDeal.region_code" class="input input--select" :disabled="dealEditMode === 'view'">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="r in regions" :key="r.code" :value="r.code">
+                            {{ r.name }} ({{ r.code }})
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
                         <span class="label">Откуда</span>
                         <select v-model="editDeal.source_code" class="input input--select" :disabled="dealEditMode === 'view'">
                           <option value="">— не выбрано —</option>
@@ -1910,17 +1861,29 @@
                           </option>
                         </select>
                       </label>
-                      <label class="field">
-                        <span class="label">Платформа</span>
-                        <select v-model="editDeal.platform_code" class="input input--select" :disabled="dealEditMode === 'view'">
-                          <option value="">— не выбрано —</option>
-                          <option v-for="p in platforms" :key="p.code" :value="p.code">
-                            {{ p.name }} ({{ p.code }})
-                          </option>
-                        </select>
+                      <label v-if="editDeal.deal_type_code === 'sale'" class="field">
+                        <span class="label">Ссылка на игру</span>
+                        <input
+                          v-model.trim="editDeal.game_link"
+                          class="input"
+                          placeholder="https://..."
+                          :disabled="dealEditMode === 'view'"
+                        />
+                      </label>
+                      <label v-if="editDeal.deal_type_code === 'sale'" class="field">
+                        <span class="label">Закуп</span>
+                        <input
+                          v-model.number="editDeal.purchase_cost"
+                          class="input"
+                          type="number"
+                          min="0"
+                          :max="maxPrice"
+                          @input="editDeal.purchase_cost = clampPrice(editDeal.purchase_cost)"
+                          :disabled="dealEditMode === 'view'"
+                        />
                       </label>
                       <label class="field">
-                        <span class="label">Цена</span>
+                        <span class="label">Сумма</span>
                         <input
                           v-model.number="editDeal.price"
                           class="input"
@@ -1931,7 +1894,16 @@
                           :disabled="dealEditMode === 'view'"
                         />
                       </label>
-                      <label class="field">
+                      <label v-if="editDeal.deal_type_code === 'rental'" class="field">
+                        <span class="label">Платформа</span>
+                        <select v-model="editDeal.platform_code" class="input input--select" :disabled="dealEditMode === 'view'">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="p in platforms" :key="p.code" :value="p.code">
+                            {{ p.name }} ({{ p.code }})
+                          </option>
+                        </select>
+                      </label>
+                      <label v-if="editDeal.deal_type_code === 'rental'" class="field">
                         <span class="label">Дата покупки</span>
                         <input
                           v-model="editDeal.purchase_at"
@@ -1941,6 +1913,19 @@
                           :max="maxDate"
                           :disabled="dealEditMode === 'view'"
                         />
+                      </label>
+                      <label v-if="editDeal.deal_type_code === 'rental'" class="field">
+                        <span class="label">Слотов используется</span>
+                        <input v-model.number="editDeal.slots_used" class="input" type="number" min="1" :disabled="dealEditMode === 'view'" />
+                      </label>
+                      <label class="field">
+                        <span class="label">Статус</span>
+                        <select v-model="editDeal.flow_status_code" class="input input--select" :disabled="dealEditMode === 'view'">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="s in dealFlowStatusOptions" :key="s.code" :value="s.code">
+                            {{ s.name }}
+                          </option>
+                        </select>
                       </label>
                       <label class="field">
                         <span class="label">Комментарий</span>
@@ -1972,10 +1957,10 @@
                         <span class="label">Тип</span>
                         <select v-model="newDeal.deal_type_code" class="input input--select">
                           <option value="sale">Продажа</option>
-                          <option value="rental">Аренда</option>
+                          <option value="rental">Шеринг</option>
                         </select>
                       </label>
-                      <label class="field">
+                      <label v-if="newDeal.deal_type_code === 'rental'" class="field">
                         <span class="label">Аккаунт</span>
                         <select v-model.number="newDeal.account_id" class="input input--select">
                           <option value="">— не выбрано —</option>
@@ -1984,7 +1969,7 @@
                           </option>
                         </select>
                       </label>
-                      <label class="field">
+                      <label v-if="newDeal.deal_type_code === 'rental'" class="field">
                         <span class="label">Игра</span>
                         <select v-model.number="newDeal.game_id" class="input input--select">
                           <option value="">— не выбрано —</option>
@@ -1998,6 +1983,15 @@
                         <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="nickname" />
                       </label>
                       <label class="field">
+                        <span class="label">Регион</span>
+                        <select v-model="newDeal.region_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="r in regions" :key="r.code" :value="r.code">
+                            {{ r.name }} ({{ r.code }})
+                          </option>
+                        </select>
+                      </label>
+                      <label class="field">
                         <span class="label">Откуда</span>
                         <select v-model="newDeal.source_code" class="input input--select">
                           <option value="">— не выбрано —</option>
@@ -2006,17 +2000,23 @@
                           </option>
                         </select>
                       </label>
-                      <label class="field">
-                        <span class="label">Платформа</span>
-                        <select v-model="newDeal.platform_code" class="input input--select">
-                          <option value="">— не выбрано —</option>
-                          <option v-for="p in platforms" :key="p.code" :value="p.code">
-                            {{ p.name }} ({{ p.code }})
-                          </option>
-                        </select>
+                      <label v-if="newDeal.deal_type_code === 'sale'" class="field">
+                        <span class="label">Ссылка на игру</span>
+                        <input v-model.trim="newDeal.game_link" class="input" placeholder="https://..." />
+                      </label>
+                      <label v-if="newDeal.deal_type_code === 'sale'" class="field">
+                        <span class="label">Закуп</span>
+                        <input
+                          v-model.number="newDeal.purchase_cost"
+                          class="input"
+                          type="number"
+                          min="0"
+                          :max="maxPrice"
+                          @input="newDeal.purchase_cost = clampPrice(newDeal.purchase_cost)"
+                        />
                       </label>
                       <label class="field">
-                        <span class="label">Цена</span>
+                        <span class="label">Сумма</span>
                         <input
                           v-model.number="newDeal.price"
                           class="input"
@@ -2026,7 +2026,17 @@
                           @input="newDeal.price = clampPrice(newDeal.price)"
                         />
                       </label>
-                      <label class="field">
+
+                      <label v-if="newDeal.deal_type_code === 'rental'" class="field">
+                        <span class="label">Платформа</span>
+                        <select v-model="newDeal.platform_code" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="p in platforms" :key="p.code" :value="p.code">
+                            {{ p.name }} ({{ p.code }})
+                          </option>
+                        </select>
+                      </label>
+                      <label v-if="newDeal.deal_type_code === 'rental'" class="field">
                         <span class="label">Дата покупки</span>
                         <input v-model="newDeal.purchase_at" class="input" type="date" :min="minDate" :max="maxDate" />
                       </label>
@@ -2810,6 +2820,7 @@ const dealItems = ref([])
 const dealListError = ref(null)
 const dealListLoading = ref(false)
 const dealPage = ref(1)
+const dealPageInput = ref(1)
 const dealPageSize = ref(20)
 const dealTotal = ref(0)
 const pwdError = ref(null)
@@ -2841,24 +2852,16 @@ const accountGameTitles = computed(() => {
 
 const activeDealChips = computed(() => {
   const chips = []
-  if (dealFilters.account_q) chips.push({ key: 'account', label: 'Аккаунт', value: dealFilters.account_q })
-  if (dealFilters.game_q) chips.push({ key: 'game', label: 'Игра', value: dealFilters.game_q })
+  if (dealFilters.search_q) chips.push({ key: 'search', label: 'Поиск', value: dealFilters.search_q })
   if (dealFilters.type_q) chips.push({ key: 'type', label: 'Тип', value: dealFilters.type_q })
-  if (dealFilters.status_q) chips.push({ key: 'status', label: 'Статус', value: dealFilters.status_q })
   if (dealFilters.customer_q) chips.push({ key: 'customer', label: 'Пользователь', value: dealFilters.customer_q })
-  if (dealFilters.source_q) chips.push({ key: 'source', label: 'Откуда', value: dealFilters.source_q })
+  if (dealFilters.region_q) chips.push({ key: 'region', label: 'Регион', value: dealFilters.region_q })
+  if (dealFilters.status_q) chips.push({ key: 'status', label: 'Статус', value: dealFilters.status_q })
   if (dealFilters.purchase_from || dealFilters.purchase_to) {
     const from = dealFilters.purchase_from ? formatDateOnly(dealFilters.purchase_from) : '—'
     const to = dealFilters.purchase_to ? formatDateOnly(dealFilters.purchase_to) : '—'
     chips.push({ key: 'date', label: 'Дата', value: `${from} → ${to}` })
   }
-  if (dealFilters.platform_q) chips.push({ key: 'platform', label: 'Платформа', value: dealFilters.platform_q })
-  if (dealFilters.price_min || dealFilters.price_max) {
-    const from = dealFilters.price_min || '—'
-    const to = dealFilters.price_max || '—'
-    chips.push({ key: 'price', label: 'Цена', value: `${from} → ${to}` })
-  }
-  if (dealFilters.notes_q) chips.push({ key: 'notes', label: 'Комментарий', value: dealFilters.notes_q })
   return chips
 })
 
@@ -2985,8 +2988,11 @@ const newDeal = reactive({
   game_id: '',
   customer_nickname: '',
   source_code: '',
+  region_code: '',
   platform_code: '',
   price: 0,
+  purchase_cost: 0,
+  game_link: '',
   purchase_at: '',
   slots_used: 1,
   notes: '',
@@ -3001,11 +3007,15 @@ const editDeal = reactive({
   game_id: '',
   customer_nickname: '',
   source_code: '',
+  region_code: '',
   platform_code: '',
   price: 0,
+  purchase_cost: 0,
+  game_link: '',
   purchase_at: '',
   slots_used: 1,
   notes: '',
+  flow_status_code: '',
 })
 
 const games = ref([])
@@ -3028,19 +3038,15 @@ const editGame = reactive({
   region_code: '',
 })
 const dealFilters = reactive({
-  account_q: '',
-  game_q: '',
-  type_q: '',
-  status_q: '',
+  search_q: '',
   customer_q: '',
-  source_q: '',
-  platform_q: '',
+  region_q: '',
+  status_q: '',
   purchase_from: '',
   purchase_to: '',
-  price_min: '',
-  price_max: '',
-  notes_q: '',
+  type_q: '',
 })
+const dealShowCompleted = ref(false)
 
 const totalPages = computed(() => {
   const pages = Math.ceil(dealTotal.value / dealPageSize.value)
@@ -3173,7 +3179,7 @@ const gamesPageSize = ref(20)
 
 const dealTypeOptions = [
   { code: 'sale', name: 'Продажа' },
-  { code: 'rental', name: 'Аренда' },
+  { code: 'rental', name: 'Шеринг' },
   { code: 'expense', name: 'Расходы' },
   { code: 'adjustment', name: 'Корректирование' },
 ]
@@ -3183,6 +3189,11 @@ const dealStatusOptions = [
   { code: 'confirmed', name: 'Подтвержден' },
   { code: 'cancelled', name: 'Отменен' },
   { code: 'closed', name: 'Закрыт' },
+]
+
+const dealFlowStatusOptions = [
+  { code: 'pending', name: 'В ожидании' },
+  { code: 'completed', name: 'Завершен' },
 ]
 
 const minDate = '2020-01-01'
@@ -3258,10 +3269,14 @@ const mapApiError = (message) => {
     if (free && req) return `Недостаточно свободных слотов: свободно ${free}, нужно ${req}`
     return 'Недостаточно свободных слотов'
   }
-  if (text.includes('platform_code is required for rental')) return 'Для аренды нужно выбрать платформу'
-  if (text.includes('slots_used must be >= 1 for rental')) return 'Для аренды укажите количество слотов (минимум 1)'
+  if (text.includes('platform_code is required for rental')) return 'Для шеринга нужно выбрать платформу'
+  if (text.includes('slots_used must be >= 1 for rental')) return 'Для шеринга укажите количество слотов (минимум 1)'
   if (text.includes('slots_used must be >= 1')) return 'Количество слотов должно быть не меньше 1'
-  if (text.includes('deal_type_code must be sale or rental')) return 'Тип сделки должен быть продажа или аренда'
+  if (text.includes('deal_type_code must be sale or rental')) return 'Тип сделки должен быть продажа или шеринг'
+  if (text.includes('Unknown flow_status_code')) return 'Неизвестный статус'
+  if (text.includes('region_code is required for sale')) return 'Для продажи укажите регион'
+  if (text.includes('account_id is required for rental')) return 'Для шеринга укажите аккаунт'
+  if (text.includes('game_id is required for rental')) return 'Для шеринга укажите игру'
   if (text.includes('login_name and domain_code are required')) return 'Укажите логин и домен'
   if (text.includes('title is required')) return 'Укажите название игры'
   if (text.includes('account_date must be between')) return 'Дата аккаунта должна быть между 2020-01-01 и сегодня'
@@ -3442,19 +3457,27 @@ watch(accountsPageSize, () => {
   loadAccounts()
 })
 
+watch(totalPages, (total) => {
+  if (dealPage.value > total) dealPage.value = total
+})
+
+watch(dealPage, (val) => {
+  dealPageInput.value = val
+})
+
+watch(dealPageSize, () => {
+  dealPage.value = 1
+  loadDeals(1)
+})
+
 const sortedDeals = computed(() => {
   const list = [...dealItems.value]
   const { key, dir } = dealSort.value
   const getVal = (d) => {
-    if (key === 'account') return d.account_login || ''
-    if (key === 'game') return d.game_title || ''
     if (key === 'type') return d.deal_type || ''
-    if (key === 'status') return d.status || ''
     if (key === 'customer') return d.customer_nickname || ''
-    if (key === 'source') return d.source_code || ''
-    if (key === 'platform') return d.platform_code || ''
-    if (key === 'price') return Number(d.price || 0)
-    if (key === 'notes') return d.notes || ''
+    if (key === 'region') return d.region_code || ''
+    if (key === 'status') return d.flow_status || ''
     if (key === 'date') return new Date(d.purchase_at || d.created_at || 0).getTime()
     return ''
   }
@@ -3685,6 +3708,24 @@ function toggleDealSort(key) {
   }
 }
 
+function setDealPage(page) {
+  const target = Math.min(Math.max(1, Number(page) || 1), totalPages.value)
+  if (target === dealPage.value) return
+  loadDeals(target)
+}
+
+function jumpDealPage() {
+  setDealPage(dealPageInput.value)
+}
+
+function prevDealPage() {
+  setDealPage(dealPage.value - 1)
+}
+
+function nextDealPage() {
+  setDealPage(dealPage.value + 1)
+}
+
 function toggleUsersSort(key) {
   const current = usersSort.value
   if (current.key === key) {
@@ -3866,6 +3907,15 @@ async function pollGameImportStatusOnce() {
     gameImportProgress.phase = status.phase || ''
     if (status.done && status.result) {
       applyGameImportResult(status.result)
+      return
+    }
+    if (status.done) {
+      gameImportMessage.value = 'Импорт завершен'
+      gameImportLoading.value = false
+      gameImportAction.value = ''
+      gameImportJobId.value = ''
+      localStorage.removeItem(GAME_IMPORT_JOB_KEY)
+      stopGameImportStatusPolling()
     }
   } catch {
     // ignore polling errors
@@ -3885,6 +3935,14 @@ function startGameImportStatusPolling() {
       gameImportProgress.phase = status.phase || ''
       if (status.done && status.result) {
         applyGameImportResult(status.result)
+      }
+      if (status.done && !status.result) {
+        gameImportMessage.value = 'Импорт завершен'
+        gameImportLoading.value = false
+        gameImportAction.value = ''
+        gameImportJobId.value = ''
+        localStorage.removeItem(GAME_IMPORT_JOB_KEY)
+        stopGameImportStatusPolling()
       }
       if (status.done && !gameImportLoading.value) stopGameImportStatusPolling()
     } catch {
@@ -3906,6 +3964,18 @@ function scrollToImportDetails() {
 
 async function applyGameImportResult(res) {
   if (!res) return
+  if (res?.cancelled) {
+    gameImportMessage.value = 'Импорт отменен'
+    gameImportErrors.value = []
+    gameImportWarnings.value = []
+    gameImportStats.value = null
+    gameImportLoading.value = false
+    gameImportAction.value = ''
+    gameImportJobId.value = ''
+    localStorage.removeItem(GAME_IMPORT_JOB_KEY)
+    stopGameImportStatusPolling()
+    return
+  }
   const created = res?.created || 0
   const updated = res?.updated || 0
   const skipped = res?.skipped || 0
@@ -4020,6 +4090,20 @@ async function uploadGameImport() {
     gameImportAction.value = ''
   } finally {
     // wait for background job result
+  }
+}
+
+async function cancelGameImport() {
+  if (!gameImportJobId.value) return
+  gameImportAction.value = 'cancel'
+  gameImportLoading.value = true
+  try {
+    await apiPost(`/games/import/cancel?job_id=${encodeURIComponent(gameImportJobId.value)}`, {}, { token: auth.state.token })
+    startGameImportStatusPolling()
+  } catch (e) {
+    gameImportMessage.value = mapApiError(e?.message)
+    gameImportLoading.value = false
+    gameImportAction.value = ''
   }
 }
 
@@ -4167,45 +4251,29 @@ const onDealFilterOutside = (event) => {
 }
 
 const resetDealFilter = (kind) => {
-  if (kind === 'account') {
-    dealFilters.account_q = ''
-  } else if (kind === 'game') {
-    dealFilters.game_q = ''
+  if (kind === 'customer') {
+    dealFilters.customer_q = ''
+  } else if (kind === 'region') {
+    dealFilters.region_q = ''
   } else if (kind === 'type') {
     dealFilters.type_q = ''
   } else if (kind === 'status') {
     dealFilters.status_q = ''
-  } else if (kind === 'customer') {
-    dealFilters.customer_q = ''
-  } else if (kind === 'source') {
-    dealFilters.source_q = ''
+  } else if (kind === 'search') {
+    dealFilters.search_q = ''
   } else if (kind === 'date') {
     dealFilters.purchase_from = ''
     dealFilters.purchase_to = ''
     dealFilterErrors.date = ''
-  } else if (kind === 'platform') {
-    dealFilters.platform_q = ''
-  } else if (kind === 'price') {
-    dealFilters.price_min = ''
-    dealFilters.price_max = ''
-    dealFilterErrors.price = ''
-  } else if (kind === 'notes') {
-    dealFilters.notes_q = ''
   } else if (kind === 'all') {
-    dealFilters.account_q = ''
-    dealFilters.game_q = ''
+    dealFilters.search_q = ''
     dealFilters.type_q = ''
-    dealFilters.status_q = ''
     dealFilters.customer_q = ''
-    dealFilters.source_q = ''
+    dealFilters.region_q = ''
+    dealFilters.status_q = ''
     dealFilters.purchase_from = ''
     dealFilters.purchase_to = ''
-    dealFilters.platform_q = ''
-    dealFilters.price_min = ''
-    dealFilters.price_max = ''
-    dealFilters.notes_q = ''
     dealFilterErrors.date = ''
-    dealFilterErrors.price = ''
   }
   activeDealFilter.value = ''
   loadDeals(1)
@@ -4220,20 +4288,12 @@ const validateDealRange = (kind) => {
       error = 'Дата "с" не может быть позже даты "по"'
     }
   }
-  if (kind === 'price') {
-    const from = Number(dealFilters.price_min)
-    const to = Number(dealFilters.price_max)
-    if (dealFilters.price_min !== '' && dealFilters.price_max !== '' && from > to) {
-      error = 'Цена "от" не может быть больше цены "до"'
-    }
-  }
   dealFilterErrors[kind] = error
   return !error
 }
 
 const dealFilterErrors = reactive({
   date: '',
-  price: '',
 })
 
 const resetGameFilter = (kind) => {
@@ -4380,8 +4440,11 @@ function closeDealModal() {
   newDeal.game_id = ''
   newDeal.customer_nickname = ''
   newDeal.source_code = ''
+  newDeal.region_code = ''
   newDeal.platform_code = ''
   newDeal.price = 0
+  newDeal.purchase_cost = 0
+  newDeal.game_link = ''
   newDeal.purchase_at = ''
   newDeal.slots_used = 1
   newDeal.notes = ''
@@ -4394,16 +4457,20 @@ function startEditDeal(deal) {
   dealEditMode.value = 'view'
   editDeal.deal_id = deal.deal_id
   editDeal.created_at = deal.created_at || ''
-  editDeal.deal_type_code = deal.deal_type_code || (deal.deal_type === 'Аренда' ? 'rental' : 'sale')
+  editDeal.deal_type_code = deal.deal_type_code || (deal.deal_type === 'Шеринг' ? 'rental' : 'sale')
   editDeal.account_id = deal.account_id
   editDeal.game_id = deal.game_id
   editDeal.customer_nickname = deal.customer_nickname || ''
   editDeal.source_code = deal.source_code || ''
+  editDeal.region_code = deal.region_code || ''
   editDeal.platform_code = deal.platform_code || ''
   editDeal.price = Number(deal.price || 0)
+  editDeal.purchase_cost = Number(deal.purchase_cost || 0)
+  editDeal.game_link = deal.game_link || ''
   editDeal.purchase_at = deal.purchase_at ? String(deal.purchase_at).slice(0, 10) : ''
   editDeal.slots_used = deal.slots_used || (deal.deal_type_code === 'rental' ? 1 : 0)
   editDeal.notes = deal.notes || ''
+  editDeal.flow_status_code = deal.flow_status_code || ''
 }
 
 function cancelEditDeal() {
@@ -4415,11 +4482,15 @@ function cancelEditDeal() {
   editDeal.game_id = ''
   editDeal.customer_nickname = ''
   editDeal.source_code = ''
+  editDeal.region_code = ''
   editDeal.platform_code = ''
   editDeal.price = 0
+  editDeal.purchase_cost = 0
+  editDeal.game_link = ''
   editDeal.purchase_at = ''
   editDeal.slots_used = 1
   editDeal.notes = ''
+  editDeal.flow_status_code = ''
   dealEditMode.value = 'view'
 }
 
@@ -4428,6 +4499,15 @@ function formatDateOnly(value) {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return '—'
   return d.toLocaleDateString()
+}
+
+function formatDateTimeMinutes(value) {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  const date = d.toLocaleDateString()
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return `${date} ${time}`
 }
 
 function getEmailSecret(accountId) {
@@ -5125,8 +5205,22 @@ async function updateGame() {
 async function createDeal() {
   dealError.value = null
   dealOk.value = null
-  if (!newDeal.account_id || !newDeal.game_id || !newDeal.customer_nickname || !newDeal.platform_code) {
-    dealError.value = 'Заполните аккаунт, игру, пользователя и платформу'
+  if (!newDeal.customer_nickname) {
+    dealError.value = 'Укажите пользователя'
+    return
+  }
+  if (newDeal.deal_type_code === 'rental') {
+    if (!newDeal.account_id || !newDeal.game_id) {
+      dealError.value = 'Для шеринга укажите аккаунт и игру'
+      return
+    }
+    if (!newDeal.platform_code) {
+      dealError.value = 'Для шеринга выберите платформу'
+      return
+    }
+  }
+  if (newDeal.deal_type_code === 'sale' && !newDeal.region_code) {
+    dealError.value = 'Для продажи укажите регион'
     return
   }
   dealLoading.value = true
@@ -5136,13 +5230,16 @@ async function createDeal() {
       '/deals',
       {
         deal_type_code: newDeal.deal_type_code,
-        account_id: newDeal.account_id,
-        game_id: newDeal.game_id,
+        account_id: newDeal.deal_type_code === 'rental' ? newDeal.account_id : null,
+        game_id: newDeal.deal_type_code === 'rental' ? newDeal.game_id : null,
         customer_nickname: newDeal.customer_nickname,
         source_code: newDeal.source_code || null,
-        platform_code: newDeal.platform_code || null,
+        region_code: newDeal.region_code || null,
+        platform_code: newDeal.deal_type_code === 'rental' ? (newDeal.platform_code || null) : null,
         price: newDeal.price || 0,
-        purchase_at: newDeal.purchase_at ? `${newDeal.purchase_at}T00:00:00Z` : null,
+        purchase_cost: newDeal.purchase_cost || 0,
+        game_link: newDeal.game_link || null,
+        purchase_at: newDeal.deal_type_code === 'sale' ? null : (newDeal.purchase_at ? `${newDeal.purchase_at}T00:00:00Z` : null),
         slots_used: newDeal.deal_type_code === 'rental' ? newDeal.slots_used : 0,
         notes: newDeal.notes || null,
       },
@@ -5151,6 +5248,8 @@ async function createDeal() {
     dealOk.value = 'Сделка сохранена'
     newDeal.customer_nickname = ''
     newDeal.price = 0
+    newDeal.purchase_cost = 0
+    newDeal.game_link = ''
     newDeal.purchase_at = ''
     newDeal.notes = ''
     await loadDeals(1)
@@ -5168,8 +5267,22 @@ async function updateDeal() {
   dealError.value = null
   dealOk.value = null
   if (!editDeal.deal_id) return
-  if (!editDeal.account_id || !editDeal.game_id || !editDeal.customer_nickname || !editDeal.platform_code) {
-    dealError.value = 'Заполните аккаунт, игру, пользователя и платформу'
+  if (!editDeal.customer_nickname) {
+    dealError.value = 'Укажите пользователя'
+    return
+  }
+  if (editDeal.deal_type_code === 'rental') {
+    if (!editDeal.account_id || !editDeal.game_id) {
+      dealError.value = 'Для шеринга укажите аккаунт и игру'
+      return
+    }
+    if (!editDeal.platform_code) {
+      dealError.value = 'Для шеринга выберите платформу'
+      return
+    }
+  }
+  if (editDeal.deal_type_code === 'sale' && !editDeal.region_code) {
+    dealError.value = 'Для продажи укажите регион'
     return
   }
   dealLoading.value = true
@@ -5179,15 +5292,19 @@ async function updateDeal() {
       `/deals/${editDeal.deal_id}`,
       {
         deal_type_code: editDeal.deal_type_code,
-        account_id: editDeal.account_id,
-        game_id: editDeal.game_id,
+        account_id: editDeal.deal_type_code === 'rental' ? editDeal.account_id : null,
+        game_id: editDeal.deal_type_code === 'rental' ? editDeal.game_id : null,
         customer_nickname: editDeal.customer_nickname,
         source_code: editDeal.source_code || null,
-        platform_code: editDeal.platform_code || null,
+        region_code: editDeal.region_code || null,
+        platform_code: editDeal.deal_type_code === 'rental' ? (editDeal.platform_code || null) : null,
         price: editDeal.price,
-        purchase_at: editDeal.purchase_at || null,
-        slots_used: editDeal.slots_used,
+        purchase_cost: editDeal.purchase_cost || 0,
+        game_link: editDeal.game_link || null,
+        purchase_at: editDeal.deal_type_code === 'sale' ? null : (editDeal.purchase_at || null),
+        slots_used: editDeal.deal_type_code === 'rental' ? editDeal.slots_used : 0,
         notes: editDeal.notes || null,
+        flow_status_code: editDeal.flow_status_code || null,
       },
       { token: auth.state.token }
     )
@@ -5203,23 +5320,43 @@ async function updateDeal() {
   }
 }
 
+async function markDealCompleted(deal) {
+  if (!deal?.deal_id) return
+  dealError.value = null
+  dealOk.value = null
+  dealSaving.value = true
+  try {
+    await apiPut(
+      `/deals/${deal.deal_id}`,
+      { flow_status_code: 'completed' },
+      { token: auth.state.token }
+    )
+    await loadDeals(dealPage.value)
+  } catch (e) {
+    dealError.value = mapApiError(e?.message)
+  } finally {
+    dealSaving.value = false
+  }
+}
+
 async function loadDeals(page = 1) {
   dealListError.value = null
   dealListLoading.value = true
   try {
     const params = new URLSearchParams()
-    if (dealFilters.account_q) params.set('account_q', dealFilters.account_q)
-    if (dealFilters.game_q) params.set('game_q', dealFilters.game_q)
+    if (dealFilters.search_q) params.set('q', dealFilters.search_q)
     if (dealFilters.type_q) params.set('type_q', dealFilters.type_q)
-    if (dealFilters.status_q) params.set('status_q', dealFilters.status_q)
     if (dealFilters.customer_q) params.set('customer_q', dealFilters.customer_q)
-    if (dealFilters.source_q) params.set('source_q', dealFilters.source_q)
+    if (dealFilters.region_q) params.set('region_q', dealFilters.region_q)
+    if (dealFilters.status_q) {
+      params.set('flow_status_q', dealFilters.status_q)
+    } else if (dealShowCompleted.value) {
+      params.set('flow_status_q', 'completed')
+    } else {
+      params.set('flow_status_q', 'pending')
+    }
     if (dealFilters.purchase_from) params.set('purchase_from', dealFilters.purchase_from)
     if (dealFilters.purchase_to) params.set('purchase_to', dealFilters.purchase_to)
-    if (dealFilters.platform_q) params.set('platform_q', dealFilters.platform_q)
-    if (dealFilters.price_min) params.set('price_min', String(dealFilters.price_min))
-    if (dealFilters.price_max) params.set('price_max', String(dealFilters.price_max))
-    if (dealFilters.notes_q) params.set('notes_q', dealFilters.notes_q)
     params.set('page', String(page))
     params.set('page_size', String(dealPageSize.value))
     const res = await apiGet(`/deals?${params.toString()}`, { token: auth.state.token })
@@ -5244,6 +5381,10 @@ function openEditDomain(d) {
   editDomain.open = true
   editDomain.name = d.name
   editDomain.original = d.name
+}
+
+function applyDealSearch() {
+  loadDeals(1)
 }
 
 function cancelEditDomain() {
@@ -6577,6 +6718,7 @@ h2 {
   justify-content: space-between;
   gap: 10px;
   margin-top: 12px;
+  font-size: 12px;
 }
 
 .mini-btn {
@@ -6735,6 +6877,125 @@ h3 {
   flex-wrap: wrap;
 }
 
+.switch-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 6px;
+}
+
+.switch-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.switch {
+  --switch-width: 46px;
+  --switch-height: 24px;
+  --switch-bg: rgb(131, 131, 131);
+  --switch-checked-bg: rgb(0, 218, 80);
+  --switch-offset: calc((var(--switch-height) - var(--circle-diameter)) / 2);
+  --switch-transition: all 0.2s cubic-bezier(0.27, 0.2, 0.25, 1.51);
+  --circle-diameter: 18px;
+  --circle-bg: #fff;
+  --circle-shadow: 1px 1px 2px rgba(146, 146, 146, 0.45);
+  --circle-checked-shadow: -1px 1px 2px rgba(163, 163, 163, 0.45);
+  --circle-transition: var(--switch-transition);
+  --icon-transition: all 0.2s cubic-bezier(0.27, 0.2, 0.25, 1.51);
+  --icon-cross-color: var(--switch-bg);
+  --icon-cross-size: 6px;
+  --icon-checkmark-color: var(--switch-checked-bg);
+  --icon-checkmark-size: 10px;
+  --effect-width: calc(var(--circle-diameter) / 2);
+  --effect-height: calc(var(--effect-width) / 2 - 1px);
+  --effect-bg: var(--circle-bg);
+  --effect-border-radius: 1px;
+  --effect-transition: all 0.2s ease-in-out;
+  display: inline-block;
+}
+
+.switch input {
+  display: none;
+}
+
+.switch svg {
+  transition: var(--icon-transition);
+  position: absolute;
+  height: auto;
+}
+
+.switch .checkmark {
+  width: var(--icon-checkmark-size);
+  color: var(--icon-checkmark-color);
+  transform: scale(0);
+}
+
+.switch .cross {
+  width: var(--icon-cross-size);
+  color: var(--icon-cross-color);
+}
+
+.slider {
+  box-sizing: border-box;
+  width: var(--switch-width);
+  height: var(--switch-height);
+  background: var(--switch-bg);
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  position: relative;
+  transition: var(--switch-transition);
+  cursor: pointer;
+}
+
+.circle {
+  width: var(--circle-diameter);
+  height: var(--circle-diameter);
+  background: var(--circle-bg);
+  border-radius: inherit;
+  box-shadow: var(--circle-shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--circle-transition);
+  z-index: 1;
+  position: absolute;
+  left: var(--switch-offset);
+}
+
+.slider::before {
+  content: "";
+  position: absolute;
+  width: var(--effect-width);
+  height: var(--effect-height);
+  left: calc(var(--switch-offset) + (var(--effect-width) / 2));
+  background: var(--effect-bg);
+  border-radius: var(--effect-border-radius);
+  transition: var(--effect-transition);
+}
+
+.switch input:checked + .slider {
+  background: var(--switch-checked-bg);
+}
+
+.switch input:checked + .slider .checkmark {
+  transform: scale(1);
+}
+
+.switch input:checked + .slider .cross {
+  transform: scale(0);
+}
+
+.switch input:checked + .slider::before {
+  left: calc(100% - var(--effect-width) - (var(--effect-width) / 2) - var(--switch-offset));
+}
+
+.switch input:checked + .slider .circle {
+  left: calc(100% - var(--circle-diameter) - var(--switch-offset));
+  box-shadow: var(--circle-checked-shadow);
+}
+
+
 .import-actions {
   position: sticky;
   bottom: 0;
@@ -6847,6 +7108,8 @@ h3 {
 
 .btn--glow svg {
   color: #fff;
+  stroke: currentColor;
+  fill: none;
 }
 
 .field {
