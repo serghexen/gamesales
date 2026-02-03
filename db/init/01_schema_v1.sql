@@ -150,6 +150,24 @@ COMMENT ON COLUMN app.account_platforms.account_id IS 'Аккаунт';
 COMMENT ON COLUMN app.account_platforms.platform_id IS 'Платформа';
 COMMENT ON COLUMN app.account_platforms.slot_capacity IS 'Всего слотов на платформе';
 
+CREATE TABLE IF NOT EXISTS app.slot_types (
+  code text PRIMARY KEY,
+  name text NOT NULL,
+  platform_code text NOT NULL,
+  mode text NOT NULL,
+  capacity integer NOT NULL DEFAULT 0,
+  CONSTRAINT ck_slot_type_mode CHECK (mode IN ('play', 'activate')),
+  CONSTRAINT ck_slot_type_capacity CHECK (capacity >= 0)
+);
+
+INSERT INTO app.slot_types(code, name, platform_code, mode, capacity)
+VALUES
+  ('play_ps4', 'П2 (PS4)', 'ps4', 'play', 1),
+  ('play_ps5', 'П2 (PS5)', 'ps5', 'play', 1),
+  ('activate_ps4', 'П3 (PS4)', 'ps4', 'activate', 2),
+  ('activate_ps5', 'П3 (PS5)', 'ps5', 'activate', 2)
+ON CONFLICT (code) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS app.account_assets (
   account_asset_id bigserial PRIMARY KEY,
   account_id       bigint NOT NULL REFERENCES app.accounts(account_id) ON DELETE CASCADE,
@@ -236,6 +254,7 @@ CREATE TABLE IF NOT EXISTS app.deal_items (
   end_at           timestamptz,
   returned_at      timestamptz,
   slots_used       integer NOT NULL DEFAULT 1,
+  slot_type_code   text REFERENCES app.slot_types(code),
   game_link        text,
   notes            text,
   CONSTRAINT ck_qty_positive CHECK (qty > 0),
@@ -258,8 +277,28 @@ COMMENT ON COLUMN app.deal_items.start_at IS 'Дата начала';
 COMMENT ON COLUMN app.deal_items.end_at IS 'Дата окончания';
 COMMENT ON COLUMN app.deal_items.returned_at IS 'Факт возврата';
 COMMENT ON COLUMN app.deal_items.slots_used IS 'Количество занятых слотов';
+COMMENT ON COLUMN app.deal_items.slot_type_code IS 'Тип слота';
 COMMENT ON COLUMN app.deal_items.game_link IS 'Ссылка на игру';
 COMMENT ON COLUMN app.deal_items.notes IS 'Заметки';
+
+CREATE TABLE IF NOT EXISTS app.account_slot_assignments (
+  assignment_id bigserial PRIMARY KEY,
+  account_id bigint NOT NULL REFERENCES app.accounts(account_id) ON DELETE CASCADE,
+  slot_type_code text NOT NULL REFERENCES app.slot_types(code),
+  customer_id bigint REFERENCES app.customers(customer_id),
+  game_id bigint REFERENCES app.game_titles(game_id),
+  deal_id bigint REFERENCES app.deals(deal_id),
+  deal_item_id bigint REFERENCES app.deal_items(deal_item_id),
+  assigned_at timestamptz NOT NULL DEFAULT now(),
+  released_at timestamptz,
+  assigned_by text,
+  released_by text,
+  notes text
+);
+
+CREATE INDEX IF NOT EXISTS idx_account_slot_assignments_active
+  ON app.account_slot_assignments(account_id, slot_type_code)
+  WHERE released_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS app.deal_audit (
   audit_id bigserial PRIMARY KEY,
@@ -349,6 +388,40 @@ FROM app.account_platforms ap
 LEFT JOIN app.deal_items di ON di.account_id = ap.account_id AND di.platform_id = ap.platform_id
 LEFT JOIN app.deals d ON d.deal_id = di.deal_id
 GROUP BY ap.account_id, ap.platform_id, ap.slot_capacity;
+
+CREATE OR REPLACE VIEW app.v_account_slot_status AS
+SELECT
+  a.account_id,
+  st.code AS slot_type_code,
+  st.platform_code,
+  st.mode,
+  st.capacity,
+  COALESCE(
+    SUM(
+      CASE
+        WHEN asa.assignment_id IS NOT NULL AND asa.released_at IS NULL THEN 1
+        ELSE 0
+      END
+    ),
+    0
+  ) AS occupied,
+  GREATEST(
+    st.capacity - COALESCE(
+      SUM(
+        CASE
+          WHEN asa.assignment_id IS NOT NULL AND asa.released_at IS NULL THEN 1
+          ELSE 0
+        END
+      ),
+      0
+    ),
+    0
+  ) AS free
+FROM app.accounts a
+CROSS JOIN app.slot_types st
+LEFT JOIN app.account_slot_assignments asa
+  ON asa.account_id = a.account_id AND asa.slot_type_code = st.code
+GROUP BY a.account_id, st.code, st.platform_code, st.mode, st.capacity;
 
 INSERT INTO app.platforms(code, name, slot_capacity)
 VALUES ('ps4','PlayStation 4', 6),('ps5','PlayStation 5', 3)

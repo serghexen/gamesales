@@ -107,6 +107,14 @@ class AccountPlatformSlots(BaseModel):
     occupied_slots: int
     free_slots: int
 
+class AccountSlotStatusOut(BaseModel):
+    slot_type_code: str
+    platform_code: str
+    mode: str
+    capacity: int
+    occupied: int
+    free: int
+
 class AccountOut(BaseModel):
     account_id: int
     region_code: Optional[str]
@@ -115,6 +123,7 @@ class AccountOut(BaseModel):
     domain_code: Optional[str]
     login_full: Optional[str]
     platform_slots: List[AccountPlatformSlots]
+    slot_status: List[AccountSlotStatusOut] = []
     account_date: Optional[date] = None
     notes: Optional[str] = None
 
@@ -191,6 +200,7 @@ class RentalCreate(BaseModel):
     price: float = 0
     game_id: Optional[int] = None
     platform_code: Optional[str] = None
+    slot_type_code: Optional[str] = None
     source_code: Optional[str] = None
     purchase_at: Optional[datetime] = None
 
@@ -236,6 +246,7 @@ class DealCreate(BaseModel):
     source_code: Optional[str] = None
     region_code: Optional[str] = None
     platform_code: Optional[str] = None
+    slot_type_code: Optional[str] = None
     price: float = 0
     purchase_cost: float = 0
     game_link: Optional[str] = None
@@ -253,6 +264,7 @@ class DealUpdate(BaseModel):
     source_code: Optional[str] = None
     region_code: Optional[str] = None
     platform_code: Optional[str] = None
+    slot_type_code: Optional[str] = None
     price: Optional[float] = None
     purchase_cost: Optional[float] = None
     game_link: Optional[str] = None
@@ -277,6 +289,7 @@ class DealListItem(BaseModel):
     game_title: Optional[str]
     game_short_title: Optional[str] = None
     platform_code: Optional[str]
+    slot_type_code: Optional[str] = None
     customer_nickname: Optional[str]
     source_code: Optional[str]
     price: float
@@ -286,6 +299,28 @@ class DealListItem(BaseModel):
     created_at: datetime
     slots_used: Optional[int] = None
     notes: Optional[str] = None
+
+class SlotTypeOut(BaseModel):
+    code: str
+    name: str
+    platform_code: str
+    mode: str
+    capacity: int
+
+class AccountSlotAssignmentOut(BaseModel):
+    assignment_id: int
+    account_id: int
+    slot_type_code: str
+    customer_id: Optional[int]
+    customer_nickname: Optional[str]
+    game_id: Optional[int]
+    game_title: Optional[str]
+    deal_id: Optional[int]
+    deal_item_id: Optional[int]
+    assigned_at: datetime
+    released_at: Optional[datetime]
+    assigned_by: Optional[str]
+    released_by: Optional[str]
 
 class DealListOut(BaseModel):
     total: int
@@ -567,6 +602,29 @@ def get_account_platform_slots(conn, account_id: int) -> List[AccountPlatformSlo
         for (r0, r1, r2, r3) in rows
     ]
 
+def get_account_slot_status(conn, account_id: int) -> List[AccountSlotStatusOut]:
+    rows = qall(
+        conn,
+        """
+        SELECT slot_type_code, platform_code, mode, capacity, occupied, free
+        FROM app.v_account_slot_status
+        WHERE account_id=%s
+        ORDER BY slot_type_code
+        """,
+        (account_id,),
+    )
+    return [
+        AccountSlotStatusOut(
+            slot_type_code=r0,
+            platform_code=r1,
+            mode=r2,
+            capacity=int(r3 or 0),
+            occupied=int(r4 or 0),
+            free=int(r5 or 0),
+        )
+        for (r0, r1, r2, r3, r4, r5) in rows
+    ]
+
 def normalize_platform_codes(codes: Optional[List[str]]) -> List[str]:
     if not codes:
         return []
@@ -598,6 +656,39 @@ def get_game_platform_codes(conn, game_id: int) -> List[str]:
 
 def encode_b64(value: bytes) -> str:
     return base64.b64encode(value).decode("ascii")
+
+def get_slot_type(conn, slot_type_code: str):
+    row = q1(
+        conn,
+        "SELECT code, platform_code, mode, capacity FROM app.slot_types WHERE code=%s",
+        (slot_type_code,),
+    )
+    if not row:
+        raise HTTPException(400, "Unknown slot_type_code")
+    return row
+
+def get_account_slot_free(conn, account_id: int, slot_type_code: str) -> int:
+    row = q1(
+        conn,
+        """
+        SELECT free
+        FROM app.v_account_slot_status
+        WHERE account_id=%s AND slot_type_code=%s
+        """,
+        (account_id, slot_type_code),
+    )
+    return int(row[0] or 0) if row else 0
+
+def release_slot_assignment(conn, deal_item_id: int, released_by: Optional[str]):
+    exec1(
+        conn,
+        """
+        UPDATE app.account_slot_assignments
+        SET released_at=now(), released_by=%s
+        WHERE deal_item_id=%s AND released_at IS NULL
+        """,
+        (released_by, deal_item_id),
+    )
 
 MAX_LOGO_BYTES = 5 * 1024 * 1024
 ALLOWED_LOGO_MIME = {"image/jpeg", "image/png", "image/webp"}
@@ -1248,13 +1339,13 @@ def list_accounts(
                 a.notes,
                 r.code as region_code,
                 d.name as domain_name,
-                COALESCE(SUM(s.free_slots), 0) as free_total,
-                COALESCE(string_agg(upper(p.code) || ' ' || s.occupied_slots || '/' || s.slot_capacity, ' · ' ORDER BY p.code), '') as slots_text
+                COALESCE(SUM(s.free), 0) as free_total,
+                COALESCE(string_agg(st.code || ' ' || s.occupied || '/' || s.capacity, ' · ' ORDER BY st.code), '') as slots_text
               FROM app.accounts a
               LEFT JOIN app.regions r ON r.region_id = a.region_id
               LEFT JOIN app.domains d ON d.domain_id = a.domain_id
-              LEFT JOIN app.v_account_platform_slots s ON s.account_id = a.account_id
-              LEFT JOIN app.platforms p ON p.platform_id = s.platform_id
+              LEFT JOIN app.v_account_slot_status s ON s.account_id = a.account_id
+              LEFT JOIN app.slot_types st ON st.code = s.slot_type_code
               {where_sql}
               GROUP BY a.account_id, a.region_id, a.status_code, a.login_name, a.domain_id, a.account_date, a.notes, r.code, d.name
             ),
@@ -1278,15 +1369,16 @@ def list_accounts(
               page.domain_name,
               page.account_date,
               page.notes,
-              p.code as platform_code,
-              s.slot_capacity,
-              s.occupied_slots,
-              s.free_slots,
+              s.slot_type_code,
+              s.platform_code,
+              s.mode,
+              s.capacity,
+              s.occupied,
+              s.free,
               (SELECT COUNT(*) FROM total) as total_count
             FROM page
-            LEFT JOIN app.v_account_platform_slots s ON s.account_id = page.account_id
-            LEFT JOIN app.platforms p ON p.platform_id = s.platform_id
-            ORDER BY {sort_col} {sort_dir}, page.account_id DESC, p.code
+            LEFT JOIN app.v_account_slot_status s ON s.account_id = page.account_id
+            ORDER BY {sort_col} {sort_dir}, page.account_id DESC, s.slot_type_code
             """,
             params + ([f"%{slots_q}%"] if slots_q else []) + ([] if all else [page_size, offset]),
         )
@@ -1296,7 +1388,7 @@ def list_accounts(
     total = 0
     for row in rows:
         account_id = row[0]
-        total = int(row[11] or 0)
+        total = int(row[13] or 0)
         if account_id not in acc_map:
             acc = AccountOut(
                 account_id=account_id,
@@ -1306,19 +1398,22 @@ def list_accounts(
                 domain_code=row[4],
                 login_full=f"{row[3]}@{row[4]}" if row[3] and row[4] else None,
                 platform_slots=[],
+                slot_status=[],
                 account_date=row[5],
                 notes=row[6],
             )
             acc_map[account_id] = acc
             acc_list.append(acc)
-        platform_code = row[7]
-        if platform_code:
-            acc_map[account_id].platform_slots.append(
-                AccountPlatformSlots(
-                    platform_code=platform_code,
-                    slot_capacity=int(row[8] or 0),
-                    occupied_slots=int(row[9] or 0),
-                    free_slots=int(row[10] or 0),
+        slot_type_code = row[7]
+        if slot_type_code:
+            acc_map[account_id].slot_status.append(
+                AccountSlotStatusOut(
+                    slot_type_code=slot_type_code,
+                    platform_code=row[8],
+                    mode=row[9],
+                    capacity=int(row[10] or 0),
+                    occupied=int(row[11] or 0),
+                    free=int(row[12] or 0),
                 )
             )
     if not rows:
@@ -1331,13 +1426,13 @@ def list_accounts(
                     a.account_id,
                     r.code as region_code,
                     d.name as domain_name,
-                    COALESCE(SUM(s.free_slots), 0) as free_total,
-                    COALESCE(string_agg(upper(p.code) || ' ' || s.occupied_slots || '/' || s.slot_capacity, ' · ' ORDER BY p.code), '') as slots_text
+                    COALESCE(SUM(s.free), 0) as free_total,
+                    COALESCE(string_agg(st.code || ' ' || s.occupied || '/' || s.capacity, ' · ' ORDER BY st.code), '') as slots_text
                   FROM app.accounts a
                   LEFT JOIN app.regions r ON r.region_id = a.region_id
                   LEFT JOIN app.domains d ON d.domain_id = a.domain_id
-                  LEFT JOIN app.v_account_platform_slots s ON s.account_id = a.account_id
-                  LEFT JOIN app.platforms p ON p.platform_id = s.platform_id
+                  LEFT JOIN app.v_account_slot_status s ON s.account_id = a.account_id
+                  LEFT JOIN app.slot_types st ON st.code = s.slot_type_code
                   {where_sql}
                   GROUP BY a.account_id, r.code, d.name
                 )
@@ -1379,6 +1474,7 @@ def create_account(payload: AccountCreate, user: UserOut = Depends(get_current_u
         conn.commit()
 
         platform_slots = get_account_platform_slots(conn, account_id)
+        slot_status = get_account_slot_status(conn, account_id)
         return AccountOut(
             account_id=account_id,
             region_code=payload.region_code,
@@ -1387,6 +1483,7 @@ def create_account(payload: AccountCreate, user: UserOut = Depends(get_current_u
             domain_code=payload.domain_code,
             login_full=f"{payload.login_name}@{payload.domain_code}" if payload.login_name and payload.domain_code else None,
             platform_slots=platform_slots,
+            slot_status=slot_status,
             account_date=payload.account_date,
             notes=payload.notes
         )
@@ -1465,11 +1562,13 @@ def update_account(
             raise HTTPException(404, "Account not found")
 
         platform_slots = get_account_platform_slots(conn, row[0])
+        slot_status = get_account_slot_status(conn, row[0])
         return AccountOut(
             account_id=row[0], region_code=row[1],
             status=row[2], login_name=row[3], domain_code=row[4],
             login_full=f"{row[3]}@{row[4]}" if row[3] and row[4] else None,
             platform_slots=platform_slots,
+            slot_status=slot_status,
             account_date=row[5],
             notes=row[6]
         )
@@ -1567,13 +1666,87 @@ def list_account_games(account_id: int, user: UserOut = Depends(get_current_user
         for (r0, r1, r2, r3, r4, r5, r6, r7, r8, r9) in rows
     ]
 
+@app.get("/accounts/{account_id}/slot-status", response_model=List[AccountSlotStatusOut])
+def list_account_slot_status(account_id: int, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        ensure_account_exists(conn, account_id)
+        rows = qall(
+            conn,
+            """
+            SELECT slot_type_code, platform_code, mode, capacity, occupied, free
+            FROM app.v_account_slot_status
+            WHERE account_id=%s
+            ORDER BY slot_type_code
+            """,
+            (account_id,),
+        )
+    return [
+        AccountSlotStatusOut(
+            slot_type_code=r[0],
+            platform_code=r[1],
+            mode=r[2],
+            capacity=int(r[3] or 0),
+            occupied=int(r[4] or 0),
+            free=int(r[5] or 0),
+        )
+        for r in rows
+    ]
+
+@app.get("/accounts/{account_id}/slot-assignments", response_model=List[AccountSlotAssignmentOut])
+def list_account_slot_assignments(account_id: int, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        ensure_account_exists(conn, account_id)
+        rows = qall(
+            conn,
+            """
+            SELECT
+              asa.assignment_id,
+              asa.account_id,
+              asa.slot_type_code,
+              asa.customer_id,
+              c.nickname,
+              asa.game_id,
+              g.title,
+              asa.deal_id,
+              asa.deal_item_id,
+              asa.assigned_at,
+              asa.released_at,
+              asa.assigned_by,
+              asa.released_by
+            FROM app.account_slot_assignments asa
+            LEFT JOIN app.customers c ON c.customer_id = asa.customer_id
+            LEFT JOIN app.game_titles g ON g.game_id = asa.game_id
+            WHERE asa.account_id=%s
+            ORDER BY asa.released_at IS NULL DESC, asa.assigned_at DESC
+            """,
+            (account_id,),
+        )
+    return [
+        AccountSlotAssignmentOut(
+            assignment_id=r[0],
+            account_id=r[1],
+            slot_type_code=r[2],
+            customer_id=r[3],
+            customer_nickname=r[4],
+            game_id=r[5],
+            game_title=r[6],
+            deal_id=r[7],
+            deal_item_id=r[8],
+            assigned_at=r[9],
+            released_at=r[10],
+            assigned_by=r[11],
+            released_by=r[12],
+        )
+        for r in rows
+    ]
+
 @app.get("/accounts/for-deal", response_model=List[AccountOut])
 def list_accounts_for_deal(
     game_id: int,
-    platform_code: Optional[str] = None,
+    slot_type_code: Optional[str] = None,
     user: UserOut = Depends(get_current_user),
 ):
-    platform_code = (platform_code or "").strip() or None
+    slot_type_code = (slot_type_code or "").strip() or None
     with psycopg.connect(DB_DSN) as conn:
         rows = qall(
             conn,
@@ -1598,11 +1771,10 @@ def list_accounts_for_deal(
                AND aa.game_id = %s
               WHERE EXISTS (
                 SELECT 1
-                FROM app.v_account_platform_slots s
-                JOIN app.platforms p ON p.platform_id = s.platform_id
-                WHERE s.account_id = a.account_id
-                  AND s.free_slots > 0
-                  AND (%s::text IS NULL OR lower(p.code) = lower(%s))
+                FROM app.v_account_slot_status ss
+                WHERE ss.account_id = a.account_id
+                  AND ss.free > 0
+                  AND (%s::text IS NULL OR ss.slot_type_code = %s)
               )
             )
             SELECT
@@ -1622,7 +1794,7 @@ def list_accounts_for_deal(
             LEFT JOIN app.platforms p ON p.platform_id = s.platform_id
             ORDER BY base.account_id DESC, p.code
             """,
-            (game_id, platform_code, platform_code),
+            (game_id, slot_type_code, slot_type_code),
         )
 
     acc_map = {}
@@ -1726,6 +1898,72 @@ def list_game_accounts(game_id: int, user: UserOut = Depends(get_current_user)):
         )
         for (r0, r1, r2, r3, r4, r5) in rows
     ]
+
+@app.get("/games/{game_id}/slot-assignments", response_model=List[AccountSlotAssignmentOut])
+def list_game_slot_assignments(game_id: int, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        ensure_game_exists(conn, game_id)
+        rows = qall(
+            conn,
+            """
+            SELECT
+              asa.assignment_id,
+              asa.account_id,
+              asa.slot_type_code,
+              asa.customer_id,
+              c.nickname,
+              asa.game_id,
+              g.title,
+              asa.deal_id,
+              asa.deal_item_id,
+              asa.assigned_at,
+              asa.released_at,
+              asa.assigned_by,
+              asa.released_by
+            FROM app.account_slot_assignments asa
+            LEFT JOIN app.customers c ON c.customer_id = asa.customer_id
+            LEFT JOIN app.game_titles g ON g.game_id = asa.game_id
+            WHERE asa.game_id=%s
+            ORDER BY asa.released_at IS NULL DESC, asa.assigned_at DESC
+            """,
+            (game_id,),
+        )
+    return [
+        AccountSlotAssignmentOut(
+            assignment_id=r[0],
+            account_id=r[1],
+            slot_type_code=r[2],
+            customer_id=r[3],
+            customer_nickname=r[4],
+            game_id=r[5],
+            game_title=r[6],
+            deal_id=r[7],
+            deal_item_id=r[8],
+            assigned_at=r[9],
+            released_at=r[10],
+            assigned_by=r[11],
+            released_by=r[12],
+        )
+        for r in rows
+    ]
+
+@app.post("/slot-assignments/{assignment_id}/release")
+def release_slot_assignment_api(assignment_id: int, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        row = q1(
+            conn,
+            "SELECT assignment_id FROM app.account_slot_assignments WHERE assignment_id=%s AND released_at IS NULL",
+            (assignment_id,),
+        )
+        if not row:
+            return {"ok": True}
+        exec1(
+            conn,
+            "UPDATE app.account_slot_assignments SET released_at=now(), released_by=%s WHERE assignment_id=%s",
+            (user.username, assignment_id),
+        )
+        conn.commit()
+    return {"ok": True}
 
 @app.get("/games", response_model=GameListOut)
 def list_games(
@@ -1867,6 +2105,22 @@ def list_games(
             )
             total = int(total_row[0] or 0) if total_row else 0
     return {"total": total, "items": items}
+
+@app.get("/slot-types", response_model=List[SlotTypeOut])
+def list_slot_types(user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        rows = qall(
+            conn,
+            """
+            SELECT code, name, platform_code, mode, capacity
+            FROM app.slot_types
+            ORDER BY
+              CASE WHEN mode = 'play' THEN 1 ELSE 2 END,
+              platform_code,
+              code
+            """,
+        )
+    return [SlotTypeOut(code=r[0], name=r[1], platform_code=r[2], mode=r[3], capacity=int(r[4] or 0)) for r in rows]
 
 @app.post("/games", response_model=GameOut)
 def create_game(payload: GameCreate, user: UserOut = Depends(get_current_user)):
@@ -2230,8 +2484,8 @@ def games_import_cancel(job_id: str, user: UserOut = Depends(require_role("admin
 
 @app.post("/rentals")
 def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_user)):
-    if payload.slots_used <= 0:
-        raise HTTPException(400, "slots_used must be >= 1")
+    if not payload.slot_type_code:
+        raise HTTPException(400, "slot_type_code is required for rental")
     validate_date_in_range(payload.purchase_at, "purchase_at")
     validate_date_in_range(payload.start_at, "start_at")
     validate_date_in_range(payload.end_at, "end_at")
@@ -2244,9 +2498,8 @@ def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_use
         ensure_account_exists(conn, payload.account_id)
         ensure_game_exists(conn, payload.game_id)
         ensure_source_exists(conn, payload.source_code)
-        platform_id = get_platform_id_optional(conn, payload.platform_code)
-        if not platform_id:
-            raise HTTPException(400, "platform_code is required for rental")
+        slot_type = get_slot_type(conn, payload.slot_type_code)
+        platform_id = get_platform_id(conn, slot_type[1])
         # ensure customer exists
         row = q1(conn, "SELECT customer_id, source_code FROM app.customers WHERE nickname=%s", (payload.customer_nickname,))
         if row:
@@ -2266,9 +2519,9 @@ def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_use
             customer_id = int(row[0])
 
         # check slots
-        occ, free = slots_summary(conn, payload.account_id, platform_id)
-        if free < payload.slots_used:
-            raise HTTPException(409, f"Not enough free slots. free_slots={free}, requested={payload.slots_used}")
+        free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
+        if free < 1:
+            raise HTTPException(409, "Not enough free slots for selected slot type")
 
         # create deal + item
         region_row = q1(conn, "SELECT region_id FROM app.accounts WHERE account_id=%s", (payload.account_id,))
@@ -2280,17 +2533,29 @@ def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_use
         """, (region_id, customer_id, payload.price))
         deal_id = int(deal_row[0])
 
-        q1(conn, """
+        row_item = q1(conn, """
             INSERT INTO app.deal_items(
               deal_id, account_id, game_id, platform_id,
-              qty, price, purchase_cost, start_at, end_at, slots_used, purchase_at, notes, game_link
+              qty, price, purchase_cost, start_at, end_at, slots_used, slot_type_code, purchase_at, notes, game_link
             )
-            VALUES (%s, %s, %s, %s, 1, %s, 0, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, 1, %s, 0, %s, %s, 1, %s, %s, %s, %s)
             RETURNING deal_item_id
         """, (
             deal_id, payload.account_id, payload.game_id, platform_id,
-            payload.price, start_at, end_at, payload.slots_used, payload.purchase_at, None, None
+            payload.price, start_at, end_at, payload.slot_type_code, payload.purchase_at, None, None
         ))
+        deal_item_id = int(row_item[0])
+        exec1(
+            conn,
+            """
+            INSERT INTO app.account_slot_assignments(
+              account_id, slot_type_code, customer_id, game_id, deal_id, deal_item_id, assigned_by
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (payload.account_id, payload.slot_type_code, customer_id, payload.game_id, deal_id, deal_item_id, user.username),
+        )
+        conn.commit()
 
         conn.commit()
 
@@ -2304,14 +2569,12 @@ def create_deal(payload: DealCreate, user: UserOut = Depends(get_current_user)):
     if deal_type not in ("sale", "rental"):
         raise HTTPException(400, "deal_type_code must be sale or rental")
     if deal_type == "rental":
-        if payload.slots_used <= 0:
-            raise HTTPException(400, "slots_used must be >= 1 for rental")
+        if not payload.slot_type_code:
+            raise HTTPException(400, "slot_type_code is required for rental")
         if not payload.account_id:
             raise HTTPException(400, "account_id is required for rental")
         if not payload.game_id:
             raise HTTPException(400, "game_id is required for rental")
-        if not payload.platform_code:
-            raise HTTPException(400, "platform_code is required for rental")
     if deal_type == "sale":
         if not payload.region_code:
             raise HTTPException(400, "region_code is required for sale")
@@ -2329,7 +2592,10 @@ def create_deal(payload: DealCreate, user: UserOut = Depends(get_current_user)):
             ensure_account_exists(conn, payload.account_id)
             ensure_game_exists(conn, payload.game_id)
         ensure_source_exists(conn, payload.source_code)
-        platform_id = get_platform_id_optional(conn, payload.platform_code) if deal_type == "rental" else None
+        platform_id = None
+        if deal_type == "rental":
+            slot_type = get_slot_type(conn, payload.slot_type_code)
+            platform_id = get_platform_id(conn, slot_type[1])
         region_id = get_region_id(conn, payload.region_code)
         if region_id is None:
             if payload.account_id:
@@ -2354,9 +2620,9 @@ def create_deal(payload: DealCreate, user: UserOut = Depends(get_current_user)):
             customer_id = int(row[0])
 
         if deal_type == "rental":
-            occ, free = slots_summary(conn, payload.account_id, platform_id)
-            if free < payload.slots_used:
-                raise HTTPException(409, f"Not enough free slots. free_slots={free}, requested={payload.slots_used}")
+            free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
+            if free < 1:
+                raise HTTPException(409, "Not enough free slots for selected slot type")
 
         deal_row = q1(conn, """
             INSERT INTO app.deals(deal_type_code, status_code, flow_status_code, region_id, customer_id, currency, total_amount)
@@ -2365,18 +2631,30 @@ def create_deal(payload: DealCreate, user: UserOut = Depends(get_current_user)):
         """, (deal_type, region_id, customer_id, payload.price))
         deal_id = int(deal_row[0])
 
-        q1(conn, """
+        row_item = q1(conn, """
             INSERT INTO app.deal_items(
               deal_id, account_id, game_id, platform_id,
-              qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, notes, game_link
+              qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link
             )
-            VALUES (%s, %s, %s, %s, 1, %s, %s, 0, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, 1, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s)
             RETURNING deal_item_id
         """, (
             deal_id, payload.account_id, payload.game_id, platform_id,
             payload.price, payload.purchase_cost, payload.purchase_at, payload.start_at, payload.end_at,
-            payload.slots_used, payload.notes, payload.game_link
+            (0 if deal_type == "sale" else 1), payload.slot_type_code, payload.notes, payload.game_link
         ))
+        deal_item_id = int(row_item[0])
+        if deal_type == "rental":
+            exec1(
+                conn,
+                """
+                INSERT INTO app.account_slot_assignments(
+                  account_id, slot_type_code, customer_id, game_id, deal_id, deal_item_id, assigned_by
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (payload.account_id, payload.slot_type_code, customer_id, payload.game_id, deal_id, deal_item_id, user.username),
+            )
         conn.commit()
 
         return {"deal_id": deal_id}
@@ -2412,6 +2690,7 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
               di.start_at,
               di.end_at,
               di.slots_used,
+              di.slot_type_code,
               di.notes,
               di.game_link
             FROM app.deals d
@@ -2426,7 +2705,7 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
             raise HTTPException(404, "Deal not found")
 
         current_type, status_code, flow_status_code, region_id, customer_id, total_amount, deal_item_id, \
-            account_id, game_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, notes, game_link = row
+            account_id, game_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link = row
 
         deal_type = (payload.deal_type_code or current_type or "").strip().lower()
         if deal_type not in ("sale", "rental"):
@@ -2438,9 +2717,13 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
         if payload.region_code is not None:
             region_id = get_region_id(conn, payload.region_code)
 
+        new_slot_type_code = payload.slot_type_code if payload.slot_type_code is not None else slot_type_code
         new_platform_id = platform_id
-        if payload.platform_code is not None:
-            new_platform_id = get_platform_id_optional(conn, payload.platform_code)
+        if deal_type == "rental":
+            if not new_slot_type_code:
+                raise HTTPException(400, "slot_type_code is required for rental")
+            slot_type = get_slot_type(conn, new_slot_type_code)
+            new_platform_id = get_platform_id(conn, slot_type[1])
 
         # customer update
         cust_nickname = payload.customer_nickname
@@ -2466,10 +2749,11 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
             new_account_id = None
             new_game_id = None
             new_platform_id = None
+            new_slot_type_code = None
             if region_id is None:
                 raise HTTPException(400, "region_code is required for sale")
-        if deal_type == "rental" and new_slots_used <= 0:
-            raise HTTPException(400, "slots_used must be >= 1 for rental")
+        if deal_type == "rental":
+            new_slots_used = 1
         validate_date_range(new_start_at, new_end_at, "end_at")
 
         # check slots for rental
@@ -2478,14 +2762,22 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
                 raise HTTPException(400, "account_id is required for rental")
             if not new_game_id:
                 raise HTTPException(400, "game_id is required for rental")
-            if not new_platform_id:
-                raise HTTPException(400, "platform_code is required for rental")
             ensure_account_exists(conn, new_account_id)
             ensure_game_exists(conn, new_game_id)
-            occ, free = slots_summary(conn, new_account_id, new_platform_id)
-            free_adjusted = free + (slots_used if new_account_id == account_id else 0)
-            if free_adjusted < new_slots_used:
-                raise HTTPException(409, f"Not enough free slots. free_slots={free_adjusted}, requested={new_slots_used}")
+            free = get_account_slot_free(conn, new_account_id, new_slot_type_code)
+            row_assign = q1(
+                conn,
+                """
+                SELECT account_id, slot_type_code
+                FROM app.account_slot_assignments
+                WHERE deal_item_id=%s AND released_at IS NULL
+                """,
+                (deal_item_id,),
+            )
+            same_assignment = row_assign and int(row_assign[0]) == int(new_account_id) and row_assign[1] == new_slot_type_code
+            free_adjusted = free + (1 if same_assignment else 0)
+            if free_adjusted < 1:
+                raise HTTPException(409, "Not enough free slots for selected slot type")
 
         exec1(
             conn,
@@ -2510,6 +2802,7 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
                 start_at=%s,
                 end_at=%s,
                 slots_used=%s,
+                slot_type_code=%s,
                 notes=%s,
                 game_link=%s
             WHERE deal_item_id=%s
@@ -2524,11 +2817,43 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
                 new_start_at,
                 new_end_at,
                 new_slots_used,
+                new_slot_type_code,
                 new_notes,
                 new_game_link,
                 deal_item_id,
             ),
         )
+        if deal_type == "rental":
+            row_assign = q1(
+                conn,
+                """
+                SELECT assignment_id, account_id, slot_type_code, customer_id, game_id
+                FROM app.account_slot_assignments
+                WHERE deal_item_id=%s AND released_at IS NULL
+                """,
+                (deal_item_id,),
+            )
+            current_assign = row_assign[0] if row_assign else None
+            need_new_assign = (
+                (not row_assign)
+                or int(row_assign[1]) != int(new_account_id)
+                or row_assign[2] != new_slot_type_code
+                or (customer_id is not None and row_assign[3] != customer_id)
+                or (new_game_id is not None and row_assign[4] != new_game_id)
+            )
+            if need_new_assign and current_assign:
+                release_slot_assignment(conn, deal_item_id, user.username)
+            if need_new_assign:
+                exec1(
+                    conn,
+                    """
+                    INSERT INTO app.account_slot_assignments(
+                      account_id, slot_type_code, customer_id, game_id, deal_id, deal_item_id, assigned_by
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (new_account_id, new_slot_type_code, customer_id, new_game_id, deal_id, deal_item_id, user.username),
+                )
         conn.commit()
 
     return {"ok": True}
@@ -2639,6 +2964,7 @@ def list_deals(
               di.purchase_at,
               d.created_at,
               di.slots_used,
+              di.slot_type_code,
               di.notes,
               di.game_link
             FROM app.deal_items di
@@ -2684,8 +3010,9 @@ def list_deals(
                 purchase_at=r[18],
                 created_at=r[19],
                 slots_used=r[20],
-                notes=r[21],
-                game_link=r[22],
+                slot_type_code=r[21],
+                notes=r[22],
+                game_link=r[23],
             )
         )
 
