@@ -1567,6 +1567,94 @@ def list_account_games(account_id: int, user: UserOut = Depends(get_current_user
         for (r0, r1, r2, r3, r4, r5, r6, r7, r8, r9) in rows
     ]
 
+@app.get("/accounts/for-deal", response_model=List[AccountOut])
+def list_accounts_for_deal(
+    game_id: int,
+    platform_code: Optional[str] = None,
+    user: UserOut = Depends(get_current_user),
+):
+    platform_code = (platform_code or "").strip() or None
+    with psycopg.connect(DB_DSN) as conn:
+        rows = qall(
+            conn,
+            """
+            WITH base AS (
+              SELECT
+                a.account_id,
+                a.region_id,
+                a.status_code,
+                a.login_name,
+                a.domain_id,
+                a.account_date,
+                a.notes,
+                r.code as region_code,
+                d.name as domain_name
+              FROM app.accounts a
+              LEFT JOIN app.regions r ON r.region_id = a.region_id
+              LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+              JOIN app.account_assets aa
+                ON aa.account_id = a.account_id
+               AND aa.asset_type_code = 'game'
+               AND aa.game_id = %s
+              WHERE EXISTS (
+                SELECT 1
+                FROM app.v_account_platform_slots s
+                JOIN app.platforms p ON p.platform_id = s.platform_id
+                WHERE s.account_id = a.account_id
+                  AND s.free_slots > 0
+                  AND (%s::text IS NULL OR lower(p.code) = lower(%s))
+              )
+            )
+            SELECT
+              base.account_id,
+              base.region_code,
+              base.status_code,
+              base.login_name,
+              base.domain_name,
+              base.account_date,
+              base.notes,
+              p.code as platform_code,
+              s.slot_capacity,
+              s.occupied_slots,
+              s.free_slots
+            FROM base
+            LEFT JOIN app.v_account_platform_slots s ON s.account_id = base.account_id
+            LEFT JOIN app.platforms p ON p.platform_id = s.platform_id
+            ORDER BY base.account_id DESC, p.code
+            """,
+            (game_id, platform_code, platform_code),
+        )
+
+    acc_map = {}
+    acc_list = []
+    for row in rows:
+        account_id = row[0]
+        if account_id not in acc_map:
+            acc = AccountOut(
+                account_id=account_id,
+                region_code=row[1],
+                status=row[2],
+                login_name=row[3],
+                domain_code=row[4],
+                login_full=f"{row[3]}@{row[4]}" if row[3] and row[4] else None,
+                platform_slots=[],
+                account_date=row[5],
+                notes=row[6],
+            )
+            acc_map[account_id] = acc
+            acc_list.append(acc)
+        platform_code = row[7]
+        if platform_code:
+            acc_map[account_id].platform_slots.append(
+                AccountPlatformSlots(
+                    platform_code=platform_code,
+                    slot_capacity=int(row[8] or 0),
+                    occupied_slots=int(row[9] or 0),
+                    free_slots=int(row[10] or 0),
+                )
+            )
+    return acc_list
+
 @app.put("/accounts/{account_id}/games")
 def set_account_games(
     account_id: int,
