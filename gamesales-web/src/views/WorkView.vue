@@ -5023,7 +5023,9 @@ function startEditDeal(deal) {
   editDeal.notes = deal.notes || ''
   editDeal.flow_status_code = deal.flow_status_code || ''
   nextTick(() => {
-    dealInitLock.value = false
+    setTimeout(() => {
+      dealInitLock.value = false
+    }, 0)
   })
 }
 
@@ -6103,7 +6105,13 @@ async function loadDealAccountsForGame(target) {
     if (slotTypeCode) params.set('slot_type_code', slotTypeCode)
     const data = await apiGet(`/accounts/for-deal?${params.toString()}`, { token: auth.state.token })
     if (isEdit) {
-      dealAccountsForGameEdit.value = data || []
+      let list = data || []
+      const currentId = editDeal.account_id
+      if (currentId && !list.find((a) => a.account_id === currentId)) {
+        const fallback = (accountsAll.value || []).find((a) => a.account_id === currentId)
+        if (fallback) list = [fallback, ...list]
+      }
+      dealAccountsForGameEdit.value = list
     } else {
       dealAccountsForGameNew.value = data || []
     }
@@ -6775,13 +6783,18 @@ watch(
 
 watch(
   () => editDeal.account_id,
-  (val) => {
+  (val, prev) => {
     if (!editDeal.open || dealInitLock.value) return
     if (!val) {
       editDeal.slot_type_code = ''
       accountSlotStatusEdit.value = []
       dealAccountAssignmentsEdit.value = []
+      return
     }
+    if (!prev) return
+    editDeal.slot_type_code = ''
+    accountSlotStatusEdit.value = []
+    dealAccountAssignmentsEdit.value = []
   }
 )
 
