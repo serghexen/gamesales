@@ -491,3 +491,33 @@ VALUES
   ('pending','В ожидании'),
   ('completed','Завершен')
 ON CONFLICT (code) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS app.user_roles (
+  code text PRIMARY KEY,
+  name text NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS app.users (
+  user_id bigserial PRIMARY KEY,
+  username text NOT NULL UNIQUE,
+  password_hash text NOT NULL,
+  role_code text NOT NULL DEFAULT 'manager' REFERENCES app.user_roles(code),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+INSERT INTO app.user_roles(code, name)
+VALUES ('admin','Admin'),('manager','Manager')
+ON CONFLICT (code) DO NOTHING;
+
+CREATE SCHEMA IF NOT EXISTS tg;
+
+CREATE TABLE IF NOT EXISTS tg.sessions (
+  user_id         bigint PRIMARY KEY REFERENCES app.users(user_id) ON DELETE CASCADE,
+  phone           text NOT NULL,
+  session_string  text NOT NULL DEFAULT '',
+  phone_code_hash text,
+  status          text NOT NULL DEFAULT 'pending',
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  last_used_at    timestamptz
+);

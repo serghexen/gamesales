@@ -224,6 +224,31 @@ class UserOut(BaseModel):
     username: str
     role: str
 
+
+class TelegramAuthStartIn(BaseModel):
+    phone: str
+
+
+class TelegramAuthConfirmIn(BaseModel):
+    code: str
+
+
+class TelegramAuthPasswordIn(BaseModel):
+    password: str
+
+
+class TelegramDialogsOut(BaseModel):
+    items: list
+
+
+class TelegramMessagesOut(BaseModel):
+    items: list
+
+
+class TelegramSendMessageIn(BaseModel):
+    chat_id: int
+    text: str
+
 class LoginOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -709,6 +734,8 @@ IMPORT_STATUS_TTL_SEC = 24 * 60 * 60
 _REDIS_CLIENT = None
 _QUEUE_API_URL = os.getenv("QUEUE_API_URL", "")
 _QUEUE_API_KEY = os.getenv("QUEUE_API_KEY", "")
+_TELEGRAM_API_URL = os.getenv("TELEGRAM_API_URL", "")
+_TELEGRAM_API_KEY = os.getenv("TELEGRAM_API_KEY", "")
 
 def get_redis():
     global _REDIS_CLIENT
@@ -746,6 +773,32 @@ def _queue_api_request(method: str, path: str, data: Optional[dict] = None) -> O
         raise RuntimeError(message) from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Queue API {method} {path} failed: {exc.reason}") from exc
+
+
+def _telegram_api_request(method: str, path: str, data: Optional[dict] = None) -> dict:
+    if not _TELEGRAM_API_URL:
+        raise HTTPException(500, "Telegram service is not configured")
+    url = _TELEGRAM_API_URL.rstrip("/") + path
+    body = None
+    headers = {"Content-Type": "application/json"}
+    if _TELEGRAM_API_KEY:
+        headers["X-API-Key"] = _TELEGRAM_API_KEY
+    if data is not None:
+        body = json.dumps(data).encode("utf-8")
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            content = resp.read()
+            return json.loads(content.decode("utf-8")) if content else {}
+    except urllib.error.HTTPError as exc:
+        raw = exc.read()
+        details = raw.decode("utf-8", errors="ignore") if raw else ""
+        message = f"Telegram service {method} {path} failed: {exc.code} {exc.reason}"
+        if details:
+            message = f"{message}. {details}"
+        raise HTTPException(exc.code, message)
+    except urllib.error.URLError as exc:
+        raise HTTPException(502, f"Telegram service {method} {path} failed: {exc.reason}")
 
 def is_import_cancelled(job_id: str) -> bool:
     status = get_import_progress(job_id)
@@ -972,6 +1025,13 @@ def get_user_by_username(conn, username: str):
         (username,),
     )
 
+
+def get_user_id(conn, username: str) -> int:
+    row = get_user_by_username(conn, username)
+    if not row:
+        raise HTTPException(404, "User not found")
+    return int(row[0])
+
 def role_exists(conn, role_code: str) -> bool:
     row = q1(conn, "SELECT 1 FROM app.user_roles WHERE code=%s", (role_code,))
     return bool(row)
@@ -1054,6 +1114,160 @@ def login(payload: LoginIn):
 @app.get("/auth/me", response_model=UserOut)
 def me(user: UserOut = Depends(get_current_user)):
     return user
+
+
+@app.get("/tg/status")
+def telegram_status(user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        user_id = get_user_id(conn, user.username)
+        row = q1(
+            conn,
+            "SELECT phone, status FROM tg.sessions WHERE user_id=%s",
+            (user_id,),
+        )
+    if not row:
+        return {"status": "not_connected"}
+    return {"status": row[1], "phone": row[0]}
+
+
+@app.post("/tg/auth/start")
+def telegram_auth_start(payload: TelegramAuthStartIn, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        user_id = get_user_id(conn, user.username)
+        row = q1(conn, "SELECT session_string FROM tg.sessions WHERE user_id=%s", (user_id,))
+        session_string = row[0] if row else ""
+        resp = _telegram_api_request("POST", "/auth/start", {"phone": payload.phone, "session_string": session_string})
+        phone_code_hash = resp.get("phone_code_hash")
+        session_string = resp.get("session_string") or session_string
+        exec1(
+            conn,
+            """
+            INSERT INTO tg.sessions(user_id, phone, session_string, phone_code_hash, status, updated_at)
+            VALUES (%s, %s, %s, %s, 'pending', now())
+            ON CONFLICT (user_id)
+            DO UPDATE SET phone=excluded.phone,
+                          session_string=excluded.session_string,
+                          phone_code_hash=excluded.phone_code_hash,
+                          status='pending',
+                          updated_at=now()
+            """,
+            (user_id, payload.phone, session_string, phone_code_hash),
+        )
+        conn.commit()
+    return {"status": "code_sent"}
+
+
+@app.post("/tg/auth/confirm")
+def telegram_auth_confirm(payload: TelegramAuthConfirmIn, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        user_id = get_user_id(conn, user.username)
+        row = q1(
+            conn,
+            "SELECT phone, session_string, phone_code_hash, status FROM tg.sessions WHERE user_id=%s",
+            (user_id,),
+        )
+        if not row:
+            raise HTTPException(404, "Telegram session not found")
+        phone, session_string, phone_code_hash, status = row
+        if status not in ("pending", "password_required"):
+            raise HTTPException(400, "Telegram auth not in progress")
+        resp = _telegram_api_request(
+            "POST",
+            "/auth/confirm",
+            {
+                "phone": phone,
+                "code": payload.code,
+                "phone_code_hash": phone_code_hash,
+                "session_string": session_string,
+            },
+        )
+        new_session = resp.get("session_string") or session_string
+        if resp.get("status") == "password_required":
+            exec1(
+                conn,
+                "UPDATE tg.sessions SET session_string=%s, status='password_required', updated_at=now() WHERE user_id=%s",
+                (new_session, user_id),
+            )
+            conn.commit()
+            return {"status": "password_required"}
+        exec1(
+            conn,
+            "UPDATE tg.sessions SET session_string=%s, status='ready', phone_code_hash=NULL, updated_at=now() WHERE user_id=%s",
+            (new_session, user_id),
+        )
+        conn.commit()
+    return {"status": "ready"}
+
+
+@app.post("/tg/auth/password")
+def telegram_auth_password(payload: TelegramAuthPasswordIn, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        user_id = get_user_id(conn, user.username)
+        row = q1(
+            conn,
+            "SELECT session_string, status FROM tg.sessions WHERE user_id=%s",
+            (user_id,),
+        )
+        if not row:
+            raise HTTPException(404, "Telegram session not found")
+        session_string, status = row
+        if status != "password_required":
+            raise HTTPException(400, "Password not required")
+        resp = _telegram_api_request(
+            "POST",
+            "/auth/password",
+            {"password": payload.password, "session_string": session_string},
+        )
+        new_session = resp.get("session_string") or session_string
+        exec1(
+            conn,
+            "UPDATE tg.sessions SET session_string=%s, status='ready', phone_code_hash=NULL, updated_at=now() WHERE user_id=%s",
+            (new_session, user_id),
+        )
+        conn.commit()
+    return {"status": "ready"}
+
+
+@app.get("/tg/dialogs", response_model=TelegramDialogsOut)
+def telegram_dialogs(user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        user_id = get_user_id(conn, user.username)
+        row = q1(conn, "SELECT session_string, status FROM tg.sessions WHERE user_id=%s", (user_id,))
+        if not row or row[1] != "ready":
+            raise HTTPException(400, "Telegram is not connected")
+        session_string = row[0]
+        resp = _telegram_api_request("POST", "/dialogs", {"session_string": session_string})
+        exec1(conn, "UPDATE tg.sessions SET last_used_at=now() WHERE user_id=%s", (user_id,))
+        conn.commit()
+    return {"items": resp.get("items", [])}
+
+
+@app.get("/tg/messages", response_model=TelegramMessagesOut)
+def telegram_messages(chat_id: int, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        user_id = get_user_id(conn, user.username)
+        row = q1(conn, "SELECT session_string, status FROM tg.sessions WHERE user_id=%s", (user_id,))
+        if not row or row[1] != "ready":
+            raise HTTPException(400, "Telegram is not connected")
+        session_string = row[0]
+        resp = _telegram_api_request("POST", "/messages", {"session_string": session_string, "chat_id": chat_id, "limit": 50})
+        exec1(conn, "UPDATE tg.sessions SET last_used_at=now() WHERE user_id=%s", (user_id,))
+        conn.commit()
+    return {"items": resp.get("items", [])}
+
+
+@app.post("/tg/messages")
+def telegram_send_message(payload: TelegramSendMessageIn, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        user_id = get_user_id(conn, user.username)
+        row = q1(conn, "SELECT session_string, status FROM tg.sessions WHERE user_id=%s", (user_id,))
+        if not row or row[1] != "ready":
+            raise HTTPException(400, "Telegram is not connected")
+        session_string = row[0]
+        _telegram_api_request("POST", "/messages/send", {"session_string": session_string, "chat_id": payload.chat_id, "text": payload.text})
+        exec1(conn, "UPDATE tg.sessions SET last_used_at=now() WHERE user_id=%s", (user_id,))
+        conn.commit()
+    return {"ok": True}
 
 @app.get("/platforms", response_model=List[PlatformOut])
 def list_platforms(user: UserOut = Depends(get_current_user)):

@@ -6,6 +6,8 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      TELEGRAM_API_URL: ${TELEGRAM_API_URL:-http://telegram-service:8082}
+      TELEGRAM_API_KEY: ${TELEGRAM_API_KEY}
     ports:
       - "8000:8000"
     volumes:
@@ -39,6 +41,17 @@ services:
         condition: service_started
     ports:
       - "8081:8081"
+
+  telegram-service:
+    build: ./telegram-service
+    container_name: gamesales-telegram-service-dev
+    env_file: .env.dev
+    environment:
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_API_KEY: ${TELEGRAM_API_KEY}
+    ports:
+      - "8082:8082"
 
   redis:
     image: redis:7-alpine
