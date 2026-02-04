@@ -1890,25 +1890,26 @@
                           <select
                             v-model="editDeal.slot_type_code"
                             class="input input--select"
-                            :disabled="dealEditMode === 'view' || !editDeal.account_id"
+                            :disabled="dealEditMode === 'view' || !editDeal.game_id"
                           >
                             <option value="">— не выбрано —</option>
                             <option
-                              v-for="st in getAvailableSlotTypes(accountSlotStatusEdit, editDeal.slot_type_code)"
-                              :key="st.slot_type_code"
-                              :value="st.slot_type_code"
+                              v-for="st in getDealSlotTypeOptions('edit')"
+                              :key="st.code"
+                              :value="st.code"
+                              :disabled="!st.supported"
                             >
-                              {{ getSlotTypeLabel(st.slot_type_code) }}
+                              {{ getDealSlotTypeLabel(st) }}
                             </option>
                           </select>
-                          <span v-if="!editDeal.account_id" class="muted muted--small">Сначала выберите аккаунт</span>
+                          <span v-if="!editDeal.game_id" class="muted muted--small">Сначала выберите игру</span>
                         </label>
                         <label v-if="editDeal.deal_type_code === 'rental'" class="field">
                           <span class="label">Аккаунт</span>
                           <select
                             v-model.number="editDeal.account_id"
                             class="input input--select"
-                            :disabled="dealEditMode === 'view' || !editDeal.game_id"
+                            :disabled="dealEditMode === 'view' || !editDeal.game_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit')"
                           >
                             <option value="">— не выбрано —</option>
                             <option v-for="a in dealAccountsForEdit" :key="a.account_id" :value="a.account_id">
@@ -1916,12 +1917,15 @@
                             </option>
                           </select>
                           <span v-if="!editDeal.game_id" class="muted muted--small">Сначала выберите игру</span>
+                          <span v-else-if="!editDeal.slot_type_code" class="muted muted--small">Сначала выберите слот</span>
                           <div
-                            v-if="dealEditMode !== 'view' && editDeal.game_id && dealAccountsForEdit.length === 0"
+                            v-if="dealEditMode !== 'view' && editDeal.game_id && editDeal.slot_type_code && !editDeal.account_id && !isDealSlotTypeUnsupported('edit') && !hasFreeDealSlots('edit')"
                             class="quick-create"
                           >
-                            <div class="quick-create__title">Нет свободных слотов — можно снять занятый</div>
-                            <div v-if="dealGameAssignmentsLoadingEdit" class="loader-wrap loader-wrap--compact">
+                            <div class="quick-create__title">
+                              {{ hasAnyGameAssignmentsEdit ? 'Нет свободных слотов — можно снять занятый' : 'Нет аккаунтов с игрой' }}
+                            </div>
+                            <div v-if="hasAnyGameAssignmentsEdit && dealGameAssignmentsLoadingEdit" class="loader-wrap loader-wrap--compact">
                               <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
                                 <div class="wheel"></div>
                                 <div class="hamster">
@@ -1941,7 +1945,7 @@
                                 <div class="spoke"></div>
                               </div>
                             </div>
-                            <table v-else-if="dealGameAssignmentsEdit.filter((s) => !s.released_at).length" class="table table--compact table--dense">
+                            <table v-else-if="hasAnyGameAssignmentsEdit && dealGameAssignmentsForSelectedSlotEdit.length" class="table table--compact table--dense">
                               <thead>
                                 <tr>
                                   <th>Аккаунт</th>
@@ -1951,7 +1955,7 @@
                                 </tr>
                               </thead>
                               <tbody>
-                                <tr v-for="s in dealGameAssignmentsEdit.filter((s) => !s.released_at)" :key="s.assignment_id">
+                                <tr v-for="s in dealGameAssignmentsForSelectedSlotEdit" :key="s.assignment_id">
                                   <td>{{ getAccountLabelById(s.account_id) }}</td>
                                   <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
                                   <td>{{ s.customer_nickname || '—' }}</td>
@@ -1969,7 +1973,7 @@
                                 </tr>
                               </tbody>
                             </table>
-                            <p v-else class="muted">Нет активных слотов по игре.</p>
+                            <p v-else-if="hasAnyGameAssignmentsEdit" class="muted">Нет активных слотов по игре.</p>
                             <div class="quick-create__title">Быстро создать аккаунт</div>
                             <input v-model.trim="quickEditAccount.login_name" class="input input--compact" placeholder="Логин" />
                             <select v-model="quickEditAccount.domain_code" class="input input--select input--compact">
@@ -2209,25 +2213,26 @@
                           <select
                             v-model="newDeal.slot_type_code"
                             class="input input--select"
-                            :disabled="!newDeal.account_id"
+                            :disabled="!newDeal.game_id"
                           >
                             <option value="">— не выбрано —</option>
                             <option
-                              v-for="st in getAvailableSlotTypes(accountSlotStatusNew, newDeal.slot_type_code)"
-                              :key="st.slot_type_code"
-                              :value="st.slot_type_code"
+                              v-for="st in getDealSlotTypeOptions('new')"
+                              :key="st.code"
+                              :value="st.code"
+                              :disabled="!st.supported"
                             >
-                              {{ getSlotTypeLabel(st.slot_type_code) }}
+                              {{ getDealSlotTypeLabel(st) }}
                             </option>
                           </select>
-                          <span v-if="!newDeal.account_id" class="muted muted--small">Сначала выберите аккаунт</span>
+                          <span v-if="!newDeal.game_id" class="muted muted--small">Сначала выберите игру</span>
                         </label>
                         <label v-if="newDeal.deal_type_code === 'rental'" class="field">
                           <span class="label">Аккаунт</span>
                           <select
                             v-model.number="newDeal.account_id"
                             class="input input--select"
-                            :disabled="!newDeal.game_id"
+                            :disabled="!newDeal.game_id || !newDeal.slot_type_code || isDealSlotTypeUnsupported('new')"
                           >
                             <option value="">— не выбрано —</option>
                             <option v-for="a in dealAccountsForNew" :key="a.account_id" :value="a.account_id">
@@ -2235,12 +2240,15 @@
                             </option>
                           </select>
                           <span v-if="!newDeal.game_id" class="muted muted--small">Сначала выберите игру</span>
+                          <span v-else-if="!newDeal.slot_type_code" class="muted muted--small">Сначала выберите слот</span>
                           <div
-                            v-if="newDeal.game_id && dealAccountsForNew.length === 0"
+                            v-if="newDeal.game_id && newDeal.slot_type_code && !newDeal.account_id && !isDealSlotTypeUnsupported('new') && !hasFreeDealSlots('new')"
                             class="quick-create"
                           >
-                            <div class="quick-create__title">Нет свободных слотов — можно снять занятый</div>
-                            <div v-if="dealGameAssignmentsLoadingNew" class="loader-wrap loader-wrap--compact">
+                            <div class="quick-create__title">
+                              {{ hasAnyGameAssignmentsNew ? 'Нет свободных слотов — можно снять занятый' : 'Нет аккаунтов с игрой' }}
+                            </div>
+                            <div v-if="hasAnyGameAssignmentsNew && dealGameAssignmentsLoadingNew" class="loader-wrap loader-wrap--compact">
                               <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
                                 <div class="wheel"></div>
                                 <div class="hamster">
@@ -2260,7 +2268,7 @@
                                 <div class="spoke"></div>
                               </div>
                             </div>
-                            <table v-else-if="dealGameAssignmentsNew.filter((s) => !s.released_at).length" class="table table--compact table--dense">
+                            <table v-else-if="hasAnyGameAssignmentsNew && dealGameAssignmentsForSelectedSlotNew.length" class="table table--compact table--dense">
                               <thead>
                                 <tr>
                                   <th>Аккаунт</th>
@@ -2270,7 +2278,7 @@
                                 </tr>
                               </thead>
                               <tbody>
-                                <tr v-for="s in dealGameAssignmentsNew.filter((s) => !s.released_at)" :key="s.assignment_id">
+                                <tr v-for="s in dealGameAssignmentsForSelectedSlotNew" :key="s.assignment_id">
                                   <td>{{ getAccountLabelById(s.account_id) }}</td>
                                   <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
                                   <td>{{ s.customer_nickname || '—' }}</td>
@@ -2288,7 +2296,7 @@
                                 </tr>
                               </tbody>
                             </table>
-                            <p v-else class="muted">Нет активных слотов по игре.</p>
+                            <p v-else-if="hasAnyGameAssignmentsNew" class="muted">Нет активных слотов по игре.</p>
                             <div class="quick-create__title">Быстро создать аккаунт</div>
                             <input v-model.trim="quickNewAccount.login_name" class="input input--compact" placeholder="Логин" />
                             <select v-model="quickNewAccount.domain_code" class="input input--select input--compact">
@@ -3499,6 +3507,11 @@ const dealAccountAssignmentsNew = ref([])
 const dealAccountAssignmentsEdit = ref([])
 const dealAccountAssignmentsLoadingNew = ref(false)
 const dealAccountAssignmentsLoadingEdit = ref(false)
+const dealSlotAvailabilityNew = ref({})
+const dealSlotAvailabilityEdit = ref({})
+const dealSlotAvailabilityLoadingNew = ref(false)
+const dealSlotAvailabilityLoadingEdit = ref(false)
+const dealSlotAutoAssign = ref(false)
 
 const totalPages = computed(() => {
   const pages = Math.ceil(dealTotal.value / dealPageSize.value)
@@ -3739,6 +3752,68 @@ const getSlotTypeLabel = (code) => {
   return slotTypes.value.find((t) => t.code === code)?.name || code
 }
 
+const getGameById = (gameId) => (gamesAll.value || []).find((g) => g.game_id === gameId)
+
+const getGamePlatformCodes = (gameId) => {
+  const game = getGameById(gameId)
+  const codes = Array.isArray(game?.platform_codes) ? game.platform_codes : []
+  return codes.map((c) => String(c).toLowerCase())
+}
+
+const isSlotTypeSupportedForGame = (slotTypeCode, gameId) => {
+  if (!slotTypeCode || !gameId) return false
+  const type = slotTypes.value.find((t) => t.code === slotTypeCode)
+  if (!type?.platform_code) return true
+  const platforms = getGamePlatformCodes(gameId)
+  if (!platforms.length) return true
+  const hasPs4 = platforms.includes('ps4')
+  const hasPs5 = platforms.includes('ps5')
+  if (hasPs4) return true
+  if (hasPs5) return String(type.platform_code).toLowerCase() === 'ps5'
+  return true
+}
+
+const getDealSlotTypeOptions = (target) => {
+  const isEdit = target === 'edit'
+  const gameId = isEdit ? editDeal.game_id : newDeal.game_id
+  const availability = isEdit ? dealSlotAvailabilityEdit.value : dealSlotAvailabilityNew.value
+  const hasAssignments = isEdit ? hasAnyGameAssignmentsEdit.value : hasAnyGameAssignmentsNew.value
+  return (slotTypes.value || []).map((t) => {
+    const supported = isSlotTypeSupportedForGame(t.code, gameId)
+    const hasFree = availability?.[t.code]?.hasFree
+    const noAccounts = supported && hasFree === false && !hasAssignments
+    return { code: t.code, name: t.name, platform_code: t.platform_code, supported, hasFree, noAccounts }
+  })
+}
+
+const getDealSlotTypeLabel = (slot) => {
+  if (!slot) return '—'
+  if (!slot.supported) return `${slot.name} — недоступно`
+  if (slot.noAccounts) return slot.name
+  if (slot.hasFree === false) return `${slot.name} — заняты`
+  return slot.name
+}
+
+const isDealSlotTypeUnsupported = (target) => {
+  const isEdit = target === 'edit'
+  const gameId = isEdit ? editDeal.game_id : newDeal.game_id
+  const slotTypeCode = isEdit ? editDeal.slot_type_code : newDeal.slot_type_code
+  if (!gameId || !slotTypeCode) return false
+  return !isSlotTypeSupportedForGame(slotTypeCode, gameId)
+}
+
+const hasFreeDealSlots = (target) => {
+  const isEdit = target === 'edit'
+  const slotTypeCode = isEdit ? editDeal.slot_type_code : newDeal.slot_type_code
+  if (!slotTypeCode) return false
+  const availability = isEdit ? dealSlotAvailabilityEdit.value : dealSlotAvailabilityNew.value
+  if (availability && Object.prototype.hasOwnProperty.call(availability, slotTypeCode)) {
+    return Boolean(availability[slotTypeCode]?.hasFree)
+  }
+  const list = isEdit ? dealAccountsForGameEdit.value : dealAccountsForGameNew.value
+  return Array.isArray(list) && list.length > 0
+}
+
 const getSlotAssignmentStatus = (item) => (item?.released_at ? 'Снят' : 'Занят')
 
 const getAccountLabelById = (accountId) => {
@@ -3919,14 +3994,27 @@ const formatGamePlatforms = (codes) => {
 const sortedAccounts = computed(() => [...accounts.value])
 
 const dealAccountsForNew = computed(() => {
-  const source = newDeal.game_id ? dealAccountsForGameNew.value : accountsAll.value
-  return [...source]
+  if (!newDeal.game_id || !newDeal.slot_type_code) return []
+  return [...dealAccountsForGameNew.value]
 })
 
 const dealAccountsForEdit = computed(() => {
-  const source = editDeal.game_id ? dealAccountsForGameEdit.value : accountsAll.value
-  return [...source]
+  if (!editDeal.game_id || !editDeal.slot_type_code) return []
+  return [...dealAccountsForGameEdit.value]
 })
+
+const dealGameAssignmentsForSelectedSlotNew = computed(() => {
+  if (!newDeal.slot_type_code) return []
+  return (dealGameAssignmentsNew.value || []).filter((s) => !s.released_at && s.slot_type_code === newDeal.slot_type_code)
+})
+
+const dealGameAssignmentsForSelectedSlotEdit = computed(() => {
+  if (!editDeal.slot_type_code) return []
+  return (dealGameAssignmentsEdit.value || []).filter((s) => !s.released_at && s.slot_type_code === editDeal.slot_type_code)
+})
+
+const hasAnyGameAssignmentsNew = computed(() => (dealGameAssignmentsNew.value || []).some((s) => !s.released_at))
+const hasAnyGameAssignmentsEdit = computed(() => (dealGameAssignmentsEdit.value || []).some((s) => !s.released_at))
 
 
 
@@ -4146,6 +4234,8 @@ async function loadSlotTypes() {
   try {
     const data = await apiGet('/slot-types', { token: auth.state.token })
     slotTypes.value = data || []
+    if (newDeal.game_id) loadDealSlotAvailability('new')
+    if (editDeal.open && editDeal.game_id) loadDealSlotAvailability('edit')
   } catch {
     slotTypes.value = []
   }
@@ -4980,6 +5070,7 @@ function openCreateDealModal() {
   quickNewAccount.platform_codes = []
   quickNewAccountError.value = ''
   dealAccountsForGameNew.value = []
+  dealSlotAvailabilityNew.value = {}
 }
 
 function closeDealModal() {
@@ -5020,6 +5111,8 @@ function closeDealModal() {
   dealAccountsForGameEdit.value = []
   dealAccountAssignmentsNew.value = []
   dealAccountAssignmentsEdit.value = []
+  dealSlotAvailabilityNew.value = {}
+  dealSlotAvailabilityEdit.value = {}
 }
 
 function startEditDeal(deal) {
@@ -5056,6 +5149,7 @@ function startEditDeal(deal) {
   nextTick(() => {
     setTimeout(() => {
       dealInitLock.value = false
+      if (editDeal.game_id) loadDealSlotAvailability('edit')
     }, 0)
   })
 }
@@ -5080,6 +5174,7 @@ function cancelEditDeal() {
   editDeal.flow_status_code = ''
   dealEditMode.value = 'view'
   dealAccountAssignmentsEdit.value = []
+  dealSlotAvailabilityEdit.value = {}
 }
 
 function formatDateOnly(value) {
@@ -6117,6 +6212,13 @@ async function createQuickAccount(target) {
         dealGameAssignmentsNew.value = []
       }
     }
+    if (isEdit) {
+      await loadDealSlotAvailability('edit')
+      await loadDealAccountsForGame('edit')
+    } else {
+      await loadDealSlotAvailability('new')
+      await loadDealAccountsForGame('new')
+    }
     state.login_name = ''
     state.domain_code = ''
     state.platform_codes = []
@@ -6151,7 +6253,18 @@ function clearEditDealGame() {
 async function loadDealAccountsForGame(target) {
   const isEdit = target === 'edit'
   const gameId = isEdit ? editDeal.game_id : newDeal.game_id
+  const slotTypeCode = isEdit ? editDeal.slot_type_code : newDeal.slot_type_code
   if (!gameId) {
+    if (isEdit) dealAccountsForGameEdit.value = []
+    else dealAccountsForGameNew.value = []
+    return
+  }
+  if (!slotTypeCode) {
+    if (isEdit) dealAccountsForGameEdit.value = []
+    else dealAccountsForGameNew.value = []
+    return
+  }
+  if (!isSlotTypeSupportedForGame(slotTypeCode, gameId)) {
     if (isEdit) dealAccountsForGameEdit.value = []
     else dealAccountsForGameNew.value = []
     return
@@ -6160,7 +6273,6 @@ async function loadDealAccountsForGame(target) {
   try {
     const params = new URLSearchParams()
     params.set('game_id', String(gameId))
-    const slotTypeCode = isEdit ? editDeal.slot_type_code : newDeal.slot_type_code
     if (slotTypeCode) params.set('slot_type_code', slotTypeCode)
     const data = await apiGet(`/accounts/for-deal?${params.toString()}`, { token: auth.state.token })
     if (isEdit) {
@@ -6280,6 +6392,44 @@ async function loadDealGameAssignments(target) {
   }
 }
 
+async function loadDealSlotAvailability(target) {
+  const isEdit = target === 'edit'
+  const gameId = isEdit ? editDeal.game_id : newDeal.game_id
+  if (!gameId) {
+    if (isEdit) dealSlotAvailabilityEdit.value = {}
+    else dealSlotAvailabilityNew.value = {}
+    return
+  }
+  const loading = isEdit ? dealSlotAvailabilityLoadingEdit : dealSlotAvailabilityLoadingNew
+  loading.value = true
+  try {
+    const platforms = getGamePlatformCodes(gameId)
+    const list = slotTypes.value || []
+    const results = await Promise.all(
+      list.map(async (t) => {
+        const supported = !platforms.length || platforms.includes(String(t.platform_code || '').toLowerCase())
+        if (!supported) {
+          return [t.code, { hasFree: false }]
+        }
+        try {
+          const params = new URLSearchParams()
+          params.set('game_id', String(gameId))
+          params.set('slot_type_code', t.code)
+          const data = await apiGet(`/accounts/for-deal?${params.toString()}`, { token: auth.state.token })
+          return [t.code, { hasFree: Array.isArray(data) && data.length > 0 }]
+        } catch {
+          return [t.code, { hasFree: false }]
+        }
+      })
+    )
+    const map = Object.fromEntries(results)
+    if (isEdit) dealSlotAvailabilityEdit.value = map
+    else dealSlotAvailabilityNew.value = map
+  } finally {
+    loading.value = false
+  }
+}
+
 async function releaseSlotAssignment(assignmentId) {
   if (!assignmentId) return
   if (!window.confirm('Снять слот у пользователя?')) return
@@ -6320,6 +6470,7 @@ async function releaseSlotFromDeal(item, target) {
     await apiPost(`/slot-assignments/${item.assignment_id}/release`, {}, { token: auth.state.token })
     const accountId = item.account_id
     const slotTypeCode = item.slot_type_code
+    dealSlotAutoAssign.value = true
     if (target === 'edit') {
       editDeal.account_id = accountId || ''
       editDeal.slot_type_code = slotTypeCode || ''
@@ -6327,6 +6478,7 @@ async function releaseSlotFromDeal(item, target) {
       await loadDealAccountAssignments('edit')
       await loadDealAccountsForGame('edit')
       await loadDealGameAssignments('edit')
+      await loadDealSlotAvailability('edit')
     } else {
       newDeal.account_id = accountId || ''
       newDeal.slot_type_code = slotTypeCode || ''
@@ -6334,10 +6486,12 @@ async function releaseSlotFromDeal(item, target) {
       await loadDealAccountAssignments('new')
       await loadDealAccountsForGame('new')
       await loadDealGameAssignments('new')
+      await loadDealSlotAvailability('new')
     }
   } catch (e) {
     dealError.value = mapApiError(e?.message)
   } finally {
+    dealSlotAutoAssign.value = false
     accountSlotReleaseLoading.value = false
   }
 }
@@ -6900,6 +7054,8 @@ watch(
     newDeal.slot_type_code = ''
     accountSlotStatusNew.value = []
     dealAccountAssignmentsNew.value = []
+    dealSlotAvailabilityNew.value = {}
+    loadDealSlotAvailability('new')
   }
 )
 
@@ -6912,6 +7068,8 @@ watch(
     editDeal.slot_type_code = ''
     accountSlotStatusEdit.value = []
     dealAccountAssignmentsEdit.value = []
+    dealSlotAvailabilityEdit.value = {}
+    loadDealSlotAvailability('edit')
   }
 )
 
@@ -6919,7 +7077,6 @@ watch(
   () => newDeal.account_id,
   (val) => {
     if (!val) {
-      newDeal.slot_type_code = ''
       accountSlotStatusNew.value = []
       dealAccountAssignmentsNew.value = []
     }
@@ -6931,13 +7088,44 @@ watch(
   (val, prev) => {
     if (!editDeal.open || dealInitLock.value) return
     if (!val) {
-      editDeal.slot_type_code = ''
       accountSlotStatusEdit.value = []
       dealAccountAssignmentsEdit.value = []
       return
     }
     if (!prev) return
-    editDeal.slot_type_code = ''
+    accountSlotStatusEdit.value = []
+    dealAccountAssignmentsEdit.value = []
+  }
+)
+
+watch(
+  () => newDeal.slot_type_code,
+  (val, prev) => {
+    if (dealSlotAutoAssign.value || val === prev) return
+    if (!val) {
+      newDeal.account_id = ''
+      accountSlotStatusNew.value = []
+      dealAccountAssignmentsNew.value = []
+      return
+    }
+    newDeal.account_id = ''
+    accountSlotStatusNew.value = []
+    dealAccountAssignmentsNew.value = []
+  }
+)
+
+watch(
+  () => editDeal.slot_type_code,
+  (val, prev) => {
+    if (!editDeal.open || dealInitLock.value) return
+    if (dealSlotAutoAssign.value || val === prev) return
+    if (!val) {
+      editDeal.account_id = ''
+      accountSlotStatusEdit.value = []
+      dealAccountAssignmentsEdit.value = []
+      return
+    }
+    editDeal.account_id = ''
     accountSlotStatusEdit.value = []
     dealAccountAssignmentsEdit.value = []
   }
