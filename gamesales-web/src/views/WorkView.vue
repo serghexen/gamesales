@@ -45,9 +45,6 @@
             <router-link class="tab" :class="{ active: activeTab === 'games' }" :to="{ name: 'work', query: { ...route.query, tab: 'games' } }">
               Игры
             </router-link>
-            <router-link class="tab" :class="{ active: activeTab === 'telegram' }" :to="{ name: 'work', query: { ...route.query, tab: 'telegram' } }">
-              Telegram
-            </router-link>
             <router-link
               v-if="isAdmin"
               class="tab"
@@ -55,6 +52,10 @@
               :to="{ name: 'work', query: { ...route.query, tab: 'catalogs' } }"
             >
               Справочники
+            </router-link>
+            <router-link class="tab" :class="{ active: activeTab === 'telegram' }" :to="{ name: 'work', query: { ...route.query, tab: 'telegram' } }">
+              Чаты
+              <span class="tab__badge" aria-hidden="true"></span>
             </router-link>
             <router-link
               v-if="isAdmin"
@@ -240,6 +241,18 @@
                       </svg>
                     </span>
                   </button>
+                  <button
+                    class="btn btn--icon btn--glow btn--glow-import"
+                    title="Импорт аккаунтов"
+                    aria-label="Импорт аккаунтов"
+                    @click="openAccountImport"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 3v12" />
+                      <path d="M7 10l5 5 5-5" />
+                      <path d="M5 21h14" />
+                    </svg>
+                  </button>
                 </div>
                 <div class="toolbar-actions toolbar-actions--account-search">
                   <label class="field field--compact">
@@ -322,6 +335,124 @@
                 </button>
               </span>
             </div>
+            <teleport to="body">
+              <div
+                v-if="showAccountImport"
+                class="modal-backdrop"
+                @click.self="closeAccountImport"
+              >
+                <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
+                  <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
+                    <h3>Импорт аккаунтов из файла</h3>
+                    <button
+                      class="btn btn--icon-plain"
+                      type="button"
+                      aria-label="Закрыть"
+                      title="Закрыть"
+                      @click="closeAccountImport"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 6l12 12M18 6l-12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="modal__body">
+                    <div class="toolbar-actions import-actions import-actions--fixed">
+                      <button class="ghost" type="button" @click="downloadAccountTemplate">
+                        Шаблон
+                      </button>
+                      <button class="ghost" type="button" @click="validateAccountImport" :disabled="!accountImportFile || accountImportLoading">
+                        <span v-if="accountImportLoading && accountImportAction === 'validate'" class="spinner spinner--small"></span>
+                        Проверка
+                      </button>
+                      <button
+                        class="ghost"
+                        type="button"
+                        @click="uploadAccountImport"
+                        :disabled="!accountImportValidated || !accountImportFile || accountImportLoading"
+                        title="Загрузить"
+                        aria-label="Загрузить"
+                      >
+                        <span v-if="accountImportLoading && accountImportAction === 'upload'" class="spinner spinner--small"></span>
+                        Загрузить
+                      </button>
+                      <button
+                        v-if="accountImportLoading && accountImportJobId"
+                        class="ghost"
+                        type="button"
+                        @click="cancelAccountImport"
+                        title="Отменить импорт"
+                        aria-label="Отменить импорт"
+                      >
+                        Отмена
+                      </button>
+                      <button v-if="accountImportLoading" class="import-status" type="button" @click="scrollToAccountImportDetails">
+                        <span v-if="accountImportAction === 'validate'">Проверка…</span>
+                        <span v-else-if="accountImportAction === 'cancel'">Отмена…</span>
+                        <span v-else-if="accountImportAction === 'upload' && accountImportProgress.total">Загрузка: {{ accountImportProgress.current }} из {{ accountImportProgress.total }}</span>
+                        <span v-else-if="accountImportAction === 'upload'">Загрузка…</span>
+                      </button>
+                    </div>
+                    <div class="form form--stack form--compact">
+                      <label class="field field--full">
+                        <span class="label">Файл (xlsx/xls)</span>
+                        <input
+                          class="input input--file"
+                          type="file"
+                          accept=".xlsx,.xls"
+                          @change="onAccountImportFile"
+                          :disabled="accountImportLoading"
+                        />
+                      </label>
+                      <div ref="accountImportDetailsRef">
+                        <p v-if="accountImportMessage" class="ok">{{ accountImportMessage }}</p>
+                      <p v-if="accountImportStats" class="muted">
+                        Итог: создано {{ accountImportStats.created }}, обновлено {{ accountImportStats.updated }}, пропущено {{ accountImportStats.skipped }}, ошибок {{ accountImportStats.failed }}, всего {{ accountImportStats.total }}
+                      </p>
+                      <div v-if="accountImportWarnings.length" class="import-errors">
+                        <p class="muted">Предупреждения: {{ accountImportWarnings.length }}</p>
+                        <table class="table table--compact table--dense">
+                          <thead>
+                            <tr>
+                              <th>Строка</th>
+                              <th>Поле</th>
+                              <th>Предупреждение</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="(e, idx) in accountImportWarnings" :key="`aw-${idx}`">
+                              <td>{{ e.row }}</td>
+                              <td>{{ e.field }}</td>
+                              <td>{{ e.message }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div v-if="accountImportErrors.length" class="import-errors">
+                        <p class="bad">Ошибки: {{ accountImportErrors.length }}</p>
+                        <table class="table table--compact table--dense">
+                          <thead>
+                            <tr>
+                              <th>Строка</th>
+                              <th>Поле</th>
+                              <th>Ошибка</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="(e, idx) in accountImportErrors" :key="`ae-${idx}`">
+                              <td>{{ e.row }}</td>
+                              <td>{{ e.field }}</td>
+                              <td>{{ e.message }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </teleport>
 
             <table v-if="sortedAccounts.length" class="table table--compact">
               <thead>
@@ -3833,20 +3964,35 @@ const telegram = reactive({
   info: '',
 })
 const showGameImport = ref(false)
+const showAccountImport = ref(false)
 const gameImportFile = ref(null)
+const accountImportFile = ref(null)
 const gameImportValidated = ref(false)
+const accountImportValidated = ref(false)
 const gameImportErrors = ref([])
+const accountImportErrors = ref([])
 const gameImportWarnings = ref([])
+const accountImportWarnings = ref([])
 const gameImportTotal = ref(0)
+const accountImportTotal = ref(0)
 const gameImportLoading = ref(false)
+const accountImportLoading = ref(false)
 const gameImportMessage = ref('')
+const accountImportMessage = ref('')
 const gameImportAction = ref('')
+const accountImportAction = ref('')
 const gameImportStats = ref(null)
+const accountImportStats = ref(null)
 const gameImportProgress = reactive({ current: 0, total: 0, phase: '' })
+const accountImportProgress = reactive({ current: 0, total: 0, phase: '' })
 const gameImportJobId = ref('')
+const accountImportJobId = ref('')
 const importDetailsRef = ref(null)
+const accountImportDetailsRef = ref(null)
 let gameImportStatusTimer = null
+let accountImportStatusTimer = null
 const GAME_IMPORT_JOB_KEY = 'gamesales_game_import_job_v1'
+const ACCOUNT_IMPORT_JOB_KEY = 'gamesales_account_import_job_v1'
 const gameLogoLoading = ref(false)
 const gameLogoCache = new Map()
 const gameLogoUploading = ref(false)
@@ -4734,6 +4880,32 @@ function openGameImport() {
   }
 }
 
+function openAccountImport() {
+  resetModalPos()
+  showAccountImport.value = true
+  accountImportFile.value = null
+  accountImportValidated.value = false
+  accountImportErrors.value = []
+  accountImportWarnings.value = []
+  accountImportTotal.value = 0
+  accountImportLoading.value = false
+  accountImportMessage.value = ''
+  accountImportAction.value = ''
+  accountImportStats.value = null
+  accountImportProgress.current = 0
+  accountImportProgress.total = 0
+  accountImportProgress.phase = ''
+  accountImportJobId.value = ''
+  stopAccountImportStatusPolling()
+  const stored = localStorage.getItem(ACCOUNT_IMPORT_JOB_KEY)
+  if (stored) {
+    accountImportJobId.value = stored
+    accountImportAction.value = 'upload'
+    accountImportLoading.value = true
+    startAccountImportStatusPolling()
+  }
+}
+
 function closeGameImport() {
   showGameImport.value = false
   gameImportFile.value = null
@@ -4750,6 +4922,24 @@ function closeGameImport() {
   gameImportProgress.phase = ''
   gameImportJobId.value = ''
   stopGameImportStatusPolling()
+}
+
+function closeAccountImport() {
+  showAccountImport.value = false
+  accountImportFile.value = null
+  accountImportValidated.value = false
+  accountImportErrors.value = []
+  accountImportWarnings.value = []
+  accountImportTotal.value = 0
+  accountImportLoading.value = false
+  accountImportMessage.value = ''
+  accountImportAction.value = ''
+  accountImportStats.value = null
+  accountImportProgress.current = 0
+  accountImportProgress.total = 0
+  accountImportProgress.phase = ''
+  accountImportJobId.value = ''
+  stopAccountImportStatusPolling()
 }
 
 async function pollGameImportStatusOnce() {
@@ -4771,6 +4961,31 @@ async function pollGameImportStatusOnce() {
       gameImportJobId.value = ''
       localStorage.removeItem(GAME_IMPORT_JOB_KEY)
       stopGameImportStatusPolling()
+    }
+  } catch {
+    // ignore polling errors
+  }
+}
+
+async function pollAccountImportStatusOnce() {
+  if (!accountImportJobId.value) return
+  try {
+    const status = await apiGet(`/accounts/import/status?job_id=${encodeURIComponent(accountImportJobId.value)}`, { token: auth.state.token })
+    if (!status) return
+    accountImportProgress.current = Number(status.current || 0)
+    accountImportProgress.total = Number(status.total || 0)
+    accountImportProgress.phase = status.phase || ''
+    if (status.done && status.result) {
+      applyAccountImportResult(status.result)
+      return
+    }
+    if (status.done) {
+      accountImportMessage.value = 'Импорт завершен'
+      accountImportLoading.value = false
+      accountImportAction.value = ''
+      accountImportJobId.value = ''
+      localStorage.removeItem(ACCOUNT_IMPORT_JOB_KEY)
+      stopAccountImportStatusPolling()
     }
   } catch {
     // ignore polling errors
@@ -4806,15 +5021,55 @@ function startGameImportStatusPolling() {
   }, 600)
 }
 
+function startAccountImportStatusPolling() {
+  stopAccountImportStatusPolling()
+  pollAccountImportStatusOnce()
+  accountImportStatusTimer = setInterval(async () => {
+    try {
+      if (!accountImportJobId.value) return
+      const status = await apiGet(`/accounts/import/status?job_id=${encodeURIComponent(accountImportJobId.value)}`, { token: auth.state.token })
+      if (!status) return
+      accountImportProgress.current = Number(status.current || 0)
+      accountImportProgress.total = Number(status.total || 0)
+      accountImportProgress.phase = status.phase || ''
+      if (status.done && status.result) {
+        applyAccountImportResult(status.result)
+      }
+      if (status.done && !status.result) {
+        accountImportMessage.value = 'Импорт завершен'
+        accountImportLoading.value = false
+        accountImportAction.value = ''
+        accountImportJobId.value = ''
+        localStorage.removeItem(ACCOUNT_IMPORT_JOB_KEY)
+        stopAccountImportStatusPolling()
+      }
+      if (status.done && !accountImportLoading.value) stopAccountImportStatusPolling()
+    } catch {
+      // ignore polling errors
+    }
+  }, 600)
+}
+
 function stopGameImportStatusPolling() {
   if (!gameImportStatusTimer) return
   clearInterval(gameImportStatusTimer)
   gameImportStatusTimer = null
 }
 
+function stopAccountImportStatusPolling() {
+  if (!accountImportStatusTimer) return
+  clearInterval(accountImportStatusTimer)
+  accountImportStatusTimer = null
+}
+
 function scrollToImportDetails() {
   if (!importDetailsRef.value) return
   importDetailsRef.value.scrollIntoView({ behavior: "smooth", block: "start" })
+}
+
+function scrollToAccountImportDetails() {
+  if (!accountImportDetailsRef.value) return
+  accountImportDetailsRef.value.scrollIntoView({ behavior: "smooth", block: "start" })
 }
 
 async function applyGameImportResult(res) {
@@ -4853,6 +5108,41 @@ async function applyGameImportResult(res) {
   await loadGamesAll()
 }
 
+async function applyAccountImportResult(res) {
+  if (!res) return
+  if (res?.cancelled) {
+    accountImportMessage.value = 'Импорт отменен'
+    accountImportErrors.value = []
+    accountImportWarnings.value = []
+    accountImportStats.value = null
+    accountImportLoading.value = false
+    accountImportAction.value = ''
+    accountImportJobId.value = ''
+    localStorage.removeItem(ACCOUNT_IMPORT_JOB_KEY)
+    stopAccountImportStatusPolling()
+    return
+  }
+  const created = res?.created || 0
+  const updated = res?.updated || 0
+  const skipped = res?.skipped || 0
+  const failed = res?.failed || 0
+  accountImportErrors.value = res?.errors || []
+  accountImportWarnings.value = res?.warnings || []
+  if (res?.ok) {
+    accountImportMessage.value = `Загружено. Создано: ${created}, обновлено: ${updated}, пропущено: ${skipped}`
+  } else {
+    accountImportMessage.value = `Загрузка с ошибками. Ошибок: ${failed}`
+  }
+  accountImportStats.value = { created, updated, skipped, failed, total: res?.total || 0 }
+  accountImportLoading.value = false
+  accountImportAction.value = ''
+  accountImportJobId.value = ''
+  localStorage.removeItem(ACCOUNT_IMPORT_JOB_KEY)
+  stopAccountImportStatusPolling()
+  await loadAccounts()
+  await loadAccountsAll()
+}
+
 function onGameImportFile(event) {
   const file = event?.target?.files?.[0]
   gameImportFile.value = file || null
@@ -4870,6 +5160,23 @@ function onGameImportFile(event) {
   stopGameImportStatusPolling()
 }
 
+function onAccountImportFile(event) {
+  const file = event?.target?.files?.[0]
+  accountImportFile.value = file || null
+  accountImportValidated.value = false
+  accountImportErrors.value = []
+  accountImportWarnings.value = []
+  accountImportTotal.value = 0
+  accountImportMessage.value = ''
+  accountImportAction.value = ''
+  accountImportStats.value = null
+  accountImportProgress.current = 0
+  accountImportProgress.total = 0
+  accountImportProgress.phase = ''
+  accountImportJobId.value = ''
+  stopAccountImportStatusPolling()
+}
+
 async function downloadGameTemplate() {
   try {
     const blob = await apiGetFile('/games/import/template', { token: auth.state.token })
@@ -4881,6 +5188,20 @@ async function downloadGameTemplate() {
     URL.revokeObjectURL(url)
   } catch (e) {
     gameImportMessage.value = mapApiError(e?.message)
+  }
+}
+
+async function downloadAccountTemplate() {
+  try {
+    const blob = await apiGetFile('/accounts/import/template', { token: auth.state.token })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'accounts_import_template.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    accountImportMessage.value = mapApiError(e?.message)
   }
 }
 
@@ -4919,6 +5240,41 @@ async function validateGameImport() {
   }
 }
 
+async function validateAccountImport() {
+  if (!accountImportFile.value) return
+  const form = new FormData()
+  form.append('file', accountImportFile.value)
+  accountImportValidated.value = false
+  accountImportAction.value = 'validate'
+  accountImportLoading.value = true
+  accountImportProgress.current = 0
+  accountImportProgress.total = accountImportTotal.value || 0
+  accountImportProgress.phase = ''
+  try {
+    const res = await apiPostForm('/accounts/import/validate', form, { token: auth.state.token })
+    accountImportErrors.value = res?.errors || []
+    accountImportWarnings.value = res?.warnings || []
+    accountImportTotal.value = res?.total || 0
+    accountImportValidated.value = Boolean(res?.ok)
+    if (res?.ok) {
+      accountImportMessage.value = accountImportWarnings.value.length
+        ? `Файл корректный. Некоторые строки будут пропущены: ${accountImportWarnings.value.length}.`
+        : `Файл корректный. Строк: ${accountImportTotal.value}. Можно загружать.`
+    } else {
+      accountImportMessage.value = 'Файл не корректен. Исправьте ошибки ниже.'
+    }
+  } catch (e) {
+    accountImportValidated.value = false
+    accountImportErrors.value = []
+    accountImportWarnings.value = []
+    accountImportMessage.value = mapApiError(e?.message)
+  } finally {
+    accountImportLoading.value = false
+    accountImportAction.value = ''
+    stopAccountImportStatusPolling()
+  }
+}
+
 async function uploadGameImport() {
   if (!gameImportFile.value || !gameImportValidated.value) return
   const form = new FormData()
@@ -4948,6 +5304,35 @@ async function uploadGameImport() {
   }
 }
 
+async function uploadAccountImport() {
+  if (!accountImportFile.value || !accountImportValidated.value) return
+  const form = new FormData()
+  form.append('file', accountImportFile.value)
+  accountImportAction.value = 'upload'
+  accountImportLoading.value = true
+  accountImportProgress.current = 0
+  accountImportProgress.total = accountImportTotal.value || 0
+  accountImportProgress.phase = ''
+  try {
+    const res = await apiPostForm('/accounts/import', form, { token: auth.state.token })
+    if (res?.job_id) {
+      accountImportJobId.value = res.job_id
+      localStorage.setItem(ACCOUNT_IMPORT_JOB_KEY, res.job_id)
+      startAccountImportStatusPolling()
+    } else {
+      accountImportMessage.value = 'Не удалось запустить импорт'
+      accountImportLoading.value = false
+      accountImportAction.value = ''
+    }
+  } catch (e) {
+    accountImportMessage.value = mapApiError(e?.message)
+    accountImportLoading.value = false
+    accountImportAction.value = ''
+  } finally {
+    // wait for background job result
+  }
+}
+
 async function cancelGameImport() {
   if (!gameImportJobId.value) return
   gameImportAction.value = 'cancel'
@@ -4959,6 +5344,20 @@ async function cancelGameImport() {
     gameImportMessage.value = mapApiError(e?.message)
     gameImportLoading.value = false
     gameImportAction.value = ''
+  }
+}
+
+async function cancelAccountImport() {
+  if (!accountImportJobId.value) return
+  accountImportAction.value = 'cancel'
+  accountImportLoading.value = true
+  try {
+    await apiPost(`/accounts/import/cancel?job_id=${encodeURIComponent(accountImportJobId.value)}`, {}, { token: auth.state.token })
+    startAccountImportStatusPolling()
+  } catch (e) {
+    accountImportMessage.value = mapApiError(e?.message)
+    accountImportLoading.value = false
+    accountImportAction.value = ''
   }
 }
 
@@ -7841,6 +8240,18 @@ watch(
   font-size: 12px;
   cursor: pointer;
   text-decoration: none;
+  position: relative;
+}
+
+.tab__badge {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #ff5f5f;
+  box-shadow: 0 0 6px rgba(255, 95, 95, 0.7);
 }
 
 .toolbar-actions--deal-create {

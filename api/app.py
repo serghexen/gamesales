@@ -734,6 +734,20 @@ def release_slot_assignment(conn, deal_item_id: int, released_by: Optional[str])
 
 MAX_LOGO_BYTES = 5 * 1024 * 1024
 ALLOWED_LOGO_MIME = {"image/jpeg", "image/png", "image/webp"}
+
+ACCOUNT_IMPORT_HEADER_MAP = {
+    "Аккаунт": "account",
+    "аккаунт": "account",
+    "Login": "account",
+    "Логин": "account",
+    "логин": "account",
+    "Пароль": "password",
+    "пароль": "password",
+    "Password": "password",
+    "Игра": "game",
+    "игра": "game",
+    "Game": "game",
+}
 LOGO_DOWNLOAD_DELAY_SEC = 0.25
 IMPORT_STATUS_TTL_SEC = 24 * 60 * 60
 _REDIS_CLIENT = None
@@ -1018,6 +1032,63 @@ def read_games_from_excel(content: bytes) -> List[dict]:
             item[key] = row[idx] if idx < len(row) else None
         data.append(item)
     return data
+
+def read_accounts_from_excel(content: bytes) -> List[dict]:
+    wb = load_workbook(BytesIO(content), data_only=True)
+    ws = wb.active
+    headers = []
+    for cell in ws[1]:
+        if cell.value is None:
+            headers.append("")
+        else:
+            raw = str(cell.value).strip()
+            headers.append(ACCOUNT_IMPORT_HEADER_MAP.get(raw, raw))
+    data = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not any(row):
+            continue
+        item = {}
+        for idx, key in enumerate(headers):
+            if not key:
+                continue
+            item[key] = row[idx] if idx < len(row) else None
+        data.append(item)
+    return data
+
+def split_account(value: str) -> Tuple[Optional[str], Optional[str]]:
+    if not value:
+        return None, None
+    raw = str(value).strip()
+    if not raw or "@" not in raw:
+        return None, None
+    login, domain = raw.split("@", 1)
+    login = login.strip()
+    domain = domain.strip()
+    if not login or not domain:
+        return None, None
+    return login, domain
+
+def validate_account_import_rows(conn, rows: List[dict], progress_cb=None) -> Tuple[List[dict], List[dict]]:
+    errors = []
+    warnings = []
+    for idx, row in enumerate(rows, start=2):
+        account_val = (row.get("account") or "").strip()
+        password = (row.get("password") or "").strip()
+        game_title = (row.get("game") or "").strip()
+        login, domain = split_account(account_val)
+        if not account_val or not login or not domain:
+            warnings.append({"row": idx, "field": "Аккаунт", "message": "Нужно значение в формате login@domain — строка будет пропущена"})
+        if not password:
+            errors.append({"row": idx, "field": "Пароль", "message": "Пароль обязателен"})
+        if not game_title:
+            warnings.append({"row": idx, "field": "Игра", "message": "Игра не указана — строка будет пропущена"})
+        else:
+            row_game = q1(conn, "SELECT game_id FROM app.game_titles WHERE lower(title)=lower(%s)", (game_title,))
+            if not row_game:
+                warnings.append({"row": idx, "field": "Игра", "message": f"Игра не найдена: {game_title} — строка будет пропущена"})
+        if progress_cb:
+            progress_cb(idx - 1)
+    return errors, warnings
 
 def init_auth_schema(conn):
     with conn.cursor() as cur:
@@ -2849,6 +2920,189 @@ def games_import(file: UploadFile = File(...), user: UserOut = Depends(require_r
 
 @app.post("/games/import/cancel")
 def games_import_cancel(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    status = get_import_progress(job_id)
+    if not status:
+        return {"ok": True}
+    if status.get("owner") and status.get("owner") != user.username:
+        raise HTTPException(403, "job not found")
+    set_import_progress(job_id, user.username, {
+        "phase": "cancelled",
+        "current": int(status.get("current") or 0),
+        "total": int(status.get("total") or 0),
+        "done": True,
+        "cancelled": True,
+        "result": {"ok": False, "cancelled": True},
+    })
+    return {"ok": True}
+
+def get_or_create_domain_id(conn, domain_name: str) -> int:
+    row = q1(conn, "SELECT domain_id FROM app.domains WHERE name=%s", (domain_name,))
+    if row:
+        return int(row[0])
+    row = q1(conn, "INSERT INTO app.domains(name) VALUES (%s) RETURNING domain_id", (domain_name,))
+    return int(row[0])
+
+def ensure_account_platforms(conn, account_id: int):
+    ps4_id, ps4_slots = get_platform_info(conn, "ps4")
+    ps5_id, ps5_slots = get_platform_info(conn, "ps5")
+    exec1(
+        conn,
+        """
+        INSERT INTO app.account_platforms(account_id, platform_id, slot_capacity)
+        VALUES (%s, %s, %s), (%s, %s, %s)
+        ON CONFLICT (account_id, platform_id) DO UPDATE SET slot_capacity=excluded.slot_capacity
+        """,
+        (account_id, ps4_id, ps4_slots, account_id, ps5_id, ps5_slots),
+    )
+
+def run_accounts_import_job(job_id: str, content: bytes, owner: str):
+    try:
+        with psycopg.connect(DB_DSN) as conn:
+            rows = read_accounts_from_excel(content)
+            errors, warnings = validate_account_import_rows(conn, rows)
+            if errors:
+                set_import_progress(job_id, owner, {"phase": "error", "current": 0, "total": 0, "done": True, "result": {"ok": False, "errors": errors, "warnings": warnings}})
+                return
+            total = len(rows)
+            set_import_progress(job_id, owner, {"phase": "upload", "current": 0, "total": total, "done": False})
+            created = 0
+            updated = 0
+            skipped = 0
+            failed = 0
+            upload_done = 0
+            for idx, item in enumerate(rows, start=2):
+                if is_import_cancelled(job_id):
+                    set_import_progress(job_id, owner, {"phase": "cancelled", "current": upload_done, "total": total, "done": True, "result": {"ok": False, "cancelled": True}})
+                    return
+                try:
+                    account_val = (item.get("account") or "").strip()
+                    password = (item.get("password") or "").strip()
+                    game_title = (item.get("game") or "").strip()
+                    login, domain = split_account(account_val)
+                    if not login or not domain or not game_title:
+                        skipped += 1
+                        upload_done += 1
+                        set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+                        continue
+                    game_row = q1(conn, "SELECT game_id FROM app.game_titles WHERE lower(title)=lower(%s)", (game_title,))
+                    if not game_row:
+                        skipped += 1
+                        upload_done += 1
+                        set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+                        continue
+                    game_id = int(game_row[0])
+                    domain_id = get_or_create_domain_id(conn, domain)
+                    account_row = q1(
+                        conn,
+                        """
+                        SELECT account_id
+                        FROM app.accounts
+                        WHERE login_name=%s AND domain_id=%s
+                        """,
+                        (login, domain_id),
+                    )
+                    if account_row:
+                        account_id = int(account_row[0])
+                        updated += 1
+                    else:
+                        row = q1(
+                            conn,
+                            """
+                            INSERT INTO app.accounts(login_name, domain_id, status_code)
+                            VALUES (%s, %s, 'active')
+                            RETURNING account_id
+                            """,
+                            (login, domain_id),
+                        )
+                        account_id = int(row[0])
+                        ensure_account_platforms(conn, account_id)
+                        created += 1
+                    if password:
+                        exec1(
+                            conn,
+                            """
+                            INSERT INTO app.account_secrets(account_id, secret_key, secret_value)
+                            VALUES (%s, %s, %s)
+                            ON CONFLICT (account_id, secret_key)
+                            DO UPDATE SET secret_value=excluded.secret_value
+                            """,
+                            (account_id, "account_password", b64_encode(password)),
+                        )
+                    exec1(
+                        conn,
+                        """
+                        INSERT INTO app.account_assets(account_id, game_id, asset_type_code)
+                        VALUES (%s, %s, 'game')
+                        ON CONFLICT (account_id, game_id, asset_type_code) DO NOTHING
+                        """,
+                        (account_id, game_id),
+                    )
+                    conn.commit()
+                    upload_done += 1
+                    set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+                except Exception:
+                    conn.rollback()
+                    failed += 1
+                    upload_done += 1
+                    set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+            result = {"ok": True, "created": created, "updated": updated, "skipped": skipped, "failed": failed, "total": total}
+            set_import_progress(job_id, owner, {"phase": "upload", "current": total, "total": total, "done": True, "result": result})
+    except Exception as exc:
+        set_import_progress(job_id, owner, {"phase": "error", "current": 0, "total": 0, "done": True, "result": {"ok": False, "errors": [{"row": 0, "field": "Импорт", "message": str(exc)}]}})
+
+@app.get("/accounts/import/template")
+def accounts_import_template(user: UserOut = Depends(require_role("admin"))):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Accounts"
+    ws.append(["Аккаунт", "Пароль", "Игра"])
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=accounts_import_template.xlsx"},
+    )
+
+@app.get("/accounts/import/status")
+def accounts_import_status(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    status = get_import_progress(job_id)
+    if not status:
+        return {"phase": "idle", "current": 0, "total": 0, "done": True}
+    return status
+
+@app.post("/accounts/import/validate")
+def accounts_import_validate(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
+    if not file or not file.filename:
+        raise HTTPException(400, "file is required")
+    if not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(400, "Only .xlsx/.xls are supported")
+    content = file.file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(400, "File too large. Max 5MB")
+    with psycopg.connect(DB_DSN) as conn:
+        rows = read_accounts_from_excel(content)
+        errors, warnings = validate_account_import_rows(conn, rows, progress_cb=None)
+    return {"ok": len(errors) == 0, "total": len(rows), "errors": errors, "warnings": warnings}
+
+@app.post("/accounts/import")
+def accounts_import(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
+    if not file or not file.filename:
+        raise HTTPException(400, "file is required")
+    if not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(400, "Only .xlsx/.xls are supported")
+    content = file.file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(400, "File too large. Max 5MB")
+    job_id = uuid.uuid4().hex
+    set_import_progress(job_id, user.username, {"phase": "queued", "current": 0, "total": 0, "done": False})
+    thread = threading.Thread(target=run_accounts_import_job, args=(job_id, content, user.username), daemon=True)
+    thread.start()
+    return {"ok": True, "job_id": job_id}
+
+@app.post("/accounts/import/cancel")
+def accounts_import_cancel(job_id: str, user: UserOut = Depends(require_role("admin"))):
     status = get_import_progress(job_id)
     if not status:
         return {"ok": True}
