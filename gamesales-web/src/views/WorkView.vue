@@ -35,20 +35,6 @@
         </div>
 
         <div class="actions">
-          <nav class="tabs tabs--create">
-            <button class="tab tab--action" type="button" @click="openCreateSaleModal" aria-label="Новая продажа" title="Новая продажа">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              <span>Продажа</span>
-            </button>
-            <button class="tab tab--action" type="button" @click="openCreateSharingModal" aria-label="Новый шеринг" title="Новый шеринг">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              <span>Шеринг</span>
-            </button>
-          </nav>
           <nav class="tabs">
             <router-link class="tab" :class="{ active: activeTab === 'deals' }" :to="{ name: 'work', query: { ...route.query, tab: 'deals' } }">
               Продажи/Шеринг
@@ -1474,12 +1460,32 @@
 
         <section v-if="activeTab === 'deals'" class="panel panel--wide">
           <div class="panel__head">
-            <div>
-              <div class="toolbar-actions">
+            <div class="panel__head-col">
+              <div class="toolbar-actions toolbar-actions--deal-create">
+                <button class="deal-create-btn" type="button" @click="openCreateSaleModal" aria-label="Новая продажа" title="Новая продажа">
+                  <span class="deal-create-btn__text">Продажа</span>
+                  <span class="deal-create-btn__icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
+                      <line y2="19" y1="5" x2="12" x1="12"></line>
+                      <line y2="12" y1="12" x2="19" x1="5"></line>
+                    </svg>
+                  </span>
+                </button>
+                <button class="deal-create-btn deal-create-btn--sharing" type="button" @click="openCreateSharingModal" aria-label="Новый шеринг" title="Новый шеринг">
+                  <span class="deal-create-btn__text">Шеринг</span>
+                  <span class="deal-create-btn__icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
+                      <line y2="19" y1="5" x2="12" x1="12"></line>
+                      <line y2="12" y1="12" x2="19" x1="5"></line>
+                    </svg>
+                  </span>
+                </button>
+              </div>
+              <div class="toolbar-actions toolbar-actions--deal-search">
                 <label class="field field--compact">
                   <input
                     v-model.trim="dealFilters.search_q"
-                    class="input input--compact"
+                    class="input input--compact input--deal-search"
                     placeholder="пользователь, регион, дата, статус, тип"
                     @keydown.enter.prevent="applyDealSearch"
                   />
@@ -7304,10 +7310,6 @@ watch(
   margin-left: auto;
 }
 
-.tabs--create {
-  margin-right: 12px;
-}
-
 .tab {
   background: var(--tab-bg);
   border: 1px solid var(--tab-border);
@@ -7319,21 +7321,118 @@ watch(
   text-decoration: none;
 }
 
-.tab--action {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  font-size: 11px;
-  line-height: 1;
+.toolbar-actions--deal-create {
+  gap: 20px;
 }
 
-.tab--action svg {
-  width: 14px;
-  height: 14px;
-  stroke: currentColor;
-  stroke-width: 2;
-  fill: none;
+.deal-create-btn {
+  position: relative;
+  width: 170px;
+  height: 40px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #34974d;
+  background-color: #3aa856;
+  border-radius: 14px;
+  font-family: inherit;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  padding-right: 44px;
+}
+
+.deal-create-btn,
+.deal-create-btn__icon,
+.deal-create-btn__text {
+  transition: all 0.3s;
+}
+
+.deal-create-btn__text {
+  transform: translateX(22px);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.deal-create-btn__icon {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 28px;
+  width: 28px;
+  background-color: #34974d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+}
+
+.deal-create-btn__svg {
+  width: 18px;
+  stroke: #fff;
+}
+
+.deal-create-btn:hover {
+  background: #34974d;
+}
+
+.deal-create-btn:hover .deal-create-btn__text {
+  color: transparent;
+}
+
+.deal-create-btn:hover .deal-create-btn__icon {
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
+  right: 6px;
+}
+
+.deal-create-btn:active .deal-create-btn__icon {
+  background-color: #2e8644;
+}
+
+.deal-create-btn:active {
+  border-color: #2e8644;
+}
+
+.deal-create-btn--sharing {
+  border-color: #2f6fbd;
+  background-color: #3b86e2;
+}
+
+.deal-create-btn--sharing .deal-create-btn__icon {
+  background-color: #2f6fbd;
+}
+
+.deal-create-btn--sharing:hover {
+  background-color: #2f6fbd;
+}
+
+.deal-create-btn--sharing:active,
+.deal-create-btn--sharing:active .deal-create-btn__icon {
+  border-color: #245491;
+  background-color: #245491;
+}
+
+.toolbar-actions--deal-search {
+  width: min(360px, 100%);
+  display: flex;
+}
+
+.toolbar-actions--deal-search .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.input--deal-search {
+  width: 100%;
+}
+
+.panel__head-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
 }
 
 .tab--icon {
