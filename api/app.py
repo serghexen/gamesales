@@ -1008,16 +1008,17 @@ def validate_game_import_rows(conn, rows: List[dict], progress_cb=None, check_lo
     platform_rows = qall(conn, "SELECT code FROM app.platforms")
     platforms = {str(r[0]).strip().lower() for r in platform_rows}
     for idx, row in enumerate(rows, start=2):
+        report_row = idx - 1
         title = (row.get("title") or "").strip()
         platform_raw = row.get("platform_codes") or ""
         platform_codes = parse_import_platforms(platform_raw)
         if not title:
-            errors.append({"row": idx, "field": "Игра", "value": title, "message": "Название обязательно"})
+            errors.append({"row": report_row, "field": "Игра", "value": title, "message": "Название обязательно"})
         if not platform_codes:
-            warnings.append({"row": idx, "field": "Платформа", "value": str(platform_raw).strip(), "message": "Платформы не указаны — строка будет пропущена"})
+            warnings.append({"row": report_row, "field": "Платформа", "value": str(platform_raw).strip(), "message": "Платформы не указаны — строка будет пропущена"})
         for code in platform_codes:
             if code not in platforms:
-                errors.append({"row": idx, "field": "Платформа", "value": code, "message": f"Неизвестная платформа: {code}"})
+                errors.append({"row": report_row, "field": "Платформа", "value": code, "message": f"Неизвестная платформа: {code}"})
         if progress_cb:
             progress_cb(idx - 1)
     return errors, warnings
@@ -1083,20 +1084,21 @@ def validate_account_import_rows(conn, rows: List[dict], progress_cb=None) -> Tu
     errors = []
     warnings = []
     for idx, row in enumerate(rows, start=2):
+        report_row = idx - 1
         account_val = (row.get("account") or "").strip()
         password = (row.get("password") or "").strip()
         game_title = (row.get("game") or "").strip()
         login, domain = split_account(account_val)
         if not account_val or not login or not domain:
-            warnings.append({"row": idx, "field": "Аккаунт", "value": account_val, "message": "Нужно значение в формате login@domain — строка будет пропущена"})
+            warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Нужно значение в формате login@domain — строка будет пропущена"})
         if not password:
-            errors.append({"row": idx, "field": "Пароль", "value": password, "message": "Пароль обязателен"})
+            errors.append({"row": report_row, "field": "Пароль", "value": password, "message": "Пароль обязателен"})
         if not game_title:
-            warnings.append({"row": idx, "field": "Игра", "value": game_title, "message": "Игра не указана — строка будет пропущена"})
+            warnings.append({"row": report_row, "field": "Игра", "value": game_title, "message": "Игра не указана — строка будет пропущена"})
         else:
             row_game = q1(conn, "SELECT game_id FROM app.game_titles WHERE lower(title)=lower(%s)", (game_title,))
             if not row_game:
-                warnings.append({"row": idx, "field": "Игра", "value": game_title, "message": "Не найдена в списке игр — строка будет пропущена"})
+                warnings.append({"row": report_row, "field": "Игра", "value": game_title, "message": "Не найдена в списке игр — строка будет пропущена"})
         if progress_cb:
             progress_cb(idx - 1)
     return errors, warnings
