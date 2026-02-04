@@ -35,39 +35,53 @@
         </div>
 
         <div class="actions">
+          <nav class="tabs tabs--create">
+            <button class="tab tab--action" type="button" @click="openCreateSaleModal" aria-label="Новая продажа" title="Новая продажа">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              <span>Продажа</span>
+            </button>
+            <button class="tab tab--action" type="button" @click="openCreateSharingModal" aria-label="Новый шеринг" title="Новый шеринг">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              <span>Шеринг</span>
+            </button>
+          </nav>
           <nav class="tabs">
-            <button class="tab" :class="{ active: activeTab === 'deals' }" @click="activeTab = 'deals'">
+            <router-link class="tab" :class="{ active: activeTab === 'deals' }" :to="{ name: 'work', query: { ...route.query, tab: 'deals' } }">
               Продажи/Шеринг
-            </button>
-            <button class="tab" :class="{ active: activeTab === 'accounts' }" @click="activeTab = 'accounts'">
+            </router-link>
+            <router-link class="tab" :class="{ active: activeTab === 'accounts' }" :to="{ name: 'work', query: { ...route.query, tab: 'accounts' } }">
               Аккаунты
-            </button>
-            <button class="tab" :class="{ active: activeTab === 'games' }" @click="activeTab = 'games'">
+            </router-link>
+            <router-link class="tab" :class="{ active: activeTab === 'games' }" :to="{ name: 'work', query: { ...route.query, tab: 'games' } }">
               Игры
-            </button>
-            <button
+            </router-link>
+            <router-link
               v-if="isAdmin"
               class="tab"
               :class="{ active: activeTab === 'catalogs' }"
-              @click="activeTab = 'catalogs'"
+              :to="{ name: 'work', query: { ...route.query, tab: 'catalogs' } }"
             >
               Справочники
-            </button>
-            <button
+            </router-link>
+            <router-link
               v-if="isAdmin"
               class="tab"
               :class="{ active: activeTab === 'users' }"
-              @click="activeTab = 'users'"
+              :to="{ name: 'work', query: { ...route.query, tab: 'users' } }"
               style="display:none"
             >
               Пользователи
-            </button>
+            </router-link>
           </nav>
           <div class="tabs tabs--right">
-            <button
+            <router-link
               class="tab tab--icon"
               :class="{ active: activeTab === 'profile' }"
-              @click="activeTab = 'profile'"
+              :to="{ name: 'work', query: { ...route.query, tab: 'profile' } }"
               aria-label="Профиль"
               title="Профиль"
             >
@@ -75,7 +89,7 @@
                 <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" />
                 <path d="M4 20a8 8 0 0 1 16 0" />
               </svg>
-            </button>
+            </router-link>
             <button
               class="tab tab--icon tab--danger"
               @click="onLogout"
@@ -145,7 +159,7 @@
                 class="btn btn--icon btn--glow btn--glow-add"
                 title="Пользователи"
                 aria-label="Пользователи"
-                @click="activeTab = 'users'"
+                @click="setActiveTab('users')"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" />
@@ -1495,16 +1509,6 @@
                 </label>
                 <span class="switch-label">Показать завершенные</span>
               </div>
-              <button
-                class="btn btn--icon btn--glow btn--glow-add"
-                title="Добавить продажу"
-                aria-label="Добавить продажу"
-                @click="openCreateDealModal"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </button>
               <button
                 class="btn btn--icon btn--glow btn--glow-refresh"
                 title="Обновить список"
@@ -3194,11 +3198,12 @@
 
 <script setup>
 import { ref, reactive, onMounted, computed, watch, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../stores/auth'
 import { apiGet, apiPost, apiDelete, apiPut, apiPostForm, apiGetFile, apiPostFormWithProgress } from '../api/http'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuth()
 
 const apiOk = ref(null)
@@ -3421,7 +3426,17 @@ const pwdForm = reactive({
   next2: '',
 })
 
+const TAB_KEYS = ['deals', 'accounts', 'games', 'catalogs', 'users', 'profile', 'dashboard']
 const activeTab = ref('deals')
+
+const setActiveTab = (tab) => {
+  const next = TAB_KEYS.includes(tab) ? tab : 'deals'
+  activeTab.value = next
+  const current = String(route.query.tab || '')
+  if (current !== next) {
+    router.replace({ name: 'work', query: { ...route.query, tab: next } })
+  }
+}
 
 const newGame = reactive({
   title: '',
@@ -4836,7 +4851,7 @@ async function removeGameLogo() {
 }
 
 function goToAccount(login) {
-  activeTab.value = 'accounts'
+  setActiveTab('accounts')
   accountFilters.login_q = login || ''
 }
 
@@ -4848,7 +4863,7 @@ function openAccountFromGame(login) {
 
 async function openDealGame(deal) {
   if (!deal || !deal.game_id) return
-  activeTab.value = 'games'
+  setActiveTab('games')
   gameFilters.q = deal.game_title || ''
   gameFilters.platform_code = ''
   gameFilters.region_code = ''
@@ -4963,7 +4978,9 @@ const applyGameFilter = (kind) => {
 }
 
 const resetAccountFilter = (kind) => {
-  if (kind === 'login') {
+  if (kind === 'search') {
+    accountFilters.search_q = ''
+  } else if (kind === 'login') {
     accountFilters.login_q = ''
     accountFilterDraft.login = ''
   } else if (kind === 'game') {
@@ -5071,6 +5088,18 @@ function openCreateDealModal() {
   quickNewAccountError.value = ''
   dealAccountsForGameNew.value = []
   dealSlotAvailabilityNew.value = {}
+}
+
+function openCreateSaleModal() {
+  setActiveTab('deals')
+  openCreateDealModal()
+  newDeal.deal_type_code = 'sale'
+}
+
+function openCreateSharingModal() {
+  setActiveTab('deals')
+  openCreateDealModal()
+  newDeal.deal_type_code = 'rental'
 }
 
 function closeDealModal() {
@@ -6999,6 +7028,17 @@ watch(activeTab, async (tab) => {
   }
 }, { immediate: true })
 
+watch(
+  () => route.query.tab,
+  (tab) => {
+    const next = TAB_KEYS.includes(String(tab)) ? String(tab) : 'deals'
+    if (activeTab.value !== next) {
+      activeTab.value = next
+    }
+  },
+  { immediate: true }
+)
+
 watch([() => editAccount.open], async ([showEdit]) => {
   if (showEdit && !domains.value.length) {
     await loadDomains()
@@ -7264,6 +7304,10 @@ watch(
   margin-left: auto;
 }
 
+.tabs--create {
+  margin-right: 12px;
+}
+
 .tab {
   background: var(--tab-bg);
   border: 1px solid var(--tab-border);
@@ -7272,6 +7316,24 @@ watch(
   padding: 8px 12px;
   font-size: 12px;
   cursor: pointer;
+  text-decoration: none;
+}
+
+.tab--action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.tab--action svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
 }
 
 .tab--icon {
