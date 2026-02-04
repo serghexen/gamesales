@@ -254,6 +254,15 @@ class TelegramContactIn(BaseModel):
     title: str = ""
     info: str = ""
 
+class ImportIssue(BaseModel):
+    row: int
+    field: str
+    message: str
+
+class ImportReportIn(BaseModel):
+    errors: List[ImportIssue] = []
+    warnings: List[ImportIssue] = []
+
 class LoginOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -3117,6 +3126,46 @@ def accounts_import_cancel(job_id: str, user: UserOut = Depends(require_role("ad
         "result": {"ok": False, "cancelled": True},
     })
     return {"ok": True}
+
+def build_import_report_xlsx(errors: List[dict], warnings: List[dict]) -> bytes:
+    wb = Workbook()
+    ws_err = wb.active
+    ws_err.title = "Ошибки"
+    ws_err.append(["Строка", "Поле", "Сообщение"])
+    for e in errors or []:
+        ws_err.append([e.get("row"), e.get("field"), e.get("message")])
+    ws_warn = wb.create_sheet("Предупреждения")
+    ws_warn.append(["Строка", "Поле", "Сообщение"])
+    for w in warnings or []:
+        ws_warn.append([w.get("row"), w.get("field"), w.get("message")])
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+@app.post("/accounts/import/report")
+def accounts_import_report(payload: ImportReportIn, user: UserOut = Depends(require_role("admin"))):
+    content = build_import_report_xlsx(
+        [i.dict() for i in payload.errors],
+        [i.dict() for i in payload.warnings],
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=accounts_import_report.xlsx"},
+    )
+
+@app.post("/games/import/report")
+def games_import_report(payload: ImportReportIn, user: UserOut = Depends(require_role("admin"))):
+    content = build_import_report_xlsx(
+        [i.dict() for i in payload.errors],
+        [i.dict() for i in payload.warnings],
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=games_import_report.xlsx"},
+    )
 
 @app.post("/rentals")
 def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_user)):

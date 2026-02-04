@@ -406,6 +406,11 @@
                       </label>
                       <div ref="accountImportDetailsRef">
                         <p v-if="accountImportMessage" class="ok">{{ accountImportMessage }}</p>
+                      <div v-if="accountImportErrors.length || accountImportWarnings.length" class="toolbar-actions import-actions">
+                        <button class="ghost" type="button" @click="downloadAccountImportReport">
+                          Скачать отчет
+                        </button>
+                      </div>
                       <p v-if="accountImportStats" class="muted">
                         Итог: создано {{ accountImportStats.created }}, обновлено {{ accountImportStats.updated }}, пропущено {{ accountImportStats.skipped }}, ошибок {{ accountImportStats.failed }}, всего {{ accountImportStats.total }}
                       </p>
@@ -1109,6 +1114,11 @@
                       </label>
                       <div ref="importDetailsRef">
                         <p v-if="gameImportMessage" class="ok">{{ gameImportMessage }}</p>
+                      <div v-if="gameImportErrors.length || gameImportWarnings.length" class="toolbar-actions import-actions">
+                        <button class="ghost" type="button" @click="downloadGameImportReport">
+                          Скачать отчет
+                        </button>
+                      </div>
                       <p v-if="gameImportStats" class="muted">
                         Итог: создано {{ gameImportStats.created }}, обновлено {{ gameImportStats.updated }}, пропущено {{ gameImportStats.skipped }}, ошибок {{ gameImportStats.failed }}, всего {{ gameImportStats.total }}
                       </p>
@@ -3522,7 +3532,7 @@
 import { ref, reactive, onMounted, computed, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../stores/auth'
-import { apiGet, apiPost, apiDelete, apiPut, apiPostForm, apiGetFile, apiPostFormWithProgress } from '../api/http'
+import { API_BASE, apiGet, apiPost, apiDelete, apiPut, apiPostForm, apiGetFile, apiPostFormWithProgress } from '../api/http'
 
 const router = useRouter()
 const route = useRoute()
@@ -5205,6 +5215,32 @@ async function downloadAccountTemplate() {
   }
 }
 
+async function downloadGameImportReport() {
+  try {
+    const payload = { errors: gameImportErrors.value || [], warnings: gameImportWarnings.value || [] }
+    const res = await fetch(`${API_BASE}/games/import/report`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth.state.token}`,
+      },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      throw new Error(`report failed: ${res.status}`)
+    }
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'games_import_report.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    gameImportMessage.value = mapApiError(e?.message)
+  }
+}
+
 async function validateGameImport() {
   if (!gameImportFile.value) return
   const form = new FormData()
@@ -5237,6 +5273,32 @@ async function validateGameImport() {
     gameImportLoading.value = false
     gameImportAction.value = ''
     stopGameImportStatusPolling()
+  }
+}
+
+async function downloadAccountImportReport() {
+  try {
+    const payload = { errors: accountImportErrors.value || [], warnings: accountImportWarnings.value || [] }
+    const res = await fetch(`${API_BASE}/accounts/import/report`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth.state.token}`,
+      },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      throw new Error(`report failed: ${res.status}`)
+    }
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'accounts_import_report.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    accountImportMessage.value = mapApiError(e?.message)
   }
 }
 
