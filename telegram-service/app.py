@@ -64,6 +64,12 @@ class MediaIn(BaseModel):
     chat_id: int
     message_id: int
 
+async def _resolve_entity(client: TelegramClient, chat_id: int):
+    dialogs = await client.get_dialogs(limit=200)
+    for d in dialogs:
+        if int(d.id) == int(chat_id):
+            return d.entity
+    raise HTTPException(404, "Chat not found")
 
 @app.get("/health")
 def health():
@@ -154,7 +160,8 @@ async def messages(payload: MessagesIn, x_api_key: str | None = Header(None)):
     client = _client(payload.session_string or "")
     await client.connect()
     try:
-        msgs = await client.get_messages(payload.chat_id, limit=payload.limit)
+        entity = await _resolve_entity(client, payload.chat_id)
+        msgs = await client.get_messages(entity, limit=payload.limit)
         items = []
         for m in msgs:
             sender = m.sender
@@ -210,7 +217,8 @@ async def media(payload: MediaIn, x_api_key: str | None = Header(None)):
     client = _client(payload.session_string or "")
     await client.connect()
     try:
-        msg = await client.get_messages(payload.chat_id, ids=payload.message_id)
+        entity = await _resolve_entity(client, payload.chat_id)
+        msg = await client.get_messages(entity, ids=payload.message_id)
         if not msg or not msg.media:
             raise HTTPException(404, "Media not found")
         data = await client.download_media(msg, file=bytes)
