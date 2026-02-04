@@ -157,6 +157,21 @@ async def messages(payload: MessagesIn, x_api_key: str | None = Header(None)):
         msgs = await client.get_messages(payload.chat_id, limit=payload.limit)
         items = []
         for m in msgs:
+            sender = m.sender
+            if sender is None:
+                try:
+                    sender = await m.get_sender()
+                except Exception:
+                    sender = None
+            sender_username = getattr(sender, "username", None) if sender else None
+            sender_title = getattr(sender, "title", None) if sender else None
+            first_name = getattr(sender, "first_name", None) if sender else None
+            last_name = getattr(sender, "last_name", None) if sender else None
+            sender_name = None
+            if sender_title:
+                sender_name = sender_title
+            elif first_name or last_name:
+                sender_name = " ".join([p for p in [first_name, last_name] if p])
             media_type = None
             mime_type = None
             if m.photo:
@@ -164,7 +179,8 @@ async def messages(payload: MessagesIn, x_api_key: str | None = Header(None)):
                 mime_type = "image/jpeg"
             elif m.document:
                 mime_type = getattr(m.file, "mime_type", None)
-                if mime_type == "image/gif":
+                file_ext = getattr(m.file, "ext", "") if getattr(m, "file", None) else ""
+                if mime_type == "image/gif" or file_ext.lower() == ".gif":
                     media_type = "gif"
                 elif mime_type and mime_type.startswith("video/"):
                     media_type = "video"
@@ -177,6 +193,8 @@ async def messages(payload: MessagesIn, x_api_key: str | None = Header(None)):
                     "date": m.date.isoformat() if m.date else None,
                     "out": bool(getattr(m, "out", False)),
                     "sender_id": int(m.sender_id) if m.sender_id else None,
+                    "sender_username": sender_username,
+                    "sender_name": sender_name,
                     "has_media": bool(m.media),
                     "media_type": media_type,
                     "mime_type": mime_type,

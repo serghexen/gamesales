@@ -249,6 +249,11 @@ class TelegramSendMessageIn(BaseModel):
     chat_id: int
     text: str
 
+class TelegramContactIn(BaseModel):
+    sender_id: int
+    title: str = ""
+    info: str = ""
+
 class LoginOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -1266,6 +1271,38 @@ def telegram_dialogs(user: UserOut = Depends(get_current_user)):
         exec1(conn, "UPDATE tg.sessions SET last_used_at=now() WHERE user_id=%s", (user_id,))
         conn.commit()
     return {"items": resp.get("items", [])}
+
+@app.get("/tg/contact")
+def telegram_contact(sender_id: int, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        user_id = get_user_id(conn, user.username)
+        row = q1(
+            conn,
+            "SELECT title, info FROM tg.contact_notes WHERE user_id=%s AND sender_id=%s",
+            (user_id, sender_id),
+        )
+    if not row:
+        return {"title": "", "info": ""}
+    return {"title": row[0], "info": row[1]}
+
+@app.put("/tg/contact")
+def telegram_contact_upsert(payload: TelegramContactIn, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        user_id = get_user_id(conn, user.username)
+        exec1(
+            conn,
+            """
+            INSERT INTO tg.contact_notes(user_id, sender_id, title, info, updated_at)
+            VALUES (%s, %s, %s, %s, now())
+            ON CONFLICT (user_id, sender_id)
+            DO UPDATE SET title=excluded.title,
+                          info=excluded.info,
+                          updated_at=now()
+            """,
+            (user_id, payload.sender_id, payload.title or "", payload.info or ""),
+        )
+        conn.commit()
+    return {"ok": True}
 
 
 @app.get("/tg/messages", response_model=TelegramMessagesOut)
