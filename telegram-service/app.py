@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI, HTTPException, Header
+from fastapi.responses import Response
 from pydantic import BaseModel
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -58,6 +59,11 @@ class SendMessageIn(BaseModel):
     chat_id: int
     text: str
 
+class MediaIn(BaseModel):
+    session_string: str
+    chat_id: int
+    message_id: int
+
 
 @app.get("/health")
 def health():
@@ -67,6 +73,8 @@ def health():
 @app.post("/auth/start")
 async def auth_start(payload: AuthStartIn, x_api_key: str | None = Header(None)):
     _require_api_key(x_api_key)
+    if not payload.phone:
+        raise HTTPException(400, "Phone is required")
     client = _client(payload.session_string or "")
     await client.connect()
     try:
@@ -149,6 +157,19 @@ async def messages(payload: MessagesIn, x_api_key: str | None = Header(None)):
         msgs = await client.get_messages(payload.chat_id, limit=payload.limit)
         items = []
         for m in msgs:
+            media_type = None
+            mime_type = None
+            if m.photo:
+                media_type = "photo"
+                mime_type = "image/jpeg"
+            elif m.document:
+                mime_type = getattr(m.file, "mime_type", None)
+                if mime_type == "image/gif":
+                    media_type = "gif"
+                elif mime_type and mime_type.startswith("video/"):
+                    media_type = "video"
+                else:
+                    media_type = "document"
             items.append(
                 {
                     "id": int(m.id),
@@ -156,9 +177,33 @@ async def messages(payload: MessagesIn, x_api_key: str | None = Header(None)):
                     "date": m.date.isoformat() if m.date else None,
                     "out": bool(getattr(m, "out", False)),
                     "sender_id": int(m.sender_id) if m.sender_id else None,
+                    "has_media": bool(m.media),
+                    "media_type": media_type,
+                    "mime_type": mime_type,
                 }
             )
         return {"items": items}
+    finally:
+        await client.disconnect()
+
+@app.post("/media")
+async def media(payload: MediaIn, x_api_key: str | None = Header(None)):
+    _require_api_key(x_api_key)
+    client = _client(payload.session_string or "")
+    await client.connect()
+    try:
+        msg = await client.get_messages(payload.chat_id, ids=payload.message_id)
+        if not msg or not msg.media:
+            raise HTTPException(404, "Media not found")
+        data = await client.download_media(msg, file=bytes)
+        if not data:
+            raise HTTPException(404, "Media not found")
+        mime_type = None
+        if msg.photo:
+            mime_type = "image/jpeg"
+        elif msg.document:
+            mime_type = getattr(msg.file, "mime_type", None)
+        return Response(content=data, media_type=mime_type or "application/octet-stream")
     finally:
         await client.disconnect()
 

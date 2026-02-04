@@ -800,6 +800,32 @@ def _telegram_api_request(method: str, path: str, data: Optional[dict] = None) -
     except urllib.error.URLError as exc:
         raise HTTPException(502, f"Telegram service {method} {path} failed: {exc.reason}")
 
+def _telegram_api_request_raw(method: str, path: str, data: Optional[dict] = None) -> Tuple[bytes, Optional[str]]:
+    if not _TELEGRAM_API_URL:
+        raise HTTPException(500, "Telegram service is not configured")
+    url = _TELEGRAM_API_URL.rstrip("/") + path
+    body = None
+    headers = {"Content-Type": "application/json"}
+    if _TELEGRAM_API_KEY:
+        headers["X-API-Key"] = _TELEGRAM_API_KEY
+    if data is not None:
+        body = json.dumps(data).encode("utf-8")
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            content = resp.read()
+            content_type = resp.headers.get("Content-Type")
+            return content or b"", content_type
+    except urllib.error.HTTPError as exc:
+        raw = exc.read()
+        details = raw.decode("utf-8", errors="ignore") if raw else ""
+        message = f"Telegram service {method} {path} failed: {exc.code} {exc.reason}"
+        if details:
+            message = f"{message}. {details}"
+        raise HTTPException(exc.code, message)
+    except urllib.error.URLError as exc:
+        raise HTTPException(502, f"Telegram service {method} {path} failed: {exc.reason}")
+
 def is_import_cancelled(job_id: str) -> bool:
     status = get_import_progress(job_id)
     return bool(status.get("cancelled"))
@@ -1268,6 +1294,23 @@ def telegram_send_message(payload: TelegramSendMessageIn, user: UserOut = Depend
         exec1(conn, "UPDATE tg.sessions SET last_used_at=now() WHERE user_id=%s", (user_id,))
         conn.commit()
     return {"ok": True}
+
+@app.get("/tg/media")
+def telegram_media(chat_id: int, message_id: int, user: UserOut = Depends(get_current_user)):
+    with psycopg.connect(DB_DSN) as conn:
+        user_id = get_user_id(conn, user.username)
+        row = q1(conn, "SELECT session_string, status FROM tg.sessions WHERE user_id=%s", (user_id,))
+        if not row or row[1] != "ready":
+            raise HTTPException(400, "Telegram is not connected")
+        session_string = row[0]
+        data, content_type = _telegram_api_request_raw(
+            "POST",
+            "/media",
+            {"session_string": session_string, "chat_id": chat_id, "message_id": message_id},
+        )
+        exec1(conn, "UPDATE tg.sessions SET last_used_at=now() WHERE user_id=%s", (user_id,))
+        conn.commit()
+    return Response(content=data, media_type=content_type or "application/octet-stream")
 
 @app.get("/platforms", response_model=List[PlatformOut])
 def list_platforms(user: UserOut = Depends(get_current_user)):

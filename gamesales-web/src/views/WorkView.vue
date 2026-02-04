@@ -1550,6 +1550,17 @@
                 <div class="tg-messages__list">
                   <div v-for="m in telegram.messages" :key="m.id" class="tg-message" :class="{ 'tg-message--out': m.out }">
                     <div class="tg-message__text">{{ m.text || '—' }}</div>
+                    <div v-if="m.has_media" class="tg-message__media">
+                      <img
+                        v-if="(m.media_type === 'photo' || m.media_type === 'gif') && m.media_url"
+                        :src="m.media_url"
+                        :alt="m.media_type === 'gif' ? 'GIF' : 'Image'"
+                      />
+                      <a v-else-if="m.media_url" :href="m.media_url" target="_blank" rel="noopener">
+                        Открыть файл
+                      </a>
+                      <span v-else class="muted">Загрузка...</span>
+                    </div>
                     <div class="tg-message__meta">{{ formatDateTimeMinutes(m.date) }}</div>
                   </div>
                 </div>
@@ -6350,6 +6361,7 @@ async function loadTelegramDialogs() {
 }
 
 async function selectTelegramDialog(dialogId) {
+  revokeTelegramMediaUrls()
   telegram.activeChatId = dialogId
   telegram.messages = []
   telegram.loading = true
@@ -6357,10 +6369,33 @@ async function selectTelegramDialog(dialogId) {
   try {
     const data = await apiGet(`/tg/messages?chat_id=${dialogId}`, { token: auth.state.token })
     telegram.messages = data?.items || []
+    await loadTelegramMessageMedia()
   } catch (e) {
     telegram.error = mapApiError(e?.message)
   } finally {
     telegram.loading = false
+  }
+}
+
+function revokeTelegramMediaUrls() {
+  telegram.messages.forEach((m) => {
+    if (m?.media_url && String(m.media_url).startsWith('blob:')) {
+      URL.revokeObjectURL(m.media_url)
+    }
+  })
+}
+
+async function loadTelegramMessageMedia() {
+  const chatId = telegram.activeChatId
+  if (!chatId) return
+  for (const msg of telegram.messages) {
+    if (!msg?.has_media || msg?.media_url) continue
+    try {
+      const blob = await apiGetFile(`/tg/media?chat_id=${chatId}&message_id=${msg.id}`, { token: auth.state.token })
+      msg.media_url = URL.createObjectURL(blob)
+    } catch (e) {
+      // ignore media load failures
+    }
   }
 }
 
@@ -7805,6 +7840,19 @@ watch(
 .tg-message__text {
   font-size: 12px;
   line-height: 1.4;
+}
+
+.tg-message__media {
+  margin-top: 6px;
+}
+
+.tg-message__media img {
+  max-width: 320px;
+  max-height: 240px;
+  border-radius: 12px;
+  display: block;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .tg-message__meta {
