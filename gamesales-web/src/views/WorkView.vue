@@ -1461,41 +1461,43 @@
         <section v-if="activeTab === 'deals'" class="panel panel--wide">
           <div class="panel__head">
             <div class="panel__head-col">
-              <div class="toolbar-actions toolbar-actions--deal-create">
-                <button class="deal-create-btn" type="button" @click="openCreateSaleModal" aria-label="Новая продажа" title="Новая продажа">
-                  <span class="deal-create-btn__text">Продажа</span>
-                  <span class="deal-create-btn__icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
-                      <line y2="19" y1="5" x2="12" x1="12"></line>
-                      <line y2="12" y1="12" x2="19" x1="5"></line>
+              <div class="deal-head-row">
+                <div class="toolbar-actions toolbar-actions--deal-create">
+                  <button class="deal-create-btn" type="button" @click="openCreateSaleModal" aria-label="Новая продажа" title="Новая продажа">
+                    <span class="deal-create-btn__text">Продажа</span>
+                    <span class="deal-create-btn__icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
+                        <line y2="19" y1="5" x2="12" x1="12"></line>
+                        <line y2="12" y1="12" x2="19" x1="5"></line>
+                      </svg>
+                    </span>
+                  </button>
+                  <button class="deal-create-btn deal-create-btn--sharing" type="button" @click="openCreateSharingModal" aria-label="Новый шеринг" title="Новый шеринг">
+                    <span class="deal-create-btn__text">Шеринг</span>
+                    <span class="deal-create-btn__icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
+                        <line y2="19" y1="5" x2="12" x1="12"></line>
+                        <line y2="12" y1="12" x2="19" x1="5"></line>
+                      </svg>
+                    </span>
+                  </button>
+                </div>
+                <div class="toolbar-actions toolbar-actions--deal-search">
+                  <label class="field field--compact">
+                    <input
+                      v-model.trim="dealFilters.search_q"
+                      class="input input--compact input--deal-search"
+                      placeholder="пользователь, регион, дата, статус, тип"
+                      @keydown.enter.prevent="applyDealSearch"
+                    />
+                  </label>
+                  <button class="btn btn--icon btn--glow btn--glow-filter" type="button" @click="applyDealSearch" aria-label="Найти" title="Найти">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 21l-4.2-4.2" />
+                      <circle cx="11" cy="11" r="7" />
                     </svg>
-                  </span>
-                </button>
-                <button class="deal-create-btn deal-create-btn--sharing" type="button" @click="openCreateSharingModal" aria-label="Новый шеринг" title="Новый шеринг">
-                  <span class="deal-create-btn__text">Шеринг</span>
-                  <span class="deal-create-btn__icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
-                      <line y2="19" y1="5" x2="12" x1="12"></line>
-                      <line y2="12" y1="12" x2="19" x1="5"></line>
-                    </svg>
-                  </span>
-                </button>
-              </div>
-              <div class="toolbar-actions toolbar-actions--deal-search">
-                <label class="field field--compact">
-                  <input
-                    v-model.trim="dealFilters.search_q"
-                    class="input input--compact input--deal-search"
-                    placeholder="пользователь, регион, дата, статус, тип"
-                    @keydown.enter.prevent="applyDealSearch"
-                  />
-                </label>
-                <button class="btn btn--icon btn--glow btn--glow-filter" type="button" @click="applyDealSearch" aria-label="Найти" title="Найти">
-                  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 21l-4.2-4.2" />
-                    <circle cx="11" cy="11" r="7" />
-                  </svg>
-                </button>
+                  </button>
+                </div>
               </div>
             </div>
             <div class="toolbar-actions">
@@ -7415,7 +7417,8 @@ watch(
 }
 
 .toolbar-actions--deal-search {
-  width: min(360px, 100%);
+  flex: 0 0 360px;
+  max-width: 360px;
   display: flex;
 }
 
@@ -7432,7 +7435,17 @@ watch(
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
+}
+
+.deal-head-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: nowrap;
+}
+
+.toolbar-actions--deal-create {
+  flex: 0 0 auto;
 }
 
 .tab--icon {
