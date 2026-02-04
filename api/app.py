@@ -69,6 +69,17 @@ def validate_date_in_range(value, field_name: str):
     if check_date < MIN_DATE or check_date > max_date:
         raise HTTPException(400, f"{field_name} must be between {MIN_DATE.isoformat()} and {max_date.isoformat()}")
 
+def validate_date_not_future(value, field_name: str):
+    if value is None:
+        return
+    if isinstance(value, datetime):
+        check_date = value.date()
+    else:
+        check_date = value
+    max_date = now_utc().date()
+    if check_date > max_date:
+        raise HTTPException(400, f"{field_name} must be <= {max_date.isoformat()}")
+
 def validate_date_range(start_value, end_value, field_name: str):
     if not start_value or not end_value:
         return
@@ -124,6 +135,7 @@ class AccountOut(BaseModel):
     login_full: Optional[str]
     platform_slots: List[AccountPlatformSlots]
     slot_status: List[AccountSlotStatusOut] = []
+    game_titles: Optional[List[str]] = None
     account_date: Optional[date] = None
     notes: Optional[str] = None
 
@@ -1273,7 +1285,9 @@ def reset_password(username: str, payload: ResetPasswordIn, user: UserOut = Depe
 
 @app.get("/accounts", response_model=AccountListOut)
 def list_accounts(
+    q: Optional[str] = None,
     login_q: Optional[str] = None,
+    game_q: Optional[str] = None,
     region_q: Optional[str] = None,
     status_q: Optional[str] = None,
     slots_q: Optional[str] = None,
@@ -1309,6 +1323,12 @@ def list_accounts(
     if login_q:
         filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s)")
         params.extend([f"%{login_q}%", f"%{login_q}%"])
+    if q:
+        filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR r.code ILIKE %s OR g.title ILIKE %s)")
+        params.extend([f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"])
+    if game_q:
+        filters.append("g.title ILIKE %s")
+        params.append(f"%{game_q}%")
     if region_q:
         filters.append("r.code ILIKE %s")
         params.append(f"%{region_q}%")
@@ -1339,11 +1359,14 @@ def list_accounts(
                 a.notes,
                 r.code as region_code,
                 d.name as domain_name,
+                COALESCE(array_agg(DISTINCT g.title ORDER BY g.title) FILTER (WHERE g.title IS NOT NULL), '{{}}'::text[]) as game_titles,
                 COALESCE(SUM(s.free), 0) as free_total,
                 COALESCE(string_agg(st.code || ' ' || s.occupied || '/' || s.capacity, ' · ' ORDER BY st.code), '') as slots_text
               FROM app.accounts a
               LEFT JOIN app.regions r ON r.region_id = a.region_id
               LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+              LEFT JOIN app.account_assets aa ON aa.account_id = a.account_id AND aa.asset_type_code = 'game'
+              LEFT JOIN app.game_titles g ON g.game_id = aa.game_id
               LEFT JOIN app.v_account_slot_status s ON s.account_id = a.account_id
               LEFT JOIN app.slot_types st ON st.code = s.slot_type_code
               {where_sql}
@@ -1369,6 +1392,7 @@ def list_accounts(
               page.domain_name,
               page.account_date,
               page.notes,
+              page.game_titles,
               s.slot_type_code,
               s.platform_code,
               s.mode,
@@ -1388,7 +1412,7 @@ def list_accounts(
     total = 0
     for row in rows:
         account_id = row[0]
-        total = int(row[13] or 0)
+        total = int(row[14] or 0)
         if account_id not in acc_map:
             acc = AccountOut(
                 account_id=account_id,
@@ -1399,21 +1423,22 @@ def list_accounts(
                 login_full=f"{row[3]}@{row[4]}" if row[3] and row[4] else None,
                 platform_slots=[],
                 slot_status=[],
+                game_titles=list(row[7] or []),
                 account_date=row[5],
                 notes=row[6],
             )
             acc_map[account_id] = acc
             acc_list.append(acc)
-        slot_type_code = row[7]
+        slot_type_code = row[8]
         if slot_type_code:
             acc_map[account_id].slot_status.append(
                 AccountSlotStatusOut(
                     slot_type_code=slot_type_code,
-                    platform_code=row[8],
-                    mode=row[9],
-                    capacity=int(row[10] or 0),
-                    occupied=int(row[11] or 0),
-                    free=int(row[12] or 0),
+                    platform_code=row[9],
+                    mode=row[10],
+                    capacity=int(row[11] or 0),
+                    occupied=int(row[12] or 0),
+                    free=int(row[13] or 0),
                 )
             )
     if not rows:
@@ -1426,11 +1451,14 @@ def list_accounts(
                     a.account_id,
                     r.code as region_code,
                     d.name as domain_name,
+                    COALESCE(array_agg(DISTINCT g.title ORDER BY g.title) FILTER (WHERE g.title IS NOT NULL), '{{}}'::text[]) as game_titles,
                     COALESCE(SUM(s.free), 0) as free_total,
                     COALESCE(string_agg(st.code || ' ' || s.occupied || '/' || s.capacity, ' · ' ORDER BY st.code), '') as slots_text
                   FROM app.accounts a
                   LEFT JOIN app.regions r ON r.region_id = a.region_id
                   LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+                  LEFT JOIN app.account_assets aa ON aa.account_id = a.account_id AND aa.asset_type_code = 'game'
+                  LEFT JOIN app.game_titles g ON g.game_id = aa.game_id
                   LEFT JOIN app.v_account_slot_status s ON s.account_id = a.account_id
                   LEFT JOIN app.slot_types st ON st.code = s.slot_type_code
                   {where_sql}
@@ -1448,7 +1476,7 @@ def list_accounts(
 def create_account(payload: AccountCreate, user: UserOut = Depends(get_current_user)):
     if not payload.login_name or not payload.domain_code:
         raise HTTPException(400, "login_name and domain_code are required")
-    validate_date_in_range(payload.account_date, "account_date")
+    validate_date_not_future(payload.account_date, "account_date")
     with psycopg.connect(DB_DSN) as conn:
         region_id = get_region_id(conn, payload.region_code)
         domain_id = get_domain_id(conn, payload.domain_code)
@@ -1484,6 +1512,7 @@ def create_account(payload: AccountCreate, user: UserOut = Depends(get_current_u
             login_full=f"{payload.login_name}@{payload.domain_code}" if payload.login_name and payload.domain_code else None,
             platform_slots=platform_slots,
             slot_status=slot_status,
+            game_titles=None,
             account_date=payload.account_date,
             notes=payload.notes
         )
@@ -1494,7 +1523,7 @@ def update_account(
     payload: AccountUpdate,
     user: UserOut = Depends(require_role("admin")),
 ):
-    validate_date_in_range(payload.account_date, "account_date")
+    validate_date_not_future(payload.account_date, "account_date")
     with psycopg.connect(DB_DSN) as conn:
         current = q1(
             conn,
@@ -1569,6 +1598,7 @@ def update_account(
             login_full=f"{row[3]}@{row[4]}" if row[3] and row[4] else None,
             platform_slots=platform_slots,
             slot_status=slot_status,
+            game_titles=None,
             account_date=row[5],
             notes=row[6]
         )

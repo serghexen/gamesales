@@ -226,6 +226,28 @@
         <section v-if="activeTab === 'accounts'" class="panel panel--wide">
           <div class="panel__head">
             <div>
+              <div class="toolbar-actions">
+                <label class="field field--compact">
+                  <input
+                    v-model.trim="accountFilters.search_q"
+                    class="input input--compact"
+                    placeholder="почта, домен, регион, игра"
+                    @keydown.enter.prevent="applyAccountSearch"
+                  />
+                </label>
+                <button
+                  class="btn btn--icon btn--glow btn--glow-filter"
+                  type="button"
+                  @click="applyAccountSearch"
+                  aria-label="Найти"
+                  title="Найти"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 21l-4.2-4.2" />
+                    <circle cx="11" cy="11" r="7" />
+                  </svg>
+                </button>
+              </div>
             </div>
             <div class="toolbar-actions">
               <button
@@ -236,25 +258,6 @@
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M12 5v14M5 12h14" />
-                </svg>
-              </button>
-              <button
-                class="btn btn--icon btn--glow btn--glow-eye"
-                :aria-label="showPasswords ? 'Скрыть пароли' : 'Показать пароли'"
-                :title="showPasswords ? 'Скрыть пароли' : 'Показать пароли'"
-                @click="showPasswords = !showPasswords"
-              >
-                <svg v-if="!showPasswords" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"
-                  />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-                <svg v-else viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M3 3l18 18" />
-                  <path d="M10.6 10.6a3 3 0 0 0 4.2 4.2" />
-                  <path d="M6.5 6.5C4.2 8.2 2.8 10.4 2.5 12c1.4 2.5 4.8 6 9.5 6 1.6 0 3-.4 4.2-1" />
-                  <path d="M9 5.3A10.9 10.9 0 0 1 12 5c6 0 9.5 6 9.5 6a14.3 14.3 0 0 1-2.6 3.3" />
                 </svg>
               </button>
               <button
@@ -319,13 +322,13 @@
                 <tr>
                   <th class="sortable cell--account" @click="toggleAccountSort('login')">
                     <span class="th-title th-title--filter">
-                      Логин
+                      Почта
                       <button
                         class="filter-icon"
                         :class="{ 'filter-icon--active': Boolean(accountFilters.login_q) }"
                         type="button"
-                        aria-label="Фильтр по логину"
-                        title="Фильтр по логину"
+                        aria-label="Фильтр по почте"
+                        title="Фильтр по почте"
                         @click.stop="openAccountFilter('login')"
                       >
                         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -335,61 +338,36 @@
                     </span>
                     <div v-if="activeAccountFilter === 'login'" class="filter-pop filter-pop--left" @click.stop>
                       <label class="field">
-                        <span class="label">Логин</span>
-                        <input v-model.trim="accountFilterDraft.login" class="input" placeholder="логин / домен" />
+                        <span class="label">Почта</span>
+                        <input v-model.trim="accountFilterDraft.login" class="input" placeholder="почта" />
                       </label>
                       <button class="ghost ghost--small" type="button" @click="applyAccountFilter('login')">Применить</button>
                       <button class="ghost ghost--small" type="button" @click="resetAccountFilter('login')">Сбросить</button>
                     </div>
                   </th>
-                  <th class="sortable" @click="toggleAccountSort('region')">
+                  <th>
                     <span class="th-title th-title--filter">
-                      Рег.
+                      Игры
                       <button
                         class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(accountFilters.region_q) }"
+                        :class="{ 'filter-icon--active': Boolean(accountFilters.game_q) }"
                         type="button"
-                        aria-label="Фильтр по региону"
-                        title="Фильтр по региону"
-                        @click.stop="openAccountFilter('region')"
+                        aria-label="Фильтр по играм"
+                        title="Фильтр по играм"
+                        @click.stop="openAccountFilter('game')"
                       >
                         <svg viewBox="0 0 24 24" aria-hidden="true">
                           <path d="M4 6h16M7 12h10M10 18h4" />
                         </svg>
                       </button>
                     </span>
-                    <div v-if="activeAccountFilter === 'region'" class="filter-pop filter-pop--center" @click.stop>
+                    <div v-if="activeAccountFilter === 'game'" class="filter-pop filter-pop--center" @click.stop>
                       <label class="field">
-                        <span class="label">Регион</span>
-                        <input v-model.trim="accountFilterDraft.region" class="input" placeholder="регион" />
+                        <span class="label">Игра</span>
+                        <input v-model.trim="accountFilterDraft.game" class="input" placeholder="название игры" />
                       </label>
-                      <button class="ghost ghost--small" type="button" @click="applyAccountFilter('region')">Применить</button>
-                      <button class="ghost ghost--small" type="button" @click="resetAccountFilter('region')">Сбросить</button>
-                    </div>
-                  </th>
-                  <th class="sortable" @click="toggleAccountSort('status')">
-                    <span class="th-title th-title--filter">
-                      Стат.
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(accountFilters.status_q) }"
-                        type="button"
-                        aria-label="Фильтр по статусу"
-                        title="Фильтр по статусу"
-                        @click.stop="openAccountFilter('status')"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
-                    </span>
-                    <div v-if="activeAccountFilter === 'status'" class="filter-pop filter-pop--center" @click.stop>
-                      <label class="field">
-                        <span class="label">Статус</span>
-                        <input v-model.trim="accountFilterDraft.status" class="input" placeholder="статус" />
-                      </label>
-                      <button class="ghost ghost--small" type="button" @click="applyAccountFilter('status')">Применить</button>
-                      <button class="ghost ghost--small" type="button" @click="resetAccountFilter('status')">Сбросить</button>
+                      <button class="ghost ghost--small" type="button" @click="applyAccountFilter('game')">Применить</button>
+                      <button class="ghost ghost--small" type="button" @click="resetAccountFilter('game')">Сбросить</button>
                     </div>
                   </th>
                   <th class="sortable" @click="toggleAccountSort('slots')">
@@ -417,58 +395,20 @@
                       <button class="ghost ghost--small" type="button" @click="resetAccountFilter('slots')">Сбросить</button>
                     </div>
                   </th>
-                  <th class="sortable" @click="toggleAccountSort('date')">
-                    <span class="th-title th-title--filter">
-                      Дата
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(accountFilters.date_from || accountFilters.date_to) }"
-                        type="button"
-                        aria-label="Фильтр по дате"
-                        title="Фильтр по дате"
-                        @click.stop="openAccountFilter('date')"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
-                    </span>
-                    <div v-if="activeAccountFilter === 'date'" class="filter-pop filter-pop--right" @click.stop>
-                      <label class="field">
-                        <span class="label">С</span>
-                        <input v-model="accountFilterDraft.date_from" class="input" type="date" :min="minDate" :max="maxDate" />
-                      </label>
-                      <label class="field">
-                        <span class="label">По</span>
-                        <input v-model="accountFilterDraft.date_to" class="input" type="date" :min="minDate" :max="maxDate" />
-                      </label>
-                      <p v-if="accountFilterErrors.date" class="bad">{{ accountFilterErrors.date }}</p>
-                      <button class="ghost ghost--small" type="button" @click="applyAccountFilter('date')">Применить</button>
-                      <button class="ghost ghost--small" type="button" @click="resetAccountFilter('date')">Сбросить</button>
-                    </div>
-                  </th>
-                  <th>Почта</th>
-                  <th>Акк. пароль</th>
                   <th>Резерв</th>
-                  <th>2FA код</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="a in sortedAccounts" :key="a.account_id" class="clickable-row" @click="startEditAccount(a)">
                   <td class="cell--account">{{ a.login_full || '—' }}</td>
-                  <td>{{ a.region_code || '—' }}</td>
-                  <td>{{ a.status }}</td>
+                  <td>{{ formatAccountGamesLine(a) }}</td>
                   <td class="cell--slots">
                     <span v-if="!getAccountSlotStatusList(a).length" class="slot-line">—</span>
                     <span v-for="s in getAccountSlotStatusList(a)" :key="s.slot_type_code" class="slot-line">
                       {{ formatAccountSlotStatusLine(s) }}
                     </span>
                   </td>
-                  <td>{{ formatDateOnly(a.account_date) }}</td>
-                  <td>{{ formatSecret(getEmailSecret(a.account_id)) }}</td>
-                  <td>{{ formatSecret(getAccountSecret(a.account_id)) }}</td>
-                  <td>{{ formatSecret(getReserveSecrets(a.account_id)) }}</td>
-                  <td>{{ formatSecret(getAuthSecret(a.account_id)) }}</td>
+                  <td class="cell--selectable" @click.stop>{{ formatSecret(getReserveSecrets(a.account_id)) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -600,7 +540,7 @@
                       </label>
                       <label class="field">
                         <span class="label">Дата</span>
-                        <input v-model="editAccount.account_date" class="input" type="date" :min="minDate" :max="maxDate" :disabled="accountEditMode === 'view'" />
+                        <input v-model="editAccount.account_date" class="input" type="date" :max="maxDate" :disabled="accountEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Комментарий</span>
@@ -618,33 +558,15 @@
                         <span class="label">Код аутентификатора</span>
                         <input v-model.trim="editAccount.auth_code" class="input" placeholder="код" :disabled="accountEditMode === 'view'" />
                       </label>
-                      <div class="field field--full">
-                        <span class="label">Пароли резерв</span>
-                        <div class="input-list">
-                        <div v-for="(p, idx) in editAccount.reserve_secrets" :key="idx" class="input-list__row">
-                          <input
-                            v-model.trim="editAccount.reserve_secrets[idx]"
-                            class="input"
-                            autocomplete="new-password"
-                            :placeholder="`Резерв ${idx + 1}`"
-                            :disabled="accountEditMode === 'view'"
-                          />
-                          <button
-                            v-if="accountEditMode === 'edit'"
-                            class="btn btn--icon-plain btn--icon-tiny"
-                            type="button"
-                            aria-label="Убрать"
-                            title="Убрать"
-                            @click="removeEditReserveSecret(idx)"
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
-                            </svg>
-                          </button>
-                        </div>
-                        <button v-if="accountEditMode === 'edit'" class="ghost" type="button" @click="addEditReserveSecret">+ Добавить резервный пароль</button>
-                      </div>
-                      </div>
+                      <label class="field field--full">
+                        <span class="label">Резерв</span>
+                        <textarea
+                          v-model.trim="editAccount.reserve_text"
+                          class="input input--textarea"
+                          placeholder="mkn4N5 jYVLY8 6uGjMm ..."
+                          :disabled="accountEditMode === 'view'"
+                        />
+                      </label>
                       <div class="field field--full">
                         <span class="label">Игры (необязательно)</span>
                         <div v-if="accountEditMode === 'view'" class="pill-list">
@@ -814,7 +736,7 @@
                       </label>
                       <label class="field">
                         <span class="label">Дата</span>
-                        <input v-model="newAccount.account_date" class="input" type="date" :min="minDate" :max="maxDate" />
+                        <input v-model="newAccount.account_date" class="input" type="date" :max="maxDate" />
                       </label>
                       <label class="field">
                         <span class="label">Пароль почта</span>
@@ -828,31 +750,14 @@
                         <span class="label">Код аутентификатора</span>
                         <input v-model.trim="newAccount.auth_code" class="input" placeholder="код" />
                       </label>
-                      <div class="field field--full">
-                        <span class="label">Пароли резерв</span>
-                        <div class="input-list">
-                          <div v-for="(p, idx) in newAccount.reserve_secrets" :key="idx" class="input-list__row">
-                            <input
-                              v-model.trim="newAccount.reserve_secrets[idx]"
-                              class="input"
-                              autocomplete="new-password"
-                              :placeholder="`Резерв ${idx + 1}`"
-                            />
-                            <button
-                              class="btn btn--icon-plain btn--icon-tiny"
-                              type="button"
-                              aria-label="Убрать"
-                              title="Убрать"
-                              @click="removeReserveSecret(idx)"
-                            >
-                              <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
-                              </svg>
-                            </button>
-                          </div>
-                          <button class="ghost" type="button" @click="addReserveSecret">+ Добавить резервный пароль</button>
-                        </div>
-                      </div>
+                      <label class="field field--full">
+                        <span class="label">Резерв</span>
+                        <textarea
+                          v-model.trim="newAccount.reserve_text"
+                          class="input input--textarea"
+                          placeholder="mkn4N5 jYVLY8 6uGjMm ..."
+                        />
+                      </label>
                       <div class="field field--full">
                         <span class="label">Игры (необязательно)</span>
                         <input v-model.trim="accountGameSearch" class="input" placeholder="поиск" />
@@ -1678,12 +1583,12 @@
                     <div v-if="activeDealFilter === 'type'" class="filter-pop filter-pop--left" @click.stop>
                       <label class="field">
                         <span class="label">Тип</span>
-                        <input
-                          v-model.trim="dealFilters.type_q"
-                          class="input"
-                          placeholder="тип"
-                          @keydown.enter.prevent="loadDeals(1); activeDealFilter = ''"
-                        />
+                        <select v-model="dealFilters.type_q" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="t in dealTypeOptions" :key="t.code" :value="t.code">
+                            {{ t.name }}
+                          </option>
+                        </select>
                       </label>
                       <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
                       <button class="ghost ghost--small" type="button" @click="resetDealFilter('type')">Сбросить</button>
@@ -1738,12 +1643,12 @@
                     <div v-if="activeDealFilter === 'region'" class="filter-pop filter-pop--center" @click.stop>
                       <label class="field">
                         <span class="label">Регион</span>
-                        <input
-                          v-model.trim="dealFilters.region_q"
-                          class="input"
-                          placeholder="регион"
-                          @keydown.enter.prevent="loadDeals(1); activeDealFilter = ''"
-                        />
+                        <select v-model="dealFilters.region_q" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="r in regions" :key="r.code" :value="r.code">
+                            {{ r.name }} ({{ r.code }})
+                          </option>
+                        </select>
                       </label>
                       <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
                       <button class="ghost ghost--small" type="button" @click="resetDealFilter('region')">Сбросить</button>
@@ -1818,12 +1723,12 @@
                     <div v-if="activeDealFilter === 'status'" class="filter-pop filter-pop--right" @click.stop>
                       <label class="field">
                         <span class="label">Статус</span>
-                        <input
-                          v-model.trim="dealFilters.status_q"
-                          class="input"
-                          placeholder="статус"
-                          @keydown.enter.prevent="loadDeals(1); activeDealFilter = ''"
-                        />
+                        <select v-model="dealFilters.status_q" class="input input--select">
+                          <option value="">— не выбрано —</option>
+                          <option v-for="s in dealFlowStatusOptions" :key="s.code" :value="s.code">
+                            {{ s.name }}
+                          </option>
+                        </select>
                       </label>
                       <button class="ghost ghost--small" type="button" @click="loadDeals(1); activeDealFilter = ''">Применить</button>
                       <button class="ghost ghost--small" type="button" @click="resetDealFilter('status')">Сбросить</button>
@@ -2148,7 +2053,7 @@
                           <span class="label">Пользователь</span>
                           <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="nickname" :disabled="dealEditMode === 'view'" />
                         </label>
-                        <label class="field">
+                        <label v-if="editDeal.deal_type_code === 'sale'" class="field">
                           <span class="label">Регион</span>
                           <select v-model="editDeal.region_code" class="input input--select" :disabled="dealEditMode === 'view'">
                             <option value="">— не выбрано —</option>
@@ -2467,7 +2372,7 @@
                           <span class="label">Пользователь</span>
                           <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="nickname" />
                         </label>
-                        <label class="field">
+                        <label v-if="newDeal.deal_type_code === 'sale'" class="field">
                           <span class="label">Регион</span>
                           <select v-model="newDeal.region_code" class="input input--select">
                             <option value="">— не выбрано —</option>
@@ -3382,10 +3287,19 @@ const accountGameTitles = computed(() => {
 const activeDealChips = computed(() => {
   const chips = []
   if (dealFilters.search_q) chips.push({ key: 'search', label: 'Поиск', value: dealFilters.search_q })
-  if (dealFilters.type_q) chips.push({ key: 'type', label: 'Тип', value: dealFilters.type_q })
+  if (dealFilters.type_q) {
+    const label = dealTypeOptions.find((t) => t.code === dealFilters.type_q)?.name || dealFilters.type_q
+    chips.push({ key: 'type', label: 'Тип', value: label })
+  }
   if (dealFilters.customer_q) chips.push({ key: 'customer', label: 'Пользователь', value: dealFilters.customer_q })
-  if (dealFilters.region_q) chips.push({ key: 'region', label: 'Регион', value: dealFilters.region_q })
-  if (dealFilters.status_q) chips.push({ key: 'status', label: 'Статус', value: dealFilters.status_q })
+  if (dealFilters.region_q) {
+    const label = regions.value.find((r) => r.code === dealFilters.region_q)?.name || dealFilters.region_q
+    chips.push({ key: 'region', label: 'Регион', value: label })
+  }
+  if (dealFilters.status_q) {
+    const label = dealFlowStatusOptions.find((s) => s.code === dealFilters.status_q)?.name || dealFilters.status_q
+    chips.push({ key: 'status', label: 'Статус', value: label })
+  }
   if (dealFilters.purchase_from || dealFilters.purchase_to) {
     const from = dealFilters.purchase_from ? formatDateOnly(dealFilters.purchase_from) : '—'
     const to = dealFilters.purchase_to ? formatDateOnly(dealFilters.purchase_to) : '—'
@@ -3412,7 +3326,9 @@ const activeGameChips = computed(() => {
 
 const activeAccountChips = computed(() => {
   const chips = []
+  if (accountFilters.search_q) chips.push({ key: 'search', label: 'Поиск', value: accountFilters.search_q })
   if (accountFilters.login_q) chips.push({ key: 'login', label: 'Логин', value: accountFilters.login_q })
+  if (accountFilters.game_q) chips.push({ key: 'game', label: 'Игра', value: accountFilters.game_q })
   if (accountFilters.region_q) chips.push({ key: 'region', label: 'Регион', value: accountFilters.region_q })
   if (accountFilters.status_q) chips.push({ key: 'status', label: 'Статус', value: accountFilters.status_q })
   if (accountFilters.slots_q) chips.push({ key: 'slots', label: 'Слоты', value: accountFilters.slots_q })
@@ -3616,20 +3532,20 @@ const newAccount = reactive({
   account_date: '',
   email_password: '',
   account_password: '',
-  reserve_secrets: [],
+  reserve_text: '',
   auth_code: '',
   game_ids: [],
 })
 
 const accountModalMode = ref('edit')
 const showAccountFilters = ref(false)
-const showPasswords = ref(false)
 const accountGameSearch = ref('')
 const editAccountGameSearch = ref('')
 const accountGamesLoading = ref(false)
 const activeAccountFilter = ref('')
 const accountFilterDraft = reactive({
   login: '',
+  game: '',
   region: '',
   status: '',
   slots: '',
@@ -3651,7 +3567,7 @@ const editAccount = reactive({
   email_key: 'email_password',
   auth_code: '',
   auth_key: 'auth_code',
-  reserve_secrets: [],
+  reserve_text: '',
   existing_reserve_keys: [],
   has_account: false,
   has_email: false,
@@ -3694,7 +3610,9 @@ const showSourceForm = ref(false)
 const showPlatformForm = ref(false)
 const showRegionForm = ref(false)
 const accountFilters = reactive({
+  search_q: '',
   login_q: '',
+  game_q: '',
   region_q: '',
   status_q: '',
   slots_q: '',
@@ -3777,6 +3695,12 @@ const getAccountSlotsText = (account) => {
 const formatAccountSlotStatusLine = (slot) => {
   if (!slot) return '—'
   return `${getSlotTypeLabel(slot.slot_type_code)} - ${slot.occupied || 0}/${slot.capacity || 0}`
+}
+
+const formatAccountGamesLine = (account) => {
+  const list = Array.isArray(account?.game_titles) ? account.game_titles : []
+  if (!list.length) return '—'
+  return list.join(', ')
 }
 
 const getSortedSlotStatus = (list) => {
@@ -4261,25 +4185,8 @@ function fromBase64(value) {
   }
 }
 
-function addReserveSecret() {
-  newAccount.reserve_secrets.push('')
-}
-
-function removeReserveSecret(index) {
-  newAccount.reserve_secrets.splice(index, 1)
-}
-
-function addEditReserveSecret() {
-  editAccount.reserve_secrets.push('')
-}
-
-function removeEditReserveSecret(index) {
-  editAccount.reserve_secrets.splice(index, 1)
-}
-
 function formatSecret(value, isList = false) {
   if (!value) return '—'
-  if (!showPasswords.value) return '••••••'
   return value
 }
 
@@ -4969,6 +4876,9 @@ const resetAccountFilter = (kind) => {
   if (kind === 'login') {
     accountFilters.login_q = ''
     accountFilterDraft.login = ''
+  } else if (kind === 'game') {
+    accountFilters.game_q = ''
+    accountFilterDraft.game = ''
   } else if (kind === 'region') {
     accountFilters.region_q = ''
     accountFilterDraft.region = ''
@@ -4985,13 +4895,16 @@ const resetAccountFilter = (kind) => {
     accountFilterDraft.date_to = ''
     accountFilterErrors.date = ''
   } else if (kind === 'all') {
+    accountFilters.search_q = ''
     accountFilters.login_q = ''
+    accountFilters.game_q = ''
     accountFilters.region_q = ''
     accountFilters.status_q = ''
     accountFilters.slots_q = ''
     accountFilters.date_from = ''
     accountFilters.date_to = ''
     accountFilterDraft.login = ''
+    accountFilterDraft.game = ''
     accountFilterDraft.region = ''
     accountFilterDraft.status = ''
     accountFilterDraft.slots = ''
@@ -5006,6 +4919,7 @@ const resetAccountFilter = (kind) => {
 
 const openAccountFilter = (kind) => {
   accountFilterDraft.login = accountFilters.login_q || ''
+  accountFilterDraft.game = accountFilters.game_q || ''
   accountFilterDraft.region = accountFilters.region_q || ''
   accountFilterDraft.status = accountFilters.status_q || ''
   accountFilterDraft.slots = accountFilters.slots_q || ''
@@ -5017,6 +4931,8 @@ const openAccountFilter = (kind) => {
 const applyAccountFilter = (kind) => {
   if (kind === 'login') {
     accountFilters.login_q = accountFilterDraft.login.trim()
+  } else if (kind === 'game') {
+    accountFilters.game_q = accountFilterDraft.game.trim()
   } else if (kind === 'region') {
     accountFilters.region_q = accountFilterDraft.region.trim()
   } else if (kind === 'status') {
@@ -5200,7 +5116,7 @@ function getReserveSecrets(accountId) {
     .filter((s) => s.secret_key?.startsWith('reserve'))
     .map((s) => (s.secret_value_b64 ? fromBase64(s.secret_value_b64) : ''))
     .filter(Boolean)
-  return reserves.join(', ')
+  return reserves.join(' ')
 }
 
 function getAuthSecret(accountId) {
@@ -5339,7 +5255,9 @@ async function loadAccounts() {
   accountsOk.value = null
   try {
     const params = new URLSearchParams()
+    if (accountFilters.search_q) params.set('q', accountFilters.search_q)
     if (accountFilters.login_q) params.set('login_q', accountFilters.login_q)
+    if (accountFilters.game_q) params.set('game_q', accountFilters.game_q)
     if (accountFilters.region_q) params.set('region_q', accountFilters.region_q)
     if (accountFilters.status_q) params.set('status_q', accountFilters.status_q)
     if (accountFilters.slots_q) params.set('slots_q', accountFilters.slots_q)
@@ -5429,9 +5347,11 @@ function startEditAccount(a) {
   editAccount.account_key = account?.secret_key || 'account_password'
   editAccount.auth_code = auth?.secret_value_b64 ? fromBase64(auth.secret_value_b64) : ''
   editAccount.auth_key = auth?.secret_key || 'auth_code'
-  editAccount.reserve_secrets = reserves
+  editAccount.reserve_text = reserves
     .sort((a1, a2) => a1.secret_key.localeCompare(a2.secret_key))
     .map((s) => (s.secret_value_b64 ? fromBase64(s.secret_value_b64) : ''))
+    .filter(Boolean)
+    .join(' ')
   editAccount.existing_reserve_keys = reserves.map((s) => s.secret_key)
   editAccount.has_account = Boolean(account)
   editAccount.has_email = Boolean(email)
@@ -5456,7 +5376,7 @@ function openCreateAccountModal() {
   newAccount.account_date = ''
   newAccount.email_password = ''
   newAccount.account_password = ''
-  newAccount.reserve_secrets = []
+  newAccount.reserve_text = ''
   newAccount.auth_code = ''
   newAccount.game_ids = []
   accountGameSearch.value = ''
@@ -5478,7 +5398,7 @@ function cancelEditAccount() {
   editAccount.account_key = 'account_password'
   editAccount.auth_code = ''
   editAccount.auth_key = 'auth_code'
-  editAccount.reserve_secrets = []
+  editAccount.reserve_text = ''
   editAccount.existing_reserve_keys = []
   editAccount.has_account = false
   editAccount.has_email = false
@@ -5499,7 +5419,7 @@ function cancelEditAccount() {
   newAccount.account_date = ''
   newAccount.email_password = ''
   newAccount.account_password = ''
-  newAccount.reserve_secrets = []
+  newAccount.reserve_text = ''
   newAccount.auth_code = ''
   newAccount.game_ids = []
   accountGameSearch.value = ''
@@ -5554,9 +5474,11 @@ async function createAccount() {
         )
       )
     }
-    newAccount.reserve_secrets
+    const reserveValues = (newAccount.reserve_text || '')
+      .split(/\s+/)
       .map((v) => v.trim())
       .filter(Boolean)
+    reserveValues
       .forEach((val, idx) => {
         secretTasks.push(
           apiPost(
@@ -5586,7 +5508,7 @@ async function createAccount() {
     newAccount.account_date = ''
     newAccount.email_password = ''
     newAccount.account_password = ''
-    newAccount.reserve_secrets = []
+    newAccount.reserve_text = ''
     newAccount.auth_code = ''
     newAccount.game_ids = []
     accountGameSearch.value = ''
@@ -5672,7 +5594,10 @@ async function updateAccount() {
       )
     }
 
-    const reserveValues = editAccount.reserve_secrets.map((v) => v.trim()).filter(Boolean)
+    const reserveValues = (editAccount.reserve_text || '')
+      .split(/\s+/)
+      .map((v) => v.trim())
+      .filter(Boolean)
     const keepKeys = []
     reserveValues.forEach((val, idx) => {
       const key = `reserve${idx + 1}`
@@ -6061,6 +5986,12 @@ function openEditDomain(d) {
 
 function applyDealSearch() {
   loadDeals(1)
+}
+
+function applyAccountSearch() {
+  accountsPage.value = 1
+  accountsPageInput.value = 1
+  loadAccounts()
 }
 
 function applyGameSearch() {
@@ -8456,6 +8387,11 @@ table.table {
 .cell--slots {
   font-variant-numeric: tabular-nums;
   line-height: 1.25;
+}
+
+.cell--selectable {
+  user-select: text;
+  cursor: text;
 }
 
 .slot-line {
