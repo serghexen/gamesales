@@ -234,7 +234,7 @@ async def send_message(payload: SendMessageIn, x_api_key: str | None = Header(No
     client = _client(payload.session_string or "")
     await client.connect()
     try:
-        await client.send_message(payload.chat_id, payload.text)
-        return {"ok": True}
+        msg = await client.send_message(payload.chat_id, payload.text)
+        return {"ok": True, "message_id": int(msg.id) if msg else None}
     finally:
         await client.disconnect()

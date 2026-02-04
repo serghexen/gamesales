@@ -530,3 +530,31 @@ CREATE TABLE IF NOT EXISTS tg.contact_notes (
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, sender_id)
 );
+
+CREATE TABLE IF NOT EXISTS tg.shared_session (
+  id              smallint PRIMARY KEY DEFAULT 1,
+  phone           text NOT NULL DEFAULT '',
+  session_string  text NOT NULL DEFAULT '',
+  phone_code_hash text,
+  status          text NOT NULL DEFAULT 'pending',
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  last_used_at    timestamptz,
+  updated_by_user_id bigint REFERENCES app.users(user_id)
+);
+
+CREATE TABLE IF NOT EXISTS tg.contact_notes_shared (
+  sender_id  bigint PRIMARY KEY,
+  title      text NOT NULL DEFAULT '',
+  info       text NOT NULL DEFAULT '',
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by_user_id bigint REFERENCES app.users(user_id)
+);
+
+CREATE TABLE IF NOT EXISTS tg.sent_messages (
+  message_id bigint NOT NULL,
+  chat_id    bigint NOT NULL,
+  sent_by_user_id bigint NOT NULL REFERENCES app.users(user_id),
+  sent_at    timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (message_id, chat_id)
+);

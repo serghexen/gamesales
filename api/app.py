@@ -1150,22 +1150,16 @@ def me(user: UserOut = Depends(get_current_user)):
 @app.get("/tg/status")
 def telegram_status(user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
-        user_id = get_user_id(conn, user.username)
-        row = q1(
-            conn,
-            "SELECT phone, status FROM tg.sessions WHERE user_id=%s",
-            (user_id,),
-        )
+        row = q1(conn, "SELECT phone, status FROM tg.shared_session WHERE id=1")
     if not row:
         return {"status": "not_connected"}
     return {"status": row[1], "phone": row[0]}
 
 
 @app.post("/tg/auth/start")
-def telegram_auth_start(payload: TelegramAuthStartIn, user: UserOut = Depends(get_current_user)):
+def telegram_auth_start(payload: TelegramAuthStartIn, user: UserOut = Depends(require_role("admin"))):
     with psycopg.connect(DB_DSN) as conn:
-        user_id = get_user_id(conn, user.username)
-        row = q1(conn, "SELECT session_string FROM tg.sessions WHERE user_id=%s", (user_id,))
+        row = q1(conn, "SELECT session_string FROM tg.shared_session WHERE id=1")
         session_string = row[0] if row else ""
         resp = _telegram_api_request("POST", "/auth/start", {"phone": payload.phone, "session_string": session_string})
         phone_code_hash = resp.get("phone_code_hash")
@@ -1173,29 +1167,28 @@ def telegram_auth_start(payload: TelegramAuthStartIn, user: UserOut = Depends(ge
         exec1(
             conn,
             """
-            INSERT INTO tg.sessions(user_id, phone, session_string, phone_code_hash, status, updated_at)
-            VALUES (%s, %s, %s, %s, 'pending', now())
-            ON CONFLICT (user_id)
+            INSERT INTO tg.shared_session(id, phone, session_string, phone_code_hash, status, updated_at, updated_by_user_id)
+            VALUES (1, %s, %s, %s, 'pending', now(), %s)
+            ON CONFLICT (id)
             DO UPDATE SET phone=excluded.phone,
                           session_string=excluded.session_string,
                           phone_code_hash=excluded.phone_code_hash,
                           status='pending',
-                          updated_at=now()
+                          updated_at=now(),
+                          updated_by_user_id=excluded.updated_by_user_id
             """,
-            (user_id, payload.phone, session_string, phone_code_hash),
+            (payload.phone, session_string, phone_code_hash, get_user_id(conn, user.username)),
         )
         conn.commit()
     return {"status": "code_sent"}
 
 
 @app.post("/tg/auth/confirm")
-def telegram_auth_confirm(payload: TelegramAuthConfirmIn, user: UserOut = Depends(get_current_user)):
+def telegram_auth_confirm(payload: TelegramAuthConfirmIn, user: UserOut = Depends(require_role("admin"))):
     with psycopg.connect(DB_DSN) as conn:
-        user_id = get_user_id(conn, user.username)
         row = q1(
             conn,
-            "SELECT phone, session_string, phone_code_hash, status FROM tg.sessions WHERE user_id=%s",
-            (user_id,),
+            "SELECT phone, session_string, phone_code_hash, status FROM tg.shared_session WHERE id=1",
         )
         if not row:
             raise HTTPException(404, "Telegram session not found")
@@ -1216,28 +1209,34 @@ def telegram_auth_confirm(payload: TelegramAuthConfirmIn, user: UserOut = Depend
         if resp.get("status") == "password_required":
             exec1(
                 conn,
-                "UPDATE tg.sessions SET session_string=%s, status='password_required', updated_at=now() WHERE user_id=%s",
-                (new_session, user_id),
+                """
+                UPDATE tg.shared_session
+                SET session_string=%s, status='password_required', updated_at=now(), updated_by_user_id=%s
+                WHERE id=1
+                """,
+                (new_session, get_user_id(conn, user.username)),
             )
             conn.commit()
             return {"status": "password_required"}
         exec1(
             conn,
-            "UPDATE tg.sessions SET session_string=%s, status='ready', phone_code_hash=NULL, updated_at=now() WHERE user_id=%s",
-            (new_session, user_id),
+            """
+            UPDATE tg.shared_session
+            SET session_string=%s, status='ready', phone_code_hash=NULL, updated_at=now(), updated_by_user_id=%s
+            WHERE id=1
+            """,
+            (new_session, get_user_id(conn, user.username)),
         )
         conn.commit()
     return {"status": "ready"}
 
 
 @app.post("/tg/auth/password")
-def telegram_auth_password(payload: TelegramAuthPasswordIn, user: UserOut = Depends(get_current_user)):
+def telegram_auth_password(payload: TelegramAuthPasswordIn, user: UserOut = Depends(require_role("admin"))):
     with psycopg.connect(DB_DSN) as conn:
-        user_id = get_user_id(conn, user.username)
         row = q1(
             conn,
-            "SELECT session_string, status FROM tg.sessions WHERE user_id=%s",
-            (user_id,),
+            "SELECT session_string, status FROM tg.shared_session WHERE id=1",
         )
         if not row:
             raise HTTPException(404, "Telegram session not found")
@@ -1252,34 +1251,56 @@ def telegram_auth_password(payload: TelegramAuthPasswordIn, user: UserOut = Depe
         new_session = resp.get("session_string") or session_string
         exec1(
             conn,
-            "UPDATE tg.sessions SET session_string=%s, status='ready', phone_code_hash=NULL, updated_at=now() WHERE user_id=%s",
-            (new_session, user_id),
+            """
+            UPDATE tg.shared_session
+            SET session_string=%s, status='ready', phone_code_hash=NULL, updated_at=now(), updated_by_user_id=%s
+            WHERE id=1
+            """,
+            (new_session, get_user_id(conn, user.username)),
         )
         conn.commit()
     return {"status": "ready"}
+
+@app.post("/tg/auth/disconnect")
+def telegram_auth_disconnect(user: UserOut = Depends(require_role("admin"))):
+    with psycopg.connect(DB_DSN) as conn:
+        exec1(
+            conn,
+            """
+            UPDATE tg.shared_session
+            SET phone='',
+                session_string='',
+                phone_code_hash=NULL,
+                status='pending',
+                updated_at=now(),
+                updated_by_user_id=%s
+            WHERE id=1
+            """,
+            (get_user_id(conn, user.username),),
+        )
+        conn.commit()
+    return {"status": "disconnected"}
 
 
 @app.get("/tg/dialogs", response_model=TelegramDialogsOut)
 def telegram_dialogs(user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
-        user_id = get_user_id(conn, user.username)
-        row = q1(conn, "SELECT session_string, status FROM tg.sessions WHERE user_id=%s", (user_id,))
+        row = q1(conn, "SELECT session_string, status FROM tg.shared_session WHERE id=1")
         if not row or row[1] != "ready":
             raise HTTPException(400, "Telegram is not connected")
         session_string = row[0]
         resp = _telegram_api_request("POST", "/dialogs", {"session_string": session_string})
-        exec1(conn, "UPDATE tg.sessions SET last_used_at=now() WHERE user_id=%s", (user_id,))
+        exec1(conn, "UPDATE tg.shared_session SET last_used_at=now() WHERE id=1")
         conn.commit()
     return {"items": resp.get("items", [])}
 
 @app.get("/tg/contact")
 def telegram_contact(sender_id: int, user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
-        user_id = get_user_id(conn, user.username)
         row = q1(
             conn,
-            "SELECT title, info FROM tg.contact_notes WHERE user_id=%s AND sender_id=%s",
-            (user_id, sender_id),
+            "SELECT title, info FROM tg.contact_notes_shared WHERE sender_id=%s",
+            (sender_id,),
         )
     if not row:
         return {"title": "", "info": ""}
@@ -1292,14 +1313,15 @@ def telegram_contact_upsert(payload: TelegramContactIn, user: UserOut = Depends(
         exec1(
             conn,
             """
-            INSERT INTO tg.contact_notes(user_id, sender_id, title, info, updated_at)
-            VALUES (%s, %s, %s, %s, now())
-            ON CONFLICT (user_id, sender_id)
+            INSERT INTO tg.contact_notes_shared(sender_id, title, info, updated_at, updated_by_user_id)
+            VALUES (%s, %s, %s, now(), %s)
+            ON CONFLICT (sender_id)
             DO UPDATE SET title=excluded.title,
                           info=excluded.info,
-                          updated_at=now()
+                          updated_at=now(),
+                          updated_by_user_id=excluded.updated_by_user_id
             """,
-            (user_id, payload.sender_id, payload.title or "", payload.info or ""),
+            (payload.sender_id, payload.title or "", payload.info or "", user_id),
         )
         conn.commit()
     return {"ok": True}
@@ -1308,35 +1330,71 @@ def telegram_contact_upsert(payload: TelegramContactIn, user: UserOut = Depends(
 @app.get("/tg/messages", response_model=TelegramMessagesOut)
 def telegram_messages(chat_id: int, user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
-        user_id = get_user_id(conn, user.username)
-        row = q1(conn, "SELECT session_string, status FROM tg.sessions WHERE user_id=%s", (user_id,))
+        row = q1(conn, "SELECT session_string, status FROM tg.shared_session WHERE id=1")
         if not row or row[1] != "ready":
             raise HTTPException(400, "Telegram is not connected")
         session_string = row[0]
         resp = _telegram_api_request("POST", "/messages", {"session_string": session_string, "chat_id": chat_id, "limit": 50})
-        exec1(conn, "UPDATE tg.sessions SET last_used_at=now() WHERE user_id=%s", (user_id,))
+        items = resp.get("items", [])
+        message_ids = [int(i["id"]) for i in items if i.get("id")]
+        sent_map = {}
+        if message_ids:
+            rows = qall(
+                conn,
+                """
+                SELECT message_id, sent_by_user_id
+                FROM tg.sent_messages
+                WHERE chat_id=%s AND message_id = ANY(%s)
+                """,
+                (chat_id, message_ids),
+            )
+            if rows:
+                user_ids = [r[1] for r in rows]
+                user_rows = qall(
+                    conn,
+                    "SELECT user_id, username FROM app.users WHERE user_id = ANY(%s)",
+                    (user_ids,),
+                )
+                user_map = {r[0]: r[1] for r in user_rows}
+                for msg_id, sent_by_user_id in rows:
+                    sent_map[int(msg_id)] = user_map.get(sent_by_user_id, "")
+        for item in items:
+            sent_by = sent_map.get(int(item.get("id", 0)))
+            if sent_by:
+                item["sent_by"] = sent_by
+        exec1(conn, "UPDATE tg.shared_session SET last_used_at=now() WHERE id=1")
         conn.commit()
-    return {"items": resp.get("items", [])}
+    return {"items": items}
 
 
 @app.post("/tg/messages")
 def telegram_send_message(payload: TelegramSendMessageIn, user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
         user_id = get_user_id(conn, user.username)
-        row = q1(conn, "SELECT session_string, status FROM tg.sessions WHERE user_id=%s", (user_id,))
+        row = q1(conn, "SELECT session_string, status FROM tg.shared_session WHERE id=1")
         if not row or row[1] != "ready":
             raise HTTPException(400, "Telegram is not connected")
         session_string = row[0]
-        _telegram_api_request("POST", "/messages/send", {"session_string": session_string, "chat_id": payload.chat_id, "text": payload.text})
-        exec1(conn, "UPDATE tg.sessions SET last_used_at=now() WHERE user_id=%s", (user_id,))
+        resp = _telegram_api_request("POST", "/messages/send", {"session_string": session_string, "chat_id": payload.chat_id, "text": payload.text})
+        message_id = resp.get("message_id")
+        if message_id:
+            exec1(
+                conn,
+                """
+                INSERT INTO tg.sent_messages(message_id, chat_id, sent_by_user_id, sent_at)
+                VALUES (%s, %s, %s, now())
+                ON CONFLICT (message_id, chat_id) DO NOTHING
+                """,
+                (message_id, payload.chat_id, user_id),
+            )
+        exec1(conn, "UPDATE tg.shared_session SET last_used_at=now() WHERE id=1")
         conn.commit()
     return {"ok": True}
 
 @app.get("/tg/media")
 def telegram_media(chat_id: int, message_id: int, user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
-        user_id = get_user_id(conn, user.username)
-        row = q1(conn, "SELECT session_string, status FROM tg.sessions WHERE user_id=%s", (user_id,))
+        row = q1(conn, "SELECT session_string, status FROM tg.shared_session WHERE id=1")
         if not row or row[1] != "ready":
             raise HTTPException(400, "Telegram is not connected")
         session_string = row[0]
@@ -1345,7 +1403,7 @@ def telegram_media(chat_id: int, message_id: int, user: UserOut = Depends(get_cu
             "/media",
             {"session_string": session_string, "chat_id": chat_id, "message_id": message_id},
         )
-        exec1(conn, "UPDATE tg.sessions SET last_used_at=now() WHERE user_id=%s", (user_id,))
+        exec1(conn, "UPDATE tg.shared_session SET last_used_at=now() WHERE id=1")
         conn.commit()
     return Response(content=data, media_type=content_type or "application/octet-stream")
 

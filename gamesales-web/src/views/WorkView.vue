@@ -1474,6 +1474,19 @@
                     <path d="M20 4v6h-6" />
                   </svg>
                 </button>
+                <button
+                  v-if="isAdmin && telegram.status === 'ready'"
+                  class="btn btn--icon btn--glow btn--glow-close"
+                  type="button"
+                  @click="tgAuthDisconnect"
+                  :disabled="telegram.loading"
+                  title="Отвязать Telegram"
+                  aria-label="Отвязать Telegram"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6l-12 12" />
+                  </svg>
+                </button>
               </div>
             </div>
           </div>
@@ -1482,7 +1495,7 @@
             <div v-if="telegram.info" class="ok">{{ telegram.info }}</div>
 
             <div v-if="telegram.status !== 'ready'" class="tg-auth">
-              <div class="tg-auth__card">
+              <div v-if="isAdmin" class="tg-auth__card">
                 <h3>Подключение Telegram</h3>
                 <label class="field">
                   <span class="label">Телефон</span>
@@ -1494,7 +1507,7 @@
                   </svg>
                 </button>
               </div>
-              <div class="tg-auth__card">
+              <div v-if="isAdmin" class="tg-auth__card">
                 <h3>Код подтверждения</h3>
                 <label class="field">
                   <span class="label">Код</span>
@@ -1506,7 +1519,7 @@
                   </svg>
                 </button>
               </div>
-              <div v-if="telegram.status === 'password_required'" class="tg-auth__card">
+              <div v-if="isAdmin && telegram.status === 'password_required'" class="tg-auth__card">
                 <h3>Пароль 2FA</h3>
                 <label class="field">
                   <span class="label">Пароль</span>
@@ -1517,6 +1530,10 @@
                     <path d="M5 13l4 4L19 7" />
                   </svg>
                 </button>
+              </div>
+              <div v-if="!isAdmin" class="tg-auth__card">
+                <h3>Telegram не подключен</h3>
+                <p class="muted">Подключение выполняет администратор.</p>
               </div>
             </div>
 
@@ -1605,7 +1622,10 @@
                       </a>
                       <span v-else class="muted">Загрузка...</span>
                     </div>
-                    <div class="tg-message__meta">{{ formatDateTimeMinutes(m.date) }}</div>
+                    <div class="tg-message__meta">
+                      <span v-if="m.sent_by" class="tg-message__sent-by">Отправил: {{ m.sent_by }}</span>
+                      <span>{{ formatDateTimeMinutes(m.date) }}</span>
+                    </div>
                   </div>
                 </div>
                 <div class="tg-messages__send">
@@ -6420,6 +6440,33 @@ async function tgAuthPassword() {
   }
 }
 
+async function tgAuthDisconnect() {
+  telegram.loading = true
+  telegram.error = ''
+  telegram.info = ''
+  try {
+    await apiPost('/tg/auth/disconnect', {}, { token: auth.state.token })
+    telegram.status = 'not_connected'
+    telegram.phone = ''
+    telegram.code = ''
+    telegram.password = ''
+    telegram.dialogs = []
+    telegram.messages = []
+    telegram.activeChatId = null
+    telegram.activeDialog = null
+    telegram.activeContactId = null
+    telegram.contact = { title: '', info: '' }
+    telegram.contactEdit = { title: '', info: '' }
+    telegram.contactMeta = { name: '', username: '' }
+    telegram.contactEditing = false
+    telegram.info = 'Telegram отключен'
+  } catch (e) {
+    telegram.error = mapApiError(e?.message)
+  } finally {
+    telegram.loading = false
+  }
+}
+
 async function loadTelegramDialogs() {
   telegram.loading = true
   telegram.error = ''
@@ -6492,7 +6539,7 @@ function setTelegramDefaultContact() {
   const messages = telegram.messages || []
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const senderId = messages[i]?.sender_id
-    if (senderId) {
+    if (senderId && !messages[i]?.out) {
       telegram.activeContactId = senderId
       telegram.contactMeta = getTelegramContactMeta(senderId)
       return
@@ -8103,6 +8150,13 @@ watch(
   margin-top: 4px;
   font-size: 10px;
   color: var(--muted);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.tg-message__sent-by {
+  color: rgba(120, 200, 120, 0.9);
 }
 
 .tg-messages__send {
