@@ -1781,6 +1781,32 @@ def list_accounts(
     where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
 
     with psycopg.connect(DB_DSN) as conn:
+        total_row = q1(
+            conn,
+            f"""
+            WITH base AS (
+              SELECT
+                a.account_id,
+                r.code as region_code,
+                d.name as domain_name,
+                COALESCE(array_agg(DISTINCT g.title ORDER BY g.title) FILTER (WHERE g.title IS NOT NULL), '{{}}'::text[]) as game_titles,
+                COALESCE(SUM(s.free), 0) as free_total,
+                COALESCE(string_agg(st.code || ' ' || s.occupied || '/' || s.capacity, ' · ' ORDER BY st.code), '') as slots_text
+              FROM app.accounts a
+              LEFT JOIN app.regions r ON r.region_id = a.region_id
+              LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+              LEFT JOIN app.account_assets aa ON aa.account_id = a.account_id AND aa.asset_type_code = 'game'
+              LEFT JOIN app.game_titles g ON g.game_id = aa.game_id
+              LEFT JOIN app.v_account_slot_status s ON s.account_id = a.account_id
+              LEFT JOIN app.slot_types st ON st.code = s.slot_type_code
+              {where_sql}
+              GROUP BY a.account_id, r.code, d.name
+            )
+            SELECT COUNT(*) FROM base
+            {"WHERE slots_text ILIKE %s" if slots_q else ""}
+            """,
+            params + ([f"%{slots_q}%"] if slots_q else []),
+        )
         rows = qall(
             conn,
             f"""
@@ -1812,9 +1838,6 @@ def list_accounts(
               SELECT * FROM base
               {"WHERE slots_text ILIKE %s" if slots_q else ""}
             ),
-            total AS (
-              SELECT COUNT(*) FROM filtered
-            ),
             page AS (
               SELECT * FROM filtered
               ORDER BY {sort_col} {sort_dir}, account_id DESC
@@ -1834,8 +1857,7 @@ def list_accounts(
               s.mode,
               s.capacity,
               s.occupied,
-              s.free,
-              (SELECT COUNT(*) FROM total) as total_count
+              s.free
             FROM page
             LEFT JOIN app.v_account_slot_status s ON s.account_id = page.account_id
             ORDER BY {sort_col} {sort_dir}, page.account_id DESC, s.slot_type_code
@@ -1845,10 +1867,9 @@ def list_accounts(
 
     acc_map = {}
     acc_list = []
-    total = 0
+    total = int(total_row[0] or 0) if total_row else 0
     for row in rows:
         account_id = row[0]
-        total = int(row[14] or 0)
         if account_id not in acc_map:
             acc = AccountOut(
                 account_id=account_id,
