@@ -226,40 +226,43 @@
         <section v-if="activeTab === 'accounts'" class="panel panel--wide">
           <div class="panel__head">
             <div>
-              <div class="toolbar-actions">
-                <label class="field field--compact">
-                  <input
-                    v-model.trim="accountFilters.search_q"
-                    class="input input--compact"
-                    placeholder="почта, домен, регион, игра"
-                    @keydown.enter.prevent="applyAccountSearch"
-                  />
-                </label>
-                <button
-                  class="btn btn--icon btn--glow btn--glow-filter"
-                  type="button"
-                  @click="applyAccountSearch"
-                  aria-label="Найти"
-                  title="Найти"
-                >
-                  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 21l-4.2-4.2" />
-                    <circle cx="11" cy="11" r="7" />
-                  </svg>
-                </button>
+              <div class="account-head-row">
+                <div class="toolbar-actions toolbar-actions--account-create">
+                  <button class="deal-create-btn" type="button" @click="openCreateAccountModal" aria-label="Новый аккаунт" title="Новый аккаунт">
+                    <span class="deal-create-btn__text">Аккаунт</span>
+                    <span class="deal-create-btn__icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
+                        <line y2="19" y1="5" x2="12" x1="12"></line>
+                        <line y2="12" y1="12" x2="19" x1="5"></line>
+                      </svg>
+                    </span>
+                  </button>
+                </div>
+                <div class="toolbar-actions toolbar-actions--account-search">
+                  <label class="field field--compact">
+                    <input
+                      v-model.trim="accountFilters.search_q"
+                      class="input input--compact input--account-search"
+                      placeholder="почта, домен, регион, игра"
+                      @keydown.enter.prevent="applyAccountSearch"
+                    />
+                  </label>
+                  <button
+                    class="btn btn--icon btn--glow btn--glow-filter"
+                    type="button"
+                    @click="applyAccountSearch"
+                    aria-label="Найти"
+                    title="Найти"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 21l-4.2-4.2" />
+                      <circle cx="11" cy="11" r="7" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
             <div class="toolbar-actions">
-              <button
-                class="btn btn--icon btn--glow btn--glow-add"
-                aria-label="Добавить аккаунт"
-                title="Добавить аккаунт"
-                @click="openCreateAccountModal"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </button>
               <button
                 class="btn btn--icon btn--glow btn--glow-refresh"
                 aria-label="Обновить список"
@@ -7330,17 +7333,17 @@ watch(
 .deal-create-btn {
   position: relative;
   width: 170px;
-  height: 40px;
+  height: 32px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   border: 1px solid #34974d;
   background-color: #3aa856;
-  border-radius: 14px;
+  border-radius: 10px;
   font-family: inherit;
   letter-spacing: 0.04em;
   overflow: hidden;
-  padding-right: 44px;
+  padding-right: 38px;
 }
 
 .deal-create-btn,
@@ -7350,10 +7353,10 @@ watch(
 }
 
 .deal-create-btn__text {
-  transform: translateX(22px);
+  transform: translateX(18px);
   color: #fff;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .deal-create-btn__icon {
@@ -7361,17 +7364,17 @@ watch(
   right: 6px;
   top: 50%;
   transform: translateY(-50%);
-  height: 28px;
-  width: 28px;
+  height: 22px;
+  width: 22px;
   background-color: #34974d;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .deal-create-btn__svg {
-  width: 18px;
+  width: 14px;
   stroke: #fff;
 }
 
@@ -7446,6 +7449,32 @@ watch(
 
 .toolbar-actions--deal-create {
   flex: 0 0 auto;
+}
+
+.account-head-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: nowrap;
+}
+
+.toolbar-actions--account-create {
+  flex: 0 0 auto;
+}
+
+.toolbar-actions--account-search {
+  flex: 0 0 360px;
+  max-width: 360px;
+  display: flex;
+}
+
+.toolbar-actions--account-search .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.input--account-search {
+  width: 100%;
 }
 
 .tab--icon {
