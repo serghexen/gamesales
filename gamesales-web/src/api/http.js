@@ -17,6 +17,7 @@ export async function apiGet(path, { token } = {}) {
   if (!res.ok) {
     throw new Error(await parseError(res, `GET ${path} failed: ${res.status}`))
   }
+  if (res.status === 204) return null
   return res.json()
 }
 
@@ -32,6 +33,7 @@ export async function apiPost(path, body, { token } = {}) {
   if (!res.ok) {
     throw new Error(await parseError(res, `POST ${path} failed: ${res.status}`))
   }
+  if (res.status === 204) return null
   return res.json()
 }
 
@@ -43,6 +45,7 @@ export async function apiDelete(path, { token } = {}) {
   if (!res.ok) {
     throw new Error(await parseError(res, `DELETE ${path} failed: ${res.status}`))
   }
+  if (res.status === 204) return null
   return res.json()
 }
 
@@ -58,6 +61,7 @@ export async function apiPut(path, body, { token } = {}) {
   if (!res.ok) {
     throw new Error(await parseError(res, `PUT ${path} failed: ${res.status}`))
   }
+  if (res.status === 204) return null
   return res.json()
 }
 
@@ -72,6 +76,7 @@ export async function apiPostForm(path, formData, { token } = {}) {
   if (!res.ok) {
     throw new Error(await parseError(res, `POST ${path} failed: ${res.status}`))
   }
+  if (res.status === 204) return null
   return res.json()
 }
 
@@ -105,6 +110,10 @@ export function apiPostFormWithProgress(path, formData, { token, onProgress } = 
         } catch {
           reject(new Error(`POST ${path} failed: ${xhr.status}`))
         }
+        return
+      }
+      if (xhr.status === 204) {
+        resolve(null)
         return
       }
       try {

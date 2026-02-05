@@ -1,3 +1,7 @@
 # TODO
 
-- Add Redis password and secure access (requirepass, bind/network rules, update REDIS_URL).
+- Добавить пароль и ограничить доступ к Redis (requirepass, bind/network rules, обновить REDIS_URL).
+- Добавить серверный поиск/ленивую загрузку аккаунтов в селекторах сделок, чтобы не грузить все аккаунты сразу.
+- Добавить частичный индекс активных слотов для ускорения `/accounts/for-deal/availability` (например, `WHERE released_at IS NULL`).
+- Исправить лимит `loadAccountDeals`: пагинация/“Показать ещё” или явное уведомление “первые N”.
+- Защититься от гонки при одновременном создании шеринга: уникальный индекс активного слота (`account_id + slot_type_code WHERE released_at IS NULL`) + обработка 409 на API и сообщение на фронте.

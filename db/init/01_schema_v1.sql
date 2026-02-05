@@ -5,23 +5,29 @@ CREATE TABLE IF NOT EXISTS app.platforms (
   platform_id  smallserial PRIMARY KEY,
   code         text NOT NULL UNIQUE,
   name         text NOT NULL,
-  slot_capacity integer NOT NULL DEFAULT 0
+  slot_capacity integer NOT NULL DEFAULT 0,
+  is_archived  boolean NOT NULL DEFAULT false
 );
 COMMENT ON TABLE app.platforms IS 'Справочник платформ';
 COMMENT ON COLUMN app.platforms.platform_id IS 'Идентификатор платформы';
 COMMENT ON COLUMN app.platforms.code IS 'Код платформы (steam/psn/xbox/epic)';
 COMMENT ON COLUMN app.platforms.name IS 'Название платформы';
 COMMENT ON COLUMN app.platforms.slot_capacity IS 'Слотов на аккаунт для платформы';
+COMMENT ON COLUMN app.platforms.is_archived IS 'Архивная запись';
+CREATE INDEX IF NOT EXISTS ix_platforms_archived ON app.platforms (is_archived);
 
 CREATE TABLE IF NOT EXISTS app.regions (
   region_id smallserial PRIMARY KEY,
   code      text NOT NULL UNIQUE,
-  name      text NOT NULL
+  name      text NOT NULL,
+  is_archived  boolean NOT NULL DEFAULT false
 );
 COMMENT ON TABLE app.regions IS 'Справочник регионов';
 COMMENT ON COLUMN app.regions.region_id IS 'Идентификатор региона';
 COMMENT ON COLUMN app.regions.code IS 'Код региона (RU/TR/US/EU)';
 COMMENT ON COLUMN app.regions.name IS 'Название региона';
+COMMENT ON COLUMN app.regions.is_archived IS 'Архивная запись';
+CREATE INDEX IF NOT EXISTS ix_regions_archived ON app.regions (is_archived);
 
 CREATE TABLE IF NOT EXISTS app.account_statuses (
   code text PRIMARY KEY,
@@ -59,12 +65,14 @@ CREATE TABLE IF NOT EXISTS app.deal_flow_statuses (
 
 CREATE TABLE IF NOT EXISTS app.sources (
   code text PRIMARY KEY,
-  name text NOT NULL
+  name text NOT NULL,
+  is_archived  boolean NOT NULL DEFAULT false
 );
 
 CREATE TABLE IF NOT EXISTS app.domains (
   domain_id smallserial PRIMARY KEY,
-  name text NOT NULL UNIQUE
+  name text NOT NULL UNIQUE,
+  is_archived  boolean NOT NULL DEFAULT false
 );
 COMMENT ON TABLE app.deal_statuses IS 'Справочник статусов сделок';
 COMMENT ON COLUMN app.deal_statuses.code IS 'Код статуса сделки';
@@ -75,9 +83,13 @@ COMMENT ON COLUMN app.deal_flow_statuses.name IS 'Название статус�
 COMMENT ON TABLE app.sources IS 'Справочник источников клиентов';
 COMMENT ON COLUMN app.sources.code IS 'Код источника';
 COMMENT ON COLUMN app.sources.name IS 'Название источника';
+COMMENT ON COLUMN app.sources.is_archived IS 'Архивная запись';
+CREATE INDEX IF NOT EXISTS ix_sources_archived ON app.sources (is_archived);
 COMMENT ON TABLE app.domains IS 'Справочник доменов аккаунтов';
 COMMENT ON COLUMN app.domains.domain_id IS 'Идентификатор домена';
 COMMENT ON COLUMN app.domains.name IS 'Домен (например, example.com)';
+COMMENT ON COLUMN app.domains.is_archived IS 'Архивная запись';
+CREATE INDEX IF NOT EXISTS ix_domains_archived ON app.domains (is_archived);
 
 CREATE TABLE IF NOT EXISTS app.game_titles (
   game_id      bigserial PRIMARY KEY,
@@ -91,6 +103,7 @@ CREATE TABLE IF NOT EXISTS app.game_titles (
   audio_lang   text,
   vr_support   text,
   region_id    smallint REFERENCES app.regions(region_id),
+  is_archived  boolean NOT NULL DEFAULT false,
   created_at   timestamptz NOT NULL DEFAULT now()
 );
 COMMENT ON TABLE app.game_titles IS 'Справочник игровых тайтлов';
@@ -105,8 +118,10 @@ COMMENT ON COLUMN app.game_titles.text_lang IS 'Язык текста';
 COMMENT ON COLUMN app.game_titles.audio_lang IS 'Язык озвучки';
 COMMENT ON COLUMN app.game_titles.vr_support IS 'Поддержка VR';
 COMMENT ON COLUMN app.game_titles.region_id IS 'Регион игры';
+COMMENT ON COLUMN app.game_titles.is_archived IS 'Архивная запись';
 COMMENT ON COLUMN app.game_titles.created_at IS 'Дата создания записи';
 CREATE INDEX IF NOT EXISTS ix_game_titles_title ON app.game_titles (title);
+CREATE INDEX IF NOT EXISTS ix_game_titles_archived ON app.game_titles (is_archived);
 
 CREATE TABLE IF NOT EXISTS app.game_platforms (
   game_id     bigint NOT NULL REFERENCES app.game_titles(game_id) ON DELETE CASCADE,
@@ -176,6 +191,14 @@ CREATE TABLE IF NOT EXISTS app.account_assets (
   notes            text,
   UNIQUE (account_id, game_id, asset_type_code)
 );
+
+CREATE INDEX IF NOT EXISTS idx_account_assets_game
+  ON app.account_assets (game_id, account_id)
+  WHERE asset_type_code = 'game';
+
+CREATE INDEX IF NOT EXISTS idx_account_assets_account_game
+  ON app.account_assets (account_id, game_id)
+  WHERE asset_type_code = 'game';
 
 CREATE TABLE IF NOT EXISTS app.account_secrets (
   account_secret_id bigserial PRIMARY KEY,

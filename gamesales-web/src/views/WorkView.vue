@@ -190,7 +190,30 @@
                       </svg>
                     </button>
                   </div>
-                  <div class="modal__body">
+                  <div class="modal__body" :class="{ 'modal__body--locked': pwdLoading }">
+                    <div v-if="pwdLoading" class="modal__body-overlay">
+                      <div class="loader-wrap loader-wrap--compact">
+                        <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                          <div class="wheel"></div>
+                          <div class="hamster">
+                            <div class="hamster__body">
+                              <div class="hamster__head">
+                                <div class="hamster__ear"></div>
+                                <div class="hamster__eye"></div>
+                                <div class="hamster__nose"></div>
+                              </div>
+                              <div class="hamster__limb hamster__limb--fr"></div>
+                              <div class="hamster__limb hamster__limb--fl"></div>
+                              <div class="hamster__limb hamster__limb--br"></div>
+                              <div class="hamster__limb hamster__limb--bl"></div>
+                              <div class="hamster__tail"></div>
+                            </div>
+                          </div>
+                          <div class="spoke"></div>
+                        </div>
+                        <p class="muted">Загрузка…</p>
+                      </div>
+                    </div>
                     <div class="form form--stack form--compact">
                       <label class="field">
                         <span class="label">Текущий пароль</span>
@@ -215,7 +238,9 @@
                           title="Сохранить"
                         >
                           <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M5 13l4 4L19 7" />
+                            <path d="M4 4h12l4 4v12H4z" />
+                            <path d="M7 4v6h8V4" />
+                            <path d="M7 20v-6h10v6" />
                           </svg>
                         </button>
                       </div>
@@ -356,7 +381,30 @@
                       </svg>
                     </button>
                   </div>
-                  <div class="modal__body">
+                  <div class="modal__body" :class="{ 'modal__body--locked': accountImportLoading }">
+                    <div v-if="accountImportLoading" class="modal__body-overlay">
+                      <div class="loader-wrap loader-wrap--compact">
+                        <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                          <div class="wheel"></div>
+                          <div class="hamster">
+                            <div class="hamster__body">
+                              <div class="hamster__head">
+                                <div class="hamster__ear"></div>
+                                <div class="hamster__eye"></div>
+                                <div class="hamster__nose"></div>
+                              </div>
+                              <div class="hamster__limb hamster__limb--fr"></div>
+                              <div class="hamster__limb hamster__limb--fl"></div>
+                              <div class="hamster__limb hamster__limb--br"></div>
+                              <div class="hamster__limb hamster__limb--bl"></div>
+                              <div class="hamster__tail"></div>
+                            </div>
+                          </div>
+                          <div class="spoke"></div>
+                        </div>
+                        <p class="muted">Загрузка…</p>
+                      </div>
+                    </div>
                     <div class="toolbar-actions import-actions import-actions--fixed">
                       <button class="ghost" type="button" @click="downloadAccountTemplate">
                         Шаблон
@@ -462,21 +510,36 @@
             <table v-if="sortedAccounts.length" class="table table--compact">
               <thead>
                 <tr>
-                  <th class="sortable cell--account" @click="toggleAccountSort('login')">
+                  <th class="cell--account">
                     <span class="th-title th-title--filter">
                       Почта
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(accountFilters.login_q) }"
-                        type="button"
-                        aria-label="Фильтр по почте"
-                        title="Фильтр по почте"
-                        @click.stop="openAccountFilter('login')"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
+                      <span class="th-actions">
+                        <button
+                          class="filter-icon"
+                          :class="{ 'filter-icon--active': Boolean(accountFilters.login_q) }"
+                          type="button"
+                          aria-label="Фильтр по почте"
+                          title="Фильтр по почте"
+                          @click.stop="openAccountFilter('login')"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 6h16M7 12h10M10 18h4" />
+                          </svg>
+                        </button>
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по почте"
+                          title="Сортировка по почте"
+                          @click.stop="toggleAccountSort('login')"
+                          :class="getAccountSortClass('login')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
                     </span>
                     <div v-if="activeAccountFilter === 'login'" class="filter-pop filter-pop--left" @click.stop>
                       <label class="field">
@@ -490,18 +553,33 @@
                   <th>
                     <span class="th-title th-title--filter">
                       Игры
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(accountFilters.game_q) }"
-                        type="button"
-                        aria-label="Фильтр по играм"
-                        title="Фильтр по играм"
-                        @click.stop="openAccountFilter('game')"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
+                      <span class="th-actions">
+                        <button
+                          class="filter-icon"
+                          :class="{ 'filter-icon--active': Boolean(accountFilters.game_q) }"
+                          type="button"
+                          aria-label="Фильтр по играм"
+                          title="Фильтр по играм"
+                          @click.stop="openAccountFilter('game')"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 6h16M7 12h10M10 18h4" />
+                          </svg>
+                        </button>
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по играм"
+                          title="Сортировка по играм"
+                          @click.stop="toggleAccountSort('games')"
+                          :class="getAccountSortClass('games')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
                     </span>
                     <div v-if="activeAccountFilter === 'game'" class="filter-pop filter-pop--center" @click.stop>
                       <label class="field">
@@ -512,31 +590,7 @@
                       <button class="ghost ghost--small" type="button" @click="resetAccountFilter('game')">Сбросить</button>
                     </div>
                   </th>
-                  <th class="sortable" @click="toggleAccountSort('slots')">
-                    <span class="th-title th-title--filter">
-                      Слоты
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(accountFilters.slots_q) }"
-                        type="button"
-                        aria-label="Фильтр по слотам"
-                        title="Фильтр по слотам"
-                        @click.stop="openAccountFilter('slots')"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
-                    </span>
-                    <div v-if="activeAccountFilter === 'slots'" class="filter-pop filter-pop--center" @click.stop>
-                      <label class="field">
-                        <span class="label">Слоты</span>
-                        <input v-model.trim="accountFilterDraft.slots" class="input" placeholder="например play_ps4 1/1" />
-                      </label>
-                      <button class="ghost ghost--small" type="button" @click="applyAccountFilter('slots')">Применить</button>
-                      <button class="ghost ghost--small" type="button" @click="resetAccountFilter('slots')">Сбросить</button>
-                    </div>
-                  </th>
+                  <th>Слоты</th>
                   <th>Резерв</th>
                 </tr>
               </thead>
@@ -601,8 +655,36 @@
                     <h3>{{ accountModalMode === 'create' ? 'Новый аккаунт' : 'Аккаунт' }}</h3>
                     <div class="toolbar-actions">
                       <button
-                        v-if="accountModalMode === 'edit'"
+                        v-if="accountModalMode === 'edit' && accountEditMode === 'edit'"
                         class="btn btn--icon-plain"
+                        @click="updateAccount"
+                        :disabled="accountsLoading"
+                        aria-label="Сохранить изменения"
+                        title="Сохранить изменения"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 4h12l4 4v12H4z" />
+                          <path d="M7 4v6h8V4" />
+                          <path d="M7 20v-6h10v6" />
+                        </svg>
+                      </button>
+                      <button
+                        v-if="accountModalMode === 'create'"
+                        class="btn btn--icon-plain"
+                        @click="createAccount"
+                        :disabled="accountsLoading"
+                        aria-label="Создать аккаунт"
+                        title="Создать аккаунт"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 4h12l4 4v12H4z" />
+                          <path d="M7 4v6h8V4" />
+                          <path d="M7 20v-6h10v6" />
+                        </svg>
+                      </button>
+                      <button
+                        v-if="accountModalMode === 'edit'"
+                        class="btn btn--icon-plain btn--edit"
                         type="button"
                         aria-label="Редактировать"
                         title="Редактировать"
@@ -612,6 +694,18 @@
                         <svg viewBox="0 0 24 24" aria-hidden="true">
                           <path d="M4 20h4l10-10-4-4L4 16v4Z" />
                           <path d="M13 6l4 4" />
+                        </svg>
+                      </button>
+                      <button
+                        v-if="accountModalMode === 'edit'"
+                        class="btn btn--icon-plain btn--danger"
+                        type="button"
+                        aria-label="Удалить"
+                        title="Удалить"
+                        @click="deleteAccount"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
                         </svg>
                       </button>
                       <button
@@ -627,7 +721,30 @@
                       </button>
                     </div>
                   </div>
-                  <div class="modal__body">
+                  <div class="modal__body" :class="{ 'modal__body--locked': accountsLoading }">
+                    <div v-if="accountsLoading" class="modal__body-overlay">
+                      <div class="loader-wrap loader-wrap--compact">
+                        <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                          <div class="wheel"></div>
+                          <div class="hamster">
+                            <div class="hamster__body">
+                              <div class="hamster__head">
+                                <div class="hamster__ear"></div>
+                                <div class="hamster__eye"></div>
+                                <div class="hamster__nose"></div>
+                              </div>
+                              <div class="hamster__limb hamster__limb--fr"></div>
+                              <div class="hamster__limb hamster__limb--fl"></div>
+                              <div class="hamster__limb hamster__limb--br"></div>
+                              <div class="hamster__limb hamster__limb--bl"></div>
+                              <div class="hamster__tail"></div>
+                            </div>
+                          </div>
+                          <div class="spoke"></div>
+                        </div>
+                        <p class="muted">Загрузка…</p>
+                      </div>
+                    </div>
                     <div v-if="accountModalMode === 'edit' && accountGamesLoading" class="loader-wrap">
                       <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
                         <div class="wheel"></div>
@@ -836,17 +953,6 @@
                       <p v-if="accountsError" class="bad">{{ accountsError }}</p>
                       <p v-if="accountsOk" class="ok">{{ accountsOk }}</p>
                       <div v-if="accountEditMode === 'edit'" class="toolbar-actions">
-                        <button
-                          class="btn btn--icon-plain"
-                          @click="updateAccount"
-                          :disabled="accountsLoading"
-                          aria-label="Сохранить изменения"
-                          title="Сохранить изменения"
-                        >
-                          <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M5 13l4 4L19 7" />
-                          </svg>
-                        </button>
                       </div>
                     </div>
                     <div v-else class="form form--stack form--compact">
@@ -912,19 +1018,6 @@
                       </div>
                       <p v-if="accountsError" class="bad">{{ accountsError }}</p>
                       <p v-if="accountsOk" class="ok">{{ accountsOk }}</p>
-                      <div class="toolbar-actions">
-                        <button
-                          class="btn btn--icon-plain"
-                          @click="createAccount"
-                          :disabled="accountsLoading"
-                          aria-label="Создать аккаунт"
-                          title="Создать аккаунт"
-                        >
-                          <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M5 13l4 4L19 7" />
-                          </svg>
-                        </button>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -937,6 +1030,15 @@
           <div class="panel__head">
             <div>
               <div class="toolbar-actions">
+                <button class="deal-create-btn" type="button" @click="openCreateGameModal" aria-label="Добавить игру" title="Добавить игру">
+                  <span class="deal-create-btn__text">Игра</span>
+                  <span class="deal-create-btn__icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
+                      <line y2="19" y1="5" x2="12" x1="12"></line>
+                      <line y2="12" y1="12" x2="19" x1="5"></line>
+                    </svg>
+                  </span>
+                </button>
                 <label class="field field--compact">
                   <input
                     v-model.trim="gameFilters.q"
@@ -955,16 +1057,6 @@
             </div>
             <div class="toolbar-actions">
               <button
-                class="btn btn--icon btn--glow btn--glow-add"
-                title="Добавить игру"
-                aria-label="Добавить игру"
-                @click="openCreateGameModal"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </button>
-              <button
                 class="btn btn--icon btn--glow btn--glow-import"
                 title="Импорт игр"
                 aria-label="Импорт игр"
@@ -978,9 +1070,9 @@
               </button>
               <button
                 class="btn btn--icon btn--glow btn--glow-export"
-                title="Выгрузить игры"
-                aria-label="Выгрузить игры"
-                @click="downloadGamesExport"
+                title="Выгрузка игр будет позже"
+                aria-label="Выгрузка игр будет позже"
+                :disabled="true"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M12 21V9" />
@@ -1064,7 +1156,30 @@
                       </svg>
                     </button>
                   </div>
-                  <div class="modal__body">
+                  <div class="modal__body" :class="{ 'modal__body--locked': gameImportLoading }">
+                    <div v-if="gameImportLoading" class="modal__body-overlay">
+                      <div class="loader-wrap loader-wrap--compact">
+                        <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                          <div class="wheel"></div>
+                          <div class="hamster">
+                            <div class="hamster__body">
+                              <div class="hamster__head">
+                                <div class="hamster__ear"></div>
+                                <div class="hamster__eye"></div>
+                                <div class="hamster__nose"></div>
+                              </div>
+                              <div class="hamster__limb hamster__limb--fr"></div>
+                              <div class="hamster__limb hamster__limb--fl"></div>
+                              <div class="hamster__limb hamster__limb--br"></div>
+                              <div class="hamster__limb hamster__limb--bl"></div>
+                              <div class="hamster__tail"></div>
+                            </div>
+                          </div>
+                          <div class="spoke"></div>
+                        </div>
+                        <p class="muted">Загрузка…</p>
+                      </div>
+                    </div>
                     <div class="toolbar-actions import-actions import-actions--fixed">
                       <button class="ghost" type="button" @click="downloadGameTemplate">
                         Шаблон
@@ -1170,21 +1285,36 @@
             <table v-if="sortedGames.length" class="table table--compact">
               <thead>
                 <tr>
-                  <th class="sortable" @click="toggleGamesSort('title')">
+                  <th>
                     <span class="th-title th-title--filter">
                       Игра
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(gameFilters.q) }"
-                        type="button"
-                        aria-label="Фильтр по игре"
-                        title="Фильтр по игре"
-                        @click.stop="openGameFilter('title')"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
+                      <span class="th-actions">
+                        <button
+                          class="filter-icon"
+                          :class="{ 'filter-icon--active': Boolean(gameFilters.q) }"
+                          type="button"
+                          aria-label="Фильтр по игре"
+                          title="Фильтр по игре"
+                          @click.stop="openGameFilter('title')"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 6h16M7 12h10M10 18h4" />
+                          </svg>
+                        </button>
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по игре"
+                          title="Сортировка по игре"
+                          @click.stop="toggleGamesSort('title')"
+                          :class="getGamesSortClass('title')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
                     </span>
                     <div v-if="activeGameFilter === 'title'" class="filter-pop filter-pop--center" @click.stop>
                       <label class="field">
@@ -1196,21 +1326,36 @@
                     </div>
                   </th>
                   <th>Короткое</th>
-                  <th class="sortable" @click="toggleGamesSort('platform')">
+                  <th>
                     <span class="th-title th-title--filter">
                       Платформа
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(gameFilters.platform_code) }"
-                        type="button"
-                        aria-label="Фильтр по платформе"
-                        title="Фильтр по платформе"
-                        @click.stop="openGameFilter('platform')"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
+                      <span class="th-actions">
+                        <button
+                          class="filter-icon"
+                          :class="{ 'filter-icon--active': Boolean(gameFilters.platform_code) }"
+                          type="button"
+                          aria-label="Фильтр по платформе"
+                          title="Фильтр по платформе"
+                          @click.stop="openGameFilter('platform')"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 6h16M7 12h10M10 18h4" />
+                          </svg>
+                        </button>
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по платформе"
+                          title="Сортировка по платформе"
+                          @click.stop="toggleGamesSort('platform')"
+                          :class="getGamesSortClass('platform')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
                     </span>
                     <div v-if="activeGameFilter === 'platform'" class="filter-pop filter-pop--center" @click.stop>
                       <label class="field">
@@ -1221,21 +1366,36 @@
                       <button class="ghost ghost--small" type="button" @click="resetGameFilter('platform')">Сбросить</button>
                     </div>
                   </th>
-                  <th class="sortable" @click="toggleGamesSort('region')">
+                  <th>
                     <span class="th-title th-title--filter">
                       Регион
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(gameFilters.region_code) }"
-                        type="button"
-                        aria-label="Фильтр по региону"
-                        title="Фильтр по региону"
-                        @click.stop="openGameFilter('region')"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
+                      <span class="th-actions">
+                        <button
+                          class="filter-icon"
+                          :class="{ 'filter-icon--active': Boolean(gameFilters.region_code) }"
+                          type="button"
+                          aria-label="Фильтр по региону"
+                          title="Фильтр по региону"
+                          @click.stop="openGameFilter('region')"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 6h16M7 12h10M10 18h4" />
+                          </svg>
+                        </button>
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по региону"
+                          title="Сортировка по региону"
+                          @click.stop="toggleGamesSort('region')"
+                          :class="getGamesSortClass('region')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
                     </span>
                     <div v-if="activeGameFilter === 'region'" class="filter-pop filter-pop--right" @click.stop>
                       <label class="field">
@@ -1313,8 +1473,36 @@
                     <h3>{{ editGame.open ? (editGame.title ? `Игра ${editGame.title}` : 'Игра') : 'Новая игра' }}</h3>
                     <div class="toolbar-actions">
                       <button
-                        v-if="editGame.open"
+                        v-if="editGame.open && gameEditMode === 'edit'"
                         class="btn btn--icon-plain"
+                        @click="updateGame"
+                        :disabled="gameLoading"
+                        aria-label="Сохранить изменения"
+                        title="Сохранить изменения"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 4h12l4 4v12H4z" />
+                          <path d="M7 4v6h8V4" />
+                          <path d="M7 20v-6h10v6" />
+                        </svg>
+                      </button>
+                      <button
+                        v-if="!editGame.open"
+                        class="btn btn--icon-plain"
+                        @click="createGame"
+                        :disabled="gameLoading"
+                        aria-label="Добавить игру"
+                        title="Добавить игру"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 4h12l4 4v12H4z" />
+                          <path d="M7 4v6h8V4" />
+                          <path d="M7 20v-6h10v6" />
+                        </svg>
+                      </button>
+                      <button
+                        v-if="editGame.open"
+                        class="btn btn--icon-plain btn--edit"
                         type="button"
                         aria-label="Редактировать"
                         title="Редактировать"
@@ -1324,6 +1512,18 @@
                         <svg viewBox="0 0 24 24" aria-hidden="true">
                           <path d="M4 20h4l10-10-4-4L4 16v4Z" />
                           <path d="M13 6l4 4" />
+                        </svg>
+                      </button>
+                      <button
+                        v-if="editGame.open"
+                        class="btn btn--icon-plain btn--danger"
+                        type="button"
+                        aria-label="Удалить"
+                        title="Удалить"
+                        @click="deleteGame"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
                         </svg>
                       </button>
                       <button
@@ -1339,7 +1539,30 @@
                       </button>
                     </div>
                   </div>
-                  <div class="modal__body">
+                  <div class="modal__body" :class="{ 'modal__body--locked': gameLoading }">
+                    <div v-if="gameLoading" class="modal__body-overlay">
+                      <div class="loader-wrap loader-wrap--compact">
+                        <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                          <div class="wheel"></div>
+                          <div class="hamster">
+                            <div class="hamster__body">
+                              <div class="hamster__head">
+                                <div class="hamster__ear"></div>
+                                <div class="hamster__eye"></div>
+                                <div class="hamster__nose"></div>
+                              </div>
+                              <div class="hamster__limb hamster__limb--fr"></div>
+                              <div class="hamster__limb hamster__limb--fl"></div>
+                              <div class="hamster__limb hamster__limb--br"></div>
+                              <div class="hamster__limb hamster__limb--bl"></div>
+                              <div class="hamster__tail"></div>
+                            </div>
+                          </div>
+                          <div class="spoke"></div>
+                        </div>
+                        <p class="muted">Загрузка…</p>
+                      </div>
+                    </div>
                     <div v-if="editGame.open" class="form form--stack form--compact">
                       <div class="field field--full">
                         <span class="label">Логотип</span>
@@ -1361,7 +1584,7 @@
                             <span v-if="gameLogoUploading" class="muted">Загрузка {{ gameLogoProgress }}%</span>
                             <button
                               v-if="editGame.logo_b64"
-                              class="ghost ghost--small"
+                              class="ghost ghost--small ghost--danger"
                               type="button"
                               @click="removeGameLogo"
                               :disabled="gameEditMode === 'view'"
@@ -1521,19 +1744,6 @@
                       </div>
                       <p v-if="gameError" class="bad">{{ gameError }}</p>
                       <p v-if="gameOk" class="ok">{{ gameOk }}</p>
-                      <div v-if="gameEditMode === 'edit'" class="toolbar-actions">
-                        <button
-                          class="btn btn--icon-plain"
-                          @click="updateGame"
-                          :disabled="gameLoading"
-                          aria-label="Сохранить изменения"
-                          title="Сохранить изменения"
-                        >
-                          <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M5 13l4 4L19 7" />
-                          </svg>
-                        </button>
-                      </div>
                     </div>
                     <div v-else class="form form--stack form--compact">
                       <div class="field field--full">
@@ -1584,19 +1794,6 @@
                       </label>
                       <p v-if="gameError" class="bad">{{ gameError }}</p>
                       <p v-if="gameOk" class="ok">{{ gameOk }}</p>
-                      <div class="toolbar-actions">
-                        <button
-                          class="btn btn--icon-plain"
-                          @click="createGame"
-                          :disabled="gameLoading"
-                          aria-label="Добавить игру"
-                          title="Добавить игру"
-                        >
-                          <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M5 13l4 4L19 7" />
-                          </svg>
-                        </button>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -1728,7 +1925,9 @@
                     <div class="tg-contact__actions">
                       <button class="btn btn--icon btn--glow btn--glow-save" type="button" @click="saveTelegramContact" :disabled="telegram.loading">
                         <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M5 13l4 4L19 7" />
+                          <path d="M4 4h12l4 4v12H4z" />
+                          <path d="M7 4v6h8V4" />
+                          <path d="M7 20v-6h10v6" />
                         </svg>
                       </button>
                       <button class="btn btn--icon btn--glow btn--glow-close" type="button" @click="cancelTelegramContactEdit">
@@ -1900,21 +2099,36 @@
             <table v-if="sortedDeals.length" class="table">
               <thead>
                 <tr>
-                  <th class="sortable cell--tight" @click="toggleDealSort('type')">
+                  <th class="cell--tight">
                     <span class="th-title th-title--filter">
                       Тип
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(dealFilters.type_q) }"
-                        type="button"
-                        aria-label="Фильтр по типу"
-                        title="Фильтр по типу"
-                        @click.stop="activeDealFilter = activeDealFilter === 'type' ? '' : 'type'"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
+                      <span class="th-actions">
+                        <button
+                          class="filter-icon"
+                          :class="{ 'filter-icon--active': Boolean(dealFilters.type_q) }"
+                          type="button"
+                          aria-label="Фильтр по типу"
+                          title="Фильтр по типу"
+                          @click.stop="activeDealFilter = activeDealFilter === 'type' ? '' : 'type'"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 6h16M7 12h10M10 18h4" />
+                          </svg>
+                        </button>
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по типу"
+                          title="Сортировка по типу"
+                          @click.stop="toggleDealSort('type')"
+                          :class="getDealSortClass('type')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
                     </span>
                     <div v-if="activeDealFilter === 'type'" class="filter-pop filter-pop--left" @click.stop>
                       <label class="field">
@@ -1930,21 +2144,36 @@
                       <button class="ghost ghost--small" type="button" @click="resetDealFilter('type')">Сбросить</button>
                     </div>
                   </th>
-                  <th class="sortable" @click="toggleDealSort('customer')">
+                  <th>
                     <span class="th-title th-title--filter">
                       Пользователь
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(dealFilters.customer_q) }"
-                        type="button"
-                        aria-label="Фильтр по пользователю"
-                        title="Фильтр по пользователю"
-                        @click.stop="activeDealFilter = activeDealFilter === 'customer' ? '' : 'customer'"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
+                      <span class="th-actions">
+                        <button
+                          class="filter-icon"
+                          :class="{ 'filter-icon--active': Boolean(dealFilters.customer_q) }"
+                          type="button"
+                          aria-label="Фильтр по пользователю"
+                          title="Фильтр по пользователю"
+                          @click.stop="activeDealFilter = activeDealFilter === 'customer' ? '' : 'customer'"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 6h16M7 12h10M10 18h4" />
+                          </svg>
+                        </button>
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по пользователю"
+                          title="Сортировка по пользователю"
+                          @click.stop="toggleDealSort('customer')"
+                          :class="getDealSortClass('customer')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
                     </span>
                     <div v-if="activeDealFilter === 'customer'" class="filter-pop filter-pop--center" @click.stop>
                       <label class="field">
@@ -1960,21 +2189,36 @@
                       <button class="ghost ghost--small" type="button" @click="resetDealFilter('customer')">Сбросить</button>
                     </div>
                   </th>
-                  <th class="sortable cell--tight" @click="toggleDealSort('region')">
+                  <th class="cell--tight">
                     <span class="th-title th-title--filter">
                       Регион
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(dealFilters.region_q) }"
-                        type="button"
-                        aria-label="Фильтр по региону"
-                        title="Фильтр по региону"
-                        @click.stop="activeDealFilter = activeDealFilter === 'region' ? '' : 'region'"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
+                      <span class="th-actions">
+                        <button
+                          class="filter-icon"
+                          :class="{ 'filter-icon--active': Boolean(dealFilters.region_q) }"
+                          type="button"
+                          aria-label="Фильтр по региону"
+                          title="Фильтр по региону"
+                          @click.stop="activeDealFilter = activeDealFilter === 'region' ? '' : 'region'"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 6h16M7 12h10M10 18h4" />
+                          </svg>
+                        </button>
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по региону"
+                          title="Сортировка по региону"
+                          @click.stop="toggleDealSort('region')"
+                          :class="getDealSortClass('region')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
                     </span>
                     <div v-if="activeDealFilter === 'region'" class="filter-pop filter-pop--center" @click.stop>
                       <label class="field">
@@ -1990,21 +2234,36 @@
                       <button class="ghost ghost--small" type="button" @click="resetDealFilter('region')">Сбросить</button>
                     </div>
                   </th>
-                  <th class="sortable" @click="toggleDealSort('date')">
+                  <th>
                     <span class="th-title th-title--filter">
                       Дата/время
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(dealFilters.purchase_from || dealFilters.purchase_to) }"
-                        type="button"
-                        aria-label="Фильтр по дате"
-                        title="Фильтр по дате"
-                        @click.stop="activeDealFilter = activeDealFilter === 'date' ? '' : 'date'"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
+                      <span class="th-actions">
+                        <button
+                          class="filter-icon"
+                          :class="{ 'filter-icon--active': Boolean(dealFilters.purchase_from || dealFilters.purchase_to) }"
+                          type="button"
+                          aria-label="Фильтр по дате"
+                          title="Фильтр по дате"
+                          @click.stop="activeDealFilter = activeDealFilter === 'date' ? '' : 'date'"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 6h16M7 12h10M10 18h4" />
+                          </svg>
+                        </button>
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по дате"
+                          title="Сортировка по дате"
+                          @click.stop="toggleDealSort('date')"
+                          :class="getDealSortClass('date')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
                     </span>
                     <div v-if="activeDealFilter === 'date'" class="filter-pop filter-pop--right" @click.stop>
                       <label class="field">
@@ -2040,21 +2299,36 @@
                       <button class="ghost ghost--small" type="button" @click="resetDealFilter('date')">Сбросить</button>
                     </div>
                   </th>
-                  <th class="sortable cell--tight" @click="toggleDealSort('status')">
+                  <th class="cell--tight">
                     <span class="th-title th-title--filter">
                       Статус
-                      <button
-                        class="filter-icon"
-                        :class="{ 'filter-icon--active': Boolean(dealFilters.status_q) }"
-                        type="button"
-                        aria-label="Фильтр по статусу"
-                        title="Фильтр по статусу"
-                        @click.stop="activeDealFilter = activeDealFilter === 'status' ? '' : 'status'"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h16M7 12h10M10 18h4" />
-                        </svg>
-                      </button>
+                      <span class="th-actions">
+                        <button
+                          class="filter-icon"
+                          :class="{ 'filter-icon--active': Boolean(dealFilters.status_q) }"
+                          type="button"
+                          aria-label="Фильтр по статусу"
+                          title="Фильтр по статусу"
+                          @click.stop="activeDealFilter = activeDealFilter === 'status' ? '' : 'status'"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 6h16M7 12h10M10 18h4" />
+                          </svg>
+                        </button>
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по статусу"
+                          title="Сортировка по статусу"
+                          @click.stop="toggleDealSort('status')"
+                          :class="getDealSortClass('status')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
                     </span>
                     <div v-if="activeDealFilter === 'status'" class="filter-pop filter-pop--right" @click.stop>
                       <label class="field">
@@ -2150,7 +2424,7 @@
                     <div class="toolbar-actions">
                       <button
                         v-if="editDeal.open && dealEditMode === 'edit'"
-                        class="btn btn--icon-plain btn--icon-round"
+                        class="btn btn--icon-plain"
                         type="button"
                         aria-label="Сохранить изменения"
                         title="Сохранить изменения"
@@ -2158,14 +2432,14 @@
                         :disabled="dealLoading"
                       >
                         <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h12l4 4v10H4V6Z" />
-                          <path d="M8 6v4h6V6" />
-                          <path d="M8 18v-4h8v4" />
+                          <path d="M4 4h12l4 4v12H4z" />
+                          <path d="M7 4v6h8V4" />
+                          <path d="M7 20v-6h10v6" />
                         </svg>
                       </button>
                       <button
                         v-if="!editDeal.open"
-                        class="btn btn--icon-plain btn--icon-round"
+                        class="btn btn--icon-plain"
                         type="button"
                         aria-label="Сохранить сделку"
                         title="Сохранить сделку"
@@ -2173,14 +2447,14 @@
                         :disabled="dealLoading"
                       >
                         <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M4 6h12l4 4v10H4V6Z" />
-                          <path d="M8 6v4h6V6" />
-                          <path d="M8 18v-4h8v4" />
+                          <path d="M4 4h12l4 4v12H4z" />
+                          <path d="M7 4v6h8V4" />
+                          <path d="M7 20v-6h10v6" />
                         </svg>
                       </button>
                       <button
                         v-if="editDeal.open"
-                        class="btn btn--icon-plain btn--icon-round"
+                        class="btn btn--icon-plain btn--icon-round btn--edit"
                         type="button"
                         aria-label="Редактировать"
                         title="Редактировать"
@@ -2205,8 +2479,31 @@
                       </button>
                     </div>
                   </div>
-                  <div class="modal__body" :class="{ 'modal__body--locked': dealQuickAccountBusy || dealQuickGameBusy }">
-                    <div v-if="dealQuickAccountBusy || dealQuickGameBusy" class="modal__body-overlay">
+                  <div class="modal__body" :class="{ 'modal__body--locked': dealQuickAccountBusy || dealQuickGameBusy || dealLoading }">
+                    <div v-if="dealLoading" class="modal__body-overlay">
+                      <div class="loader-wrap loader-wrap--compact">
+                        <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                          <div class="wheel"></div>
+                          <div class="hamster">
+                            <div class="hamster__body">
+                              <div class="hamster__head">
+                                <div class="hamster__ear"></div>
+                                <div class="hamster__eye"></div>
+                                <div class="hamster__nose"></div>
+                              </div>
+                              <div class="hamster__limb hamster__limb--fr"></div>
+                              <div class="hamster__limb hamster__limb--fl"></div>
+                              <div class="hamster__limb hamster__limb--br"></div>
+                              <div class="hamster__limb hamster__limb--bl"></div>
+                              <div class="hamster__tail"></div>
+                            </div>
+                          </div>
+                          <div class="spoke"></div>
+                        </div>
+                        <p class="muted">Загрузка…</p>
+                      </div>
+                    </div>
+                    <div v-else-if="dealQuickAccountBusy || dealQuickGameBusy" class="modal__body-overlay">
                       <div class="modal__body-overlay-content">
                         <span class="spinner"></span>
                         <span class="muted">{{ dealQuickAccountBusy ? 'Создаем аккаунт…' : 'Создаем игру…' }}</span>
@@ -2568,7 +2865,7 @@
                           <select
                             v-model.number="newDeal.account_id"
                             class="input input--select"
-                            :disabled="!newDeal.game_id || !newDeal.slot_type_code || isDealSlotTypeUnsupported('new')"
+                            :disabled="!newDeal.game_id || !newDeal.slot_type_code || isDealSlotTypeUnsupported('new') || dealAccountsForGameLoading"
                           >
                             <option value="">— не выбрано —</option>
                             <option v-for="a in dealAccountsForNew" :key="a.account_id" :value="a.account_id">
@@ -2577,6 +2874,10 @@
                           </select>
                           <span v-if="!newDeal.game_id" class="muted muted--small">Сначала выберите игру</span>
                           <span v-else-if="!newDeal.slot_type_code" class="muted muted--small">Сначала выберите слот</span>
+                          <div v-else-if="dealAccountsForGameLoading" class="muted muted--small">
+                            <span class="spinner spinner--small"></span>
+                            Формируется список доступных аккаунтов…
+                          </div>
                           <div
                             v-if="newDeal.game_id && newDeal.slot_type_code && !newDeal.account_id && !isDealSlotTypeUnsupported('new') && !hasFreeDealSlots('new')"
                             class="quick-create"
@@ -2673,23 +2974,11 @@
                         <div v-if="newDeal.deal_type_code === 'rental' && newDeal.account_id" class="field field--full">
                           <span class="label">Слоты аккаунта (занято)</span>
                           <div v-if="dealAccountAssignmentsLoadingNew" class="loader-wrap loader-wrap--compact">
-                            <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
-                              <div class="wheel"></div>
-                              <div class="hamster">
-                                <div class="hamster__body">
-                                  <div class="hamster__head">
-                                    <div class="hamster__ear"></div>
-                                    <div class="hamster__eye"></div>
-                                    <div class="hamster__nose"></div>
-                                  </div>
-                                  <div class="hamster__limb hamster__limb--fr"></div>
-                                  <div class="hamster__limb hamster__limb--fl"></div>
-                                  <div class="hamster__limb hamster__limb--br"></div>
-                                  <div class="hamster__limb hamster__limb--bl"></div>
-                                  <div class="hamster__tail"></div>
-                                </div>
-                              </div>
-                              <div class="spoke"></div>
+                            <div class="newtons-cradle" aria-label="Loading" role="img">
+                              <div class="newtons-cradle__dot"></div>
+                              <div class="newtons-cradle__dot"></div>
+                              <div class="newtons-cradle__dot"></div>
+                              <div class="newtons-cradle__dot"></div>
                             </div>
                           </div>
                           <table v-else-if="dealAccountAssignmentsNew.filter((s) => !s.released_at).length" class="table table--compact table--dense">
@@ -2876,20 +3165,18 @@
             <div v-else>
             <div class="catalog">
               <div class="panel__head">
-                <div>
-                  <h3>Домены</h3>
+                <div class="toolbar-actions">
+                  <button class="deal-create-btn" type="button" @click="openDomainModal" aria-label="Добавить домен" title="Добавить домен">
+                    <span class="deal-create-btn__text">Домен</span>
+                    <span class="deal-create-btn__icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
+                        <line y2="19" y1="5" x2="12" x1="12"></line>
+                        <line y2="12" y1="12" x2="19" x1="5"></line>
+                      </svg>
+                    </span>
+                  </button>
                 </div>
                 <div class="toolbar-actions">
-                  <button
-                    class="btn btn--icon btn--glow btn--glow-add"
-                    title="Добавить домен"
-                    aria-label="Добавить домен"
-                    @click="openDomainModal"
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                  </button>
                   <button
                     class="btn btn--icon btn--glow btn--glow-refresh"
                     title="Обновить список"
@@ -2912,68 +3199,111 @@
                 >
                   <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
                     <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
-                      <h3>{{ editDomain.open ? 'Редактирование домена' : 'Новый домен' }}</h3>
-                      <button
-                        class="btn btn--icon-plain"
-                        type="button"
-                        aria-label="Закрыть"
-                        title="Закрыть"
-                        @click="closeDomainModal"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M6 6l12 12M18 6l-12 12" />
-                        </svg>
-                      </button>
+                      <h3>{{ editDomain.open ? (domainEditMode === 'edit' ? 'Редактирование домена' : 'Домен') : 'Новый домен' }}</h3>
+                      <div class="toolbar-actions">
+                        <button
+                          v-if="editDomain.open && domainEditMode === 'edit'"
+                          class="btn btn--icon-plain"
+                          @click="saveEditDomain"
+                          :disabled="catalogsLoading"
+                          aria-label="Сохранить"
+                          title="Сохранить"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 4h12l4 4v12H4z" />
+                            <path d="M7 4v6h8V4" />
+                            <path d="M7 20v-6h10v6" />
+                          </svg>
+                        </button>
+                        <button
+                          v-if="editDomain.open"
+                          class="btn btn--icon-plain btn--edit"
+                          type="button"
+                          aria-label="Редактировать"
+                          title="Редактировать"
+                          @click="domainEditMode = 'edit'"
+                          :disabled="domainEditMode === 'edit'"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 20h4l10-10-4-4L4 16v4Z" />
+                            <path d="M13 6l4 4" />
+                          </svg>
+                        </button>
+                        <button
+                          v-if="editDomain.open"
+                          class="btn btn--icon-plain btn--danger"
+                          type="button"
+                          aria-label="Удалить"
+                          title="Удалить"
+                          @click="deleteDomain(editDomain.original)"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
+                          </svg>
+                        </button>
+                        <button
+                          v-else
+                          class="btn btn--icon-plain"
+                          @click="createDomain"
+                          :disabled="catalogsLoading"
+                          aria-label="Добавить домен"
+                          title="Добавить домен"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 4h12l4 4v12H4z" />
+                            <path d="M7 4v6h8V4" />
+                            <path d="M7 20v-6h10v6" />
+                          </svg>
+                        </button>
+                        <button
+                          class="btn btn--icon-plain"
+                          type="button"
+                          aria-label="Закрыть"
+                          title="Закрыть"
+                          @click="closeDomainModal"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M6 6l12 12M18 6l-12 12" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
-                    <div class="modal__body">
+                    <div class="modal__body" :class="{ 'modal__body--locked': catalogsLoading }">
+                      <div v-if="catalogsLoading" class="modal__body-overlay">
+                        <div class="loader-wrap loader-wrap--compact">
+                          <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                            <div class="wheel"></div>
+                            <div class="hamster">
+                              <div class="hamster__body">
+                                <div class="hamster__head">
+                                  <div class="hamster__ear"></div>
+                                  <div class="hamster__eye"></div>
+                                  <div class="hamster__nose"></div>
+                                </div>
+                                <div class="hamster__limb hamster__limb--fr"></div>
+                                <div class="hamster__limb hamster__limb--fl"></div>
+                                <div class="hamster__limb hamster__limb--br"></div>
+                                <div class="hamster__limb hamster__limb--bl"></div>
+                                <div class="hamster__tail"></div>
+                              </div>
+                            </div>
+                            <div class="spoke"></div>
+                          </div>
+                          <p class="muted">Загрузка…</p>
+                        </div>
+                      </div>
                       <div v-if="editDomain.open" class="form form--stack form--compact">
                         <label class="field">
                           <span class="label">Домен</span>
-                          <input v-model.trim="editDomain.name" class="input" placeholder="example.com" />
+                          <input v-model.trim="editDomain.name" class="input" placeholder="example.com" :disabled="domainEditMode === 'view'" />
                         </label>
-                        <div class="toolbar-actions">
-                          <button
-                            class="btn btn--icon-plain"
-                            @click="saveEditDomain"
-                            :disabled="catalogsLoading"
-                            aria-label="Сохранить"
-                            title="Сохранить"
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M5 13l4 4L19 7" />
-                            </svg>
-                          </button>
-                          <button
-                            class="btn btn--icon-plain"
-                            type="button"
-                            aria-label="Удалить"
-                            title="Удалить"
-                            @click="deleteDomain(editDomain.original)"
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
-                            </svg>
-                          </button>
-                        </div>
+                        <div class="toolbar-actions"></div>
                       </div>
                       <div v-else class="form form--stack form--compact">
                         <label class="field">
                           <span class="label">Новый домен</span>
                           <input v-model.trim="newDomain" class="input" placeholder="example.com" />
                         </label>
-                        <div class="toolbar-actions">
-                          <button
-                            class="btn btn--icon-plain"
-                            @click="createDomain"
-                            :disabled="catalogsLoading"
-                            aria-label="Добавить домен"
-                            title="Добавить домен"
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M5 13l4 4L19 7" />
-                            </svg>
-                          </button>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -2982,7 +3312,24 @@
               <table v-if="sortedDomains.length" class="table table--compact">
                 <thead>
                   <tr>
-                    <th class="sortable" @click="toggleDomainsSort">Домен</th>
+                    <th>
+                      <span class="th-title">
+                        Домен
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по домену"
+                          title="Сортировка по домену"
+                          @click.stop="toggleDomainsSort"
+                          :class="getDomainsSortClass()"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2996,20 +3343,18 @@
 
             <div class="catalog">
               <div class="panel__head">
-                <div>
-                  <h3>Источники</h3>
+                <div class="toolbar-actions">
+                  <button class="deal-create-btn" type="button" @click="openSourceModal" aria-label="Добавить источник" title="Добавить источник">
+                    <span class="deal-create-btn__text">Источник</span>
+                    <span class="deal-create-btn__icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
+                        <line y2="19" y1="5" x2="12" x1="12"></line>
+                        <line y2="12" y1="12" x2="19" x1="5"></line>
+                      </svg>
+                    </span>
+                  </button>
                 </div>
                 <div class="toolbar-actions">
-                  <button
-                    class="btn btn--icon btn--glow btn--glow-add"
-                    title="Добавить источник"
-                    aria-label="Добавить источник"
-                    @click="openSourceModal"
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                  </button>
                   <button
                     class="btn btn--icon btn--glow btn--glow-refresh"
                     title="Обновить список"
@@ -3032,20 +3377,99 @@
                 >
                   <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
                     <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
-                      <h3>{{ editSource.open ? 'Редактирование источника' : 'Новый источник' }}</h3>
-                      <button
-                        class="btn btn--icon-plain"
-                        type="button"
-                        aria-label="Закрыть"
-                        title="Закрыть"
-                        @click="closeSourceModal"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M6 6l12 12M18 6l-12 12" />
-                        </svg>
-                      </button>
+                      <h3>{{ editSource.open ? (sourceEditMode === 'edit' ? 'Редактирование источника' : 'Источник') : 'Новый источник' }}</h3>
+                      <div class="toolbar-actions">
+                        <button
+                          v-if="editSource.open && sourceEditMode === 'edit'"
+                          class="btn btn--icon-plain"
+                          @click="saveEditSource"
+                          :disabled="catalogsLoading"
+                          aria-label="Сохранить"
+                          title="Сохранить"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 4h12l4 4v12H4z" />
+                            <path d="M7 4v6h8V4" />
+                            <path d="M7 20v-6h10v6" />
+                          </svg>
+                        </button>
+                        <button
+                          v-if="editSource.open"
+                          class="btn btn--icon-plain btn--edit"
+                          type="button"
+                          aria-label="Редактировать"
+                          title="Редактировать"
+                          @click="sourceEditMode = 'edit'"
+                          :disabled="sourceEditMode === 'edit'"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 20h4l10-10-4-4L4 16v4Z" />
+                            <path d="M13 6l4 4" />
+                          </svg>
+                        </button>
+                        <button
+                          v-if="editSource.open"
+                          class="btn btn--icon-plain btn--danger"
+                          type="button"
+                          aria-label="Удалить"
+                          title="Удалить"
+                          @click="deleteSource(editSource.code)"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
+                          </svg>
+                        </button>
+                        <button
+                          v-else
+                          class="btn btn--icon-plain"
+                          @click="createSource"
+                          :disabled="catalogsLoading"
+                          aria-label="Добавить источник"
+                          title="Добавить источник"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 4h12l4 4v12H4z" />
+                            <path d="M7 4v6h8V4" />
+                            <path d="M7 20v-6h10v6" />
+                          </svg>
+                        </button>
+                        <button
+                          class="btn btn--icon-plain"
+                          type="button"
+                          aria-label="Закрыть"
+                          title="Закрыть"
+                          @click="closeSourceModal"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M6 6l12 12M18 6l-12 12" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
-                    <div class="modal__body">
+                    <div class="modal__body" :class="{ 'modal__body--locked': catalogsLoading }">
+                      <div v-if="catalogsLoading" class="modal__body-overlay">
+                        <div class="loader-wrap loader-wrap--compact">
+                          <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                            <div class="wheel"></div>
+                            <div class="hamster">
+                              <div class="hamster__body">
+                                <div class="hamster__head">
+                                  <div class="hamster__ear"></div>
+                                  <div class="hamster__eye"></div>
+                                  <div class="hamster__nose"></div>
+                                </div>
+                                <div class="hamster__limb hamster__limb--fr"></div>
+                                <div class="hamster__limb hamster__limb--fl"></div>
+                                <div class="hamster__limb hamster__limb--br"></div>
+                                <div class="hamster__limb hamster__limb--bl"></div>
+                                <div class="hamster__tail"></div>
+                              </div>
+                            </div>
+                            <div class="spoke"></div>
+                          </div>
+                          <p class="muted">Загрузка…</p>
+                        </div>
+                      </div>
                       <div v-if="editSource.open" class="form form--stack form--compact">
                         <label class="field">
                           <span class="label">Код</span>
@@ -3053,32 +3477,9 @@
                         </label>
                         <label class="field">
                           <span class="label">Название</span>
-                          <input v-model.trim="editSource.name" class="input" />
+                          <input v-model.trim="editSource.name" class="input" :disabled="sourceEditMode === 'view'" />
                         </label>
-                        <div class="toolbar-actions">
-                          <button
-                            class="btn btn--icon-plain"
-                            @click="saveEditSource"
-                            :disabled="catalogsLoading"
-                            aria-label="Сохранить"
-                            title="Сохранить"
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M5 13l4 4L19 7" />
-                            </svg>
-                          </button>
-                          <button
-                            class="btn btn--icon-plain"
-                            type="button"
-                            aria-label="Удалить"
-                            title="Удалить"
-                            @click="deleteSource(editSource.code)"
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
-                            </svg>
-                          </button>
-                        </div>
+                        <div class="toolbar-actions"></div>
                       </div>
                       <div v-else class="form form--stack form--compact">
                         <label class="field">
@@ -3089,19 +3490,6 @@
                           <span class="label">Источник (название)</span>
                           <input v-model.trim="newSource.name" class="input" placeholder="Telegram" />
                         </label>
-                        <div class="toolbar-actions">
-                          <button
-                            class="btn btn--icon-plain"
-                            @click="createSource"
-                            :disabled="catalogsLoading"
-                            aria-label="Добавить источник"
-                            title="Добавить источник"
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M5 13l4 4L19 7" />
-                            </svg>
-                          </button>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -3110,8 +3498,42 @@
               <table v-if="sortedSources.length" class="table table--compact">
                 <thead>
                   <tr>
-                    <th class="sortable" @click="toggleSourcesSort('code')">Код</th>
-                    <th class="sortable" @click="toggleSourcesSort('name')">Название</th>
+                    <th>
+                      <span class="th-title">
+                        Код
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по коду"
+                          title="Сортировка по коду"
+                          @click.stop="toggleSourcesSort('code')"
+                          :class="getKeyedSortClass(sourcesSort, 'code')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
+                    </th>
+                    <th>
+                      <span class="th-title">
+                        Название
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по названию"
+                          title="Сортировка по названию"
+                          @click.stop="toggleSourcesSort('name')"
+                          :class="getKeyedSortClass(sourcesSort, 'name')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3126,20 +3548,18 @@
 
             <div class="catalog">
               <div class="panel__head">
-                <div>
-                  <h3>Платформы</h3>
+                <div class="toolbar-actions">
+                  <button class="deal-create-btn" type="button" @click="openPlatformModal" aria-label="Добавить платформу" title="Добавить платформу">
+                    <span class="deal-create-btn__text">Платформа</span>
+                    <span class="deal-create-btn__icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
+                        <line y2="19" y1="5" x2="12" x1="12"></line>
+                        <line y2="12" y1="12" x2="19" x1="5"></line>
+                      </svg>
+                    </span>
+                  </button>
                 </div>
                 <div class="toolbar-actions">
-                  <button
-                    class="btn btn--icon btn--glow btn--glow-add"
-                    title="Добавить платформу"
-                    aria-label="Добавить платформу"
-                    @click="openPlatformModal"
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                  </button>
                   <button
                     class="btn btn--icon btn--glow btn--glow-refresh"
                     title="Обновить список"
@@ -3162,20 +3582,99 @@
                 >
                   <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
                     <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
-                      <h3>{{ editPlatform.open ? 'Редактирование платформы' : 'Новая платформа' }}</h3>
-                      <button
-                        class="btn btn--icon-plain"
-                        type="button"
-                        aria-label="Закрыть"
-                        title="Закрыть"
-                        @click="closePlatformModal"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M6 6l12 12M18 6l-12 12" />
-                        </svg>
-                      </button>
+                      <h3>{{ editPlatform.open ? (platformEditMode === 'edit' ? 'Редактирование платформы' : 'Платформа') : 'Новая платформа' }}</h3>
+                      <div class="toolbar-actions">
+                        <button
+                          v-if="editPlatform.open && platformEditMode === 'edit'"
+                          class="btn btn--icon-plain"
+                          @click="saveEditPlatform"
+                          :disabled="catalogsLoading"
+                          aria-label="Сохранить"
+                          title="Сохранить"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 4h12l4 4v12H4z" />
+                            <path d="M7 4v6h8V4" />
+                            <path d="M7 20v-6h10v6" />
+                          </svg>
+                        </button>
+                        <button
+                          v-if="editPlatform.open"
+                          class="btn btn--icon-plain btn--edit"
+                          type="button"
+                          aria-label="Редактировать"
+                          title="Редактировать"
+                          @click="platformEditMode = 'edit'"
+                          :disabled="platformEditMode === 'edit'"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 20h4l10-10-4-4L4 16v4Z" />
+                            <path d="M13 6l4 4" />
+                          </svg>
+                        </button>
+                        <button
+                          v-if="editPlatform.open"
+                          class="btn btn--icon-plain btn--danger"
+                          type="button"
+                          aria-label="Удалить"
+                          title="Удалить"
+                          @click="deletePlatform(editPlatform.code)"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
+                          </svg>
+                        </button>
+                        <button
+                          v-else
+                          class="btn btn--icon-plain"
+                          @click="createPlatform"
+                          :disabled="catalogsLoading"
+                          aria-label="Добавить платформу"
+                          title="Добавить платформу"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 4h12l4 4v12H4z" />
+                            <path d="M7 4v6h8V4" />
+                            <path d="M7 20v-6h10v6" />
+                          </svg>
+                        </button>
+                        <button
+                          class="btn btn--icon-plain"
+                          type="button"
+                          aria-label="Закрыть"
+                          title="Закрыть"
+                          @click="closePlatformModal"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M6 6l12 12M18 6l-12 12" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
-                    <div class="modal__body">
+                    <div class="modal__body" :class="{ 'modal__body--locked': catalogsLoading }">
+                      <div v-if="catalogsLoading" class="modal__body-overlay">
+                        <div class="loader-wrap loader-wrap--compact">
+                          <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                            <div class="wheel"></div>
+                            <div class="hamster">
+                              <div class="hamster__body">
+                                <div class="hamster__head">
+                                  <div class="hamster__ear"></div>
+                                  <div class="hamster__eye"></div>
+                                  <div class="hamster__nose"></div>
+                                </div>
+                                <div class="hamster__limb hamster__limb--fr"></div>
+                                <div class="hamster__limb hamster__limb--fl"></div>
+                                <div class="hamster__limb hamster__limb--br"></div>
+                                <div class="hamster__limb hamster__limb--bl"></div>
+                                <div class="hamster__tail"></div>
+                              </div>
+                            </div>
+                            <div class="spoke"></div>
+                          </div>
+                          <p class="muted">Загрузка…</p>
+                        </div>
+                      </div>
                       <div v-if="editPlatform.open" class="form form--stack form--compact">
                         <label class="field">
                           <span class="label">Код</span>
@@ -3183,36 +3682,13 @@
                         </label>
                         <label class="field">
                           <span class="label">Название</span>
-                          <input v-model.trim="editPlatform.name" class="input" />
+                          <input v-model.trim="editPlatform.name" class="input" :disabled="platformEditMode === 'view'" />
                         </label>
                         <label class="field">
                           <span class="label">Слотов на аккаунт</span>
-                          <input v-model.number="editPlatform.slot_capacity" class="input" type="number" min="0" />
+                          <input v-model.number="editPlatform.slot_capacity" class="input" type="number" min="0" :disabled="platformEditMode === 'view'" />
                         </label>
-                        <div class="toolbar-actions">
-                          <button
-                            class="btn btn--icon-plain"
-                            @click="saveEditPlatform"
-                            :disabled="catalogsLoading"
-                            aria-label="Сохранить"
-                            title="Сохранить"
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M5 13l4 4L19 7" />
-                            </svg>
-                          </button>
-                          <button
-                            class="btn btn--icon-plain"
-                            type="button"
-                            aria-label="Удалить"
-                            title="Удалить"
-                            @click="deletePlatform(editPlatform.code)"
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
-                            </svg>
-                          </button>
-                        </div>
+                        <div class="toolbar-actions"></div>
                       </div>
                       <div v-else class="form form--stack form--compact">
                         <label class="field">
@@ -3227,19 +3703,6 @@
                           <span class="label">Слотов на аккаунт</span>
                           <input v-model.number="newPlatform.slot_capacity" class="input" type="number" min="0" />
                         </label>
-                        <div class="toolbar-actions">
-                          <button
-                            class="btn btn--icon-plain"
-                            @click="createPlatform"
-                            :disabled="catalogsLoading"
-                            aria-label="Добавить платформу"
-                            title="Добавить платформу"
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M5 13l4 4L19 7" />
-                            </svg>
-                          </button>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -3248,9 +3711,60 @@
               <table v-if="sortedPlatforms.length" class="table table--compact">
                 <thead>
                   <tr>
-                    <th class="sortable" @click="togglePlatformsSort('code')">Код</th>
-                    <th class="sortable" @click="togglePlatformsSort('name')">Название</th>
-                    <th class="sortable" @click="togglePlatformsSort('slot_capacity')">Слоты</th>
+                    <th>
+                      <span class="th-title">
+                        Код
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по коду"
+                          title="Сортировка по коду"
+                          @click.stop="togglePlatformsSort('code')"
+                          :class="getKeyedSortClass(platformsSort, 'code')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
+                    </th>
+                    <th>
+                      <span class="th-title">
+                        Название
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по названию"
+                          title="Сортировка по названию"
+                          @click.stop="togglePlatformsSort('name')"
+                          :class="getKeyedSortClass(platformsSort, 'name')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
+                    </th>
+                    <th>
+                      <span class="th-title">
+                        Слоты
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по слотам"
+                          title="Сортировка по слотам"
+                          @click.stop="togglePlatformsSort('slot_capacity')"
+                          :class="getKeyedSortClass(platformsSort, 'slot_capacity')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3266,20 +3780,18 @@
 
             <div class="catalog">
               <div class="panel__head">
-                <div>
-                  <h3>Регионы</h3>
+                <div class="toolbar-actions">
+                  <button class="deal-create-btn" type="button" @click="openRegionModal" aria-label="Добавить регион" title="Добавить регион">
+                    <span class="deal-create-btn__text">Регион</span>
+                    <span class="deal-create-btn__icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
+                        <line y2="19" y1="5" x2="12" x1="12"></line>
+                        <line y2="12" y1="12" x2="19" x1="5"></line>
+                      </svg>
+                    </span>
+                  </button>
                 </div>
                 <div class="toolbar-actions">
-                  <button
-                    class="btn btn--icon btn--glow btn--glow-add"
-                    title="Добавить регион"
-                    aria-label="Добавить регион"
-                    @click="openRegionModal"
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                  </button>
                   <button
                     class="btn btn--icon btn--glow btn--glow-refresh"
                     title="Обновить список"
@@ -3302,20 +3814,99 @@
                 >
                   <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
                     <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
-                      <h3>{{ editRegion.open ? 'Редактирование региона' : 'Новый регион' }}</h3>
-                      <button
-                        class="btn btn--icon-plain"
-                        type="button"
-                        aria-label="Закрыть"
-                        title="Закрыть"
-                        @click="closeRegionModal"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M6 6l12 12M18 6l-12 12" />
-                        </svg>
-                      </button>
+                      <h3>{{ editRegion.open ? (regionEditMode === 'edit' ? 'Редактирование региона' : 'Регион') : 'Новый регион' }}</h3>
+                      <div class="toolbar-actions">
+                        <button
+                          v-if="editRegion.open && regionEditMode === 'edit'"
+                          class="btn btn--icon-plain"
+                          @click="saveEditRegion"
+                          :disabled="catalogsLoading"
+                          aria-label="Сохранить"
+                          title="Сохранить"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 4h12l4 4v12H4z" />
+                            <path d="M7 4v6h8V4" />
+                            <path d="M7 20v-6h10v6" />
+                          </svg>
+                        </button>
+                        <button
+                          v-if="editRegion.open"
+                          class="btn btn--icon-plain btn--edit"
+                          type="button"
+                          aria-label="Редактировать"
+                          title="Редактировать"
+                          @click="regionEditMode = 'edit'"
+                          :disabled="regionEditMode === 'edit'"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 20h4l10-10-4-4L4 16v4Z" />
+                            <path d="M13 6l4 4" />
+                          </svg>
+                        </button>
+                        <button
+                          v-if="editRegion.open"
+                          class="btn btn--icon-plain btn--danger"
+                          type="button"
+                          aria-label="Удалить"
+                          title="Удалить"
+                          @click="deleteRegion(editRegion.code)"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
+                          </svg>
+                        </button>
+                        <button
+                          v-else
+                          class="btn btn--icon-plain"
+                          @click="createRegion"
+                          :disabled="catalogsLoading"
+                          aria-label="Добавить регион"
+                          title="Добавить регион"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 4h12l4 4v12H4z" />
+                            <path d="M7 4v6h8V4" />
+                            <path d="M7 20v-6h10v6" />
+                          </svg>
+                        </button>
+                        <button
+                          class="btn btn--icon-plain"
+                          type="button"
+                          aria-label="Закрыть"
+                          title="Закрыть"
+                          @click="closeRegionModal"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M6 6l12 12M18 6l-12 12" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
-                    <div class="modal__body">
+                    <div class="modal__body" :class="{ 'modal__body--locked': catalogsLoading }">
+                      <div v-if="catalogsLoading" class="modal__body-overlay">
+                        <div class="loader-wrap loader-wrap--compact">
+                          <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                            <div class="wheel"></div>
+                            <div class="hamster">
+                              <div class="hamster__body">
+                                <div class="hamster__head">
+                                  <div class="hamster__ear"></div>
+                                  <div class="hamster__eye"></div>
+                                  <div class="hamster__nose"></div>
+                                </div>
+                                <div class="hamster__limb hamster__limb--fr"></div>
+                                <div class="hamster__limb hamster__limb--fl"></div>
+                                <div class="hamster__limb hamster__limb--br"></div>
+                                <div class="hamster__limb hamster__limb--bl"></div>
+                                <div class="hamster__tail"></div>
+                              </div>
+                            </div>
+                            <div class="spoke"></div>
+                          </div>
+                          <p class="muted">Загрузка…</p>
+                        </div>
+                      </div>
                       <div v-if="editRegion.open" class="form form--stack form--compact">
                         <label class="field">
                           <span class="label">Код</span>
@@ -3323,32 +3914,9 @@
                         </label>
                         <label class="field">
                           <span class="label">Название</span>
-                          <input v-model.trim="editRegion.name" class="input" />
+                          <input v-model.trim="editRegion.name" class="input" :disabled="regionEditMode === 'view'" />
                         </label>
-                        <div class="toolbar-actions">
-                          <button
-                            class="btn btn--icon-plain"
-                            @click="saveEditRegion"
-                            :disabled="catalogsLoading"
-                            aria-label="Сохранить"
-                            title="Сохранить"
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M5 13l4 4L19 7" />
-                            </svg>
-                          </button>
-                          <button
-                            class="btn btn--icon-plain"
-                            type="button"
-                            aria-label="Удалить"
-                            title="Удалить"
-                            @click="deleteRegion(editRegion.code)"
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
-                            </svg>
-                          </button>
-                        </div>
+                        <div class="toolbar-actions"></div>
                       </div>
                       <div v-else class="form form--stack form--compact">
                         <label class="field">
@@ -3359,19 +3927,6 @@
                           <span class="label">Регион (название)</span>
                           <input v-model.trim="newRegion.name" class="input" placeholder="Russia" />
                         </label>
-                        <div class="toolbar-actions">
-                          <button
-                            class="btn btn--icon-plain"
-                            @click="createRegion"
-                            :disabled="catalogsLoading"
-                            aria-label="Добавить регион"
-                            title="Добавить регион"
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M5 13l4 4L19 7" />
-                            </svg>
-                          </button>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -3380,8 +3935,42 @@
               <table v-if="sortedRegions.length" class="table table--compact">
                 <thead>
                   <tr>
-                    <th class="sortable" @click="toggleRegionsSort('code')">Код</th>
-                    <th class="sortable" @click="toggleRegionsSort('name')">Название</th>
+                    <th>
+                      <span class="th-title">
+                        Код
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по коду"
+                          title="Сортировка по коду"
+                          @click.stop="toggleRegionsSort('code')"
+                          :class="getKeyedSortClass(regionsSort, 'code')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
+                    </th>
+                    <th>
+                      <span class="th-title">
+                        Название
+                        <button
+                          class="filter-icon filter-icon--sort"
+                          type="button"
+                          aria-label="Сортировка по названию"
+                          title="Сортировка по названию"
+                          @click.stop="toggleRegionsSort('name')"
+                          :class="getKeyedSortClass(regionsSort, 'name')"
+                        >
+                          <svg viewBox="0 0 24 24">
+                            <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                            <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                          </svg>
+                        </button>
+                      </span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3404,15 +3993,14 @@
               <p class="muted">Создание менеджеров и управление доступом.</p>
             </div>
             <div class="toolbar-actions">
-              <button
-                class="btn btn--icon btn--glow btn--glow-add"
-                title="Добавить пользователя"
-                aria-label="Добавить пользователя"
-                @click="openUserModal"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
+              <button class="deal-create-btn" type="button" @click="openUserModal" aria-label="Добавить пользователя" title="Добавить пользователя">
+                <span class="deal-create-btn__text">Пользователь</span>
+                <span class="deal-create-btn__icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
+                    <line y2="19" y1="5" x2="12" x1="12"></line>
+                    <line y2="12" y1="12" x2="19" x1="5"></line>
+                  </svg>
+                </span>
               </button>
               <button
                 class="btn btn--icon btn--glow btn--glow-refresh"
@@ -3447,7 +4035,30 @@
                       </svg>
                     </button>
                   </div>
-                  <div class="modal__body">
+                  <div class="modal__body" :class="{ 'modal__body--locked': userLoading }">
+                    <div v-if="userLoading" class="modal__body-overlay">
+                      <div class="loader-wrap loader-wrap--compact">
+                        <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                          <div class="wheel"></div>
+                          <div class="hamster">
+                            <div class="hamster__body">
+                              <div class="hamster__head">
+                                <div class="hamster__ear"></div>
+                                <div class="hamster__eye"></div>
+                                <div class="hamster__nose"></div>
+                              </div>
+                              <div class="hamster__limb hamster__limb--fr"></div>
+                              <div class="hamster__limb hamster__limb--fl"></div>
+                              <div class="hamster__limb hamster__limb--br"></div>
+                              <div class="hamster__limb hamster__limb--bl"></div>
+                              <div class="hamster__tail"></div>
+                            </div>
+                          </div>
+                          <div class="spoke"></div>
+                        </div>
+                        <p class="muted">Загрузка…</p>
+                      </div>
+                    </div>
                     <div class="form form--stack form--compact">
                       <label class="field">
                         <span class="label">Логин</span>
@@ -3529,7 +4140,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, watch, nextTick } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, computed, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../stores/auth'
 import { API_BASE, apiGet, apiPost, apiDelete, apiPut, apiPostForm, apiGetFile, apiPostFormWithProgress } from '../api/http'
@@ -3610,6 +4221,13 @@ const showPwdForm = ref(false)
 const accountEditMode = ref('view')
 const dealEditMode = ref('view')
 const gameEditMode = ref('view')
+const dealsBootstrapped = ref(false)
+const catalogsLoadedOnce = ref(false)
+const domainsLoadedOnce = ref(false)
+const sourcesLoadedOnce = ref(false)
+const slotTypesLoadedOnce = ref(false)
+const accountsAllLoadedOnce = ref(false)
+const gamesAllLoadedOnce = ref(false)
 
 const sourceNameByCode = computed(() => {
   const map = new Map()
@@ -3677,7 +4295,6 @@ const activeAccountChips = computed(() => {
   if (accountFilters.game_q) chips.push({ key: 'game', label: 'Игра', value: accountFilters.game_q })
   if (accountFilters.region_q) chips.push({ key: 'region', label: 'Регион', value: accountFilters.region_q })
   if (accountFilters.status_q) chips.push({ key: 'status', label: 'Статус', value: accountFilters.status_q })
-  if (accountFilters.slots_q) chips.push({ key: 'slots', label: 'Слоты', value: accountFilters.slots_q })
   if (accountFilters.date_from || accountFilters.date_to) {
     const from = accountFilters.date_from ? formatDateOnly(accountFilters.date_from) : '—'
     const to = accountFilters.date_to ? formatDateOnly(accountFilters.date_to) : '—'
@@ -3712,6 +4329,20 @@ const modalStyle = computed(() => ({
 const resetModalPos = () => {
   modalPos.x = 0
   modalPos.y = 0
+}
+
+function closeAllModals() {
+  closePwdModal()
+  closeAccountImport()
+  closeGameImport()
+  closeGameModal()
+  closeDealModal()
+  closeDomainModal()
+  closeSourceModal()
+  closePlatformModal()
+  closeRegionModal()
+  closeUserModal()
+  cancelEditAccount()
 }
 
 const startModalDrag = (event) => {
@@ -3868,22 +4499,26 @@ const totalPages = computed(() => {
 
 const newDomain = ref('')
 const editDomain = reactive({ open: false, name: '', original: '' })
+const domainEditMode = ref('view')
 const newSource = reactive({
   code: '',
   name: '',
 })
 const editSource = reactive({ open: false, code: '', name: '' })
+const sourceEditMode = ref('view')
 const newPlatform = reactive({
   code: '',
   name: '',
   slot_capacity: 0,
 })
 const editPlatform = reactive({ open: false, code: '', name: '', slot_capacity: 0 })
+const platformEditMode = ref('view')
 const newRegion = reactive({
   code: '',
   name: '',
 })
 const editRegion = reactive({ open: false, code: '', name: '' })
+const regionEditMode = ref('view')
 
 const newAccount = reactive({
   login_name: '',
@@ -3909,7 +4544,6 @@ const accountFilterDraft = reactive({
   game: '',
   region: '',
   status: '',
-  slots: '',
   date_from: '',
   date_to: '',
 })
@@ -4019,7 +4653,6 @@ const accountFilters = reactive({
   game_q: '',
   region_q: '',
   status_q: '',
-  slots_q: '',
   date_from: '',
   date_to: '',
 })
@@ -4121,7 +4754,13 @@ const getSortedSlotStatus = (list) => {
 
 const getAccountSlotStatusList = (account) => {
   const list = Array.isArray(account?.slot_status) ? account.slot_status : []
-  if (list.length) return getSortedSlotStatus(list)
+  if (list.length) {
+    const codes = Array.isArray(account?.platform_codes) ? account.platform_codes.map((c) => String(c).toLowerCase()) : []
+    if (codes.length && !codes.includes('ps4')) {
+      return getSortedSlotStatus(list.filter((s) => String(s?.platform_code || '').toLowerCase() === 'ps5'))
+    }
+    return getSortedSlotStatus(list)
+  }
   return []
 }
 
@@ -4132,6 +4771,48 @@ const getAccountFreeTotal = (account) => {
 }
 
 const formatAccountSlots = (account) => getAccountSlotsText(account)
+
+const getSortButtonClass = (state) => ({
+  'sort-icon--active': Boolean(state),
+  'sort-icon--asc': state === 'asc',
+  'sort-icon--desc': state === 'desc',
+})
+
+const getAccountSortState = (key) => {
+  const map = {
+    login: ['login_asc', 'login_desc'],
+    games: ['games_asc', 'games_desc'],
+  }
+  const pair = map[key]
+  if (!pair) return ''
+  const [asc, desc] = pair
+  if (accountSort.value === asc) return 'asc'
+  if (accountSort.value === desc) return 'desc'
+  return ''
+}
+
+const getAccountSortClass = (key) => {
+  const state = getAccountSortState(key)
+  return getSortButtonClass(state)
+}
+
+const getGamesSortClass = (key) => {
+  const state = gamesSort.value.key === key ? gamesSort.value.dir : ''
+  return getSortButtonClass(state)
+}
+
+const getDealSortClass = (key) => {
+  const state = dealSort.value.key === key ? dealSort.value.dir : ''
+  return getSortButtonClass(state)
+}
+
+const getDomainsSortClass = () => getSortButtonClass(domainsSortAsc.value ? 'asc' : 'desc')
+
+const getKeyedSortClass = (sortRef, key) => {
+  const sort = sortRef?.value ?? sortRef
+  const state = sort?.key === key ? sort?.dir : ''
+  return getSortButtonClass(state)
+}
 
 const getAccountFreeSlots = (account, platformCode) => {
   const slot = getAccountPlatformSlots(account, platformCode)
@@ -4164,13 +4845,38 @@ const isSlotTypeSupportedForGame = (slotTypeCode, gameId) => {
   return true
 }
 
+const getAccountPlatformCodesForDeal = (target) => {
+  const isEdit = target === 'edit'
+  const accountId = isEdit ? editDeal.account_id : newDeal.account_id
+  if (!accountId) return []
+  const list = isEdit ? dealAccountsForGameEdit.value : dealAccountsForGameNew.value
+  const account = (list || []).find((a) => a.account_id === accountId)
+  const codes = Array.isArray(account?.platform_codes) ? account.platform_codes : []
+  return codes.map((c) => String(c).toLowerCase())
+}
+
+const isSlotTypeSupportedForDeal = (slotTypeCode, target) => {
+  if (!slotTypeCode) return false
+  const isEdit = target === 'edit'
+  const gameId = isEdit ? editDeal.game_id : newDeal.game_id
+  const type = slotTypes.value.find((t) => t.code === slotTypeCode)
+  if (!type?.platform_code) return true
+  const accountPlatforms = getAccountPlatformCodesForDeal(target)
+  if (accountPlatforms.length) {
+    const hasPs4 = accountPlatforms.includes('ps4')
+    if (hasPs4) return true
+    return String(type.platform_code).toLowerCase() === 'ps5'
+  }
+  return isSlotTypeSupportedForGame(slotTypeCode, gameId)
+}
+
 const getDealSlotTypeOptions = (target) => {
   const isEdit = target === 'edit'
   const gameId = isEdit ? editDeal.game_id : newDeal.game_id
   const availability = isEdit ? dealSlotAvailabilityEdit.value : dealSlotAvailabilityNew.value
   const hasAssignments = isEdit ? hasAnyGameAssignmentsEdit.value : hasAnyGameAssignmentsNew.value
   return (slotTypes.value || []).map((t) => {
-    const supported = isSlotTypeSupportedForGame(t.code, gameId)
+    const supported = isSlotTypeSupportedForDeal(t.code, target)
     const hasFree = availability?.[t.code]?.hasFree
     const noAccounts = supported && hasFree === false && !hasAssignments
     return { code: t.code, name: t.name, platform_code: t.platform_code, supported, hasFree, noAccounts }
@@ -4190,7 +4896,7 @@ const isDealSlotTypeUnsupported = (target) => {
   const gameId = isEdit ? editDeal.game_id : newDeal.game_id
   const slotTypeCode = isEdit ? editDeal.slot_type_code : newDeal.slot_type_code
   if (!gameId || !slotTypeCode) return false
-  return !isSlotTypeSupportedForGame(slotTypeCode, gameId)
+  return !isSlotTypeSupportedForDeal(slotTypeCode, target)
 }
 
 const hasFreeDealSlots = (target) => {
@@ -4243,6 +4949,8 @@ const formatPrice = (value) => {
     .format(num)
     .replace(/\u00A0/g, ' ')
 }
+
+const toUtcDateTime = (value) => (value ? `${value}T00:00:00Z` : null)
 
 const getNotesRows = (value) => {
   if (!value) return 2
@@ -4683,9 +5391,9 @@ function openGameAccounts(game) {
 function toggleAccountSort(key) {
   const map = {
     login: ['login_asc', 'login_desc'],
+    games: ['games_asc', 'games_desc'],
     region: ['region_asc', 'region_desc'],
     status: ['status_asc', 'status_desc'],
-    slots: ['slots_asc', 'slots_desc'],
     date: ['date_asc', 'date_desc'],
   }
   const [asc, desc] = map[key] || []
@@ -4812,6 +5520,7 @@ function nextAccountsPage() {
 }
 
 function startEditGame(game) {
+  closeAllModals()
   resetModalPos()
   showGameForm.value = false
   editGame.open = true
@@ -4829,7 +5538,6 @@ function startEditGame(game) {
   editGame.platform_codes = Array.isArray(game.platform_codes) ? [...game.platform_codes] : []
   editGame.region_code = game.region_code || ''
   loadGameLogo(game.game_id)
-  loadGameSlotAssignments(game.game_id)
 }
 
 function cancelEditGame() {
@@ -4856,6 +5564,7 @@ function cancelEditGame() {
 }
 
 function openCreateGameModal() {
+  closeAllModals()
   resetModalPos()
   showGameForm.value = true
   gameEditMode.value = 'edit'
@@ -4865,6 +5574,7 @@ function openCreateGameModal() {
 }
 
 function openGameImport() {
+  closeAllModals()
   resetModalPos()
   showGameImport.value = true
   gameImportFile.value = null
@@ -4891,6 +5601,7 @@ function openGameImport() {
 }
 
 function openAccountImport() {
+  closeAllModals()
   resetModalPos()
   showAccountImport.value = true
   accountImportFile.value = null
@@ -5673,9 +6384,6 @@ const resetAccountFilter = (kind) => {
   } else if (kind === 'status') {
     accountFilters.status_q = ''
     accountFilterDraft.status = ''
-  } else if (kind === 'slots') {
-    accountFilters.slots_q = ''
-    accountFilterDraft.slots = ''
   } else if (kind === 'date') {
     accountFilters.date_from = ''
     accountFilters.date_to = ''
@@ -5688,14 +6396,12 @@ const resetAccountFilter = (kind) => {
     accountFilters.game_q = ''
     accountFilters.region_q = ''
     accountFilters.status_q = ''
-    accountFilters.slots_q = ''
     accountFilters.date_from = ''
     accountFilters.date_to = ''
     accountFilterDraft.login = ''
     accountFilterDraft.game = ''
     accountFilterDraft.region = ''
     accountFilterDraft.status = ''
-    accountFilterDraft.slots = ''
     accountFilterDraft.date_from = ''
     accountFilterDraft.date_to = ''
     accountFilterErrors.date = ''
@@ -5710,7 +6416,6 @@ const openAccountFilter = (kind) => {
   accountFilterDraft.game = accountFilters.game_q || ''
   accountFilterDraft.region = accountFilters.region_q || ''
   accountFilterDraft.status = accountFilters.status_q || ''
-  accountFilterDraft.slots = accountFilters.slots_q || ''
   accountFilterDraft.date_from = accountFilters.date_from || ''
   accountFilterDraft.date_to = accountFilters.date_to || ''
   activeAccountFilter.value = activeAccountFilter.value === kind ? '' : kind
@@ -5725,8 +6430,6 @@ const applyAccountFilter = (kind) => {
     accountFilters.region_q = accountFilterDraft.region.trim()
   } else if (kind === 'status') {
     accountFilters.status_q = accountFilterDraft.status.trim()
-  } else if (kind === 'slots') {
-    accountFilters.slots_q = accountFilterDraft.slots.trim()
   } else if (kind === 'date') {
     if (!validateAccountDateRange()) return
     accountFilters.date_from = accountFilterDraft.date_from
@@ -5753,6 +6456,7 @@ const validateAccountDateRange = () => {
 }
 
 function openCreateDealModal() {
+  closeAllModals()
   resetModalPos()
   showDealForm.value = true
   cancelEditDeal()
@@ -5826,6 +6530,7 @@ function closeDealModal() {
 }
 
 function startEditDeal(deal) {
+  closeAllModals()
   resetModalPos()
   showDealForm.value = false
   editDeal.open = true
@@ -5933,16 +6638,27 @@ function getAuthSecret(accountId) {
 async function loadAccountSecrets(list) {
   accountSecrets.value = {}
   if (!list.length) return
-  await Promise.all(
-    list.map(async (a) => {
-      try {
-        const s = await apiGet(`/accounts/${a.account_id}/secrets`, { token: auth.state.token })
-        accountSecrets.value[a.account_id] = s || []
-      } catch {
-        accountSecrets.value[a.account_id] = []
-      }
-    })
-  )
+  const ids = list.map((a) => a.account_id).filter(Boolean)
+  if (!ids.length) return
+  try {
+    const batch = await apiPost('/accounts/secrets/batch', { account_ids: ids }, { token: auth.state.token })
+    const map = {}
+    for (const item of batch || []) {
+      map[item.account_id] = item.secrets || []
+    }
+    accountSecrets.value = map
+  } catch {
+    await Promise.all(
+      ids.map(async (accountId) => {
+        try {
+          const s = await apiGet(`/accounts/${accountId}/secrets`, { token: auth.state.token })
+          accountSecrets.value[accountId] = s || []
+        } catch {
+          accountSecrets.value[accountId] = []
+        }
+      })
+    )
+  }
 }
 
 async function loadAccountGames(accountId) {
@@ -6065,18 +6781,17 @@ async function loadAccounts() {
     if (accountFilters.game_q) params.set('game_q', accountFilters.game_q)
     if (accountFilters.region_q) params.set('region_q', accountFilters.region_q)
     if (accountFilters.status_q) params.set('status_q', accountFilters.status_q)
-    if (accountFilters.slots_q) params.set('slots_q', accountFilters.slots_q)
     if (accountFilters.date_from) params.set('date_from', accountFilters.date_from)
     if (accountFilters.date_to) params.set('date_to', accountFilters.date_to)
     const sortMap = {
       login_asc: { key: 'login', dir: 'asc' },
       login_desc: { key: 'login', dir: 'desc' },
+      games_asc: { key: 'games', dir: 'asc' },
+      games_desc: { key: 'games', dir: 'desc' },
       region_asc: { key: 'region', dir: 'asc' },
       region_desc: { key: 'region', dir: 'desc' },
       status_asc: { key: 'status', dir: 'asc' },
       status_desc: { key: 'status', dir: 'desc' },
-      slots_asc: { key: 'slots', dir: 'asc' },
-      slots_desc: { key: 'slots', dir: 'desc' },
       date_asc: { key: 'date', dir: 'asc' },
       date_desc: { key: 'date', dir: 'desc' },
     }
@@ -6129,6 +6844,7 @@ async function loadAccountDeals(accountId) {
 }
 
 function startEditAccount(a) {
+  closeAllModals()
   resetModalPos()
   accountModalMode.value = 'edit'
   accountEditMode.value = 'view'
@@ -6167,6 +6883,7 @@ function startEditAccount(a) {
 }
 
 function openCreateAccountModal() {
+  closeAllModals()
   resetModalPos()
   accountModalMode.value = 'create'
   accountEditMode.value = 'edit'
@@ -6442,6 +7159,25 @@ async function updateAccount() {
   }
 }
 
+async function deleteAccount() {
+  accountsError.value = null
+  accountsOk.value = null
+  if (!editAccount.account_id) return
+  if (!window.confirm('Архивировать аккаунт?')) return
+  accountsLoading.value = true
+  try {
+    await apiDelete(`/accounts/${editAccount.account_id}`, { token: auth.state.token })
+    accountsOk.value = 'Аккаунт архивирован'
+    await loadAccounts()
+    await loadAccountsAll()
+    cancelEditAccount()
+  } catch (e) {
+    accountsError.value = mapApiError(e?.message)
+  } finally {
+    accountsLoading.value = false
+  }
+}
+
 async function createUser() {
   userError.value = null
   userOk.value = null
@@ -6465,6 +7201,7 @@ async function createUser() {
 }
 
 function openUserModal() {
+  closeAllModals()
   resetModalPos()
   showUserForm.value = true
   userError.value = null
@@ -6509,6 +7246,7 @@ async function changePassword() {
 }
 
 function openPwdModal() {
+  closeAllModals()
   resetModalPos()
   showPwdForm.value = true
   pwdError.value = null
@@ -6608,6 +7346,27 @@ async function updateGame() {
   }
 }
 
+async function deleteGame() {
+  gameError.value = null
+  gameOk.value = null
+  if (!editGame.game_id) return
+  if (!window.confirm('Архивировать игру?')) return
+  gameLoading.value = true
+  gameSaving.value = true
+  try {
+    await apiDelete(`/games/${editGame.game_id}`, { token: auth.state.token })
+    gameOk.value = 'Игра архивирована'
+    await loadGames()
+    await loadGamesAll()
+    closeGameModal()
+  } catch (e) {
+    gameError.value = mapApiError(e?.message)
+  } finally {
+    gameLoading.value = false
+    gameSaving.value = false
+  }
+}
+
 async function createDeal() {
   dealError.value = null
   dealOk.value = null
@@ -6645,7 +7404,7 @@ async function createDeal() {
         price: newDeal.price || 0,
         purchase_cost: newDeal.purchase_cost || 0,
         game_link: newDeal.game_link || null,
-        purchase_at: newDeal.deal_type_code === 'sale' ? null : (newDeal.purchase_at ? `${newDeal.purchase_at}T00:00:00Z` : null),
+        purchase_at: newDeal.deal_type_code === 'sale' ? null : toUtcDateTime(newDeal.purchase_at),
         slots_used: newDeal.deal_type_code === 'rental' ? 1 : 0,
         notes: newDeal.notes || null,
       },
@@ -6707,7 +7466,7 @@ async function updateDeal() {
         price: editDeal.price,
         purchase_cost: editDeal.purchase_cost || 0,
         game_link: editDeal.game_link || null,
-        purchase_at: editDeal.deal_type_code === 'sale' ? null : (editDeal.purchase_at || null),
+        purchase_at: editDeal.deal_type_code === 'sale' ? null : toUtcDateTime(editDeal.purchase_at),
         slots_used: editDeal.deal_type_code === 'rental' ? 1 : 0,
         notes: editDeal.notes || null,
         flow_status_code: editDeal.flow_status_code || null,
@@ -6782,11 +7541,13 @@ function formatDate(value) {
 }
 
 function openEditDomain(d) {
+  closeAllModals()
   resetModalPos()
   showDomainForm.value = false
   editDomain.open = true
   editDomain.name = d.name
   editDomain.original = d.name
+  domainEditMode.value = 'view'
 }
 
 function applyDealSearch() {
@@ -7419,26 +8180,45 @@ async function loadDealSlotAvailability(target) {
   try {
     const platforms = getGamePlatformCodes(gameId)
     const list = slotTypes.value || []
-    const results = await Promise.all(
-      list.map(async (t) => {
+    let availabilityMap = {}
+    let availabilityLoaded = false
+    try {
+      const data = await apiGet(`/accounts/for-deal/availability?game_id=${encodeURIComponent(gameId)}`, { token: auth.state.token })
+      availabilityMap = Object.fromEntries((data || []).map((i) => [i.slot_type_code, { hasFree: Boolean(i.has_free) }]))
+      availabilityLoaded = true
+    } catch {
+      availabilityMap = {}
+    }
+    if (!availabilityLoaded) {
+      const results = await Promise.all(
+        list.map(async (t) => {
+          const supported = !platforms.length || platforms.includes(String(t.platform_code || '').toLowerCase())
+          if (!supported) {
+            return [t.code, { hasFree: false }]
+          }
+          try {
+            const params = new URLSearchParams()
+            params.set('game_id', String(gameId))
+            params.set('slot_type_code', t.code)
+            const data = await apiGet(`/accounts/for-deal?${params.toString()}`, { token: auth.state.token })
+            return [t.code, { hasFree: Array.isArray(data) && data.length > 0 }]
+          } catch {
+            return [t.code, { hasFree: false }]
+          }
+        })
+      )
+      availabilityMap = Object.fromEntries(results)
+    }
+    if (availabilityLoaded) {
+      const normalized = {}
+      for (const t of list) {
         const supported = !platforms.length || platforms.includes(String(t.platform_code || '').toLowerCase())
-        if (!supported) {
-          return [t.code, { hasFree: false }]
-        }
-        try {
-          const params = new URLSearchParams()
-          params.set('game_id', String(gameId))
-          params.set('slot_type_code', t.code)
-          const data = await apiGet(`/accounts/for-deal?${params.toString()}`, { token: auth.state.token })
-          return [t.code, { hasFree: Array.isArray(data) && data.length > 0 }]
-        } catch {
-          return [t.code, { hasFree: false }]
-        }
-      })
-    )
-    const map = Object.fromEntries(results)
-    if (isEdit) dealSlotAvailabilityEdit.value = map
-    else dealSlotAvailabilityNew.value = map
+        normalized[t.code] = supported ? (availabilityMap[t.code] || { hasFree: false }) : { hasFree: false }
+      }
+      availabilityMap = normalized
+    }
+    if (isEdit) dealSlotAvailabilityEdit.value = availabilityMap
+    else dealSlotAvailabilityNew.value = availabilityMap
   } finally {
     loading.value = false
   }
@@ -7527,9 +8307,11 @@ function cancelEditDomain() {
   editDomain.open = false
   editDomain.name = ''
   editDomain.original = ''
+  domainEditMode.value = 'view'
 }
 
 function openDomainModal() {
+  closeAllModals()
   resetModalPos()
   showDomainForm.value = true
   cancelEditDomain()
@@ -7565,20 +8347,24 @@ async function saveEditDomain() {
 }
 
 function openEditSource(s) {
+  closeAllModals()
   resetModalPos()
   showSourceForm.value = false
   editSource.open = true
   editSource.code = s.code
   editSource.name = s.name
+  sourceEditMode.value = 'view'
 }
 
 function cancelEditSource() {
   editSource.open = false
   editSource.code = ''
   editSource.name = ''
+  sourceEditMode.value = 'view'
 }
 
 function openSourceModal() {
+  closeAllModals()
   resetModalPos()
   showSourceForm.value = true
   cancelEditSource()
@@ -7615,12 +8401,14 @@ async function saveEditSource() {
 }
 
 function openEditPlatform(p) {
+  closeAllModals()
   resetModalPos()
   showPlatformForm.value = false
   editPlatform.open = true
   editPlatform.code = p.code
   editPlatform.name = p.name
   editPlatform.slot_capacity = p.slot_capacity || 0
+  platformEditMode.value = 'view'
 }
 
 function cancelEditPlatform() {
@@ -7628,9 +8416,11 @@ function cancelEditPlatform() {
   editPlatform.code = ''
   editPlatform.name = ''
   editPlatform.slot_capacity = 0
+  platformEditMode.value = 'view'
 }
 
 function openPlatformModal() {
+  closeAllModals()
   resetModalPos()
   showPlatformForm.value = true
   cancelEditPlatform()
@@ -7672,20 +8462,24 @@ async function saveEditPlatform() {
 }
 
 function openEditRegion(r) {
+  closeAllModals()
   resetModalPos()
   showRegionForm.value = false
   editRegion.open = true
   editRegion.code = r.code
   editRegion.name = r.name
+  regionEditMode.value = 'view'
 }
 
 function cancelEditRegion() {
   editRegion.open = false
   editRegion.code = ''
   editRegion.name = ''
+  regionEditMode.value = 'view'
 }
 
 function openRegionModal() {
+  closeAllModals()
   resetModalPos()
   showRegionForm.value = true
   cancelEditRegion()
@@ -7906,6 +8700,17 @@ onMounted(async () => {
   }
 })
 
+onBeforeUnmount(() => {
+  stopGameImportStatusPolling()
+  stopAccountImportStatusPolling()
+  revokeTelegramMediaUrls()
+  window.removeEventListener('mousemove', onModalDrag)
+  window.removeEventListener('mouseup', stopModalDrag)
+  window.removeEventListener('click', onDealFilterOutside)
+  window.removeEventListener('click', onGameFilterOutside)
+  window.removeEventListener('click', onAccountFilterOutside)
+})
+
 watch(activeDealFilter, (val) => {
   if (val) {
     window.addEventListener('click', onDealFilterOutside)
@@ -7955,15 +8760,17 @@ watch(activeTab, async (tab) => {
     return
   }
   if (tab === 'games') {
-    if (!platforms.value.length || !regions.value.length) {
+    if (!catalogsLoadedOnce.value && (!platforms.value.length || !regions.value.length)) {
       await loadCatalogs()
+      if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
     }
     gamesPage.value = 1
     if (!games.value.length) {
       await loadGames()
     }
-    if (!gamesAll.value.length) {
+    if (!gamesAllLoadedOnce.value && !gamesAll.value.length) {
       await loadGamesAll()
+      if (gamesAll.value.length) gamesAllLoadedOnce.value = true
     }
     showGameForm.value = false
     showGameFilters.value = false
@@ -7972,17 +8779,21 @@ watch(activeTab, async (tab) => {
     return
   }
   if (tab === 'accounts') {
-    if (!platforms.value.length || !regions.value.length) {
+    if (!catalogsLoadedOnce.value && (!platforms.value.length || !regions.value.length)) {
       await loadCatalogs()
+      if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
     }
-    if (!domains.value.length) {
+    if (!domainsLoadedOnce.value && !domains.value.length) {
       await loadDomains()
+      if (domains.value.length) domainsLoadedOnce.value = true
     }
-    if (!gamesAll.value.length) {
+    if (!gamesAllLoadedOnce.value && !gamesAll.value.length) {
       await loadGamesAll()
+      if (gamesAll.value.length) gamesAllLoadedOnce.value = true
     }
-    if (!slotTypes.value.length) {
+    if (!slotTypesLoadedOnce.value && !slotTypes.value.length) {
       await loadSlotTypes()
+      if (slotTypes.value.length) slotTypesLoadedOnce.value = true
     }
     accountsPage.value = 1
     await loadAccounts()
@@ -7991,15 +8802,41 @@ watch(activeTab, async (tab) => {
     return
   }
   if (tab === 'deals') {
-    // стартуем список сразу, остальное догружаем параллельно
     const tasks = [loadDeals(1)]
-    if (!accountsAll.value.length) tasks.push(loadAccountsAll())
-    if (!gamesAll.value.length) tasks.push(loadGamesAll())
-    if (!platforms.value.length || !regions.value.length) tasks.push(loadCatalogs())
-    if (!sources.value.length) tasks.push(loadSources())
-    if (!domains.value.length) tasks.push(loadDomains())
-    if (!slotTypes.value.length) tasks.push(loadSlotTypes())
+    if (!dealsBootstrapped.value) {
+      if (!accountsAllLoadedOnce.value) {
+        tasks.push(loadAccountsAll().then(() => {
+          if (accountsAll.value.length) accountsAllLoadedOnce.value = true
+        }))
+      }
+      if (!gamesAllLoadedOnce.value) {
+        tasks.push(loadGamesAll().then(() => {
+          if (gamesAll.value.length) gamesAllLoadedOnce.value = true
+        }))
+      }
+      if (!catalogsLoadedOnce.value) {
+        tasks.push(loadCatalogs().then(() => {
+          if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
+        }))
+      }
+      if (!sourcesLoadedOnce.value) {
+        tasks.push(loadSources().then(() => {
+          if (sources.value.length) sourcesLoadedOnce.value = true
+        }))
+      }
+      if (!domainsLoadedOnce.value) {
+        tasks.push(loadDomains().then(() => {
+          if (domains.value.length) domainsLoadedOnce.value = true
+        }))
+      }
+      if (!slotTypesLoadedOnce.value) {
+        tasks.push(loadSlotTypes().then(() => {
+          if (slotTypes.value.length) slotTypesLoadedOnce.value = true
+        }))
+      }
+    }
     await Promise.all(tasks)
+    dealsBootstrapped.value = true
     showDealForm.value = false
     return
   }
@@ -8008,7 +8845,17 @@ watch(activeTab, async (tab) => {
     return
   }
   if (tab === 'catalogs') {
-    await Promise.all([loadDomains(), loadSources(), loadCatalogs()])
+    const tasks = []
+    if (!domainsLoadedOnce.value && !domains.value.length) tasks.push(loadDomains().then(() => {
+      if (domains.value.length) domainsLoadedOnce.value = true
+    }))
+    if (!sourcesLoadedOnce.value && !sources.value.length) tasks.push(loadSources().then(() => {
+      if (sources.value.length) sourcesLoadedOnce.value = true
+    }))
+    if (!catalogsLoadedOnce.value && (!platforms.value.length || !regions.value.length)) tasks.push(loadCatalogs().then(() => {
+      if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
+    }))
+    await Promise.all(tasks)
     return
   }
   if (tab === 'users' && isAdmin.value) {
@@ -8322,18 +9169,22 @@ watch(
 
 .deal-create-btn {
   position: relative;
-  width: 170px;
+  width: auto;
+  min-width: 140px;
   height: 32px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   border: 1px solid #34974d;
   background-color: #3aa856;
   border-radius: 10px;
   font-family: inherit;
   letter-spacing: 0.04em;
   overflow: hidden;
+  padding-left: 12px;
   padding-right: 38px;
+  white-space: nowrap;
 }
 
 .deal-create-btn,
@@ -8343,7 +9194,7 @@ watch(
 }
 
 .deal-create-btn__text {
-  transform: translateX(18px);
+  transform: none;
   color: #fff;
   font-weight: 600;
   font-size: 12px;
@@ -9111,6 +9962,35 @@ h2 {
   stroke-linejoin: round;
 }
 
+.btn--icon-plain.btn--danger {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.btn--icon-plain.btn--danger:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.btn--icon-plain.btn--edit {
+  color: #3b82f6;
+  border-color: rgba(59, 130, 246, 0.55);
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.btn--icon-plain.btn--edit:hover {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+.ghost--danger {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.ghost--danger:hover {
+  color: #f87171;
+}
+
 .spinner {
   display: inline-block;
   width: 14px;
@@ -9562,6 +10442,78 @@ h3 {
   font-size: 10px;
 }
 
+.newtons-cradle {
+  --uib-size: 50px;
+  --uib-speed: 1.2s;
+  --uib-color: #474554;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--uib-size);
+  height: var(--uib-size);
+}
+
+.newtons-cradle__dot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  width: 25%;
+  transform-origin: center top;
+}
+
+.newtons-cradle__dot::after {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 25%;
+  border-radius: 50%;
+  background-color: var(--uib-color);
+}
+
+.newtons-cradle__dot:first-child {
+  animation: swing var(--uib-speed) linear infinite;
+}
+
+.newtons-cradle__dot:last-child {
+  animation: swing2 var(--uib-speed) linear infinite;
+}
+
+@keyframes swing {
+  0% {
+    transform: rotate(0deg);
+    animation-timing-function: ease-out;
+  }
+
+  25% {
+    transform: rotate(70deg);
+    animation-timing-function: ease-in;
+  }
+
+  50% {
+    transform: rotate(0deg);
+    animation-timing-function: linear;
+  }
+}
+
+@keyframes swing2 {
+  0% {
+    transform: rotate(0deg);
+    animation-timing-function: linear;
+  }
+
+  50% {
+    transform: rotate(0deg);
+    animation-timing-function: ease-out;
+  }
+
+  75% {
+    transform: rotate(-70deg);
+    animation-timing-function: ease-in;
+  }
+}
+
 .check-item {
   display: flex;
   align-items: center;
@@ -10008,7 +10960,58 @@ table.table {
 }
 
 .th-title--filter .filter-icon {
+  margin-left: 0;
+}
+
+.th-actions {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-icon--sort svg {
+  stroke-width: 2.4;
+}
+
+.sort-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.sort-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sort-icon__up,
+.sort-icon__down {
+  opacity: 0.4;
+}
+
+.sort-icon--active {
+  color: var(--ink);
+}
+
+.sort-icon--asc .sort-icon__up {
+  opacity: 1;
+}
+
+.sort-icon--desc .sort-icon__down {
+  opacity: 1;
+}
+
+.sort-icon--disabled {
+  opacity: 0.35;
 }
 
 .filter-pop {
@@ -10179,6 +11182,11 @@ table.table {
 
 .filter-icon:hover {
   background: rgba(255, 255, 255, 0.16);
+}
+
+.filter-icon:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .pager__size {
