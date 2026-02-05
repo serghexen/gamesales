@@ -26,12 +26,21 @@ export function useAuth() {
 
   async function loadMe() {
     if (!state.token) return
-    const res = await apiGet('/auth/me', { token: state.token }).catch(() => null)
-    if (!res) return
-    state.user = res?.username || state.user
-    state.role = res?.role || state.role
-    if (state.user) localStorage.setItem('auth_user', state.user)
-    if (state.role) localStorage.setItem('auth_role', state.role)
+    try {
+      const res = await apiGet('/auth/me', { token: state.token })
+      if (!res) return false
+      state.user = res?.username || state.user
+      state.role = res?.role || state.role
+      if (state.user) localStorage.setItem('auth_user', state.user)
+      if (state.role) localStorage.setItem('auth_role', state.role)
+      return true
+    } catch (e) {
+      const msg = String(e?.message || '').toLowerCase()
+      if (e?.status === 401 || msg.includes('invalid token') || msg.includes('not authenticated')) {
+        logout()
+      }
+      return false
+    }
   }
 
   function logout() {

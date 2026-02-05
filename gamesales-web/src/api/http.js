@@ -1,5 +1,11 @@
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
+function makeHttpError(message, status) {
+  const err = new Error(message)
+  err.status = status
+  return err
+}
+
 async function parseError(res, fallback) {
   try {
     const data = await res.json()
@@ -15,7 +21,7 @@ export async function apiGet(path, { token } = {}) {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   })
   if (!res.ok) {
-    throw new Error(await parseError(res, `GET ${path} failed: ${res.status}`))
+    throw makeHttpError(await parseError(res, `GET ${path} failed: ${res.status}`), res.status)
   }
   if (res.status === 204) return null
   return res.json()
@@ -31,7 +37,7 @@ export async function apiPost(path, body, { token } = {}) {
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    throw new Error(await parseError(res, `POST ${path} failed: ${res.status}`))
+    throw makeHttpError(await parseError(res, `POST ${path} failed: ${res.status}`), res.status)
   }
   if (res.status === 204) return null
   return res.json()
@@ -43,7 +49,7 @@ export async function apiDelete(path, { token } = {}) {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   })
   if (!res.ok) {
-    throw new Error(await parseError(res, `DELETE ${path} failed: ${res.status}`))
+    throw makeHttpError(await parseError(res, `DELETE ${path} failed: ${res.status}`), res.status)
   }
   if (res.status === 204) return null
   return res.json()
@@ -59,7 +65,7 @@ export async function apiPut(path, body, { token } = {}) {
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    throw new Error(await parseError(res, `PUT ${path} failed: ${res.status}`))
+    throw makeHttpError(await parseError(res, `PUT ${path} failed: ${res.status}`), res.status)
   }
   if (res.status === 204) return null
   return res.json()
@@ -74,7 +80,7 @@ export async function apiPostForm(path, formData, { token } = {}) {
     body: formData,
   })
   if (!res.ok) {
-    throw new Error(await parseError(res, `POST ${path} failed: ${res.status}`))
+    throw makeHttpError(await parseError(res, `POST ${path} failed: ${res.status}`), res.status)
   }
   if (res.status === 204) return null
   return res.json()
@@ -85,7 +91,7 @@ export async function apiGetFile(path, { token } = {}) {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   })
   if (!res.ok) {
-    throw new Error(await parseError(res, `GET ${path} failed: ${res.status}`))
+    throw makeHttpError(await parseError(res, `GET ${path} failed: ${res.status}`), res.status)
   }
   return res.blob()
 }
@@ -106,9 +112,9 @@ export function apiPostFormWithProgress(path, formData, { token, onProgress } = 
       if (xhr.status < 200 || xhr.status >= 300) {
         try {
           const data = JSON.parse(xhr.responseText)
-          reject(new Error(data?.detail || `POST ${path} failed: ${xhr.status}`))
+          reject(makeHttpError(data?.detail || `POST ${path} failed: ${xhr.status}`, xhr.status))
         } catch {
-          reject(new Error(`POST ${path} failed: ${xhr.status}`))
+          reject(makeHttpError(`POST ${path} failed: ${xhr.status}`, xhr.status))
         }
         return
       }
@@ -122,7 +128,7 @@ export function apiPostFormWithProgress(path, formData, { token, onProgress } = 
         resolve({})
       }
     }
-    xhr.onerror = () => reject(new Error(`POST ${path} failed: network error`))
+    xhr.onerror = () => reject(makeHttpError(`POST ${path} failed: network error`, 0))
     xhr.send(formData)
   })
 }
