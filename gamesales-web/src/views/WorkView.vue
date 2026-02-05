@@ -57,6 +57,15 @@
               Чаты
               <span class="tab__badge" aria-hidden="true"></span>
             </router-link>
+            <router-link class="tab" :class="{ active: activeTab === 'analytics' }" :to="{ name: 'work', query: { ...route.query, tab: 'analytics' } }">
+              Аналитика
+              <span class="tab__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M6 10V8a6 6 0 1 1 12 0v2" />
+                  <rect x="5" y="10" width="14" height="10" rx="2" />
+                </svg>
+              </span>
+            </router-link>
             <router-link
               v-if="isAdmin"
               class="tab"
@@ -3916,6 +3925,10 @@
                           <span class="label">Название</span>
                           <input v-model.trim="editRegion.name" class="input" :disabled="regionEditMode === 'view'" />
                         </label>
+                        <label class="field">
+                          <span class="label">Коэф. закупа (RUB)</span>
+                          <input v-model.number="editRegion.purchase_cost_rate" class="input" type="number" step="0.0001" min="0" :disabled="regionEditMode === 'view'" />
+                        </label>
                         <div class="toolbar-actions"></div>
                       </div>
                       <div v-else class="form form--stack form--compact">
@@ -3926,6 +3939,10 @@
                         <label class="field">
                           <span class="label">Регион (название)</span>
                           <input v-model.trim="newRegion.name" class="input" placeholder="Russia" />
+                        </label>
+                        <label class="field">
+                          <span class="label">Коэф. закупа (RUB)</span>
+                          <input v-model.number="newRegion.purchase_cost_rate" class="input" type="number" step="0.0001" min="0" />
                         </label>
                       </div>
                     </div>
@@ -3971,18 +3988,226 @@
                         </button>
                       </span>
                     </th>
+                    <th>Коэф.</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="r in sortedRegions" :key="r.code" class="clickable-row" @click="openEditRegion(r)">
                     <td>{{ r.code }}</td>
                     <td>{{ r.name }}</td>
+                    <td>{{ r.purchase_cost_rate }}</td>
                   </tr>
                 </tbody>
               </table>
               <p v-else class="muted">Пока нет регионов.</p>
             </div>
             </div>
+          </div>
+        </section>
+
+        <section v-if="activeTab === 'analytics'" class="panel panel--wide">
+          <div class="panel__head analytics-head">
+            <div>
+              <h2>Аналитика</h2>
+              <p class="muted">Продажи и шеринг (по завершенным сделкам).</p>
+            </div>
+            <div class="analytics-head__actions">
+              <button class="btn btn--icon btn--glow btn--glow-refresh" type="button" @click="loadAnalytics" :disabled="analyticsLoading">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+                  <path d="M20 4v6h-6" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="panel__body">
+            <div class="analytics-filters">
+              <label class="field">
+                <span class="label">Период с</span>
+                <input v-model="analyticsFilters.date_from" class="input" type="date" :max="analyticsFilters.date_to || maxDate" />
+              </label>
+              <label class="field">
+                <span class="label">Период по</span>
+                <input v-model="analyticsFilters.date_to" class="input" type="date" :min="analyticsFilters.date_from || minDate" :max="maxDate" />
+              </label>
+              <label class="field">
+                <span class="label">Тип сделки</span>
+                <select v-model="analyticsFilters.deal_type_code" class="input input--select">
+                  <option value="">Все</option>
+                  <option v-for="t in dealTypeOptions" :key="t.code" :value="t.code">{{ t.name }}</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Регион</span>
+                <select v-model="analyticsFilters.region_code" class="input input--select">
+                  <option value="">Все</option>
+                  <option v-for="r in regions" :key="r.code" :value="r.code">{{ r.name }} ({{ r.code }})</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Источник</span>
+                <select v-model="analyticsFilters.source_code" class="input input--select">
+                  <option value="">Все</option>
+                  <option v-for="s in sources" :key="s.code" :value="s.code">{{ s.name }} ({{ s.code }})</option>
+                </select>
+              </label>
+            </div>
+
+            <p v-if="analyticsError" class="bad">{{ analyticsError }}</p>
+
+            <div v-if="analyticsLoading" class="loader-wrap loader-wrap--compact">
+              <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                <div class="wheel"></div>
+                <div class="hamster">
+                  <div class="hamster__body">
+                    <div class="hamster__head">
+                      <div class="hamster__ear"></div>
+                      <div class="hamster__eye"></div>
+                      <div class="hamster__nose"></div>
+                    </div>
+                    <div class="hamster__limb hamster__limb--fr"></div>
+                    <div class="hamster__limb hamster__limb--fl"></div>
+                    <div class="hamster__limb hamster__limb--br"></div>
+                    <div class="hamster__limb hamster__limb--bl"></div>
+                    <div class="hamster__tail"></div>
+                  </div>
+                </div>
+                <div class="spoke"></div>
+              </div>
+            </div>
+
+            <div v-else class="analytics-cards">
+              <div class="mini">
+                <div class="mini__label">Сделок</div>
+                <div class="mini__value">{{ analyticsTotals.count }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Закуп</div>
+                <div class="mini__value">{{ formatPrice(analyticsTotals.purchase_cost) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Выручка</div>
+                <div class="mini__value">{{ formatPrice(analyticsTotals.revenue) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Маржа</div>
+                <div class="mini__value">{{ formatPrice(analyticsTotals.margin) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Средний чек</div>
+                <div class="mini__value">{{ formatPrice(analyticsTotals.avg_check) }}</div>
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="analytics-grid">
+              <div>
+                <h3>По дням</h3>
+                <table class="table table--compact table--dense" v-if="analyticsByDay.length">
+                  <thead>
+                    <tr>
+                      <th>Дата</th>
+                      <th>Закуп</th>
+                      <th>Выручка</th>
+                      <th>Маржа</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in analyticsByDay" :key="row.date">
+                      <td>{{ formatDateOnly(row.date) }}</td>
+                      <td>{{ formatPrice(row.purchase_cost) }}</td>
+                      <td>{{ formatPrice(row.revenue) }}</td>
+                      <td>{{ formatPrice(row.margin) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p v-else class="muted">Нет данных за выбранный период.</p>
+              </div>
+              <div>
+                <h3>По типам</h3>
+                <table class="table table--compact table--dense" v-if="analyticsByType.length">
+                  <thead>
+                    <tr>
+                      <th>Тип</th>
+                      <th>Закуп</th>
+                      <th>Выручка</th>
+                      <th>Маржа</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in analyticsByType" :key="row.deal_type_code">
+                      <td>{{ getDealTypeName(row.deal_type_code) }}</td>
+                      <td>{{ formatPrice(row.purchase_cost) }}</td>
+                      <td>{{ formatPrice(row.revenue) }}</td>
+                      <td>{{ formatPrice(row.margin) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p v-else class="muted">Нет данных по типам.</p>
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="analytics-grid">
+              <div>
+                <h3>Источники: по количеству</h3>
+                <table class="table table--compact table--dense" v-if="analyticsSourcesTopCount.length">
+                  <thead>
+                    <tr>
+                      <th>Источник</th>
+                      <th>Сделок</th>
+                      <th>Выручка</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in analyticsSourcesTopCount" :key="row.source_code || row.source_name">
+                      <td>{{ row.source_name || row.source_code || '—' }}</td>
+                      <td>{{ row.deals_count }}</td>
+                      <td>{{ formatPrice(row.revenue) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p v-else class="muted">Нет данных по источникам.</p>
+              </div>
+              <div>
+                <h3>Источники: по выручке</h3>
+                <table class="table table--compact table--dense" v-if="analyticsSourcesTopRevenue.length">
+                  <thead>
+                    <tr>
+                      <th>Источник</th>
+                      <th>Выручка</th>
+                      <th>Сделок</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in analyticsSourcesTopRevenue" :key="row.source_code || row.source_name">
+                      <td>{{ row.source_name || row.source_code || '—' }}</td>
+                      <td>{{ formatPrice(row.revenue) }}</td>
+                      <td>{{ row.deals_count }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p v-else class="muted">Нет данных по источникам.</p>
+              </div>
+              <div>
+                <h3>Повторные клиенты</h3>
+                <div class="mini">
+                  <div class="mini__label">Повторные</div>
+                  <div class="mini__value">{{ analyticsRepeatCustomers.repeat_count }}</div>
+                </div>
+                <div class="mini">
+                  <div class="mini__label">Всего клиентов</div>
+                  <div class="mini__value">{{ analyticsRepeatCustomers.total_customers }}</div>
+                </div>
+                <div class="mini">
+                  <div class="mini__label">Доля повторных</div>
+                  <div class="mini__value">{{ formatPercent(analyticsRepeatCustomers.repeat_share) }}</div>
+                </div>
+              </div>
+            </div>
+
           </div>
         </section>
 
@@ -4390,7 +4615,7 @@ const pwdForm = reactive({
   next2: '',
 })
 
-const TAB_KEYS = ['deals', 'accounts', 'games', 'telegram', 'catalogs', 'users', 'profile', 'dashboard']
+const TAB_KEYS = ['deals', 'accounts', 'games', 'telegram', 'analytics', 'catalogs', 'users', 'profile', 'dashboard']
 const activeTab = ref('deals')
 
 const setActiveTab = (tab) => {
@@ -4479,6 +4704,31 @@ const dealFilters = reactive({
   type_q: '',
 })
 const dealShowCompleted = ref(false)
+const analyticsFilters = reactive({
+  date_from: '',
+  date_to: '',
+  deal_type_code: '',
+  region_code: '',
+  source_code: '',
+})
+const analyticsTotals = reactive({
+  revenue: 0,
+  purchase_cost: 0,
+  margin: 0,
+  count: 0,
+  avg_check: 0,
+})
+const analyticsByDay = ref([])
+const analyticsByType = ref([])
+const analyticsSourcesTopCount = ref([])
+const analyticsSourcesTopRevenue = ref([])
+const analyticsRepeatCustomers = reactive({
+  repeat_count: 0,
+  total_customers: 0,
+  repeat_share: 0,
+})
+const analyticsLoading = ref(false)
+const analyticsError = ref(null)
 const slotTypes = ref([])
 const accountSlotStatusNew = ref([])
 const accountSlotStatusEdit = ref([])
@@ -4516,8 +4766,9 @@ const platformEditMode = ref('view')
 const newRegion = reactive({
   code: '',
   name: '',
+  purchase_cost_rate: 1,
 })
-const editRegion = reactive({ open: false, code: '', name: '' })
+const editRegion = reactive({ open: false, code: '', name: '', purchase_cost_rate: 1 })
 const regionEditMode = ref('view')
 
 const newAccount = reactive({
@@ -4693,6 +4944,8 @@ const dealTypeOptions = [
   { code: 'expense', name: 'Расходы' },
   { code: 'adjustment', name: 'Корректирование' },
 ]
+
+const getDealTypeName = (code) => dealTypeOptions.find((t) => t.code === code)?.name || code || '—'
 
 const dealStatusOptions = [
   { code: 'draft', name: 'Черновик' },
@@ -4946,6 +5199,14 @@ const formatPrice = (value) => {
   const num = Number(value)
   if (!Number.isFinite(num)) return '—'
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 })
+    .format(num)
+    .replace(/\u00A0/g, ' ')
+}
+
+const formatPercent = (value) => {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '—'
+  return new Intl.NumberFormat('ru-RU', { style: 'percent', maximumFractionDigits: 1 })
     .format(num)
     .replace(/\u00A0/g, ' ')
 }
@@ -7535,6 +7796,48 @@ async function loadDeals(page = 1) {
   }
 }
 
+async function loadAnalytics() {
+  analyticsError.value = null
+  analyticsLoading.value = true
+  try {
+    const params = new URLSearchParams()
+    if (analyticsFilters.date_from) params.set('date_from', analyticsFilters.date_from)
+    if (analyticsFilters.date_to) params.set('date_to', analyticsFilters.date_to)
+    if (analyticsFilters.deal_type_code) params.set('deal_type_code', analyticsFilters.deal_type_code)
+    if (analyticsFilters.region_code) params.set('region_code', analyticsFilters.region_code)
+    if (analyticsFilters.source_code) params.set('source_code', analyticsFilters.source_code)
+    const [sales, sources] = await Promise.all([
+      apiGet(`/analytics/sales?${params.toString()}`, { token: auth.state.token }),
+      apiGet(`/analytics/sources?${params.toString()}`, { token: auth.state.token }),
+    ])
+    analyticsTotals.revenue = Number(sales?.totals?.revenue || 0)
+    analyticsTotals.purchase_cost = Number(sales?.totals?.purchase_cost || 0)
+    analyticsTotals.margin = Number(sales?.totals?.margin || 0)
+    analyticsTotals.count = Number(sales?.totals?.count || 0)
+    analyticsTotals.avg_check = Number(sales?.totals?.avg_check || 0)
+    analyticsByDay.value = Array.isArray(sales?.by_day) ? sales.by_day : []
+    analyticsByType.value = Array.isArray(sales?.by_type) ? sales.by_type : []
+
+    analyticsSourcesTopCount.value = Array.isArray(sources?.top_by_count) ? sources.top_by_count : []
+    analyticsSourcesTopRevenue.value = Array.isArray(sources?.top_by_revenue) ? sources.top_by_revenue : []
+    analyticsRepeatCustomers.repeat_count = Number(sources?.repeat_customers?.repeat_count || 0)
+    analyticsRepeatCustomers.total_customers = Number(sources?.repeat_customers?.total_customers || 0)
+    analyticsRepeatCustomers.repeat_share = Number(sources?.repeat_customers?.repeat_share || 0)
+
+  } catch (e) {
+    analyticsError.value = mapApiError(e?.message)
+    analyticsByDay.value = []
+    analyticsByType.value = []
+    analyticsSourcesTopCount.value = []
+    analyticsSourcesTopRevenue.value = []
+    analyticsRepeatCustomers.repeat_count = 0
+    analyticsRepeatCustomers.total_customers = 0
+    analyticsRepeatCustomers.repeat_share = 0
+  } finally {
+    analyticsLoading.value = false
+  }
+}
+
 function formatDate(value) {
   if (!value) return '—'
   return new Date(value).toLocaleString()
@@ -8468,6 +8771,7 @@ function openEditRegion(r) {
   editRegion.open = true
   editRegion.code = r.code
   editRegion.name = r.name
+  editRegion.purchase_cost_rate = Number(r.purchase_cost_rate ?? 1)
   regionEditMode.value = 'view'
 }
 
@@ -8475,6 +8779,7 @@ function cancelEditRegion() {
   editRegion.open = false
   editRegion.code = ''
   editRegion.name = ''
+  editRegion.purchase_cost_rate = 1
   regionEditMode.value = 'view'
 }
 
@@ -8494,6 +8799,7 @@ function closeRegionModal() {
   catalogsOk.value = null
   newRegion.code = ''
   newRegion.name = ''
+  newRegion.purchase_cost_rate = 1
 }
 
 async function saveEditRegion() {
@@ -8503,7 +8809,11 @@ async function saveEditRegion() {
   catalogsLoading.value = true
   catalogSaving.value = true
   try {
-    await apiPut(`/regions/${encodeURIComponent(editRegion.code)}`, { name: editRegion.name }, { token: auth.state.token })
+    await apiPut(
+      `/regions/${encodeURIComponent(editRegion.code)}`,
+      { name: editRegion.name, purchase_cost_rate: editRegion.purchase_cost_rate },
+      { token: auth.state.token }
+    )
     catalogsOk.value = `Регион обновлён`
     await loadCatalogs()
     closeRegionModal()
@@ -8601,6 +8911,7 @@ async function createRegion() {
     catalogsOk.value = `Регион ${newRegion.code} добавлен`
     newRegion.code = ''
     newRegion.name = ''
+    newRegion.purchase_cost_rate = 1
     await loadCatalogs()
     closeRegionModal()
   } catch (e) {
@@ -8842,6 +9153,22 @@ watch(activeTab, async (tab) => {
     await Promise.all(tasks)
     dealsBootstrapped.value = true
     showDealForm.value = false
+    return
+  }
+  if (tab === 'analytics') {
+    const tasks = []
+    if (!catalogsLoadedOnce.value && (!platforms.value.length || !regions.value.length)) {
+      tasks.push(loadCatalogs().then(() => {
+        if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
+      }))
+    }
+    if (!sourcesLoadedOnce.value && !sources.value.length) {
+      tasks.push(loadSources().then(() => {
+        if (sources.value.length) sourcesLoadedOnce.value = true
+      }))
+    }
+    await Promise.all(tasks)
+    await loadAnalytics()
     return
   }
   if (tab === 'telegram') {
@@ -9154,6 +9481,24 @@ watch(
   cursor: pointer;
   text-decoration: none;
   position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tab__icon {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+}
+
+.tab__icon svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .tab__badge {
@@ -9169,6 +9514,44 @@ watch(
 
 .toolbar-actions--deal-create {
   gap: 20px;
+}
+
+.analytics-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.analytics-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.analytics-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.analytics-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.analytics-grid .mini {
+  margin-bottom: 10px;
 }
 
 .deal-create-btn {

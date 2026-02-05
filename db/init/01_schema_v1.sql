@@ -20,12 +20,14 @@ CREATE TABLE IF NOT EXISTS app.regions (
   region_id smallserial PRIMARY KEY,
   code      text NOT NULL UNIQUE,
   name      text NOT NULL,
+  purchase_cost_rate numeric(12,6) NOT NULL DEFAULT 1.0,
   is_archived  boolean NOT NULL DEFAULT false
 );
 COMMENT ON TABLE app.regions IS 'Справочник регионов';
 COMMENT ON COLUMN app.regions.region_id IS 'Идентификатор региона';
 COMMENT ON COLUMN app.regions.code IS 'Код региона (RU/TR/US/EU)';
 COMMENT ON COLUMN app.regions.name IS 'Название региона';
+COMMENT ON COLUMN app.regions.purchase_cost_rate IS 'Коэффициент пересчета закупа в RUB';
 COMMENT ON COLUMN app.regions.is_archived IS 'Архивная запись';
 CREATE INDEX IF NOT EXISTS ix_regions_archived ON app.regions (is_archived);
 
@@ -247,7 +249,8 @@ CREATE TABLE IF NOT EXISTS app.deals (
   currency     text NOT NULL DEFAULT 'RUB',
   total_amount numeric(14,2),
   notes        text,
-  created_at   timestamptz NOT NULL DEFAULT now()
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  completed_at timestamptz
 );
 COMMENT ON TABLE app.deals IS 'Сделки (продажа/шеринг/расход и т.д.)';
 COMMENT ON COLUMN app.deals.deal_id IS 'Идентификатор сделки';
@@ -260,6 +263,7 @@ COMMENT ON COLUMN app.deals.currency IS 'Валюта';
 COMMENT ON COLUMN app.deals.total_amount IS 'Сумма сделки';
 COMMENT ON COLUMN app.deals.notes IS 'Заметки';
 COMMENT ON COLUMN app.deals.created_at IS 'Дата создания сделки';
+COMMENT ON COLUMN app.deals.completed_at IS 'Дата завершения сделки';
 
 CREATE TABLE IF NOT EXISTS app.deal_items (
   deal_item_id     bigserial PRIMARY KEY,
@@ -473,9 +477,15 @@ INSERT INTO app.platforms(code, name, slot_capacity)
 VALUES ('ps4','PlayStation 4', 6),('ps5','PlayStation 5', 3)
 ON CONFLICT (code) DO UPDATE SET name=excluded.name, slot_capacity=excluded.slot_capacity;
 
-INSERT INTO app.regions(code, name)
-VALUES ('RU','Russia'),('TR','Turkey'),('US','USA'),('EU','Europe')
-ON CONFLICT (code) DO NOTHING;
+INSERT INTO app.regions(code, name, purchase_cost_rate)
+VALUES
+  ('RU','Russia', 1.0),
+  ('TR','Turkey', 2.8),
+  ('US','USA', 1.0),
+  ('EU','Europe', 1.0)
+ON CONFLICT (code) DO UPDATE SET
+  name=excluded.name,
+  purchase_cost_rate=excluded.purchase_cost_rate;
 
 INSERT INTO app.account_statuses(code, name)
 VALUES

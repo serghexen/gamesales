@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, date
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Any
 
 from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File
 from fastapi.responses import Response
@@ -30,6 +30,17 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env.dev", override=True)
 
 app = FastAPI(title="GameSales API", version="0.1.0")
+
+@app.on_event("startup")
+def ensure_analytics_schema():
+    try:
+        with psycopg.connect(DB_DSN) as conn:
+            exec1(conn, "ALTER TABLE app.regions ADD COLUMN IF NOT EXISTS purchase_cost_rate numeric(12,6) NOT NULL DEFAULT 1.0")
+            exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS completed_at timestamptz")
+            conn.commit()
+    except Exception:
+        # Ignore startup migration errors to avoid breaking app boot
+        pass
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -218,6 +229,8 @@ class PlatformOut(BaseModel):
 class RegionOut(BaseModel):
     code: str
     name: str
+    purchase_cost_rate: float
+    purchase_cost_rate: float
 
 class PlatformIn(BaseModel):
     code: str
@@ -231,6 +244,12 @@ class PlatformUpdate(BaseModel):
 class RegionIn(BaseModel):
     code: str
     name: str
+    purchase_cost_rate: float = 1.0
+
+class RegionUpdate(BaseModel):
+    name: Optional[str] = None
+    purchase_cost_rate: Optional[float] = None
+    purchase_cost_rate: float = 1.0
 
 class RentalCreate(BaseModel):
     account_id: int
@@ -392,6 +411,59 @@ class DealListItem(BaseModel):
     created_at: datetime
     slots_used: Optional[int] = None
     notes: Optional[str] = None
+
+class SalesAnalyticsTotals(BaseModel):
+    revenue: float
+    purchase_cost: float
+    margin: float
+    count: int
+    avg_check: float
+
+class SalesAnalyticsPoint(BaseModel):
+    date: date
+    revenue: float
+    purchase_cost: float
+    margin: float
+    count: int
+
+class SalesAnalyticsByType(BaseModel):
+    deal_type_code: str
+    revenue: float
+    purchase_cost: float
+    margin: float
+    count: int
+
+class SalesAnalyticsOut(BaseModel):
+    totals: SalesAnalyticsTotals
+    by_day: List[SalesAnalyticsPoint]
+    by_type: List[SalesAnalyticsByType]
+
+class SourceAnalyticsItem(BaseModel):
+    source_code: Optional[str]
+    source_name: Optional[str]
+    deals_count: int
+    revenue: float
+
+class RepeatCustomersOut(BaseModel):
+    repeat_count: int
+    total_customers: int
+    repeat_share: float
+
+class SourcesAnalyticsOut(BaseModel):
+    top_by_count: List[SourceAnalyticsItem]
+    top_by_revenue: List[SourceAnalyticsItem]
+    repeat_customers: RepeatCustomersOut
+
+class AuditItemOut(BaseModel):
+    deal_id: Optional[int]
+    table_name: str
+    action: str
+    changed_at: datetime
+    changed_by: Optional[str]
+
+class AuditAnalyticsOut(BaseModel):
+    total: int
+    items: List[AuditItemOut]
 
 class SlotTypeOut(BaseModel):
     code: str
@@ -1598,8 +1670,8 @@ def list_platforms(user: UserOut = Depends(get_current_user)):
 @app.get("/regions", response_model=List[RegionOut])
 def list_regions(user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
-        rows = qall(conn, "SELECT code, name FROM app.regions WHERE is_archived IS NOT TRUE ORDER BY code")
-    return [RegionOut(code=r0, name=r1) for (r0, r1) in rows]
+        rows = qall(conn, "SELECT code, name, purchase_cost_rate FROM app.regions WHERE is_archived IS NOT TRUE ORDER BY code")
+    return [RegionOut(code=r0, name=r1, purchase_cost_rate=float(r2 or 1.0)) for (r0, r1, r2) in rows]
 
 @app.post("/platforms", response_model=PlatformOut)
 def create_platform(payload: PlatformIn, user: UserOut = Depends(require_role("admin"))):
@@ -1647,34 +1719,38 @@ def delete_platform(code: str, user: UserOut = Depends(require_role("admin"))):
 def create_region(payload: RegionIn, user: UserOut = Depends(require_role("admin"))):
     code = (payload.code or "").strip().upper()
     name = (payload.name or "").strip()
+    rate = float(payload.purchase_cost_rate or 1.0)
     if not code or not name:
         raise HTTPException(400, "Region code and name are required")
     with psycopg.connect(DB_DSN) as conn:
         exec1(
             conn,
             """
-            INSERT INTO app.regions(code, name, is_archived)
-            VALUES (%s, %s, false)
+            INSERT INTO app.regions(code, name, purchase_cost_rate, is_archived)
+            VALUES (%s, %s, %s, false)
             ON CONFLICT (code)
-            DO UPDATE SET name=excluded.name, is_archived=false
+            DO UPDATE SET name=excluded.name, purchase_cost_rate=excluded.purchase_cost_rate, is_archived=false
             """,
-            (code, name),
+            (code, name, rate),
         )
         conn.commit()
-    return RegionOut(code=code, name=name)
+    return RegionOut(code=code, name=name, purchase_cost_rate=rate)
 
 @app.put("/regions/{code}", response_model=RegionOut)
-def update_region(code: str, payload: NameUpdate, user: UserOut = Depends(require_role("admin"))):
-    name = (payload.name or "").strip()
-    if not name:
+def update_region(code: str, payload: RegionUpdate, user: UserOut = Depends(require_role("admin"))):
+    name = (payload.name or "").strip() if payload.name is not None else None
+    rate = payload.purchase_cost_rate
+    if name is not None and not name:
         raise HTTPException(400, "Name is required")
     with psycopg.connect(DB_DSN) as conn:
-        row = q1(conn, "SELECT 1 FROM app.regions WHERE code=%s AND is_archived IS NOT TRUE", (code,))
+        row = q1(conn, "SELECT name, purchase_cost_rate FROM app.regions WHERE code=%s AND is_archived IS NOT TRUE", (code,))
         if not row:
             raise HTTPException(404, "Region not found")
-        exec1(conn, "UPDATE app.regions SET name=%s WHERE code=%s", (name, code))
+        new_name = name if name is not None else row[0]
+        new_rate = float(rate) if rate is not None else float(row[1] or 1.0)
+        exec1(conn, "UPDATE app.regions SET name=%s, purchase_cost_rate=%s WHERE code=%s", (new_name, new_rate, code))
         conn.commit()
-    return RegionOut(code=code, name=name)
+    return RegionOut(code=code, name=new_name, purchase_cost_rate=new_rate)
 
 @app.delete("/regions/{code}")
 def delete_region(code: str, user: UserOut = Depends(require_role("admin"))):
@@ -3822,14 +3898,24 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
             if free_adjusted < 1:
                 raise HTTPException(409, "Not enough free slots for selected slot type")
 
+        completed_at_changed = flow_status_code != new_flow_status
+        completed_at_value = None
+        if completed_at_changed:
+            completed_at_value = now_utc() if new_flow_status == "completed" else None
+
         exec1(
             conn,
             """
             UPDATE app.deals
-            SET deal_type_code=%s, customer_id=%s, total_amount=%s, flow_status_code=%s, region_id=%s
+            SET deal_type_code=%s,
+                customer_id=%s,
+                total_amount=%s,
+                flow_status_code=%s,
+                region_id=%s,
+                completed_at=CASE WHEN %s THEN %s ELSE completed_at END
             WHERE deal_id=%s
             """,
-            (deal_type, customer_id, new_price, new_flow_status, region_id, deal_id),
+            (deal_type, customer_id, new_price, new_flow_status, region_id, completed_at_changed, completed_at_value, deal_id),
         )
 
         exec1(
@@ -4060,3 +4146,436 @@ def list_deals(
         )
 
     return DealListOut(total=total, items=items)
+
+@app.get("/analytics/sales", response_model=SalesAnalyticsOut)
+def analytics_sales(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    deal_type_code: Optional[str] = None,
+    region_code: Optional[str] = None,
+    source_code: Optional[str] = None,
+    user: UserOut = Depends(get_current_user),
+):
+    params: List[Any] = []
+    filters = ["activity_at IS NOT NULL", "status_code = 'confirmed'"]
+
+    if deal_type_code:
+        filters.append("deal_type_code = %s")
+        params.append(deal_type_code)
+    if region_code:
+        filters.append("region_code = %s")
+        params.append(region_code)
+    if source_code:
+        filters.append("source_code = %s")
+        params.append(source_code)
+    if date_from:
+        filters.append("activity_at::date >= %s")
+        params.append(date_from)
+    if date_to:
+        filters.append("activity_at::date <= %s")
+        params.append(date_to)
+
+    where_sql = " AND ".join(filters)
+
+    with psycopg.connect(DB_DSN) as conn:
+        totals_row = q1(conn, f"""
+            WITH base AS (
+                SELECT
+                  d.deal_type_code,
+                  d.status_code,
+                  COALESCE(rd.code, ra.code) AS region_code,
+                  COALESCE(rd.purchase_cost_rate, ra.purchase_cost_rate, 1.0) AS rate,
+                  c.source_code,
+                  di.price,
+                  di.purchase_cost,
+                  di.qty,
+                  CASE
+                    WHEN d.deal_type_code = 'sale' THEN d.completed_at
+                    ELSE COALESCE(di.purchase_at, d.created_at)
+                  END AS activity_at
+                FROM app.deal_items di
+                JOIN app.deals d ON d.deal_id = di.deal_id
+                LEFT JOIN app.accounts a ON a.account_id = di.account_id
+                LEFT JOIN app.regions ra ON ra.region_id = a.region_id
+                LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+                LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+            )
+            SELECT
+              COALESCE(SUM(price * qty), 0) AS revenue,
+              COALESCE(SUM(purchase_cost * qty * rate), 0) AS purchase_cost,
+              COUNT(*) AS count
+            FROM base
+            WHERE {where_sql}
+        """, params)
+
+        revenue = float(totals_row[0] or 0) if totals_row else 0.0
+        purchase_cost = float(totals_row[1] or 0) if totals_row else 0.0
+        count = int(totals_row[2] or 0) if totals_row else 0
+        margin = revenue - purchase_cost
+        avg_check = (revenue / count) if count else 0.0
+
+        by_day_rows = qall(conn, f"""
+            WITH base AS (
+                SELECT
+                  d.deal_type_code,
+                  d.status_code,
+                  COALESCE(rd.code, ra.code) AS region_code,
+                  COALESCE(rd.purchase_cost_rate, ra.purchase_cost_rate, 1.0) AS rate,
+                  c.source_code,
+                  di.price,
+                  di.purchase_cost,
+                  di.qty,
+                  CASE
+                    WHEN d.deal_type_code = 'sale' THEN d.completed_at
+                    ELSE COALESCE(di.purchase_at, d.created_at)
+                  END AS activity_at
+                FROM app.deal_items di
+                JOIN app.deals d ON d.deal_id = di.deal_id
+                LEFT JOIN app.accounts a ON a.account_id = di.account_id
+                LEFT JOIN app.regions ra ON ra.region_id = a.region_id
+                LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+                LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+            )
+            SELECT
+              activity_at::date AS day,
+              COALESCE(SUM(price * qty), 0) AS revenue,
+              COALESCE(SUM(purchase_cost * qty * rate), 0) AS purchase_cost,
+              COUNT(*) AS count
+            FROM base
+            WHERE {where_sql}
+            GROUP BY day
+            ORDER BY day
+        """, params)
+
+        by_type_rows = qall(conn, f"""
+            WITH base AS (
+                SELECT
+                  d.deal_type_code,
+                  d.status_code,
+                  COALESCE(rd.code, ra.code) AS region_code,
+                  COALESCE(rd.purchase_cost_rate, ra.purchase_cost_rate, 1.0) AS rate,
+                  c.source_code,
+                  di.price,
+                  di.purchase_cost,
+                  di.qty,
+                  CASE
+                    WHEN d.deal_type_code = 'sale' THEN d.completed_at
+                    ELSE COALESCE(di.purchase_at, d.created_at)
+                  END AS activity_at
+                FROM app.deal_items di
+                JOIN app.deals d ON d.deal_id = di.deal_id
+                LEFT JOIN app.accounts a ON a.account_id = di.account_id
+                LEFT JOIN app.regions ra ON ra.region_id = a.region_id
+                LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+                LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+            )
+            SELECT
+              deal_type_code,
+              COALESCE(SUM(price * qty), 0) AS revenue,
+              COALESCE(SUM(purchase_cost * qty * rate), 0) AS purchase_cost,
+              COUNT(*) AS count
+            FROM base
+            WHERE {where_sql}
+            GROUP BY deal_type_code
+            ORDER BY deal_type_code
+        """, params)
+
+    by_day = []
+    for r in by_day_rows:
+        rev = float(r[1] or 0)
+        pc = float(r[2] or 0)
+        by_day.append(
+            SalesAnalyticsPoint(
+                date=r[0],
+                revenue=rev,
+                purchase_cost=pc,
+                margin=rev - pc,
+                count=int(r[3] or 0),
+            )
+        )
+
+    by_type = []
+    for r in by_type_rows:
+        rev = float(r[1] or 0)
+        pc = float(r[2] or 0)
+        by_type.append(
+            SalesAnalyticsByType(
+                deal_type_code=r[0],
+                revenue=rev,
+                purchase_cost=pc,
+                margin=rev - pc,
+                count=int(r[3] or 0),
+            )
+        )
+
+    return SalesAnalyticsOut(
+        totals=SalesAnalyticsTotals(
+            revenue=revenue,
+            purchase_cost=purchase_cost,
+            margin=margin,
+            count=count,
+            avg_check=avg_check,
+        ),
+        by_day=by_day,
+        by_type=by_type,
+    )
+
+@app.get("/analytics/sources", response_model=SourcesAnalyticsOut)
+def analytics_sources(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    deal_type_code: Optional[str] = None,
+    region_code: Optional[str] = None,
+    source_code: Optional[str] = None,
+    user: UserOut = Depends(get_current_user),
+):
+    params: List[Any] = []
+    filters = ["activity_at IS NOT NULL", "status_code = 'confirmed'"]
+
+    if deal_type_code:
+        filters.append("deal_type_code = %s")
+        params.append(deal_type_code)
+    if region_code:
+        filters.append("region_code = %s")
+        params.append(region_code)
+    if source_code:
+        filters.append("source_code = %s")
+        params.append(source_code)
+    if date_from:
+        filters.append("activity_at::date >= %s")
+        params.append(date_from)
+    if date_to:
+        filters.append("activity_at::date <= %s")
+        params.append(date_to)
+
+    where_sql = " AND ".join(filters)
+
+    with psycopg.connect(DB_DSN) as conn:
+        top_count_rows = qall(conn, f"""
+            WITH base AS (
+                SELECT
+                  d.deal_type_code,
+                  d.status_code,
+                  COALESCE(rd.code, ra.code) AS region_code,
+                  c.source_code,
+                  src.name as source_name,
+                  di.price,
+                  di.qty,
+                  CASE
+                    WHEN d.deal_type_code = 'sale' THEN d.completed_at
+                    ELSE COALESCE(di.purchase_at, d.created_at)
+                  END AS activity_at
+                FROM app.deal_items di
+                JOIN app.deals d ON d.deal_id = di.deal_id
+                LEFT JOIN app.accounts a ON a.account_id = di.account_id
+                LEFT JOIN app.regions ra ON ra.region_id = a.region_id
+                LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+                LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+                LEFT JOIN app.sources src ON src.code = c.source_code
+            )
+            SELECT
+              source_code,
+              source_name,
+              COUNT(*) AS deals_count,
+              COALESCE(SUM(price * qty), 0) AS revenue
+            FROM base
+            WHERE {where_sql}
+            GROUP BY source_code, source_name
+            ORDER BY deals_count DESC
+            LIMIT 10
+        """, params)
+
+        top_revenue_rows = qall(conn, f"""
+            WITH base AS (
+                SELECT
+                  d.deal_type_code,
+                  d.status_code,
+                  COALESCE(rd.code, ra.code) AS region_code,
+                  c.source_code,
+                  src.name as source_name,
+                  di.price,
+                  di.qty,
+                  CASE
+                    WHEN d.deal_type_code = 'sale' THEN d.completed_at
+                    ELSE COALESCE(di.purchase_at, d.created_at)
+                  END AS activity_at
+                FROM app.deal_items di
+                JOIN app.deals d ON d.deal_id = di.deal_id
+                LEFT JOIN app.accounts a ON a.account_id = di.account_id
+                LEFT JOIN app.regions ra ON ra.region_id = a.region_id
+                LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+                LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+                LEFT JOIN app.sources src ON src.code = c.source_code
+            )
+            SELECT
+              source_code,
+              source_name,
+              COUNT(*) AS deals_count,
+              COALESCE(SUM(price * qty), 0) AS revenue
+            FROM base
+            WHERE {where_sql}
+            GROUP BY source_code, source_name
+            ORDER BY revenue DESC
+            LIMIT 10
+        """, params)
+
+        repeat_row = q1(conn, f"""
+            WITH base AS (
+                SELECT
+                  d.deal_id,
+                  d.status_code,
+                  d.deal_type_code,
+                  COALESCE(rd.code, ra.code) AS region_code,
+                  c.source_code,
+                  d.customer_id,
+                  CASE
+                    WHEN d.deal_type_code = 'sale' THEN d.completed_at
+                    ELSE COALESCE(di.purchase_at, d.created_at)
+                  END AS activity_at
+                FROM app.deal_items di
+                JOIN app.deals d ON d.deal_id = di.deal_id
+                LEFT JOIN app.accounts a ON a.account_id = di.account_id
+                LEFT JOIN app.regions ra ON ra.region_id = a.region_id
+                LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+                LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+            ),
+            filtered AS (
+                SELECT DISTINCT deal_id, customer_id
+                FROM base
+                WHERE {where_sql}
+            ),
+            by_customer AS (
+                SELECT customer_id, COUNT(*) AS deals_count
+                FROM filtered
+                WHERE customer_id IS NOT NULL
+                GROUP BY customer_id
+            )
+            SELECT
+              COALESCE(SUM(CASE WHEN deals_count > 1 THEN 1 ELSE 0 END), 0) AS repeat_count,
+              COALESCE(COUNT(*), 0) AS total_customers
+            FROM by_customer
+        """, params)
+
+    top_by_count = [
+        SourceAnalyticsItem(
+            source_code=r[0],
+            source_name=r[1],
+            deals_count=int(r[2] or 0),
+            revenue=float(r[3] or 0),
+        )
+        for r in top_count_rows
+    ]
+    top_by_revenue = [
+        SourceAnalyticsItem(
+            source_code=r[0],
+            source_name=r[1],
+            deals_count=int(r[2] or 0),
+            revenue=float(r[3] or 0),
+        )
+        for r in top_revenue_rows
+    ]
+    repeat_count = int(repeat_row[0] or 0) if repeat_row else 0
+    total_customers = int(repeat_row[1] or 0) if repeat_row else 0
+    repeat_share = (repeat_count / total_customers) if total_customers else 0.0
+
+    return SourcesAnalyticsOut(
+        top_by_count=top_by_count,
+        top_by_revenue=top_by_revenue,
+        repeat_customers=RepeatCustomersOut(
+            repeat_count=repeat_count,
+            total_customers=total_customers,
+            repeat_share=repeat_share,
+        ),
+    )
+
+@app.get("/analytics/audit", response_model=AuditAnalyticsOut)
+def analytics_audit(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    deal_type_code: Optional[str] = None,
+    region_code: Optional[str] = None,
+    source_code: Optional[str] = None,
+    limit: int = 200,
+    user: UserOut = Depends(get_current_user),
+):
+    if limit < 1 or limit > 500:
+        raise HTTPException(400, "limit must be between 1 and 500")
+
+    params: List[Any] = []
+    filters = ["da.changed_at IS NOT NULL"]
+
+    if deal_type_code:
+        filters.append("d.deal_type_code = %s")
+        params.append(deal_type_code)
+    if region_code:
+        filters.append("COALESCE(rd.code, ra.code) = %s")
+        params.append(region_code)
+    if source_code:
+        filters.append("c.source_code = %s")
+        params.append(source_code)
+    if date_from:
+        filters.append("da.changed_at::date >= %s")
+        params.append(date_from)
+    if date_to:
+        filters.append("da.changed_at::date <= %s")
+        params.append(date_to)
+
+    where_sql = " AND ".join(filters)
+
+    with psycopg.connect(DB_DSN) as conn:
+        total_row = q1(conn, f"""
+            SELECT COUNT(*)
+            FROM app.deal_audit da
+            LEFT JOIN app.deals d ON d.deal_id = da.deal_id
+            LEFT JOIN LATERAL (
+              SELECT account_id
+              FROM app.deal_items
+              WHERE deal_id = d.deal_id
+              ORDER BY deal_item_id ASC
+              LIMIT 1
+            ) di ON true
+            LEFT JOIN app.accounts a ON a.account_id = di.account_id
+            LEFT JOIN app.regions ra ON ra.region_id = a.region_id
+            LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+            LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+            WHERE {where_sql}
+        """, params)
+        total = int(total_row[0]) if total_row else 0
+
+        rows = qall(conn, f"""
+            SELECT
+              da.deal_id,
+              da.table_name,
+              da.action,
+              da.changed_at,
+              da.changed_by
+            FROM app.deal_audit da
+            LEFT JOIN app.deals d ON d.deal_id = da.deal_id
+            LEFT JOIN LATERAL (
+              SELECT account_id
+              FROM app.deal_items
+              WHERE deal_id = d.deal_id
+              ORDER BY deal_item_id ASC
+              LIMIT 1
+            ) di ON true
+            LEFT JOIN app.accounts a ON a.account_id = di.account_id
+            LEFT JOIN app.regions ra ON ra.region_id = a.region_id
+            LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+            LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+            WHERE {where_sql}
+            ORDER BY da.changed_at DESC
+            LIMIT %s
+        """, params + [limit])
+
+    items = [
+        AuditItemOut(
+            deal_id=r[0],
+            table_name=r[1],
+            action=r[2],
+            changed_at=r[3],
+            changed_by=r[4],
+        )
+        for r in rows
+    ]
+
+    return AuditAnalyticsOut(total=total, items=items)
