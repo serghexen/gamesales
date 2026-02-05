@@ -4012,7 +4012,10 @@
               <p class="muted">Продажи и шеринг (по завершенным сделкам).</p>
             </div>
             <div class="analytics-head__actions">
-              <button class="btn btn--icon btn--glow btn--glow-refresh" type="button" @click="loadAnalytics" :disabled="analyticsLoading">
+              <button class="ghost" type="button" @click="loadAnalytics" :disabled="analyticsLoading">
+                Применить
+              </button>
+              <button class="btn btn--icon btn--glow btn--glow-refresh" type="button" @click="loadAnalytics" :disabled="analyticsLoading" aria-label="Обновить" title="Обновить">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M20 12a8 8 0 1 1-2.3-5.7" />
                   <path d="M20 4v6h-6" />
@@ -4055,7 +4058,9 @@
 
             <p v-if="analyticsError" class="bad">{{ analyticsError }}</p>
 
-            <div v-if="analyticsLoading" class="loader-wrap loader-wrap--compact">
+            <p v-if="!analyticsLoaded && !analyticsLoading" class="muted">Укажите за какой период вывести отчет.</p>
+
+            <div v-else-if="analyticsLoading" class="loader-wrap loader-wrap--compact">
               <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
                 <div class="wheel"></div>
                 <div class="hamster">
@@ -4727,6 +4732,7 @@ const analyticsRepeatCustomers = reactive({
   total_customers: 0,
   repeat_share: 0,
 })
+const analyticsLoaded = ref(false)
 const analyticsLoading = ref(false)
 const analyticsError = ref(null)
 const slotTypes = ref([])
@@ -7798,6 +7804,24 @@ async function loadDeals(page = 1) {
 
 async function loadAnalytics() {
   analyticsError.value = null
+  analyticsLoaded.value = false
+  const hasFilters = Boolean(
+    analyticsFilters.date_from ||
+      analyticsFilters.date_to ||
+      analyticsFilters.deal_type_code ||
+      analyticsFilters.region_code ||
+      analyticsFilters.source_code
+  )
+  if (!hasFilters) {
+    analyticsByDay.value = []
+    analyticsByType.value = []
+    analyticsSourcesTopCount.value = []
+    analyticsSourcesTopRevenue.value = []
+    analyticsRepeatCustomers.repeat_count = 0
+    analyticsRepeatCustomers.total_customers = 0
+    analyticsRepeatCustomers.repeat_share = 0
+    return
+  }
   analyticsLoading.value = true
   try {
     const params = new URLSearchParams()
@@ -7823,6 +7847,7 @@ async function loadAnalytics() {
     analyticsRepeatCustomers.repeat_count = Number(sources?.repeat_customers?.repeat_count || 0)
     analyticsRepeatCustomers.total_customers = Number(sources?.repeat_customers?.total_customers || 0)
     analyticsRepeatCustomers.repeat_share = Number(sources?.repeat_customers?.repeat_share || 0)
+    analyticsLoaded.value = true
 
   } catch (e) {
     analyticsError.value = mapApiError(e?.message)
@@ -9168,7 +9193,6 @@ watch(activeTab, async (tab) => {
       }))
     }
     await Promise.all(tasks)
-    await loadAnalytics()
     return
   }
   if (tab === 'telegram') {
