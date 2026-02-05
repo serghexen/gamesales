@@ -2642,14 +2642,7 @@ def list_slot_availability_for_deal(
         rows = qall(
             conn,
             """
-            WITH game_accounts AS (
-              SELECT DISTINCT aa.account_id
-              FROM app.accounts a
-              JOIN app.account_assets aa ON aa.account_id = a.account_id
-              WHERE aa.asset_type_code = 'game' AND aa.game_id = %s
-                AND a.status_code <> 'archived'
-            ),
-            account_platforms AS (
+            WITH account_platforms AS (
               SELECT
                 aa.account_id,
                 BOOL_OR(p.code = 'ps4') AS has_ps4
@@ -2659,28 +2652,26 @@ def list_slot_availability_for_deal(
               WHERE aa.asset_type_code = 'game'
               GROUP BY aa.account_id
             ),
-            active_assignments AS (
-              SELECT asa.account_id, asa.slot_type_code, COUNT(*) AS occupied
-              FROM app.account_slot_assignments asa
-              JOIN game_accounts ga ON ga.account_id = asa.account_id
-              WHERE asa.released_at IS NULL
-              GROUP BY asa.account_id, asa.slot_type_code
-            ),
-            capacity AS (
-              SELECT ga.account_id, st.code AS slot_type_code, st.capacity
-              FROM game_accounts ga
-              LEFT JOIN account_platforms ap ON ap.account_id = ga.account_id
-              JOIN app.slot_types st
-                ON (COALESCE(ap.has_ps4, false) OR st.platform_code = 'ps5')
+            base_accounts AS (
+              SELECT a.account_id
+              FROM app.accounts a
+              JOIN app.account_assets aa
+                ON aa.account_id = a.account_id
+               AND aa.asset_type_code = 'game'
+               AND aa.game_id = %s
+              WHERE a.status_code <> 'archived'
             )
             SELECT
-              c.slot_type_code,
-              BOOL_OR(COALESCE(c.capacity, 0) > COALESCE(a.occupied, 0)) AS has_free
-            FROM capacity c
-            LEFT JOIN active_assignments a
-              ON a.account_id = c.account_id AND a.slot_type_code = c.slot_type_code
-            GROUP BY c.slot_type_code
-            ORDER BY c.slot_type_code
+              st.code AS slot_type_code,
+              BOOL_OR(COALESCE(ss.free, 0) > 0) AS has_free
+            FROM base_accounts ba
+            LEFT JOIN account_platforms ap ON ap.account_id = ba.account_id
+            JOIN app.slot_types st
+              ON (COALESCE(ap.has_ps4, false) OR st.platform_code = 'ps5')
+            LEFT JOIN app.v_account_slot_status ss
+              ON ss.account_id = ba.account_id AND ss.slot_type_code = st.code
+            GROUP BY st.code
+            ORDER BY st.code
             """,
             (game_id,),
         )

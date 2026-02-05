@@ -8506,7 +8506,6 @@ async function loadDealSlotAvailability(target) {
   const loading = isEdit ? dealSlotAvailabilityLoadingEdit : dealSlotAvailabilityLoadingNew
   loading.value = true
   try {
-    const platforms = getGamePlatformCodes(gameId)
     const list = slotTypes.value || []
     let availabilityMap = {}
     let availabilityLoaded = false
@@ -8520,7 +8519,7 @@ async function loadDealSlotAvailability(target) {
     if (!availabilityLoaded) {
       const results = await Promise.all(
         list.map(async (t) => {
-          const supported = !platforms.length || platforms.includes(String(t.platform_code || '').toLowerCase())
+          const supported = isSlotTypeSupportedForGame(t.code, gameId)
           if (!supported) {
             return [t.code, { hasFree: false }]
           }
@@ -8540,7 +8539,7 @@ async function loadDealSlotAvailability(target) {
     if (availabilityLoaded) {
       const normalized = {}
       for (const t of list) {
-        const supported = !platforms.length || platforms.includes(String(t.platform_code || '').toLowerCase())
+        const supported = isSlotTypeSupportedForGame(t.code, gameId)
         normalized[t.code] = supported ? (availabilityMap[t.code] || { hasFree: false }) : { hasFree: false }
       }
       availabilityMap = normalized
