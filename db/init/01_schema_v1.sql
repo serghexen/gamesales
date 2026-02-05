@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS app.deal_flow_statuses (
 );
 
 CREATE TABLE IF NOT EXISTS app.sources (
-  code text PRIMARY KEY,
+  source_id bigserial PRIMARY KEY,
+  code text NOT NULL,
   name text NOT NULL,
   is_archived  boolean NOT NULL DEFAULT false
 );
@@ -83,10 +84,12 @@ COMMENT ON TABLE app.deal_flow_statuses IS 'Справочник статусо�
 COMMENT ON COLUMN app.deal_flow_statuses.code IS 'Код статуса процесса сделки';
 COMMENT ON COLUMN app.deal_flow_statuses.name IS 'Название статуса процесса сделки';
 COMMENT ON TABLE app.sources IS 'Справочник источников клиентов';
+COMMENT ON COLUMN app.sources.source_id IS 'Идентификатор источника';
 COMMENT ON COLUMN app.sources.code IS 'Код источника';
 COMMENT ON COLUMN app.sources.name IS 'Название источника';
 COMMENT ON COLUMN app.sources.is_archived IS 'Архивная запись';
 CREATE INDEX IF NOT EXISTS ix_sources_archived ON app.sources (is_archived);
+CREATE INDEX IF NOT EXISTS ix_sources_code ON app.sources (code);
 COMMENT ON TABLE app.domains IS 'Справочник доменов аккаунтов';
 COMMENT ON COLUMN app.domains.domain_id IS 'Идентификатор домена';
 COMMENT ON COLUMN app.domains.name IS 'Домен (например, example.com)';
@@ -226,7 +229,7 @@ COMMENT ON COLUMN app.account_secrets.created_at IS 'Дата создания �
 CREATE TABLE IF NOT EXISTS app.customers (
   customer_id bigserial PRIMARY KEY,
   nickname    text NOT NULL,
-  source_code text REFERENCES app.sources(code),
+  source_id   bigint REFERENCES app.sources(source_id),
   contacts    text,
   notes       text,
   created_at  timestamptz NOT NULL DEFAULT now()
@@ -234,7 +237,7 @@ CREATE TABLE IF NOT EXISTS app.customers (
 COMMENT ON TABLE app.customers IS 'Клиенты';
 COMMENT ON COLUMN app.customers.customer_id IS 'Идентификатор клиента';
 COMMENT ON COLUMN app.customers.nickname IS 'Имя/ник клиента';
-COMMENT ON COLUMN app.customers.source_code IS 'Источник привлечения';
+COMMENT ON COLUMN app.customers.source_id IS 'Источник привлечения';
 COMMENT ON COLUMN app.customers.contacts IS 'Контакты клиента';
 COMMENT ON COLUMN app.customers.notes IS 'Заметки';
 COMMENT ON COLUMN app.customers.created_at IS 'Дата создания записи';

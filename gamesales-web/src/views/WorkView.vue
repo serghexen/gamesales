@@ -2710,12 +2710,22 @@
                         </label>
                         <label class="field">
                           <span class="label">Откуда</span>
-                          <select v-model="editDeal.source_code" class="input input--select" :disabled="dealEditMode === 'view'">
+                          <select v-model.number="editDeal.source_id" class="input input--select" :disabled="dealEditMode === 'view'">
                             <option value="">— не выбрано —</option>
-                            <option v-for="s in sources" :key="s.code" :value="s.code">
+                            <option v-for="s in sources" :key="s.source_id" :value="s.source_id">
                               {{ s.name }} ({{ s.code }})
                             </option>
                           </select>
+                        </label>
+                        <label v-if="editDeal.deal_type_code === 'rental'" class="field">
+                          <span class="label">Дата</span>
+                          <input
+                            v-model="editDeal.purchase_at"
+                            class="input"
+                            type="date"
+                            :max="maxDate"
+                            :disabled="dealEditMode === 'view'"
+                          />
                         </label>
                         <label v-if="editDeal.deal_type_code === 'sale'" class="field">
                           <span class="label">Ссылка на игру</span>
@@ -3025,9 +3035,9 @@
                         </label>
                         <label class="field">
                           <span class="label">Откуда</span>
-                          <select v-model="newDeal.source_code" class="input input--select">
+                          <select v-model.number="newDeal.source_id" class="input input--select">
                             <option value="">— не выбрано —</option>
-                            <option v-for="s in sources" :key="s.code" :value="s.code">
+                            <option v-for="s in sources" :key="s.source_id" :value="s.source_id">
                               {{ s.name }} ({{ s.code }})
                             </option>
                           </select>
@@ -3422,7 +3432,7 @@
                           type="button"
                           aria-label="Удалить"
                           title="Удалить"
-                          @click="deleteSource(editSource.code)"
+                          @click="deleteSource(editSource.source_id)"
                         >
                           <svg viewBox="0 0 24 24" aria-hidden="true">
                             <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
@@ -3482,7 +3492,7 @@
                       <div v-if="editSource.open" class="form form--stack form--compact">
                         <label class="field">
                           <span class="label">Код</span>
-                          <input v-model.trim="editSource.code" class="input" disabled />
+                          <input v-model.trim="editSource.code" class="input" :disabled="sourceEditMode === 'view'" />
                         </label>
                         <label class="field">
                           <span class="label">Название</span>
@@ -3546,7 +3556,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="s in sortedSources" :key="s.code" class="clickable-row" @click="openEditSource(s)">
+                  <tr v-for="s in sortedSources" :key="s.source_id" class="clickable-row" @click="openEditSource(s)">
                     <td>{{ s.code }}</td>
                     <td>{{ s.name }}</td>
                   </tr>
@@ -4049,9 +4059,9 @@
               </label>
               <label class="field">
                 <span class="label">Источник</span>
-                <select v-model="analyticsFilters.source_code" class="input input--select">
+                <select v-model.number="analyticsFilters.source_id" class="input input--select">
                   <option value="">Все</option>
-                  <option v-for="s in sources" :key="s.code" :value="s.code">{{ s.name }} ({{ s.code }})</option>
+                  <option v-for="s in sources" :key="s.source_id" :value="s.source_id">{{ s.name }} ({{ s.code }})</option>
                 </select>
               </label>
             </div>
@@ -4167,7 +4177,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="row in analyticsSourcesTopCount" :key="row.source_code || row.source_name">
+                    <tr v-for="row in analyticsSourcesTopCount" :key="row.source_id || row.source_code || row.source_name">
                       <td>{{ row.source_name || row.source_code || '—' }}</td>
                       <td>{{ row.deals_count }}</td>
                       <td>{{ formatPrice(row.revenue) }}</td>
@@ -4187,7 +4197,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="row in analyticsSourcesTopRevenue" :key="row.source_code || row.source_name">
+                    <tr v-for="row in analyticsSourcesTopRevenue" :key="row.source_id || row.source_code || row.source_name">
                       <td>{{ row.source_name || row.source_code || '—' }}</td>
                       <td>{{ formatPrice(row.revenue) }}</td>
                       <td>{{ row.deals_count }}</td>
@@ -4649,7 +4659,7 @@ const newDeal = reactive({
   account_id: '',
   game_id: '',
   customer_nickname: '',
-  source_code: '',
+  source_id: '',
   region_code: '',
   slot_type_code: '',
   price: 0,
@@ -4668,7 +4678,7 @@ const editDeal = reactive({
   account_id: '',
   game_id: '',
   customer_nickname: '',
-  source_code: '',
+  source_id: '',
   region_code: '',
   slot_type_code: '',
   price: 0,
@@ -4714,7 +4724,7 @@ const analyticsFilters = reactive({
   date_to: '',
   deal_type_code: '',
   region_code: '',
-  source_code: '',
+  source_id: '',
 })
 const analyticsTotals = reactive({
   revenue: 0,
@@ -4760,7 +4770,7 @@ const newSource = reactive({
   code: '',
   name: '',
 })
-const editSource = reactive({ open: false, code: '', name: '' })
+const editSource = reactive({ open: false, source_id: null, code: '', name: '' })
 const sourceEditMode = ref('view')
 const newPlatform = reactive({
   code: '',
@@ -6763,7 +6773,7 @@ function closeDealModal() {
   newDeal.account_id = ''
   newDeal.game_id = ''
   newDeal.customer_nickname = ''
-  newDeal.source_code = ''
+  newDeal.source_id = ''
   newDeal.region_code = ''
   newDeal.slot_type_code = ''
   newDeal.price = 0
@@ -6818,7 +6828,7 @@ function startEditDeal(deal) {
   editDeal.account_id = deal.account_id
   editDeal.game_id = deal.game_id
   editDeal.customer_nickname = deal.customer_nickname || ''
-  editDeal.source_code = deal.source_code || ''
+  editDeal.source_id = deal.source_id || ''
   editDeal.region_code = deal.region_code || ''
   editDeal.slot_type_code = deal.slot_type_code || ''
   editDeal.price = Number(deal.price || 0)
@@ -6844,7 +6854,7 @@ function cancelEditDeal() {
   editDeal.account_id = ''
   editDeal.game_id = ''
   editDeal.customer_nickname = ''
-  editDeal.source_code = ''
+  editDeal.source_id = ''
   editDeal.region_code = ''
   editDeal.slot_type_code = ''
   editDeal.price = 0
@@ -7665,7 +7675,7 @@ async function createDeal() {
         account_id: newDeal.deal_type_code === 'rental' ? newDeal.account_id : null,
         game_id: newDeal.deal_type_code === 'rental' ? newDeal.game_id : null,
         customer_nickname: newDeal.customer_nickname,
-        source_code: newDeal.source_code || null,
+        source_id: newDeal.source_id || null,
         region_code: newDeal.region_code || null,
         slot_type_code: newDeal.deal_type_code === 'rental' ? (newDeal.slot_type_code || null) : null,
         price: newDeal.price || 0,
@@ -7727,7 +7737,7 @@ async function updateDeal() {
         account_id: editDeal.deal_type_code === 'rental' ? editDeal.account_id : null,
         game_id: editDeal.deal_type_code === 'rental' ? editDeal.game_id : null,
         customer_nickname: editDeal.customer_nickname,
-        source_code: editDeal.source_code || null,
+        source_id: editDeal.source_id || null,
         region_code: editDeal.region_code || null,
         slot_type_code: editDeal.deal_type_code === 'rental' ? (editDeal.slot_type_code || null) : null,
         price: editDeal.price,
@@ -7810,7 +7820,7 @@ async function loadAnalytics() {
       analyticsFilters.date_to ||
       analyticsFilters.deal_type_code ||
       analyticsFilters.region_code ||
-      analyticsFilters.source_code
+      analyticsFilters.source_id
   )
   if (!hasFilters) {
     analyticsByDay.value = []
@@ -7829,7 +7839,7 @@ async function loadAnalytics() {
     if (analyticsFilters.date_to) params.set('date_to', analyticsFilters.date_to)
     if (analyticsFilters.deal_type_code) params.set('deal_type_code', analyticsFilters.deal_type_code)
     if (analyticsFilters.region_code) params.set('region_code', analyticsFilters.region_code)
-    if (analyticsFilters.source_code) params.set('source_code', analyticsFilters.source_code)
+    if (analyticsFilters.source_id) params.set('source_id', analyticsFilters.source_id)
     const [sales, sources] = await Promise.all([
       apiGet(`/analytics/sales?${params.toString()}`, { token: auth.state.token }),
       apiGet(`/analytics/sources?${params.toString()}`, { token: auth.state.token }),
@@ -8678,6 +8688,7 @@ function openEditSource(s) {
   resetModalPos()
   showSourceForm.value = false
   editSource.open = true
+  editSource.source_id = s.source_id
   editSource.code = s.code
   editSource.name = s.name
   sourceEditMode.value = 'view'
@@ -8685,6 +8696,7 @@ function openEditSource(s) {
 
 function cancelEditSource() {
   editSource.open = false
+  editSource.source_id = null
   editSource.code = ''
   editSource.name = ''
   sourceEditMode.value = 'view'
@@ -8709,13 +8721,17 @@ function closeSourceModal() {
 }
 
 async function saveEditSource() {
-  if (!editSource.code || !editSource.name) return
+  if (!editSource.source_id || !editSource.code || !editSource.name) return
   catalogsError.value = null
   catalogsOk.value = null
   catalogsLoading.value = true
   catalogSaving.value = true
   try {
-    await apiPut(`/sources/${encodeURIComponent(editSource.code)}`, { name: editSource.name }, { token: auth.state.token })
+    await apiPut(
+      `/sources/${encodeURIComponent(editSource.source_id)}`,
+      { code: editSource.code, name: editSource.name },
+      { token: auth.state.token }
+    )
     catalogsOk.value = `Источник обновлён`
     await loadSources()
     closeSourceModal()
@@ -8965,17 +8981,18 @@ async function deleteDomain(name) {
   }
 }
 
-async function deleteSource(code) {
-  if (!window.confirm(`Удалить источник ${code}?`)) return
+async function deleteSource(sourceId) {
+  if (!sourceId) return
+  if (!window.confirm(`Удалить источник?`)) return
   catalogsError.value = null
   catalogsOk.value = null
   catalogsLoading.value = true
   catalogSaving.value = true
   try {
-    await apiDelete(`/sources/${encodeURIComponent(code)}`, { token: auth.state.token })
-    catalogsOk.value = `Источник ${code} удалён`
+    await apiDelete(`/sources/${encodeURIComponent(sourceId)}`, { token: auth.state.token })
+    catalogsOk.value = `Источник удалён`
     await loadSources()
-    if (editSource.open && editSource.code === code) closeSourceModal()
+    if (editSource.open && editSource.source_id === sourceId) closeSourceModal()
   } catch (e) {
     catalogsError.value = mapApiError(e?.message)
   } finally {

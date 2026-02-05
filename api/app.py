@@ -226,6 +226,11 @@ class PlatformOut(BaseModel):
     name: str
     slot_capacity: int
 
+class SourceOut(BaseModel):
+    source_id: int
+    code: str
+    name: str
+
 class RegionOut(BaseModel):
     code: str
     name: str
@@ -249,7 +254,6 @@ class RegionIn(BaseModel):
 class RegionUpdate(BaseModel):
     name: Optional[str] = None
     purchase_cost_rate: Optional[float] = None
-    purchase_cost_rate: float = 1.0
 
 class RentalCreate(BaseModel):
     account_id: int
@@ -261,7 +265,7 @@ class RentalCreate(BaseModel):
     game_id: Optional[int] = None
     platform_code: Optional[str] = None
     slot_type_code: Optional[str] = None
-    source_code: Optional[str] = None
+    source_id: Optional[int] = None
     purchase_at: Optional[datetime] = None
 
     @validator("purchase_at", "start_at", "end_at", pre=False)
@@ -347,7 +351,7 @@ class DealCreate(BaseModel):
     account_id: Optional[int] = None
     game_id: Optional[int] = None
     customer_nickname: str
-    source_code: Optional[str] = None
+    source_id: Optional[int] = None
     region_code: Optional[str] = None
     platform_code: Optional[str] = None
     slot_type_code: Optional[str] = None
@@ -369,7 +373,7 @@ class DealUpdate(BaseModel):
     account_id: Optional[int] = None
     game_id: Optional[int] = None
     customer_nickname: Optional[str] = None
-    source_code: Optional[str] = None
+    source_id: Optional[int] = None
     region_code: Optional[str] = None
     platform_code: Optional[str] = None
     slot_type_code: Optional[str] = None
@@ -403,7 +407,7 @@ class DealListItem(BaseModel):
     platform_code: Optional[str]
     slot_type_code: Optional[str] = None
     customer_nickname: Optional[str]
-    source_code: Optional[str]
+    source_id: Optional[int]
     price: float
     purchase_cost: Optional[float] = None
     game_link: Optional[str] = None
@@ -439,6 +443,7 @@ class SalesAnalyticsOut(BaseModel):
     by_type: List[SalesAnalyticsByType]
 
 class SourceAnalyticsItem(BaseModel):
+    source_id: Optional[int]
     source_code: Optional[str]
     source_name: Optional[str]
     deals_count: int
@@ -497,6 +502,10 @@ class DomainIn(BaseModel):
 class SourceIn(BaseModel):
     code: str
     name: str
+
+class SourceUpdate(BaseModel):
+    code: Optional[str] = None
+    name: Optional[str] = None
 
 class NameUpdate(BaseModel):
     name: str
@@ -605,28 +614,28 @@ def ensure_game_active(conn, game_id: Optional[int]):
     if not row:
         raise HTTPException(400, f"Unknown game_id: {game_id}")
 
-def ensure_customer(conn, nickname: Optional[str], source_code: Optional[str]) -> Optional[int]:
+def ensure_customer(conn, nickname: Optional[str], source_id: Optional[int]) -> Optional[int]:
     if not nickname:
         return None
-    row = q1(conn, "SELECT customer_id, source_code FROM app.customers WHERE nickname=%s", (nickname,))
+    row = q1(conn, "SELECT customer_id, source_id FROM app.customers WHERE nickname=%s", (nickname,))
     if row:
         customer_id = int(row[0])
-        if source_code and row[1] != source_code:
-            exec1(conn, "UPDATE app.customers SET source_code=%s WHERE customer_id=%s", (source_code, customer_id))
+        if source_id and row[1] != source_id:
+            exec1(conn, "UPDATE app.customers SET source_id=%s WHERE customer_id=%s", (source_id, customer_id))
         return customer_id
     row = q1(
         conn,
-        "INSERT INTO app.customers(nickname, source_code) VALUES (%s, %s) RETURNING customer_id",
-        (nickname, source_code),
+        "INSERT INTO app.customers(nickname, source_id) VALUES (%s, %s) RETURNING customer_id",
+        (nickname, source_id),
     )
     return int(row[0])
 
-def ensure_source_exists(conn, code: Optional[str]):
-    if not code:
+def ensure_source_exists(conn, source_id: Optional[int]):
+    if not source_id:
         return
-    row = q1(conn, "SELECT 1 FROM app.sources WHERE code=%s AND is_archived IS NOT TRUE", (code,))
+    row = q1(conn, "SELECT 1 FROM app.sources WHERE source_id=%s AND is_archived IS NOT TRUE", (source_id,))
     if not row:
-        raise HTTPException(400, f"Unknown source_code: {code}")
+        raise HTTPException(400, f"Unknown source_id: {source_id}")
 
 def build_deals_filters(
     account_id: Optional[int],
@@ -637,7 +646,7 @@ def build_deals_filters(
     status_code: Optional[str],
     flow_status_code: Optional[str],
     customer_q: Optional[str],
-    source_code: Optional[str],
+    source_id: Optional[int],
     purchase_from: Optional[date],
     purchase_to: Optional[date],
     price_min: Optional[float],
@@ -691,9 +700,9 @@ def build_deals_filters(
     if customer_q:
         where.append("c.nickname ILIKE %s")
         params.append(f"%{customer_q}%")
-    if source_code:
-        where.append("c.source_code = %s")
-        params.append(source_code)
+    if source_id:
+        where.append("c.source_id = %s")
+        params.append(source_id)
     if notes_q:
         where.append("di.notes ILIKE %s")
         params.append(f"%{notes_q}%")
@@ -726,7 +735,7 @@ def build_deals_filters(
         params.extend([like, like])
     if source_q:
         like = f"%{source_q}%"
-        where.append("(c.source_code ILIKE %s OR src.name ILIKE %s)")
+        where.append("(src.code ILIKE %s OR src.name ILIKE %s)")
         params.extend([like, like])
     if date_q:
         where.append("COALESCE(di.purchase_at, d.created_at)::text ILIKE %s")
@@ -1768,11 +1777,11 @@ def list_domains(user: UserOut = Depends(get_current_user)):
         rows = qall(conn, "SELECT name, name FROM app.domains WHERE is_archived IS NOT TRUE ORDER BY name")
     return [PlatformOut(code=r0, name=r1, slot_capacity=0) for (r0, r1) in rows]
 
-@app.get("/sources", response_model=List[PlatformOut])
+@app.get("/sources", response_model=List[SourceOut])
 def list_sources(user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
-        rows = qall(conn, "SELECT code, name FROM app.sources WHERE is_archived IS NOT TRUE ORDER BY code")
-    return [PlatformOut(code=r0, name=r1, slot_capacity=0) for (r0, r1) in rows]
+        rows = qall(conn, "SELECT source_id, code, name FROM app.sources WHERE is_archived IS NOT TRUE ORDER BY source_id")
+    return [SourceOut(source_id=int(r0), code=r1, name=r2) for (r0, r1, r2) in rows]
 
 @app.post("/domains", response_model=PlatformOut)
 def create_domain(payload: DomainIn, user: UserOut = Depends(require_role("admin"))):
@@ -1816,46 +1825,52 @@ def delete_domain(name: str, user: UserOut = Depends(require_role("admin"))):
         conn.commit()
     return {"ok": True}
 
-@app.post("/sources", response_model=PlatformOut)
+@app.post("/sources", response_model=SourceOut)
 def create_source(payload: SourceIn, user: UserOut = Depends(require_role("admin"))):
     code = (payload.code or "").strip().lower()
     name = (payload.name or "").strip()
     if not code or not name:
         raise HTTPException(400, "Source code and name are required")
     with psycopg.connect(DB_DSN) as conn:
-        exec1(
+        row = q1(
             conn,
             """
             INSERT INTO app.sources(code, name, is_archived)
             VALUES (%s, %s, false)
-            ON CONFLICT (code)
-            DO UPDATE SET name=excluded.name, is_archived=false
+            RETURNING source_id, code, name
             """,
             (code, name),
         )
         conn.commit()
-    return PlatformOut(code=code, name=name, slot_capacity=0)
+    if not row:
+        raise HTTPException(500, "Failed to create source")
+    return SourceOut(source_id=int(row[0]), code=row[1], name=row[2])
 
-@app.put("/sources/{code}", response_model=PlatformOut)
-def update_source(code: str, payload: NameUpdate, user: UserOut = Depends(require_role("admin"))):
-    name = (payload.name or "").strip()
-    if not name:
+@app.put("/sources/{source_id}", response_model=SourceOut)
+def update_source(source_id: int, payload: SourceUpdate, user: UserOut = Depends(require_role("admin"))):
+    code = (payload.code or "").strip().lower() if payload.code is not None else None
+    name = (payload.name or "").strip() if payload.name is not None else None
+    if code is not None and not code:
+        raise HTTPException(400, "Source code is required")
+    if name is not None and not name:
         raise HTTPException(400, "Name is required")
     with psycopg.connect(DB_DSN) as conn:
-        row = q1(conn, "SELECT 1 FROM app.sources WHERE code=%s AND is_archived IS NOT TRUE", (code,))
+        row = q1(conn, "SELECT code, name FROM app.sources WHERE source_id=%s AND is_archived IS NOT TRUE", (source_id,))
         if not row:
             raise HTTPException(404, "Source not found")
-        exec1(conn, "UPDATE app.sources SET name=%s WHERE code=%s", (name, code))
+        new_code = code if code is not None else row[0]
+        new_name = name if name is not None else row[1]
+        exec1(conn, "UPDATE app.sources SET code=%s, name=%s WHERE source_id=%s", (new_code, new_name, source_id))
         conn.commit()
-    return PlatformOut(code=code, name=name, slot_capacity=0)
+    return SourceOut(source_id=source_id, code=new_code, name=new_name)
 
-@app.delete("/sources/{code}")
-def delete_source(code: str, user: UserOut = Depends(require_role("admin"))):
+@app.delete("/sources/{source_id}")
+def delete_source(source_id: int, user: UserOut = Depends(require_role("admin"))):
     with psycopg.connect(DB_DSN) as conn:
-        row = q1(conn, "SELECT 1 FROM app.sources WHERE code=%s", (code,))
+        row = q1(conn, "SELECT 1 FROM app.sources WHERE source_id=%s", (source_id,))
         if not row:
             raise HTTPException(404, "Source not found")
-        exec1(conn, "UPDATE app.sources SET is_archived=true WHERE code=%s", (code,))
+        exec1(conn, "UPDATE app.sources SET is_archived=true WHERE source_id=%s", (source_id,))
         conn.commit()
     return {"ok": True}
 
@@ -3603,24 +3618,24 @@ def create_rental(payload: RentalCreate, user: UserOut = Depends(get_current_use
     with psycopg.connect(DB_DSN) as conn:
         ensure_account_exists(conn, payload.account_id)
         ensure_game_active(conn, payload.game_id)
-        ensure_source_exists(conn, payload.source_code)
+        ensure_source_exists(conn, payload.source_id)
         slot_type = ensure_account_allows_slot_type(conn, payload.account_id, payload.slot_type_code)
         platform_id = get_platform_id(conn, slot_type[1])
         # ensure customer exists
-        row = q1(conn, "SELECT customer_id, source_code FROM app.customers WHERE nickname=%s", (payload.customer_nickname,))
+        row = q1(conn, "SELECT customer_id, source_id FROM app.customers WHERE nickname=%s", (payload.customer_nickname,))
         if row:
             customer_id = int(row[0])
-            if payload.source_code and not row[1]:
+            if payload.source_id and not row[1]:
                 exec1(
                     conn,
-                    "UPDATE app.customers SET source_code=%s WHERE customer_id=%s",
-                    (payload.source_code, customer_id),
+                    "UPDATE app.customers SET source_id=%s WHERE customer_id=%s",
+                    (payload.source_id, customer_id),
                 )
         else:
             row = q1(
                 conn,
-                "INSERT INTO app.customers(nickname, source_code) VALUES (%s, %s) RETURNING customer_id",
-                (payload.customer_nickname, payload.source_code),
+                "INSERT INTO app.customers(nickname, source_id) VALUES (%s, %s) RETURNING customer_id",
+                (payload.customer_nickname, payload.source_id),
             )
             customer_id = int(row[0])
 
@@ -3697,7 +3712,7 @@ def create_deal(payload: DealCreate, user: UserOut = Depends(get_current_user)):
         if deal_type == "rental":
             ensure_account_exists(conn, payload.account_id)
             ensure_game_active(conn, payload.game_id)
-        ensure_source_exists(conn, payload.source_code)
+        ensure_source_exists(conn, payload.source_id)
         platform_id = None
         if deal_type == "rental":
             slot_type = ensure_account_allows_slot_type(conn, payload.account_id, payload.slot_type_code)
@@ -3708,20 +3723,20 @@ def create_deal(payload: DealCreate, user: UserOut = Depends(get_current_user)):
                 region_row = q1(conn, "SELECT region_id FROM app.accounts WHERE account_id=%s", (payload.account_id,))
                 region_id = int(region_row[0]) if region_row and region_row[0] is not None else None
 
-        row = q1(conn, "SELECT customer_id, source_code FROM app.customers WHERE nickname=%s", (payload.customer_nickname,))
+        row = q1(conn, "SELECT customer_id, source_id FROM app.customers WHERE nickname=%s", (payload.customer_nickname,))
         if row:
             customer_id = int(row[0])
-            if payload.source_code and not row[1]:
+            if payload.source_id and not row[1]:
                 exec1(
                     conn,
-                    "UPDATE app.customers SET source_code=%s WHERE customer_id=%s",
-                    (payload.source_code, customer_id),
+                    "UPDATE app.customers SET source_id=%s WHERE customer_id=%s",
+                    (payload.source_id, customer_id),
                 )
         else:
             row = q1(
                 conn,
-                "INSERT INTO app.customers(nickname, source_code) VALUES (%s, %s) RETURNING customer_id",
-                (payload.customer_nickname, payload.source_code),
+                "INSERT INTO app.customers(nickname, source_id) VALUES (%s, %s) RETURNING customer_id",
+                (payload.customer_nickname, payload.source_id),
             )
             customer_id = int(row[0])
 
@@ -3819,7 +3834,7 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
 
         new_account_id = payload.account_id if payload.account_id is not None else account_id
         new_game_id = payload.game_id if payload.game_id is not None else game_id
-        ensure_source_exists(conn, payload.source_code if payload.source_code is not None else None)
+        ensure_source_exists(conn, payload.source_id if payload.source_id is not None else None)
         if payload.region_code is not None:
             region_id = get_region_id(conn, payload.region_code)
 
@@ -3835,7 +3850,7 @@ def update_deal(deal_id: int, payload: DealUpdate, user: UserOut = Depends(get_c
 
         # customer update
         cust_nickname = payload.customer_nickname
-        cust_source = payload.source_code if payload.source_code is not None else None
+        cust_source = payload.source_id if payload.source_id is not None else None
         if cust_nickname:
             customer_id = ensure_customer(conn, cust_nickname, cust_source)
 
@@ -3988,7 +4003,7 @@ def list_deals(
     status_code: Optional[str] = None,
     flow_status_code: Optional[str] = None,
     customer_q: Optional[str] = None,
-    source_code: Optional[str] = None,
+    source_id: Optional[int] = None,
     purchase_from: Optional[date] = None,
     purchase_to: Optional[date] = None,
     price_min: Optional[float] = None,
@@ -4024,7 +4039,7 @@ def list_deals(
             status_code,
             flow_status_code,
             customer_q,
-            source_code,
+            source_id,
             purchase_from,
             purchase_to,
             price_min,
@@ -4053,7 +4068,7 @@ def list_deals(
             LEFT JOIN app.game_titles g ON g.game_id = di.game_id
             LEFT JOIN app.platforms p ON p.platform_id = di.platform_id
             LEFT JOIN app.customers c ON c.customer_id = d.customer_id
-            LEFT JOIN app.sources src ON src.code = c.source_code
+            LEFT JOIN app.sources src ON src.source_id = c.source_id
             LEFT JOIN app.deal_flow_statuses fs ON fs.code = d.flow_status_code
             LEFT JOIN app.deal_statuses ds ON ds.code = d.status_code
             LEFT JOIN app.deal_types dt ON dt.code = d.deal_type_code
@@ -4078,7 +4093,7 @@ def list_deals(
               g.short_title,
               p.code as platform_code,
               c.nickname,
-              c.source_code,
+              c.source_id,
               di.price,
               di.purchase_cost,
               di.purchase_at,
@@ -4099,7 +4114,7 @@ def list_deals(
             LEFT JOIN app.game_titles g ON g.game_id = di.game_id
             LEFT JOIN app.platforms p ON p.platform_id = di.platform_id
             LEFT JOIN app.customers c ON c.customer_id = d.customer_id
-            LEFT JOIN app.sources src ON src.code = c.source_code
+            LEFT JOIN app.sources src ON src.source_id = c.source_id
             {where_sql}
             ORDER BY d.created_at DESC
             LIMIT %s OFFSET %s
@@ -4124,7 +4139,7 @@ def list_deals(
                 game_short_title=r[12],
                 platform_code=r[13],
                 customer_nickname=r[14],
-                source_code=r[15],
+                source_id=r[15],
                 price=float(r[16] or 0),
                 purchase_cost=float(r[17] or 0),
                 purchase_at=r[18],
@@ -4144,7 +4159,7 @@ def analytics_sales(
     date_to: Optional[date] = None,
     deal_type_code: Optional[str] = None,
     region_code: Optional[str] = None,
-    source_code: Optional[str] = None,
+    source_id: Optional[int] = None,
     user: UserOut = Depends(get_current_user),
 ):
     params: List[Any] = []
@@ -4156,9 +4171,9 @@ def analytics_sales(
     if region_code:
         filters.append("region_code = %s")
         params.append(region_code)
-    if source_code:
-        filters.append("source_code = %s")
-        params.append(source_code)
+    if source_id:
+        filters.append("source_id = %s")
+        params.append(source_id)
     if date_from:
         filters.append("activity_at::date >= %s")
         params.append(date_from)
@@ -4176,7 +4191,7 @@ def analytics_sales(
                   d.status_code,
                   COALESCE(rd.code, ra.code) AS region_code,
                   COALESCE(rd.purchase_cost_rate, ra.purchase_cost_rate, 1.0) AS rate,
-                  c.source_code,
+                  c.source_id,
                   di.price,
                   di.purchase_cost,
                   di.qty,
@@ -4212,7 +4227,7 @@ def analytics_sales(
                   d.status_code,
                   COALESCE(rd.code, ra.code) AS region_code,
                   COALESCE(rd.purchase_cost_rate, ra.purchase_cost_rate, 1.0) AS rate,
-                  c.source_code,
+                  c.source_id,
                   di.price,
                   di.purchase_cost,
                   di.qty,
@@ -4245,7 +4260,7 @@ def analytics_sales(
                   d.status_code,
                   COALESCE(rd.code, ra.code) AS region_code,
                   COALESCE(rd.purchase_cost_rate, ra.purchase_cost_rate, 1.0) AS rate,
-                  c.source_code,
+                  c.source_id,
                   di.price,
                   di.purchase_cost,
                   di.qty,
@@ -4317,7 +4332,7 @@ def analytics_sources(
     date_to: Optional[date] = None,
     deal_type_code: Optional[str] = None,
     region_code: Optional[str] = None,
-    source_code: Optional[str] = None,
+    source_id: Optional[int] = None,
     user: UserOut = Depends(get_current_user),
 ):
     params: List[Any] = []
@@ -4329,9 +4344,9 @@ def analytics_sources(
     if region_code:
         filters.append("region_code = %s")
         params.append(region_code)
-    if source_code:
-        filters.append("source_code = %s")
-        params.append(source_code)
+    if source_id:
+        filters.append("source_id = %s")
+        params.append(source_id)
     if date_from:
         filters.append("activity_at::date >= %s")
         params.append(date_from)
@@ -4348,7 +4363,8 @@ def analytics_sources(
                   d.deal_type_code,
                   d.status_code,
                   COALESCE(rd.code, ra.code) AS region_code,
-                  c.source_code,
+                  c.source_id,
+                  src.code as source_code,
                   src.name as source_name,
                   di.price,
                   di.qty,
@@ -4362,16 +4378,17 @@ def analytics_sources(
                 LEFT JOIN app.regions ra ON ra.region_id = a.region_id
                 LEFT JOIN app.regions rd ON rd.region_id = d.region_id
                 LEFT JOIN app.customers c ON c.customer_id = d.customer_id
-                LEFT JOIN app.sources src ON src.code = c.source_code
+                LEFT JOIN app.sources src ON src.source_id = c.source_id
             )
             SELECT
+              source_id,
               source_code,
               source_name,
               COUNT(*) AS deals_count,
               COALESCE(SUM(price * qty), 0) AS revenue
             FROM base
             WHERE {where_sql}
-            GROUP BY source_code, source_name
+            GROUP BY source_id, source_code, source_name
             ORDER BY deals_count DESC
             LIMIT 10
         """, params)
@@ -4382,7 +4399,8 @@ def analytics_sources(
                   d.deal_type_code,
                   d.status_code,
                   COALESCE(rd.code, ra.code) AS region_code,
-                  c.source_code,
+                  c.source_id,
+                  src.code as source_code,
                   src.name as source_name,
                   di.price,
                   di.qty,
@@ -4396,16 +4414,17 @@ def analytics_sources(
                 LEFT JOIN app.regions ra ON ra.region_id = a.region_id
                 LEFT JOIN app.regions rd ON rd.region_id = d.region_id
                 LEFT JOIN app.customers c ON c.customer_id = d.customer_id
-                LEFT JOIN app.sources src ON src.code = c.source_code
+                LEFT JOIN app.sources src ON src.source_id = c.source_id
             )
             SELECT
+              source_id,
               source_code,
               source_name,
               COUNT(*) AS deals_count,
               COALESCE(SUM(price * qty), 0) AS revenue
             FROM base
             WHERE {where_sql}
-            GROUP BY source_code, source_name
+            GROUP BY source_id, source_code, source_name
             ORDER BY revenue DESC
             LIMIT 10
         """, params)
@@ -4417,7 +4436,7 @@ def analytics_sources(
                   d.status_code,
                   d.deal_type_code,
                   COALESCE(rd.code, ra.code) AS region_code,
-                  c.source_code,
+                  c.source_id,
                   d.customer_id,
                   CASE
                     WHEN d.deal_type_code = 'sale' THEN d.completed_at
@@ -4449,19 +4468,21 @@ def analytics_sources(
 
     top_by_count = [
         SourceAnalyticsItem(
-            source_code=r[0],
-            source_name=r[1],
-            deals_count=int(r[2] or 0),
-            revenue=float(r[3] or 0),
+            source_id=r[0],
+            source_code=r[1],
+            source_name=r[2],
+            deals_count=int(r[3] or 0),
+            revenue=float(r[4] or 0),
         )
         for r in top_count_rows
     ]
     top_by_revenue = [
         SourceAnalyticsItem(
-            source_code=r[0],
-            source_name=r[1],
-            deals_count=int(r[2] or 0),
-            revenue=float(r[3] or 0),
+            source_id=r[0],
+            source_code=r[1],
+            source_name=r[2],
+            deals_count=int(r[3] or 0),
+            revenue=float(r[4] or 0),
         )
         for r in top_revenue_rows
     ]
@@ -4485,7 +4506,7 @@ def analytics_audit(
     date_to: Optional[date] = None,
     deal_type_code: Optional[str] = None,
     region_code: Optional[str] = None,
-    source_code: Optional[str] = None,
+    source_id: Optional[int] = None,
     limit: int = 200,
     user: UserOut = Depends(get_current_user),
 ):
@@ -4501,9 +4522,9 @@ def analytics_audit(
     if region_code:
         filters.append("COALESCE(rd.code, ra.code) = %s")
         params.append(region_code)
-    if source_code:
-        filters.append("c.source_code = %s")
-        params.append(source_code)
+    if source_id:
+        filters.append("c.source_id = %s")
+        params.append(source_id)
     if date_from:
         filters.append("da.changed_at::date >= %s")
         params.append(date_from)
