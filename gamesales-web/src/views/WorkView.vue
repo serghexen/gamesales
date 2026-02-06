@@ -1137,6 +1137,7 @@
                             <tr>
                               <th>Строка</th>
                               <th>Поле</th>
+                              <th>Значение</th>
                               <th>Предупреждение</th>
                             </tr>
                           </thead>
@@ -1144,6 +1145,7 @@
                             <tr v-for="(e, idx) in slotImportWarnings" :key="`sw-${idx}`">
                               <td>{{ e.row }}</td>
                               <td>{{ e.field }}</td>
+                              <td>{{ e.value || '—' }}</td>
                               <td>{{ e.message }}</td>
                             </tr>
                           </tbody>
@@ -1156,6 +1158,7 @@
                             <tr>
                               <th>Строка</th>
                               <th>Поле</th>
+                              <th>Значение</th>
                               <th>Ошибка</th>
                             </tr>
                           </thead>
@@ -1163,6 +1166,7 @@
                             <tr v-for="(e, idx) in slotImportErrors" :key="`se-${idx}`">
                               <td>{{ e.row }}</td>
                               <td>{{ e.field }}</td>
+                              <td>{{ e.value || '—' }}</td>
                               <td>{{ e.message }}</td>
                             </tr>
                           </tbody>
