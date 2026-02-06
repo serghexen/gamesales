@@ -1343,12 +1343,12 @@ def validate_account_import_rows(conn, rows: List[dict], progress_cb=None) -> Tu
     return errors, warnings
 
 SLOT_FILE_TO_TYPE = {
-    "п4": "activate_ps4",
-    "п5": "activate_ps5",
-    "ps4(1)": "play_ps4",
-    "ps4(2)": "play_ps4",
-    "ps5(1)": "play_ps5",
-    "ps5(2)": "play_ps5",
+    "п4": ("activate_ps4", 1),
+    "п5": ("activate_ps5", 1),
+    "ps4(1)": ("play_ps4", 1),
+    "ps4(2)": ("play_ps4", 2),
+    "ps5(1)": ("play_ps5", 1),
+    "ps5(2)": ("play_ps5", 2),
 }
 
 def normalize_slot_file_value(value: str) -> str:
@@ -1506,10 +1506,10 @@ def validate_slot_import_rows(conn, rows: List[dict], progress_cb=None) -> Tuple
             errors.append({"row": report_row, "field": "Слот", "value": slot_val, "message": "Слот обязателен"})
         else:
             normalized_slot = normalize_slot_file_value(slot_val)
-            slot_code = SLOT_FILE_TO_TYPE.get(normalized_slot)
-            if not slot_code:
+            slot_mapping = SLOT_FILE_TO_TYPE.get(normalized_slot)
+            if not slot_mapping:
                 warnings.append({"row": report_row, "field": "Слот", "value": slot_val, "message": "Неизвестный слот"})
-            elif slot_code.lower() not in slot_types:
+            elif slot_mapping[0].lower() not in slot_types:
                 warnings.append({"row": report_row, "field": "Слот", "value": slot_val, "message": "Слот не найден в БД"})
 
         if game_title:
@@ -3877,11 +3877,12 @@ def run_slots_import_job(job_id: str, content: bytes, owner: str):
                 game_id = int(game_row[0])
 
                 slot_key = normalize_slot_file_value(slot_val)
-                slot_type_code = SLOT_FILE_TO_TYPE.get(slot_key)
-                if not slot_type_code:
+                slot_mapping = SLOT_FILE_TO_TYPE.get(slot_key)
+                if not slot_mapping:
                     skipped += 1
                     prepared.append({"skip": True})
                     continue
+                slot_type_code, slot_instance = slot_mapping
 
                 date_dt = normalize_slot_date_to_dt(date_val)
                 assigned_at = date_dt or DEFAULT_OLD_DT
@@ -3893,6 +3894,7 @@ def run_slots_import_job(job_id: str, content: bytes, owner: str):
                     "account_id": account_id,
                     "game_id": game_id,
                     "slot_type_code": slot_type_code,
+                    "slot_instance": slot_instance,
                     "customer": customer,
                     "source_id": source_id,
                     "assigned_at": assigned_at,
@@ -3903,7 +3905,7 @@ def run_slots_import_job(job_id: str, content: bytes, owner: str):
             for item in prepared:
                 if item.get("skip"):
                     continue
-                key = (item["account_id"], item["game_id"], item["slot_type_code"])
+                key = (item["account_id"], item["game_id"], item["slot_type_code"], item.get("slot_instance"))
                 groups.setdefault(key, []).append(item)
 
             for key in groups:
