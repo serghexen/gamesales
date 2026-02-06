@@ -793,11 +793,17 @@
                     <div v-else-if="accountModalMode === 'edit'" class="form form--stack form--compact">
                       <label class="field">
                         <span class="label">Логин (без домена)</span>
-                        <input v-model.trim="editAccount.login_name" class="input" placeholder="user" :disabled="accountEditMode === 'view'" />
+                        <input v-model.trim="editAccount.login_name" class="input" placeholder="user" :readonly="accountEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Домен</span>
-                        <select v-model="editAccount.domain_code" class="input input--select" :disabled="accountEditMode === 'view'">
+                        <input
+                          v-if="accountEditMode === 'view'"
+                          class="input"
+                          :value="getDomainLabel(editAccount.domain_code)"
+                          readonly
+                        />
+                        <select v-else v-model="editAccount.domain_code" class="input input--select">
                           <option value="">— не выбрано —</option>
                           <option v-for="d in domains" :key="d.name" :value="d.name">
                             {{ d.name }}
@@ -806,7 +812,13 @@
                       </label>
                       <label class="field">
                         <span class="label">Регион</span>
-                        <select v-model="editAccount.region_code" class="input input--select" :disabled="accountEditMode === 'view'">
+                        <input
+                          v-if="accountEditMode === 'view'"
+                          class="input"
+                          :value="getRegionLabel(editAccount.region_code)"
+                          readonly
+                        />
+                        <select v-else v-model="editAccount.region_code" class="input input--select">
                           <option value="">— не выбрано —</option>
                           <option v-for="r in regions" :key="r.code" :value="r.code">
                             {{ r.name }} ({{ r.code }})
@@ -815,7 +827,13 @@
                       </label>
                       <label class="field">
                         <span class="label">Статус</span>
-                        <select v-model="editAccount.status_code" class="input input--select" :disabled="accountEditMode === 'view'">
+                        <input
+                          v-if="accountEditMode === 'view'"
+                          class="input"
+                          :value="getAccountStatusLabel(editAccount.status_code)"
+                          readonly
+                        />
+                        <select v-else v-model="editAccount.status_code" class="input input--select">
                           <option value="active">active</option>
                           <option value="banned">banned</option>
                           <option value="archived">archived</option>
@@ -824,23 +842,23 @@
                       </label>
                       <label class="field">
                         <span class="label">Дата</span>
-                        <input v-model="editAccount.account_date" class="input" type="date" :max="maxDate" :disabled="accountEditMode === 'view'" />
+                        <input v-model="editAccount.account_date" class="input" type="date" :max="maxDate" :readonly="accountEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Комментарий</span>
-                        <input v-model.trim="editAccount.notes" class="input" placeholder="заметки" :disabled="accountEditMode === 'view'" />
+                        <input v-model.trim="editAccount.notes" class="input" placeholder="заметки" :readonly="accountEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Пароль почта</span>
-                        <input v-model.trim="editAccount.email_password" class="input" autocomplete="new-password" :disabled="accountEditMode === 'view'" />
+                        <input v-model.trim="editAccount.email_password" class="input" autocomplete="new-password" :readonly="accountEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Пароль аккаунт</span>
-                        <input v-model.trim="editAccount.account_password" class="input" autocomplete="new-password" :disabled="accountEditMode === 'view'" />
+                        <input v-model.trim="editAccount.account_password" class="input" autocomplete="new-password" :readonly="accountEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Код аутентификатора</span>
-                        <input v-model.trim="editAccount.auth_code" class="input" placeholder="код" :disabled="accountEditMode === 'view'" />
+                        <input v-model.trim="editAccount.auth_code" class="input" placeholder="код" :readonly="accountEditMode === 'view'" />
                       </label>
                       <label class="field field--full">
                         <span class="label">Резерв</span>
@@ -848,7 +866,7 @@
                           v-model.trim="editAccount.reserve_text"
                           class="input input--textarea"
                           placeholder="mkn4N5 6uGjMm ..."
-                          :disabled="accountEditMode === 'view'"
+                          :readonly="accountEditMode === 'view'"
                         />
                       </label>
                       <div class="field field--full">
@@ -1773,27 +1791,27 @@
                       </div>
                       <label class="field">
                         <span class="label">Название</span>
-                        <input v-model.trim="editGame.title" class="input" placeholder="Например, GTA V" :disabled="gameEditMode === 'view'" />
+                        <input v-model.trim="editGame.title" class="input" placeholder="Например, GTA V" :readonly="gameEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Короткое название</span>
-                        <input v-model.trim="editGame.short_title" class="input" placeholder="Например, GTA V" :disabled="gameEditMode === 'view'" />
+                        <input v-model.trim="editGame.short_title" class="input" placeholder="Например, GTA V" :readonly="gameEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Ссылка</span>
-                        <input v-model.trim="editGame.link" class="input" placeholder="https://..." :disabled="gameEditMode === 'view'" />
+                        <input v-model.trim="editGame.link" class="input" placeholder="https://..." :readonly="gameEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Язык текста</span>
-                        <input v-model.trim="editGame.text_lang" class="input" placeholder="RU/EN/..." :disabled="gameEditMode === 'view'" />
+                        <input v-model.trim="editGame.text_lang" class="input" placeholder="RU/EN/..." :readonly="gameEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Язык озвучки</span>
-                        <input v-model.trim="editGame.audio_lang" class="input" placeholder="RU/EN/..." :disabled="gameEditMode === 'view'" />
+                        <input v-model.trim="editGame.audio_lang" class="input" placeholder="RU/EN/..." :readonly="gameEditMode === 'view'" />
                       </label>
                       <label class="field">
                         <span class="label">Поддержка VR</span>
-                        <input v-model.trim="editGame.vr_support" class="input" placeholder="например: есть/нет" :disabled="gameEditMode === 'view'" />
+                        <input v-model.trim="editGame.vr_support" class="input" placeholder="например: есть/нет" :readonly="gameEditMode === 'view'" />
                       </label>
                       <div class="field field--full">
                         <span class="label">Платформы</span>
@@ -1806,7 +1824,13 @@
                       </div>
                       <label class="field">
                         <span class="label">Регион</span>
-                        <select v-model="editGame.region_code" class="input input--select" :disabled="gameEditMode === 'view'">
+                        <input
+                          v-if="gameEditMode === 'view'"
+                          class="input"
+                          :value="getRegionLabel(editGame.region_code)"
+                          readonly
+                        />
+                        <select v-else v-model="editGame.region_code" class="input input--select">
                           <option value="">— не выбрано —</option>
                           <option v-for="r in regions" :key="r.code" :value="r.code">
                             {{ r.name }} ({{ r.code }})
@@ -2690,17 +2714,30 @@
                       <div class="deal-form__col deal-form__col--left">
                         <label class="field">
                           <span class="label">Тип</span>
-                          <select v-model="editDeal.deal_type_code" class="input input--select" :disabled="dealEditMode === 'view'">
+                          <input
+                            v-if="dealEditMode === 'view'"
+                            class="input"
+                            :value="getDealTypeName(editDeal.deal_type_code)"
+                            readonly
+                          />
+                          <select v-else v-model="editDeal.deal_type_code" class="input input--select">
                             <option value="sale">Продажа</option>
                             <option value="rental">Шеринг</option>
                           </select>
                         </label>
                         <label v-if="editDeal.deal_type_code === 'rental'" class="field">
                           <span class="label">Тип слота</span>
+                          <input
+                            v-if="dealEditMode === 'view'"
+                            class="input"
+                            :value="getSlotTypeLabel(editDeal.slot_type_code)"
+                            readonly
+                          />
                           <select
+                            v-else
                             v-model="editDeal.slot_type_code"
                             class="input input--select"
-                            :disabled="dealEditMode === 'view' || !editDeal.game_id"
+                            :disabled="!editDeal.game_id"
                           >
                             <option value="">— не выбрано —</option>
                             <option
@@ -2712,22 +2749,29 @@
                               {{ getDealSlotTypeLabel(st) }}
                             </option>
                           </select>
-                          <span v-if="!editDeal.game_id" class="muted muted--small">Сначала выберите игру</span>
+                          <span v-if="dealEditMode !== 'view' && !editDeal.game_id" class="muted muted--small">Сначала выберите игру</span>
                         </label>
                         <label v-if="editDeal.deal_type_code === 'rental'" class="field">
                           <span class="label">Аккаунт</span>
+                          <input
+                            v-if="dealEditMode === 'view'"
+                            class="input"
+                            :value="getAccountLabelById(editDeal.account_id)"
+                            readonly
+                          />
                           <select
+                            v-else
                             v-model.number="editDeal.account_id"
                             class="input input--select"
-                            :disabled="dealEditMode === 'view' || !editDeal.game_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit')"
+                            :disabled="!editDeal.game_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit')"
                           >
                             <option value="">— не выбрано —</option>
                             <option v-for="a in dealAccountsForEdit" :key="a.account_id" :value="a.account_id">
                               {{ a.login_full || a.account_id }}
                             </option>
                           </select>
-                          <span v-if="!editDeal.game_id" class="muted muted--small">Сначала выберите игру</span>
-                          <span v-else-if="!editDeal.slot_type_code" class="muted muted--small">Сначала выберите слот</span>
+                          <span v-if="dealEditMode !== 'view' && !editDeal.game_id" class="muted muted--small">Сначала выберите игру</span>
+                          <span v-else-if="dealEditMode !== 'view' && !editDeal.slot_type_code" class="muted muted--small">Сначала выберите слот</span>
                           <div
                             v-if="dealEditMode !== 'view' && editDeal.game_id && editDeal.slot_type_code && !editDeal.account_id && !isDealSlotTypeUnsupported('edit') && !hasFreeDealSlots('edit')"
                             class="quick-create"
@@ -2865,11 +2909,17 @@
                         </div>
                         <label class="field">
                           <span class="label">Пользователь</span>
-                          <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="nickname" :disabled="dealEditMode === 'view'" />
+                          <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="nickname" :readonly="dealEditMode === 'view'" />
                         </label>
                         <label v-if="editDeal.deal_type_code === 'sale'" class="field">
                           <span class="label">Регион</span>
-                          <select v-model="editDeal.region_code" class="input input--select" :disabled="dealEditMode === 'view'">
+                          <input
+                            v-if="dealEditMode === 'view'"
+                            class="input"
+                            :value="getRegionLabel(editDeal.region_code)"
+                            readonly
+                          />
+                          <select v-else v-model="editDeal.region_code" class="input input--select">
                             <option value="">— не выбрано —</option>
                             <option v-for="r in regions" :key="r.code" :value="r.code">
                               {{ r.name }} ({{ r.code }})
@@ -2878,7 +2928,13 @@
                         </label>
                         <label class="field">
                           <span class="label">Откуда</span>
-                          <select v-model.number="editDeal.source_id" class="input input--select" :disabled="dealEditMode === 'view'">
+                          <input
+                            v-if="dealEditMode === 'view'"
+                            class="input"
+                            :value="getSourceLabelById(editDeal.source_id)"
+                            readonly
+                          />
+                          <select v-else v-model.number="editDeal.source_id" class="input input--select">
                             <option value="">— не выбрано —</option>
                             <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">
                               {{ s.name }} ({{ s.code }})
@@ -2892,7 +2948,7 @@
                             class="input"
                             type="date"
                             :max="maxDate"
-                            :disabled="dealEditMode === 'view'"
+                            :readonly="dealEditMode === 'view'"
                           />
                         </label>
                         <label v-if="editDeal.deal_type_code === 'sale'" class="field">
@@ -2901,7 +2957,7 @@
                             v-model.trim="editDeal.game_link"
                             class="input"
                             placeholder="https://..."
-                            :disabled="dealEditMode === 'view'"
+                            :readonly="dealEditMode === 'view'"
                           />
                         </label>
                         <label v-if="editDeal.deal_type_code === 'sale'" class="field">
@@ -2913,7 +2969,7 @@
                             min="0"
                             :max="maxPrice"
                             @input="editDeal.purchase_cost = clampPrice(editDeal.purchase_cost)"
-                            :disabled="dealEditMode === 'view'"
+                            :readonly="dealEditMode === 'view'"
                           />
                         </label>
                         <label class="field">
@@ -2925,12 +2981,18 @@
                             min="0"
                             :max="maxPrice"
                             @input="editDeal.price = clampPrice(editDeal.price)"
-                            :disabled="dealEditMode === 'view'"
+                            :readonly="dealEditMode === 'view'"
                           />
                         </label>
                         <label class="field">
                           <span class="label">Статус</span>
-                          <select v-model="editDeal.flow_status_code" class="input input--select" :disabled="dealEditMode === 'view'">
+                          <input
+                            v-if="dealEditMode === 'view'"
+                            class="input"
+                            :value="getFlowStatusLabel(editDeal.flow_status_code)"
+                            readonly
+                          />
+                          <select v-else v-model="editDeal.flow_status_code" class="input input--select">
                             <option value="">— не выбрано —</option>
                             <option v-for="s in dealFlowStatusOptions" :key="s.code" :value="s.code">
                               {{ s.name }}
@@ -2941,20 +3003,24 @@
                       <div class="deal-form__col deal-form__col--right">
                         <label v-if="editDeal.deal_type_code === 'rental'" class="field">
                           <span class="label">Игра</span>
-                          <div class="input input--compact input--search input--search-row">
+                          <input
+                            v-if="dealEditMode === 'view'"
+                            class="input"
+                            :value="getGameLabelById(editDeal.game_id)"
+                            readonly
+                          />
+                          <div v-else class="input input--compact input--search input--search-row">
                             <input
                               v-model.trim="editDealGameSearch"
                               class="input--search-field"
                               placeholder="поиск игры"
-                              :disabled="dealEditMode === 'view'"
                               @input="onEditDealGameSearch"
                             />
                           </div>
-                          <div class="input--select-wrap">
+                          <div v-if="dealEditMode !== 'view'" class="input--select-wrap">
                             <select
                               v-model.number="editDeal.game_id"
                               class="input input--select input--list"
-                              :disabled="dealEditMode === 'view'"
                               :size="editDealGameSearch ? 8 : (editDeal.game_id ? 1 : 8)"
                               @change="syncEditDealGameSearch"
                             >
@@ -2969,7 +3035,6 @@
                               type="button"
                               aria-label="Очистить игру"
                               title="Очистить игру"
-                              :disabled="dealEditMode === 'view'"
                               @click="clearEditDealGame"
                             >
                               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -2977,10 +3042,7 @@
                               </svg>
                             </button>
                           </div>
-                          <div
-                            v-if="dealEditMode !== 'view' && editDealGameSearch && filteredEditDealGames.length === 0"
-                            class="quick-create"
-                          >
+                          <div v-if="dealEditMode !== 'view' && editDealGameSearch && filteredEditDealGames.length === 0" class="quick-create">
                             <div class="quick-create__title">Быстро создать игру</div>
                             <input v-model.trim="quickEditGame.title" class="input input--compact" placeholder="Название игры" />
                             <div class="check-list check-list--compact">
@@ -3009,7 +3071,7 @@
                             v-model.trim="editDeal.notes"
                             class="input input--textarea input--textarea--tall"
                             :rows="getNotesRows(editDeal.notes)"
-                            :disabled="dealEditMode === 'view'"
+                            :readonly="dealEditMode === 'view'"
                           />
                         </label>
                       </div>
@@ -3482,7 +3544,7 @@
                       <div v-if="editDomain.open" class="form form--stack form--compact">
                         <label class="field">
                           <span class="label">Домен</span>
-                          <input v-model.trim="editDomain.name" class="input" placeholder="example.com" :disabled="domainEditMode === 'view'" />
+                          <input v-model.trim="editDomain.name" class="input" placeholder="example.com" :readonly="domainEditMode === 'view'" />
                         </label>
                         <div class="toolbar-actions"></div>
                       </div>
@@ -3660,11 +3722,11 @@
                       <div v-if="editSource.open" class="form form--stack form--compact">
                         <label class="field">
                           <span class="label">Код</span>
-                          <input v-model.trim="editSource.code" class="input" :disabled="sourceEditMode === 'view'" />
+                          <input v-model.trim="editSource.code" class="input" :readonly="sourceEditMode === 'view'" />
                         </label>
                         <label class="field">
                           <span class="label">Название</span>
-                          <input v-model.trim="editSource.name" class="input" :disabled="sourceEditMode === 'view'" />
+                          <input v-model.trim="editSource.name" class="input" :readonly="sourceEditMode === 'view'" />
                         </label>
                         <div class="toolbar-actions"></div>
                       </div>
@@ -3869,11 +3931,11 @@
                         </label>
                         <label class="field">
                           <span class="label">Название</span>
-                          <input v-model.trim="editPlatform.name" class="input" :disabled="platformEditMode === 'view'" />
+                          <input v-model.trim="editPlatform.name" class="input" :readonly="platformEditMode === 'view'" />
                         </label>
                         <label class="field">
                           <span class="label">Слотов на аккаунт</span>
-                          <input v-model.number="editPlatform.slot_capacity" class="input" type="number" min="0" :disabled="platformEditMode === 'view'" />
+                          <input v-model.number="editPlatform.slot_capacity" class="input" type="number" min="0" :readonly="platformEditMode === 'view'" />
                         </label>
                         <div class="toolbar-actions"></div>
                       </div>
@@ -4101,11 +4163,11 @@
                         </label>
                         <label class="field">
                           <span class="label">Название</span>
-                          <input v-model.trim="editRegion.name" class="input" :disabled="regionEditMode === 'view'" />
+                          <input v-model.trim="editRegion.name" class="input" :readonly="regionEditMode === 'view'" />
                         </label>
                         <label class="field">
                           <span class="label">Коэф. закупа (RUB)</span>
-                          <input v-model.number="editRegion.purchase_cost_rate" class="input" type="number" step="0.0001" min="0" :disabled="regionEditMode === 'view'" />
+                          <input v-model.number="editRegion.purchase_cost_rate" class="input" type="number" step="0.0001" min="0" :readonly="regionEditMode === 'view'" />
                         </label>
                         <div class="toolbar-actions"></div>
                       </div>
@@ -5197,11 +5259,16 @@ const formatAccountGamesLine = (account) => {
 
 const getSortedSlotStatus = (list) => {
   const items = Array.isArray(list) ? [...list] : []
-  const order = new Map((slotTypes.value || []).map((t, idx) => [t.code, idx]))
+  const typeMap = new Map((slotTypes.value || []).map((t) => [t.code, t]))
+  const modeOrder = new Map([['activate', 0], ['play', 1]])
   items.sort((a, b) => {
-    const ai = order.has(a.slot_type_code) ? order.get(a.slot_type_code) : 999
-    const bi = order.has(b.slot_type_code) ? order.get(b.slot_type_code) : 999
-    if (ai !== bi) return ai - bi
+    const at = typeMap.get(a.slot_type_code)
+    const bt = typeMap.get(b.slot_type_code)
+    const am = modeOrder.has(at?.mode) ? modeOrder.get(at?.mode) : 9
+    const bm = modeOrder.has(bt?.mode) ? modeOrder.get(bt?.mode) : 9
+    if (am !== bm) return am - bm
+    const ap = String(at?.platform_code || '').localeCompare(String(bt?.platform_code || ''))
+    if (ap !== 0) return ap
     return String(a.slot_type_code || '').localeCompare(String(b.slot_type_code || ''))
   })
   return items
@@ -5280,6 +5347,11 @@ const getSlotTypeLabel = (code) => {
 }
 
 const getGameById = (gameId) => (gamesAll.value || []).find((g) => g.game_id === gameId)
+
+const getGameLabelById = (gameId) => {
+  const game = getGameById(gameId)
+  return game?.title || (gameId ? String(gameId) : '—')
+}
 
 const getGamePlatformCodes = (gameId) => {
   const game = getGameById(gameId)
@@ -5372,6 +5444,35 @@ const getAccountLabelById = (accountId) => {
   if (!accountId) return '—'
   const found = (accountsAll.value || []).find((a) => a.account_id === accountId)
   return found?.login_full || found?.login_name || String(accountId)
+}
+
+const getRegionLabel = (code) => {
+  if (!code) return '—'
+  const region = (regions.value || []).find((r) => r.code === code)
+  return region ? `${region.name} (${region.code})` : code
+}
+
+const getDomainLabel = (code) => {
+  if (!code) return '—'
+  const domain = (domains.value || []).find((d) => d.name === code)
+  return domain?.name || code
+}
+
+const getAccountStatusLabel = (code) => {
+  if (!code) return '—'
+  return code
+}
+
+const getSourceLabelById = (sourceId) => {
+  if (!sourceId) return '—'
+  const source = (sources.value || []).find((s) => s.source_id === sourceId)
+  return source ? `${source.name} (${source.code})` : String(sourceId)
+}
+
+const getFlowStatusLabel = (code) => {
+  if (!code) return '—'
+  const status = dealFlowStatusOptions.find((s) => s.code === code)
+  return status?.name || code
 }
 
 const getAvailableSlotTypes = (statusList, selected) => {

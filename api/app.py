@@ -3284,7 +3284,7 @@ def list_slot_types(user: UserOut = Depends(get_current_user)):
             SELECT code, name, platform_code, mode, capacity
             FROM app.slot_types
             ORDER BY
-              CASE WHEN mode = 'play' THEN 1 ELSE 2 END,
+              CASE WHEN mode = 'activate' THEN 1 ELSE 2 END,
               platform_code,
               code
             """,
