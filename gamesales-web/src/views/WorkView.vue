@@ -1908,7 +1908,7 @@
                           </thead>
                           <tbody>
                             <tr v-for="s in gameSlotAssignments" :key="s.assignment_id">
-                              <td>{{ s.account_id || '—' }}</td>
+                              <td>{{ s.account_login || s.account_id || '—' }}</td>
                               <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
                               <td>{{ s.customer_nickname || '—' }}</td>
                               <td>{{ getSlotAssignmentStatus(s) }}</td>

@@ -481,6 +481,7 @@ class SlotTypeOut(BaseModel):
 class AccountSlotAssignmentOut(BaseModel):
     assignment_id: int
     account_id: int
+    account_login: Optional[str] = None
     slot_type_code: str
     customer_id: Optional[int]
     customer_nickname: Optional[str]
@@ -2268,11 +2269,11 @@ def list_accounts(
     filters = []
     params = []
     if login_q:
-        filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s)")
-        params.extend([f"%{login_q}%", f"%{login_q}%"])
+        filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR (a.login_name || '@' || d.name) ILIKE %s)")
+        params.extend([f"%{login_q}%", f"%{login_q}%", f"%{login_q}%"])
     if q:
-        filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR r.code ILIKE %s OR g.title ILIKE %s)")
-        params.extend([f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"])
+        filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR (a.login_name || '@' || d.name) ILIKE %s OR r.code ILIKE %s OR g.title ILIKE %s)")
+        params.extend([f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"])
     if game_q:
         filters.append("g.title ILIKE %s")
         params.append(f"%{game_q}%")
@@ -2797,6 +2798,8 @@ def list_account_slot_assignments(account_id: int, user: UserOut = Depends(get_c
             SELECT
               asa.assignment_id,
               asa.account_id,
+              a.login_name,
+              d.name as domain_name,
               asa.slot_type_code,
               asa.customer_id,
               c.nickname,
@@ -2809,6 +2812,8 @@ def list_account_slot_assignments(account_id: int, user: UserOut = Depends(get_c
               asa.assigned_by,
               asa.released_by
             FROM app.account_slot_assignments asa
+            LEFT JOIN app.accounts a ON a.account_id = asa.account_id
+            LEFT JOIN app.domains d ON d.domain_id = a.domain_id
             LEFT JOIN app.customers c ON c.customer_id = asa.customer_id
             LEFT JOIN app.game_titles g ON g.game_id = asa.game_id
             WHERE asa.account_id=%s
@@ -2820,17 +2825,18 @@ def list_account_slot_assignments(account_id: int, user: UserOut = Depends(get_c
         AccountSlotAssignmentOut(
             assignment_id=r[0],
             account_id=r[1],
-            slot_type_code=r[2],
-            customer_id=r[3],
-            customer_nickname=r[4],
-            game_id=r[5],
-            game_title=r[6],
-            deal_id=r[7],
-            deal_item_id=r[8],
-            assigned_at=r[9],
-            released_at=r[10],
-            assigned_by=r[11],
-            released_by=r[12],
+            account_login=f"{r[2]}@{r[3]}" if r[2] and r[3] else None,
+            slot_type_code=r[4],
+            customer_id=r[5],
+            customer_nickname=r[6],
+            game_id=r[7],
+            game_title=r[8],
+            deal_id=r[9],
+            deal_item_id=r[10],
+            assigned_at=r[11],
+            released_at=r[12],
+            assigned_by=r[13],
+            released_by=r[14],
         )
         for r in rows
     ]
@@ -3066,6 +3072,8 @@ def list_game_slot_assignments(game_id: int, user: UserOut = Depends(get_current
             SELECT
               asa.assignment_id,
               asa.account_id,
+              a.login_name,
+              d.name as domain_name,
               asa.slot_type_code,
               asa.customer_id,
               c.nickname,
@@ -3078,6 +3086,8 @@ def list_game_slot_assignments(game_id: int, user: UserOut = Depends(get_current
               asa.assigned_by,
               asa.released_by
             FROM app.account_slot_assignments asa
+            LEFT JOIN app.accounts a ON a.account_id = asa.account_id
+            LEFT JOIN app.domains d ON d.domain_id = a.domain_id
             LEFT JOIN app.customers c ON c.customer_id = asa.customer_id
             LEFT JOIN app.game_titles g ON g.game_id = asa.game_id
             WHERE asa.game_id=%s
@@ -3089,17 +3099,18 @@ def list_game_slot_assignments(game_id: int, user: UserOut = Depends(get_current
         AccountSlotAssignmentOut(
             assignment_id=r[0],
             account_id=r[1],
-            slot_type_code=r[2],
-            customer_id=r[3],
-            customer_nickname=r[4],
-            game_id=r[5],
-            game_title=r[6],
-            deal_id=r[7],
-            deal_item_id=r[8],
-            assigned_at=r[9],
-            released_at=r[10],
-            assigned_by=r[11],
-            released_by=r[12],
+            account_login=f"{r[2]}@{r[3]}" if r[2] and r[3] else None,
+            slot_type_code=r[4],
+            customer_id=r[5],
+            customer_nickname=r[6],
+            game_id=r[7],
+            game_title=r[8],
+            deal_id=r[9],
+            deal_item_id=r[10],
+            assigned_at=r[11],
+            released_at=r[12],
+            assigned_by=r[13],
+            released_by=r[14],
         )
         for r in rows
     ]

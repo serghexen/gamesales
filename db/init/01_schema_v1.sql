@@ -182,10 +182,10 @@ CREATE TABLE IF NOT EXISTS app.slot_types (
 
 INSERT INTO app.slot_types(code, name, platform_code, mode, capacity)
 VALUES
-  ('play_ps4', 'П2 (PS4)', 'ps4', 'play', 1),
-  ('play_ps5', 'П2 (PS5)', 'ps5', 'play', 1),
-  ('activate_ps4', 'П3 (PS4)', 'ps4', 'activate', 2),
-  ('activate_ps5', 'П3 (PS5)', 'ps5', 'activate', 2)
+  ('play_ps4', 'П3 (PS4)', 'ps4', 'play', 1),
+  ('play_ps5', 'П3 (PS5)', 'ps5', 'play', 1),
+  ('activate_ps4', 'П2 (PS4)', 'ps4', 'activate', 2),
+  ('activate_ps5', 'П2 (PS5)', 'ps5', 'activate', 2)
 ON CONFLICT (code) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS app.account_assets (
