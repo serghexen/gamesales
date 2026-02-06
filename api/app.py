@@ -1409,6 +1409,54 @@ def normalize_slot_date(value) -> Optional[str]:
                 return None
     return None
 
+def normalize_slot_date_to_dt(value) -> Optional[datetime]:
+    normalized = normalize_slot_date(value)
+    if not normalized:
+        return None
+    try:
+        return datetime.fromisoformat(normalized).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+def resolve_source_id(conn, source_val: str) -> Optional[int]:
+    if not source_val:
+        return None
+    parts = [p for p in str(source_val).strip().split() if p]
+    row = None
+    if len(parts) >= 2:
+        name_part = parts[0]
+        code_part = parts[-1]
+        row = q1(
+            conn,
+            """
+            SELECT source_id
+            FROM app.sources
+            WHERE lower(name) = lower(%s) AND lower(code) = lower(%s)
+            """,
+            (name_part, code_part),
+        )
+        if not row:
+            row = q1(
+                conn,
+                """
+                SELECT source_id
+                FROM app.sources
+                WHERE lower(name) = lower(%s) AND lower(code) = lower(%s)
+                """,
+                (code_part, name_part),
+            )
+    if not row:
+        row = q1(
+            conn,
+            """
+            SELECT source_id
+            FROM app.sources
+            WHERE lower(code) = lower(%s) OR lower(name) = lower(%s)
+            """,
+            (source_val, source_val),
+        )
+    return int(row[0]) if row else None
+
 def validate_slot_import_rows(conn, rows: List[dict], progress_cb=None) -> Tuple[List[dict], List[dict], int]:
     errors = []
     warnings = []
@@ -3758,6 +3806,212 @@ def run_slots_validate_job(job_id: str, content: bytes, owner: str, limit: Optio
             {"phase": "error", "current": 0, "total": 0, "done": True, "result": {"ok": False, "errors": [{"row": 0, "field": "Проверка", "message": str(exc)}]}},
         )
 
+def run_slots_import_job(job_id: str, content: bytes, owner: str):
+    try:
+        with psycopg.connect(DB_DSN) as conn:
+            rows = read_slots_from_excel(content)
+            errors, warnings, total_valid = validate_slot_import_rows(conn, rows, progress_cb=None)
+            if errors:
+                set_import_progress(job_id, owner, {"phase": "error", "current": 0, "total": 0, "done": True, "result": {"ok": False, "errors": errors, "warnings": warnings}})
+                return
+            total = len(rows)
+            set_import_progress(job_id, owner, {"phase": "upload", "current": 0, "total": total, "done": False})
+
+            created = 0
+            released = 0
+            skipped = 0
+            failed = 0
+            upload_done = 0
+            row_errors = []
+
+            DEFAULT_OLD_DT = datetime(MIN_DATE.year, MIN_DATE.month, MIN_DATE.day, tzinfo=timezone.utc)
+
+            prepared = []
+            for idx, row in enumerate(rows, start=2):
+                status_raw = row.get("status")
+                status = "" if status_raw is None else str(status_raw).strip().lower()
+                if not status or status == "свободен":
+                    skipped += 1
+                    prepared.append({"skip": True})
+                    continue
+
+                account_val = normalize_cell_text(row.get("account"))
+                slot_val = normalize_cell_text(row.get("slot"))
+                game_title = normalize_cell_text(row.get("game"))
+                customer = normalize_cell_text(row.get("customer"))
+                source_val = normalize_cell_text(row.get("source"))
+                date_val = row.get("date")
+
+                if not account_val or not slot_val or not game_title:
+                    skipped += 1
+                    prepared.append({"skip": True})
+                    continue
+
+                login, domain = split_account(account_val)
+                if not login or not domain:
+                    skipped += 1
+                    prepared.append({"skip": True})
+                    continue
+
+                account_row = q1(
+                    conn,
+                    """
+                    SELECT a.account_id
+                    FROM app.accounts a
+                    JOIN app.domains d ON d.domain_id = a.domain_id
+                    WHERE lower(a.login_name) = lower(%s) AND lower(d.name) = lower(%s)
+                    """,
+                    (login, domain),
+                )
+                if not account_row:
+                    skipped += 1
+                    prepared.append({"skip": True})
+                    continue
+                account_id = int(account_row[0])
+
+                game_row = q1(conn, "SELECT game_id FROM app.game_titles WHERE lower(title)=lower(%s)", (game_title,))
+                if not game_row:
+                    skipped += 1
+                    prepared.append({"skip": True})
+                    continue
+                game_id = int(game_row[0])
+
+                slot_key = normalize_slot_file_value(slot_val)
+                slot_type_code = SLOT_FILE_TO_TYPE.get(slot_key)
+                if not slot_type_code:
+                    skipped += 1
+                    prepared.append({"skip": True})
+                    continue
+
+                date_dt = normalize_slot_date_to_dt(date_val)
+                assigned_at = date_dt or DEFAULT_OLD_DT
+                source_id = resolve_source_id(conn, source_val) if source_val else None
+
+                prepared.append({
+                    "skip": False,
+                    "row_idx": idx,
+                    "account_id": account_id,
+                    "game_id": game_id,
+                    "slot_type_code": slot_type_code,
+                    "customer": customer,
+                    "source_id": source_id,
+                    "assigned_at": assigned_at,
+                    "completed_at": date_dt,
+                })
+
+            groups = {}
+            for item in prepared:
+                if item.get("skip"):
+                    continue
+                key = (item["account_id"], item["game_id"], item["slot_type_code"])
+                groups.setdefault(key, []).append(item)
+
+            for key in groups:
+                groups[key].sort(key=lambda x: (x["assigned_at"], x["row_idx"]))
+
+            upload_done = skipped
+            set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+
+            for key, items in groups.items():
+                prev_assignment_id = None
+                prev_assigned_at = None
+                for item in items:
+                    if is_import_cancelled(job_id):
+                        set_import_progress(job_id, owner, {"phase": "cancelled", "current": upload_done, "total": total, "done": True, "result": {"ok": False, "cancelled": True}})
+                        return
+                    try:
+                        account_id = item["account_id"]
+                        game_id = item["game_id"]
+                        slot_type_code = item["slot_type_code"]
+                        assigned_at = item["assigned_at"]
+                        completed_at = item["completed_at"]
+                        customer_nickname = item["customer"]
+                        source_id = item["source_id"]
+
+                        # ensure slot type and platform
+                        slot_type = ensure_account_allows_slot_type(conn, account_id, slot_type_code)
+                        platform_id = get_platform_id(conn, slot_type[1])
+
+                        customer_id = None
+                        if customer_nickname:
+                            customer_id = ensure_customer(conn, customer_nickname, source_id)
+
+                        region_row = q1(conn, "SELECT region_id FROM app.accounts WHERE account_id=%s", (account_id,))
+                        region_id = int(region_row[0]) if region_row and region_row[0] is not None else None
+
+                        deal_row = q1(conn, """
+                            INSERT INTO app.deals(
+                              deal_type_code, status_code, flow_status_code, region_id, customer_id, currency, total_amount, completed_at
+                            )
+                            VALUES ('rental', 'confirmed', 'completed', %s, %s, 'RUB', 0, %s)
+                            RETURNING deal_id
+                        """, (region_id, customer_id, completed_at))
+                        deal_id = int(deal_row[0])
+
+                        row_item = q1(conn, """
+                            INSERT INTO app.deal_items(
+                              deal_id, account_id, game_id, platform_id,
+                              qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link
+                            )
+                            VALUES (%s, %s, %s, %s, 1, 0, 0, 0, %s, %s, NULL, 1, %s, NULL, NULL)
+                            RETURNING deal_item_id
+                        """, (
+                            deal_id, account_id, game_id, platform_id,
+                            completed_at, completed_at, slot_type_code
+                        ))
+                        deal_item_id = int(row_item[0])
+
+                        assignment_row = q1(
+                            conn,
+                            """
+                            INSERT INTO app.account_slot_assignments(
+                              account_id, slot_type_code, customer_id, game_id, deal_id, deal_item_id, assigned_at, assigned_by
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            RETURNING assignment_id
+                            """,
+                            (account_id, slot_type_code, customer_id, game_id, deal_id, deal_item_id, assigned_at, owner),
+                        )
+                        assignment_id = int(assignment_row[0])
+
+                        if prev_assignment_id is not None and prev_assigned_at is not None:
+                            exec1(
+                                conn,
+                                """
+                                UPDATE app.account_slot_assignments
+                                SET released_at=%s, released_by=%s
+                                WHERE assignment_id=%s
+                                """,
+                                (assigned_at, owner, prev_assignment_id),
+                            )
+                            released += 1
+
+                        conn.commit()
+                        created += 1
+                        prev_assignment_id = assignment_id
+                        prev_assigned_at = assigned_at
+                    except Exception as exc:
+                        conn.rollback()
+                        failed += 1
+                        row_errors.append({"row": item.get("row_idx"), "field": "Импорт", "message": str(exc)})
+                    finally:
+                        upload_done += 1
+                        set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+
+            result = {
+                "ok": len(row_errors) == 0,
+                "created": created,
+                "released": released,
+                "skipped": skipped,
+                "failed": failed,
+                "total": total,
+                "errors": row_errors,
+                "warnings": warnings,
+            }
+            set_import_progress(job_id, owner, {"phase": "upload", "current": total, "total": total, "done": True, "result": result})
+    except Exception as exc:
+        set_import_progress(job_id, owner, {"phase": "error", "current": 0, "total": 0, "done": True, "result": {"ok": False, "errors": [{"row": 0, "field": "Импорт", "message": str(exc)}]}})
+
 @app.get("/accounts/import/template")
 def accounts_import_template(user: UserOut = Depends(require_role("admin"))):
     wb = Workbook()
@@ -3853,6 +4107,53 @@ def accounts_slots_report(payload: ImportReportIn, user: UserOut = Depends(requi
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=slots_import_report.xlsx"},
     )
+
+@app.post("/accounts/slots/import")
+def accounts_slots_import(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
+    if not file or not file.filename:
+        raise HTTPException(400, "file is required")
+    if not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(400, "Only .xlsx/.xls are supported")
+    content = file.file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(400, "File too large. Max 10MB")
+    job_id = uuid.uuid4().hex
+    set_import_progress(job_id, user.username, {"phase": "queued", "current": 0, "total": 0, "done": False})
+    thread = threading.Thread(target=run_slots_import_job, args=(job_id, content, user.username), daemon=True)
+    thread.start()
+    return {"ok": True, "job_id": job_id}
+
+@app.get("/accounts/slots/import/status")
+def accounts_slots_import_status(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    status = get_import_progress(job_id)
+    if not status:
+        return {"phase": "idle", "current": 0, "total": 0, "done": True}
+    if status.get("owner") and status.get("owner") != user.username:
+        raise HTTPException(403, "job not found")
+    return {
+        "phase": status.get("phase", "idle"),
+        "current": int(status.get("current") or 0),
+        "total": int(status.get("total") or 0),
+        "done": bool(status.get("done")),
+        "result": status.get("result"),
+    }
+
+@app.post("/accounts/slots/import/cancel")
+def accounts_slots_import_cancel(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    status = get_import_progress(job_id)
+    if not status:
+        return {"ok": True}
+    if status.get("owner") and status.get("owner") != user.username:
+        raise HTTPException(403, "job not found")
+    set_import_progress(job_id, user.username, {
+        "phase": "cancelled",
+        "current": int(status.get("current") or 0),
+        "total": int(status.get("total") or 0),
+        "done": True,
+        "cancelled": True,
+        "result": {"ok": False, "cancelled": True},
+    })
+    return {"ok": True}
 
 @app.get("/accounts/import/status")
 def accounts_import_status(job_id: str, user: UserOut = Depends(require_role("admin"))):

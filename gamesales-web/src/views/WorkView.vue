@@ -1084,6 +1084,17 @@
                         <span v-if="slotImportLoading" class="spinner spinner--small"></span>
                         Проверка
                       </button>
+                      <button
+                        class="ghost"
+                        type="button"
+                        @click="uploadSlotImport"
+                        :disabled="!slotImportValidated || !slotImportFile || slotImportLoading"
+                        title="Загрузить"
+                        aria-label="Загрузить"
+                      >
+                        <span v-if="slotImportLoading && slotImportAction === 'upload'" class="spinner spinner--small"></span>
+                        Загрузить
+                      </button>
                       <button class="ghost" type="button" @click="cleanSlotImport" :disabled="!slotImportFile || slotImportLoading">
                         <span v-if="slotImportLoading" class="spinner spinner--small"></span>
                         Очистить файл
@@ -1100,6 +1111,8 @@
                       </button>
                       <button v-if="slotImportLoading && slotImportJobId" class="import-status" type="button">
                         <span v-if="slotImportAction === 'validate' && slotImportProgress.total">Проверка: {{ slotImportProgress.current }} из {{ slotImportProgress.total }}</span>
+                        <span v-else-if="slotImportAction === 'upload' && slotImportProgress.total">Загрузка: {{ slotImportProgress.current }} из {{ slotImportProgress.total }}</span>
+                        <span v-else-if="slotImportAction === 'upload'">Загрузка…</span>
                         <span v-else-if="slotImportAction === 'cancel'">Отмена…</span>
                         <span v-else-if="slotImportAction === 'validate'">Проверка…</span>
                       </button>
@@ -1133,6 +1146,9 @@
                       </div>
                       <p v-if="slotImportValidated" class="muted">
                         Итог: строк к загрузке {{ slotImportTotal }}, предупреждений {{ slotImportWarnings.length }}, ошибок {{ slotImportErrors.length }}
+                      </p>
+                      <p v-if="slotImportStats" class="muted">
+                        Итог загрузки: создано {{ slotImportStats.created }}, снято {{ slotImportStats.released }}, пропущено {{ slotImportStats.skipped }}, ошибок {{ slotImportStats.failed }}, всего {{ slotImportStats.total }}
                       </p>
                       <div v-if="slotImportWarnings.length" class="import-errors">
                         <p class="muted">Предупреждения: {{ slotImportWarnings.length }}</p>
@@ -5056,6 +5072,7 @@ const slotImportError = ref('')
 const slotImportAction = ref('')
 const slotImportProgress = reactive({ current: 0, total: 0, phase: '' })
 const slotImportJobId = ref('')
+const slotImportStats = ref(null)
 const gameImportAction = ref('')
 const accountImportAction = ref('')
 const gameImportStats = ref(null)
@@ -5072,6 +5089,7 @@ let slotImportStatusTimer = null
 const GAME_IMPORT_JOB_KEY = 'gamesales_game_import_job_v1'
 const ACCOUNT_IMPORT_JOB_KEY = 'gamesales_account_import_job_v1'
 const SLOT_VALIDATE_JOB_KEY = 'gamesales_slot_validate_job_v1'
+const SLOT_IMPORT_JOB_KEY = 'gamesales_slot_import_job_v1'
 const gameLogoLoading = ref(false)
 const gameLogoCache = new Map()
 const gameLogoUploading = ref(false)
@@ -6096,10 +6114,17 @@ function openSlotImport() {
   slotImportProgress.total = 0
   slotImportProgress.phase = ''
   slotImportJobId.value = ''
+  slotImportStats.value = null
   stopSlotImportStatusPolling()
-  const stored = localStorage.getItem(SLOT_VALIDATE_JOB_KEY)
-  if (stored) {
-    slotImportJobId.value = stored
+  const storedImport = localStorage.getItem(SLOT_IMPORT_JOB_KEY)
+  const storedValidate = localStorage.getItem(SLOT_VALIDATE_JOB_KEY)
+  if (storedImport) {
+    slotImportJobId.value = storedImport
+    slotImportAction.value = 'upload'
+    slotImportLoading.value = true
+    startSlotImportStatusPolling()
+  } else if (storedValidate) {
+    slotImportJobId.value = storedValidate
     slotImportAction.value = 'validate'
     slotImportLoading.value = true
     startSlotImportStatusPolling()
@@ -6122,8 +6147,10 @@ function closeSlotImport() {
   slotImportProgress.total = 0
   slotImportProgress.phase = ''
   slotImportJobId.value = ''
+  slotImportStats.value = null
   stopSlotImportStatusPolling()
   localStorage.removeItem(SLOT_VALIDATE_JOB_KEY)
+  localStorage.removeItem(SLOT_IMPORT_JOB_KEY)
 }
 
 function closeGameImport() {
@@ -6273,21 +6300,25 @@ function startAccountImportStatusPolling() {
 async function pollSlotImportStatusOnce() {
   if (!slotImportJobId.value) return
   try {
-    const status = await apiGet(`/accounts/slots/validate/status?job_id=${encodeURIComponent(slotImportJobId.value)}`, { token: auth.state.token })
+    const endpoint = slotImportAction.value === 'upload'
+      ? `/accounts/slots/import/status?job_id=${encodeURIComponent(slotImportJobId.value)}`
+      : `/accounts/slots/validate/status?job_id=${encodeURIComponent(slotImportJobId.value)}`
+    const status = await apiGet(endpoint, { token: auth.state.token })
     if (!status) return
     slotImportProgress.current = Number(status.current || 0)
     slotImportProgress.total = Number(status.total || 0)
     slotImportProgress.phase = status.phase || ''
     if (status.done && status.result) {
-      applySlotImportResult(status.result)
+      applySlotImportResult(status.result, slotImportAction.value)
       return
     }
     if (status.done) {
-      slotImportMessage.value = 'Проверка завершена'
+      slotImportMessage.value = slotImportAction.value === 'upload' ? 'Загрузка завершена' : 'Проверка завершена'
       slotImportLoading.value = false
       slotImportAction.value = ''
       slotImportJobId.value = ''
       localStorage.removeItem(SLOT_VALIDATE_JOB_KEY)
+      localStorage.removeItem(SLOT_IMPORT_JOB_KEY)
       stopSlotImportStatusPolling()
     }
   } catch {
@@ -6301,20 +6332,24 @@ function startSlotImportStatusPolling() {
   slotImportStatusTimer = setInterval(async () => {
     try {
       if (!slotImportJobId.value) return
-      const status = await apiGet(`/accounts/slots/validate/status?job_id=${encodeURIComponent(slotImportJobId.value)}`, { token: auth.state.token })
+      const endpoint = slotImportAction.value === 'upload'
+        ? `/accounts/slots/import/status?job_id=${encodeURIComponent(slotImportJobId.value)}`
+        : `/accounts/slots/validate/status?job_id=${encodeURIComponent(slotImportJobId.value)}`
+      const status = await apiGet(endpoint, { token: auth.state.token })
       if (!status) return
       slotImportProgress.current = Number(status.current || 0)
       slotImportProgress.total = Number(status.total || 0)
       slotImportProgress.phase = status.phase || ''
       if (status.done && status.result) {
-        applySlotImportResult(status.result)
+        applySlotImportResult(status.result, slotImportAction.value)
       }
       if (status.done && !status.result) {
-        slotImportMessage.value = 'Проверка завершена'
+        slotImportMessage.value = slotImportAction.value === 'upload' ? 'Загрузка завершена' : 'Проверка завершена'
         slotImportLoading.value = false
         slotImportAction.value = ''
         slotImportJobId.value = ''
         localStorage.removeItem(SLOT_VALIDATE_JOB_KEY)
+        localStorage.removeItem(SLOT_IMPORT_JOB_KEY)
         stopSlotImportStatusPolling()
       }
       if (status.done && !slotImportLoading.value) stopSlotImportStatusPolling()
@@ -6423,10 +6458,10 @@ async function applyAccountImportResult(res) {
   await loadAccountsAll()
 }
 
-async function applySlotImportResult(res) {
+async function applySlotImportResult(res, action) {
   if (!res) return
   if (res?.cancelled) {
-    slotImportMessage.value = 'Проверка отменена'
+    slotImportMessage.value = action === 'upload' ? 'Загрузка отменена' : 'Проверка отменена'
     slotImportErrors.value = []
     slotImportWarnings.value = []
     slotImportValidated.value = false
@@ -6434,6 +6469,7 @@ async function applySlotImportResult(res) {
     slotImportAction.value = ''
     slotImportJobId.value = ''
     localStorage.removeItem(SLOT_VALIDATE_JOB_KEY)
+    localStorage.removeItem(SLOT_IMPORT_JOB_KEY)
     stopSlotImportStatusPolling()
     return
   }
@@ -6441,17 +6477,31 @@ async function applySlotImportResult(res) {
   slotImportWarnings.value = res?.warnings || []
   slotImportTotal.value = Number(res?.total || 0)
   slotImportValidated.value = Boolean(res?.ok)
-  if (res?.ok) {
-    slotImportMessage.value = slotImportWarnings.value.length
-      ? `Проверка завершена. Некоторые строки будут пропущены: ${slotImportWarnings.value.length}.`
-      : `Проверка завершена. Строк к загрузке: ${slotImportTotal.value}.`
+  if (action === 'upload') {
+    const created = res?.created || 0
+    const released = res?.released || 0
+    const skipped = res?.skipped || 0
+    const failed = res?.failed || 0
+    slotImportStats.value = { created, released, skipped, failed, total: res?.total || 0 }
+    if (res?.ok) {
+      slotImportMessage.value = `Загружено. Создано: ${created}, снято: ${released}, пропущено: ${skipped}`
+    } else {
+      slotImportMessage.value = `Загрузка с ошибками. Ошибок: ${failed}`
+    }
   } else {
-    slotImportMessage.value = 'Файл не корректен. Исправьте ошибки ниже.'
+    if (res?.ok) {
+      slotImportMessage.value = slotImportWarnings.value.length
+        ? `Проверка завершена. Некоторые строки будут пропущены: ${slotImportWarnings.value.length}.`
+        : `Проверка завершена. Строк к загрузке: ${slotImportTotal.value}.`
+    } else {
+      slotImportMessage.value = 'Файл не корректен. Исправьте ошибки ниже.'
+    }
   }
   slotImportLoading.value = false
   slotImportAction.value = ''
   slotImportJobId.value = ''
   localStorage.removeItem(SLOT_VALIDATE_JOB_KEY)
+  localStorage.removeItem(SLOT_IMPORT_JOB_KEY)
   stopSlotImportStatusPolling()
 }
 
@@ -6504,8 +6554,10 @@ function onSlotImportFile(event) {
   slotImportProgress.total = 0
   slotImportProgress.phase = ''
   slotImportJobId.value = ''
+  slotImportStats.value = null
   stopSlotImportStatusPolling()
   localStorage.removeItem(SLOT_VALIDATE_JOB_KEY)
+  localStorage.removeItem(SLOT_IMPORT_JOB_KEY)
 }
 
 async function downloadGameTemplate() {
@@ -6739,6 +6791,36 @@ async function validateSlotImport() {
   }
 }
 
+async function uploadSlotImport() {
+  if (!slotImportFile.value || !slotImportValidated.value) return
+  slotImportAction.value = 'upload'
+  slotImportLoading.value = true
+  slotImportProgress.current = 0
+  slotImportProgress.total = slotImportTotal.value || 0
+  slotImportProgress.phase = ''
+  slotImportStats.value = null
+  try {
+    const form = new FormData()
+    form.append('file', slotImportFile.value)
+    const res = await apiPostForm('/accounts/slots/import', form, { token: auth.state.token })
+    if (res?.job_id) {
+      slotImportJobId.value = res.job_id
+      localStorage.setItem(SLOT_IMPORT_JOB_KEY, res.job_id)
+      startSlotImportStatusPolling()
+    } else {
+      slotImportMessage.value = 'Не удалось запустить загрузку'
+      slotImportLoading.value = false
+      slotImportAction.value = ''
+    }
+  } catch (e) {
+    slotImportError.value = mapApiError(e?.message)
+    slotImportLoading.value = false
+    slotImportAction.value = ''
+  } finally {
+    // wait for background job result
+  }
+}
+
 async function downloadSlotImportReport() {
   try {
     const payload = { errors: slotImportErrors.value || [], warnings: slotImportWarnings.value || [] }
@@ -6767,10 +6849,14 @@ async function downloadSlotImportReport() {
 
 async function cancelSlotImport() {
   if (!slotImportJobId.value) return
+  const action = slotImportAction.value
   slotImportAction.value = 'cancel'
   slotImportLoading.value = true
   try {
-    await apiPost(`/accounts/slots/validate/cancel?job_id=${encodeURIComponent(slotImportJobId.value)}`, {}, { token: auth.state.token })
+    const endpoint = action === 'upload'
+      ? `/accounts/slots/import/cancel?job_id=${encodeURIComponent(slotImportJobId.value)}`
+      : `/accounts/slots/validate/cancel?job_id=${encodeURIComponent(slotImportJobId.value)}`
+    await apiPost(endpoint, {}, { token: auth.state.token })
     startSlotImportStatusPolling()
   } catch (e) {
     slotImportError.value = mapApiError(e?.message)
