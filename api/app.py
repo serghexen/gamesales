@@ -15,6 +15,7 @@ import base64
 from io import BytesIO
 import urllib.request
 import urllib.error
+import re
 import imghdr
 import ssl
 import threading
@@ -1358,6 +1359,56 @@ def normalize_cell_text(value) -> str:
         return ""
     return str(value).strip()
 
+RU_MONTHS = {
+    "январь": 1,
+    "февраль": 2,
+    "март": 3,
+    "апрель": 4,
+    "май": 5,
+    "июнь": 6,
+    "июль": 7,
+    "август": 8,
+    "сентябрь": 9,
+    "октябрь": 10,
+    "ноябрь": 11,
+    "декабрь": 12,
+}
+
+def normalize_slot_date(value) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    raw = str(value).strip()
+    if not raw:
+        return None
+    m = re.search(r"(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})", raw)
+    if m:
+        d = int(m.group(1))
+        mo = int(m.group(2))
+        y = int(m.group(3))
+        if y < 100:
+            y += 2000
+        try:
+            return date(y, mo, d).isoformat()
+        except ValueError:
+            return None
+    m = re.match(r"^\s*([A-Za-zА-Яа-яёЁ]+)\s+(\d{2,4})\s*$", raw)
+    if m:
+        month_name = m.group(1).strip().lower()
+        year = int(m.group(2))
+        if year < 100:
+            year += 2000
+        month = RU_MONTHS.get(month_name)
+        if month:
+            try:
+                return date(year, month, 1).isoformat()
+            except ValueError:
+                return None
+    return None
+
 def validate_slot_import_rows(conn, rows: List[dict], progress_cb=None) -> Tuple[List[dict], List[dict], int]:
     errors = []
     warnings = []
@@ -1381,6 +1432,7 @@ def validate_slot_import_rows(conn, rows: List[dict], progress_cb=None) -> Tuple
         game_title = normalize_cell_text(row.get("game"))
         customer = normalize_cell_text(row.get("customer"))
         source_val = normalize_cell_text(row.get("source"))
+        date_val = row.get("date")
 
         if not account_val:
             errors.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Аккаунт обязателен"})
@@ -1459,6 +1511,15 @@ def validate_slot_import_rows(conn, rows: List[dict], progress_cb=None) -> Tuple
                 )
             if not row_source:
                 warnings.append({"row": report_row, "field": "Откуда", "value": source_val, "message": "Источник не найден"})
+
+        if date_val not in (None, ""):
+            normalized_date = normalize_slot_date(date_val)
+            original_date = normalize_cell_text(date_val)
+            if normalized_date:
+                if normalized_date != original_date:
+                    warnings.append({"row": report_row, "field": "Дата", "value": original_date, "message": f"Будет сохранено как {normalized_date}"})
+            else:
+                warnings.append({"row": report_row, "field": "Дата", "value": original_date, "message": "Не удалось распознать дату"})
 
         if progress_cb:
             progress_cb(idx - 1)
