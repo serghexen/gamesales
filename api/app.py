@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, date
 from typing import Optional, List, Tuple, Any
 
-from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File, Form
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
@@ -935,6 +935,22 @@ ACCOUNT_IMPORT_HEADER_MAP = {
     "игра": "game",
     "Game": "game",
 }
+SLOT_IMPORT_HEADER_MAP = {
+    "Аккаунт": "account",
+    "аккаунт": "account",
+    "Игра": "game",
+    "игра": "game",
+    "Статус": "status",
+    "статус": "status",
+    "Пользователь": "customer",
+    "пользователь": "customer",
+    "Откуда": "source",
+    "откуда": "source",
+    "Дата": "date",
+    "дата": "date",
+    "Слот": "slot",
+    "слот": "slot",
+}
 LOGO_DOWNLOAD_DELAY_SEC = 0.25
 IMPORT_STATUS_TTL_SEC = 24 * 60 * 60
 _REDIS_CLIENT = None
@@ -1246,6 +1262,50 @@ def read_accounts_from_excel(content: bytes) -> List[dict]:
         data.append(item)
     return data
 
+def read_slots_from_excel(content: bytes) -> List[dict]:
+    wb = load_workbook(BytesIO(content), data_only=True)
+    ws = wb.active
+    headers = []
+    for cell in ws[1]:
+        if cell.value is None:
+            headers.append("")
+        else:
+            raw = str(cell.value).strip()
+            headers.append(SLOT_IMPORT_HEADER_MAP.get(raw, raw))
+    data = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not any(row):
+            continue
+        item = {}
+        for idx, key in enumerate(headers):
+            if not key:
+                continue
+            item[key] = row[idx] if idx < len(row) else None
+        data.append(item)
+    return data
+
+def clean_slots_excel(content: bytes) -> bytes:
+    wb = load_workbook(BytesIO(content))
+    ws = wb.active
+    status_col = None
+    for idx, cell in enumerate(ws[1], start=1):
+        if cell.value is None:
+            continue
+        header = str(cell.value).strip()
+        if header.lower() == "статус":
+            status_col = idx
+            break
+    if not status_col:
+        raise HTTPException(400, 'Колонка "Статус" не найдена')
+    for row_idx in range(ws.max_row, 1, -1):
+        raw = ws.cell(row=row_idx, column=status_col).value
+        value = "" if raw is None else str(raw).strip()
+        if not value or value.lower() == "свободен":
+            ws.delete_rows(row_idx, 1)
+    out = BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
 def split_account(value: str) -> Tuple[Optional[str], Optional[str]]:
     if not value:
         return None, None
@@ -1281,6 +1341,130 @@ def validate_account_import_rows(conn, rows: List[dict], progress_cb=None) -> Tu
         if progress_cb:
             progress_cb(idx - 1)
     return errors, warnings
+
+SLOT_FILE_TO_TYPE = {
+    "п4": "activate_ps4",
+    "п5": "activate_ps5",
+    "ps4(1)": "play_ps4",
+    "ps4(2)": "play_ps4",
+    "ps5(1)": "play_ps5",
+    "ps5(2)": "play_ps5",
+}
+
+def normalize_slot_file_value(value: str) -> str:
+    return str(value or "").strip().lower()
+
+def normalize_cell_text(value) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+def validate_slot_import_rows(conn, rows: List[dict], progress_cb=None) -> Tuple[List[dict], List[dict], int]:
+    errors = []
+    warnings = []
+    total = 0
+
+    slot_rows = qall(conn, "SELECT code FROM app.slot_types")
+    slot_types = {str(r[0]).strip().lower() for r in slot_rows}
+
+    for idx, row in enumerate(rows, start=2):
+        report_row = idx - 1
+        if progress_cb:
+            progress_cb(idx - 1)
+        status_raw = row.get("status")
+        status = "" if status_raw is None else str(status_raw).strip().lower()
+        if not status or status == "свободен":
+            continue
+
+        total += 1
+        account_val = normalize_cell_text(row.get("account"))
+        slot_val = normalize_cell_text(row.get("slot"))
+        game_title = normalize_cell_text(row.get("game"))
+        customer = normalize_cell_text(row.get("customer"))
+        source_val = normalize_cell_text(row.get("source"))
+
+        if not account_val:
+            errors.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Аккаунт обязателен"})
+        else:
+            login, domain = split_account(account_val)
+            if not login or not domain:
+                warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Нужно значение в формате login@domain"})
+            else:
+                row_acc = q1(
+                    conn,
+                    """
+                    SELECT 1
+                    FROM app.accounts a
+                    JOIN app.domains d ON d.domain_id = a.domain_id
+                    WHERE lower(a.login_name) = lower(%s) AND lower(d.name) = lower(%s)
+                    """,
+                    (login, domain),
+                )
+                if not row_acc:
+                    warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Аккаунт не найден"})
+
+        if not slot_val:
+            errors.append({"row": report_row, "field": "Слот", "value": slot_val, "message": "Слот обязателен"})
+        else:
+            normalized_slot = normalize_slot_file_value(slot_val)
+            slot_code = SLOT_FILE_TO_TYPE.get(normalized_slot)
+            if not slot_code:
+                warnings.append({"row": report_row, "field": "Слот", "value": slot_val, "message": "Неизвестный слот"})
+            elif slot_code.lower() not in slot_types:
+                warnings.append({"row": report_row, "field": "Слот", "value": slot_val, "message": "Слот не найден в БД"})
+
+        if game_title:
+            row_game = q1(conn, "SELECT 1 FROM app.game_titles WHERE lower(title) = lower(%s)", (game_title,))
+            if not row_game:
+                warnings.append({"row": report_row, "field": "Игра", "value": game_title, "message": "Игра не найдена"})
+        else:
+            warnings.append({"row": report_row, "field": "Игра", "value": game_title, "message": "Игра не указана"})
+
+        if not customer:
+            warnings.append({"row": report_row, "field": "Пользователь", "value": customer, "message": "Пользователь не указан"})
+
+        if source_val:
+            parts = [p for p in str(source_val).strip().split() if p]
+            row_source = None
+            if len(parts) >= 2:
+                name_part = parts[0]
+                code_part = parts[-1]
+                row_source = q1(
+                    conn,
+                    """
+                    SELECT 1
+                    FROM app.sources
+                    WHERE lower(name) = lower(%s) AND lower(code) = lower(%s)
+                    """,
+                    (name_part, code_part),
+                )
+                if not row_source:
+                    row_source = q1(
+                        conn,
+                        """
+                        SELECT 1
+                        FROM app.sources
+                        WHERE lower(name) = lower(%s) AND lower(code) = lower(%s)
+                        """,
+                        (code_part, name_part),
+                    )
+            if not row_source:
+                row_source = q1(
+                    conn,
+                    """
+                    SELECT 1
+                    FROM app.sources
+                    WHERE lower(code) = lower(%s) OR lower(name) = lower(%s)
+                    """,
+                    (source_val, source_val),
+                )
+            if not row_source:
+                warnings.append({"row": report_row, "field": "Откуда", "value": source_val, "message": "Источник не найден"})
+
+        if progress_cb:
+            progress_cb(idx - 1)
+
+    return errors, warnings, total
 
 def init_auth_schema(conn):
     with conn.cursor() as cur:
@@ -3487,6 +3671,33 @@ def run_accounts_import_job(job_id: str, content: bytes, owner: str):
     except Exception as exc:
         set_import_progress(job_id, owner, {"phase": "error", "current": 0, "total": 0, "done": True, "result": {"ok": False, "errors": [{"row": 0, "field": "Импорт", "message": str(exc)}]}})
 
+def run_slots_validate_job(job_id: str, content: bytes, owner: str, limit: Optional[int]):
+    try:
+        set_import_progress(job_id, owner, {"phase": "validate", "current": 0, "total": 0, "done": False})
+        rows = read_slots_from_excel(content)
+        if limit and limit > 0:
+            rows = rows[:limit]
+        total_rows = len(rows)
+        set_import_progress(job_id, owner, {"phase": "validate", "current": 0, "total": total_rows, "done": False})
+        with psycopg.connect(DB_DSN) as conn:
+            errors, warnings, total = validate_slot_import_rows(
+                conn,
+                rows,
+                progress_cb=lambda current: set_import_progress(
+                    job_id,
+                    owner,
+                    {"phase": "validate", "current": current, "total": total_rows, "done": False},
+                ),
+            )
+        result = {"ok": len(errors) == 0, "errors": errors, "warnings": warnings, "total": total}
+        set_import_progress(job_id, owner, {"phase": "validate", "current": total_rows, "total": total_rows, "done": True, "result": result})
+    except Exception as exc:
+        set_import_progress(
+            job_id,
+            owner,
+            {"phase": "error", "current": 0, "total": 0, "done": True, "result": {"ok": False, "errors": [{"row": 0, "field": "Проверка", "message": str(exc)}]}},
+        )
+
 @app.get("/accounts/import/template")
 def accounts_import_template(user: UserOut = Depends(require_role("admin"))):
     wb = Workbook()
@@ -3500,6 +3711,87 @@ def accounts_import_template(user: UserOut = Depends(require_role("admin"))):
         content=buf.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=accounts_import_template.xlsx"},
+    )
+
+@app.post("/accounts/slots/clean")
+def accounts_slots_clean(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
+    if not file or not file.filename:
+        raise HTTPException(400, "file is required")
+    if not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(400, "Only .xlsx/.xls are supported")
+    content = file.file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(400, "File too large. Max 10MB")
+    cleaned = clean_slots_excel(content)
+    base = Path(file.filename or "slots_import").stem
+    filename = f"{base}_cleaned.xlsx"
+    return Response(
+        cleaned,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+@app.post("/accounts/slots/validate")
+def accounts_slots_validate(
+    file: UploadFile = File(...),
+    limit: Optional[int] = Form(None),
+    user: UserOut = Depends(require_role("admin")),
+):
+    if not file or not file.filename:
+        raise HTTPException(400, "file is required")
+    if not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(400, "Only .xlsx/.xls are supported")
+    content = file.file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(400, "File too large. Max 10MB")
+    job_id = uuid.uuid4().hex
+    set_import_progress(job_id, user.username, {"phase": "queued", "current": 0, "total": 0, "done": False})
+    thread = threading.Thread(target=run_slots_validate_job, args=(job_id, content, user.username, limit), daemon=True)
+    thread.start()
+    return {"ok": True, "job_id": job_id}
+
+@app.get("/accounts/slots/validate/status")
+def accounts_slots_validate_status(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    status = get_import_progress(job_id)
+    if not status:
+        return {"phase": "idle", "current": 0, "total": 0, "done": True}
+    if status.get("owner") and status.get("owner") != user.username:
+        raise HTTPException(403, "job not found")
+    return {
+        "phase": status.get("phase", "idle"),
+        "current": int(status.get("current") or 0),
+        "total": int(status.get("total") or 0),
+        "done": bool(status.get("done")),
+        "result": status.get("result"),
+    }
+
+@app.post("/accounts/slots/validate/cancel")
+def accounts_slots_validate_cancel(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    status = get_import_progress(job_id)
+    if not status:
+        return {"ok": True}
+    if status.get("owner") and status.get("owner") != user.username:
+        raise HTTPException(403, "job not found")
+    set_import_progress(job_id, user.username, {
+        "phase": "cancelled",
+        "current": int(status.get("current") or 0),
+        "total": int(status.get("total") or 0),
+        "done": True,
+        "cancelled": True,
+        "result": {"ok": False, "cancelled": True},
+    })
+    return {"ok": True}
+
+@app.post("/accounts/slots/report")
+def accounts_slots_report(payload: ImportReportIn, user: UserOut = Depends(require_role("admin"))):
+    content = build_import_report_xlsx(
+        errors=payload.errors or [],
+        warnings=payload.warnings or [],
+    )
+    return Response(
+        content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=slots_import_report.xlsx"},
     )
 
 @app.get("/accounts/import/status")
@@ -3568,12 +3860,16 @@ def build_import_report_xlsx(errors: List[dict], warnings: List[dict]) -> bytes:
     ws_err = wb.active
     ws_err.title = "Ошибки"
     ws_err.append(["Строка", "Поле", "Значение", "Сообщение"])
+    def _get(issue, key):
+        if isinstance(issue, dict):
+            return issue.get(key)
+        return getattr(issue, key, None)
     for e in errors or []:
-        ws_err.append([e.get("row"), e.get("field"), e.get("value"), e.get("message")])
+        ws_err.append([_get(e, "row"), _get(e, "field"), _get(e, "value"), _get(e, "message")])
     ws_warn = wb.create_sheet("Предупреждения")
     ws_warn.append(["Строка", "Поле", "Значение", "Сообщение"])
     for w in warnings or []:
-        ws_warn.append([w.get("row"), w.get("field"), w.get("value"), w.get("message")])
+        ws_warn.append([_get(w, "row"), _get(w, "field"), _get(w, "value"), _get(w, "message")])
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)

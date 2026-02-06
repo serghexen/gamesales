@@ -314,6 +314,18 @@
                 </svg>
               </button>
               <button
+                class="btn btn--icon btn--glow btn--glow-import-slots"
+                title="Импорт слотов"
+                aria-label="Импорт слотов"
+                @click="openSlotImport"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 3v12" />
+                  <path d="M7 10l5 5 5-5" />
+                  <path d="M5 21h14" />
+                </svg>
+              </button>
+              <button
                 class="btn btn--icon btn--glow btn--glow-refresh"
                 aria-label="Обновить список"
                 title="Обновить список"
@@ -831,7 +843,7 @@
                         <textarea
                           v-model.trim="editAccount.reserve_text"
                           class="input input--textarea"
-                          placeholder="mkn4N5 jYVLY8 6uGjMm ..."
+                          placeholder="mkn4N5 6uGjMm ..."
                           :disabled="accountEditMode === 'view'"
                         />
                       </label>
@@ -1012,7 +1024,7 @@
                         <textarea
                           v-model.trim="newAccount.reserve_text"
                           class="input input--textarea"
-                          placeholder="mkn4N5 jYVLY8 6uGjMm ..."
+                          placeholder="mkn4N5 6uGjMm ..."
                         />
                       </label>
                       <div class="field field--full">
@@ -1027,6 +1039,138 @@
                       </div>
                       <p v-if="accountsError" class="bad">{{ accountsError }}</p>
                       <p v-if="accountsOk" class="ok">{{ accountsOk }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div
+                v-if="showSlotImport"
+                class="modal-backdrop"
+                @click.self="closeSlotImport"
+              >
+                <div ref="modalRef" class="modal modal--auto" :style="modalStyle">
+                  <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
+                    <h3>Импорт слотов из файла</h3>
+                    <button
+                      class="btn btn--icon-plain"
+                      type="button"
+                      aria-label="Закрыть"
+                      title="Закрыть"
+                      @click="closeSlotImport"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 6l12 12M18 6l-12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="modal__body" :class="{ 'modal__body--locked': slotImportLoading }">
+                    <div v-if="slotImportLoading" class="modal__body-overlay">
+                      <div class="loader-wrap loader-wrap--compact">
+                        <div class="newtons-cradle" aria-label="Loading" role="img">
+                          <div class="newtons-cradle__dot"></div>
+                          <div class="newtons-cradle__dot"></div>
+                          <div class="newtons-cradle__dot"></div>
+                          <div class="newtons-cradle__dot"></div>
+                        </div>
+                        <p class="muted">Обработка…</p>
+                      </div>
+                    </div>
+                    <div class="toolbar-actions import-actions import-actions--fixed">
+                      <button class="ghost" type="button" @click="validateSlotImport" :disabled="!slotImportFile || slotImportLoading">
+                        <span v-if="slotImportLoading" class="spinner spinner--small"></span>
+                        Проверка
+                      </button>
+                      <button class="ghost" type="button" @click="cleanSlotImport" :disabled="!slotImportFile || slotImportLoading">
+                        <span v-if="slotImportLoading" class="spinner spinner--small"></span>
+                        Очистить файл
+                      </button>
+                      <button
+                        v-if="slotImportLoading && slotImportJobId"
+                        class="ghost"
+                        type="button"
+                        @click="cancelSlotImport"
+                        title="Отменить проверку"
+                        aria-label="Отменить проверку"
+                      >
+                        Отмена
+                      </button>
+                      <button v-if="slotImportLoading && slotImportJobId" class="import-status" type="button">
+                        <span v-if="slotImportAction === 'validate' && slotImportProgress.total">Проверка: {{ slotImportProgress.current }} из {{ slotImportProgress.total }}</span>
+                        <span v-else-if="slotImportAction === 'cancel'">Отмена…</span>
+                        <span v-else-if="slotImportAction === 'validate'">Проверка…</span>
+                      </button>
+                    </div>
+                    <div class="form form--stack form--compact">
+                      <label class="field field--full">
+                        <span class="label">Файл (xlsx/xls)</span>
+                        <input
+                          class="input input--file"
+                          type="file"
+                          accept=".xlsx,.xls"
+                          @change="onSlotImportFile"
+                          :disabled="slotImportLoading"
+                        />
+                      </label>
+                      <label class="field">
+                        <span class="label">Проверять первые N строк</span>
+                        <input
+                          v-model.number="slotImportLimit"
+                          class="input"
+                          type="number"
+                          min="1"
+                          placeholder="Например, 10"
+                          :disabled="slotImportLoading"
+                        />
+                      </label>
+                      <div v-if="slotImportErrors.length || slotImportWarnings.length" class="toolbar-actions import-actions">
+                        <button class="ghost" type="button" @click="downloadSlotImportReport">
+                          Скачать отчет
+                        </button>
+                      </div>
+                      <p v-if="slotImportValidated" class="muted">
+                        Итог: строк к загрузке {{ slotImportTotal }}, предупреждений {{ slotImportWarnings.length }}, ошибок {{ slotImportErrors.length }}
+                      </p>
+                      <div v-if="slotImportWarnings.length" class="import-errors">
+                        <p class="muted">Предупреждения: {{ slotImportWarnings.length }}</p>
+                        <table class="table table--compact table--dense">
+                          <thead>
+                            <tr>
+                              <th>Строка</th>
+                              <th>Поле</th>
+                              <th>Предупреждение</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="(e, idx) in slotImportWarnings" :key="`sw-${idx}`">
+                              <td>{{ e.row }}</td>
+                              <td>{{ e.field }}</td>
+                              <td>{{ e.message }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div v-if="slotImportErrors.length" class="import-errors">
+                        <p class="bad">Ошибки: {{ slotImportErrors.length }}</p>
+                        <table class="table table--compact table--dense">
+                          <thead>
+                            <tr>
+                              <th>Строка</th>
+                              <th>Поле</th>
+                              <th>Ошибка</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="(e, idx) in slotImportErrors" :key="`se-${idx}`">
+                              <td>{{ e.row }}</td>
+                              <td>{{ e.field }}</td>
+                              <td>{{ e.message }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <p v-if="slotImportMessage" class="ok">{{ slotImportMessage }}</p>
+                      <p v-if="slotImportError" class="bad">{{ slotImportError }}</p>
+                      <p class="muted">Будут удалены строки, где в колонке «Статус» указано «свободен» (любой регистр) или пусто.</p>
                     </div>
                   </div>
                 </div>
@@ -2712,7 +2856,7 @@
                           <span class="label">Откуда</span>
                           <select v-model.number="editDeal.source_id" class="input input--select" :disabled="dealEditMode === 'view'">
                             <option value="">— не выбрано —</option>
-                            <option v-for="s in sources" :key="s.source_id" :value="s.source_id">
+                            <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">
                               {{ s.name }} ({{ s.code }})
                             </option>
                           </select>
@@ -3037,7 +3181,7 @@
                           <span class="label">Откуда</span>
                           <select v-model.number="newDeal.source_id" class="input input--select">
                             <option value="">— не выбрано —</option>
-                            <option v-for="s in sources" :key="s.source_id" :value="s.source_id">
+                            <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">
                               {{ s.name }} ({{ s.code }})
                             </option>
                           </select>
@@ -4061,7 +4205,7 @@
                 <span class="label">Источник</span>
                 <select v-model.number="analyticsFilters.source_id" class="input input--select">
                   <option value="">Все</option>
-                  <option v-for="s in sources" :key="s.source_id" :value="s.source_id">{{ s.name }} ({{ s.code }})</option>
+                  <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">{{ s.name }} ({{ s.code }})</option>
                 </select>
               </label>
             </div>
@@ -4575,6 +4719,7 @@ function closeAllModals() {
   closePwdModal()
   closeAccountImport()
   closeGameImport()
+  closeSlotImport()
   closeGameModal()
   closeDealModal()
   closeDomainModal()
@@ -4876,20 +5021,33 @@ const telegram = reactive({
 })
 const showGameImport = ref(false)
 const showAccountImport = ref(false)
+const showSlotImport = ref(false)
 const gameImportFile = ref(null)
 const accountImportFile = ref(null)
+const slotImportFile = ref(null)
+const slotImportLimit = ref(10)
 const gameImportValidated = ref(false)
 const accountImportValidated = ref(false)
+const slotImportValidated = ref(false)
 const gameImportErrors = ref([])
 const accountImportErrors = ref([])
+const slotImportErrors = ref([])
 const gameImportWarnings = ref([])
 const accountImportWarnings = ref([])
+const slotImportWarnings = ref([])
 const gameImportTotal = ref(0)
 const accountImportTotal = ref(0)
+const slotImportTotal = ref(0)
 const gameImportLoading = ref(false)
 const accountImportLoading = ref(false)
+const slotImportLoading = ref(false)
 const gameImportMessage = ref('')
 const accountImportMessage = ref('')
+const slotImportMessage = ref('')
+const slotImportError = ref('')
+const slotImportAction = ref('')
+const slotImportProgress = reactive({ current: 0, total: 0, phase: '' })
+const slotImportJobId = ref('')
 const gameImportAction = ref('')
 const accountImportAction = ref('')
 const gameImportStats = ref(null)
@@ -4902,8 +5060,10 @@ const importDetailsRef = ref(null)
 const accountImportDetailsRef = ref(null)
 let gameImportStatusTimer = null
 let accountImportStatusTimer = null
+let slotImportStatusTimer = null
 const GAME_IMPORT_JOB_KEY = 'gamesales_game_import_job_v1'
 const ACCOUNT_IMPORT_JOB_KEY = 'gamesales_account_import_job_v1'
+const SLOT_VALIDATE_JOB_KEY = 'gamesales_slot_validate_job_v1'
 const gameLogoLoading = ref(false)
 const gameLogoCache = new Map()
 const gameLogoUploading = ref(false)
@@ -5530,6 +5690,12 @@ const sortedSources = computed(() => {
   return list
 })
 
+const sourcesByCode = computed(() => {
+  const list = [...sources.value]
+  list.sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')))
+  return list
+})
+
 const sortedPlatforms = computed(() => {
   const list = [...platforms.value]
   const { key, dir } = platformsSort.value
@@ -5904,6 +6070,54 @@ function openAccountImport() {
   }
 }
 
+function openSlotImport() {
+  closeAllModals()
+  resetModalPos()
+  showSlotImport.value = true
+  slotImportFile.value = null
+  slotImportMessage.value = ''
+  slotImportError.value = ''
+  slotImportValidated.value = false
+  slotImportErrors.value = []
+  slotImportWarnings.value = []
+  slotImportTotal.value = 0
+  slotImportLoading.value = false
+  slotImportLimit.value = 10
+  slotImportAction.value = ''
+  slotImportProgress.current = 0
+  slotImportProgress.total = 0
+  slotImportProgress.phase = ''
+  slotImportJobId.value = ''
+  stopSlotImportStatusPolling()
+  const stored = localStorage.getItem(SLOT_VALIDATE_JOB_KEY)
+  if (stored) {
+    slotImportJobId.value = stored
+    slotImportAction.value = 'validate'
+    slotImportLoading.value = true
+    startSlotImportStatusPolling()
+  }
+}
+
+function closeSlotImport() {
+  showSlotImport.value = false
+  slotImportFile.value = null
+  slotImportMessage.value = ''
+  slotImportError.value = ''
+  slotImportValidated.value = false
+  slotImportErrors.value = []
+  slotImportWarnings.value = []
+  slotImportTotal.value = 0
+  slotImportLoading.value = false
+  slotImportLimit.value = 10
+  slotImportAction.value = ''
+  slotImportProgress.current = 0
+  slotImportProgress.total = 0
+  slotImportProgress.phase = ''
+  slotImportJobId.value = ''
+  stopSlotImportStatusPolling()
+  localStorage.removeItem(SLOT_VALIDATE_JOB_KEY)
+}
+
 function closeGameImport() {
   showGameImport.value = false
   gameImportFile.value = null
@@ -6048,6 +6262,60 @@ function startAccountImportStatusPolling() {
   }, 600)
 }
 
+async function pollSlotImportStatusOnce() {
+  if (!slotImportJobId.value) return
+  try {
+    const status = await apiGet(`/accounts/slots/validate/status?job_id=${encodeURIComponent(slotImportJobId.value)}`, { token: auth.state.token })
+    if (!status) return
+    slotImportProgress.current = Number(status.current || 0)
+    slotImportProgress.total = Number(status.total || 0)
+    slotImportProgress.phase = status.phase || ''
+    if (status.done && status.result) {
+      applySlotImportResult(status.result)
+      return
+    }
+    if (status.done) {
+      slotImportMessage.value = 'Проверка завершена'
+      slotImportLoading.value = false
+      slotImportAction.value = ''
+      slotImportJobId.value = ''
+      localStorage.removeItem(SLOT_VALIDATE_JOB_KEY)
+      stopSlotImportStatusPolling()
+    }
+  } catch {
+    // ignore polling errors
+  }
+}
+
+function startSlotImportStatusPolling() {
+  stopSlotImportStatusPolling()
+  pollSlotImportStatusOnce()
+  slotImportStatusTimer = setInterval(async () => {
+    try {
+      if (!slotImportJobId.value) return
+      const status = await apiGet(`/accounts/slots/validate/status?job_id=${encodeURIComponent(slotImportJobId.value)}`, { token: auth.state.token })
+      if (!status) return
+      slotImportProgress.current = Number(status.current || 0)
+      slotImportProgress.total = Number(status.total || 0)
+      slotImportProgress.phase = status.phase || ''
+      if (status.done && status.result) {
+        applySlotImportResult(status.result)
+      }
+      if (status.done && !status.result) {
+        slotImportMessage.value = 'Проверка завершена'
+        slotImportLoading.value = false
+        slotImportAction.value = ''
+        slotImportJobId.value = ''
+        localStorage.removeItem(SLOT_VALIDATE_JOB_KEY)
+        stopSlotImportStatusPolling()
+      }
+      if (status.done && !slotImportLoading.value) stopSlotImportStatusPolling()
+    } catch {
+      // ignore polling errors
+    }
+  }, 600)
+}
+
 function stopGameImportStatusPolling() {
   if (!gameImportStatusTimer) return
   clearInterval(gameImportStatusTimer)
@@ -6058,6 +6326,12 @@ function stopAccountImportStatusPolling() {
   if (!accountImportStatusTimer) return
   clearInterval(accountImportStatusTimer)
   accountImportStatusTimer = null
+}
+
+function stopSlotImportStatusPolling() {
+  if (!slotImportStatusTimer) return
+  clearInterval(slotImportStatusTimer)
+  slotImportStatusTimer = null
 }
 
 function scrollToImportDetails() {
@@ -6141,6 +6415,38 @@ async function applyAccountImportResult(res) {
   await loadAccountsAll()
 }
 
+async function applySlotImportResult(res) {
+  if (!res) return
+  if (res?.cancelled) {
+    slotImportMessage.value = 'Проверка отменена'
+    slotImportErrors.value = []
+    slotImportWarnings.value = []
+    slotImportValidated.value = false
+    slotImportLoading.value = false
+    slotImportAction.value = ''
+    slotImportJobId.value = ''
+    localStorage.removeItem(SLOT_VALIDATE_JOB_KEY)
+    stopSlotImportStatusPolling()
+    return
+  }
+  slotImportErrors.value = res?.errors || []
+  slotImportWarnings.value = res?.warnings || []
+  slotImportTotal.value = Number(res?.total || 0)
+  slotImportValidated.value = Boolean(res?.ok)
+  if (res?.ok) {
+    slotImportMessage.value = slotImportWarnings.value.length
+      ? `Проверка завершена. Некоторые строки будут пропущены: ${slotImportWarnings.value.length}.`
+      : `Проверка завершена. Строк к загрузке: ${slotImportTotal.value}.`
+  } else {
+    slotImportMessage.value = 'Файл не корректен. Исправьте ошибки ниже.'
+  }
+  slotImportLoading.value = false
+  slotImportAction.value = ''
+  slotImportJobId.value = ''
+  localStorage.removeItem(SLOT_VALIDATE_JOB_KEY)
+  stopSlotImportStatusPolling()
+}
+
 function onGameImportFile(event) {
   const file = event?.target?.files?.[0]
   gameImportFile.value = file || null
@@ -6173,6 +6479,25 @@ function onAccountImportFile(event) {
   accountImportProgress.phase = ''
   accountImportJobId.value = ''
   stopAccountImportStatusPolling()
+}
+
+function onSlotImportFile(event) {
+  const file = event?.target?.files?.[0]
+  slotImportFile.value = file || null
+  slotImportMessage.value = ''
+  slotImportError.value = ''
+  slotImportValidated.value = false
+  slotImportErrors.value = []
+  slotImportWarnings.value = []
+  slotImportTotal.value = 0
+  slotImportLimit.value = slotImportLimit.value || 10
+  slotImportAction.value = ''
+  slotImportProgress.current = 0
+  slotImportProgress.total = 0
+  slotImportProgress.phase = ''
+  slotImportJobId.value = ''
+  stopSlotImportStatusPolling()
+  localStorage.removeItem(SLOT_VALIDATE_JOB_KEY)
 }
 
 async function downloadGameTemplate() {
@@ -6322,6 +6647,127 @@ async function validateAccountImport() {
     accountImportLoading.value = false
     accountImportAction.value = ''
     stopAccountImportStatusPolling()
+  }
+}
+
+async function cleanSlotImport() {
+  if (!slotImportFile.value) return
+  slotImportLoading.value = true
+  slotImportMessage.value = ''
+  slotImportError.value = ''
+  try {
+    const form = new FormData()
+    form.append('file', slotImportFile.value)
+    const res = await fetch(`${API_BASE}/accounts/slots/clean`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${auth.state.token}`,
+      },
+      body: form,
+    })
+    if (!res.ok) {
+      let msg = ''
+      try {
+        const data = await res.json()
+        msg = data?.detail || JSON.stringify(data)
+      } catch {
+        msg = await res.text()
+      }
+      throw new Error(msg || `Ошибка: ${res.status}`)
+    }
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const base = slotImportFile.value?.name ? slotImportFile.value.name.replace(/\.(xlsx|xls)$/i, '') : 'slots_import'
+    a.href = url
+    a.download = `${base}_cleaned.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
+    slotImportMessage.value = 'Файл сформирован.'
+  } catch (e) {
+    slotImportError.value = mapApiError(e?.message)
+  } finally {
+    slotImportLoading.value = false
+  }
+}
+
+async function validateSlotImport() {
+  if (!slotImportFile.value) return
+  slotImportLoading.value = true
+  slotImportMessage.value = ''
+  slotImportError.value = ''
+  slotImportValidated.value = false
+  slotImportErrors.value = []
+  slotImportWarnings.value = []
+  slotImportTotal.value = 0
+  slotImportAction.value = 'validate'
+  slotImportProgress.current = 0
+  slotImportProgress.total = slotImportTotal.value || 0
+  slotImportProgress.phase = ''
+  try {
+    const form = new FormData()
+    form.append('file', slotImportFile.value)
+    if (slotImportLimit.value) form.append('limit', String(slotImportLimit.value))
+    const res = await apiPostForm('/accounts/slots/validate', form, { token: auth.state.token })
+    if (res?.job_id) {
+      slotImportJobId.value = res.job_id
+      localStorage.setItem(SLOT_VALIDATE_JOB_KEY, res.job_id)
+      startSlotImportStatusPolling()
+    } else {
+      slotImportMessage.value = 'Не удалось запустить проверку'
+      slotImportLoading.value = false
+      slotImportAction.value = ''
+    }
+  } catch (e) {
+    slotImportValidated.value = false
+    slotImportErrors.value = []
+    slotImportWarnings.value = []
+    slotImportTotal.value = 0
+    slotImportError.value = mapApiError(e?.message)
+    slotImportLoading.value = false
+    slotImportAction.value = ''
+  } finally {
+    // wait for background job result
+  }
+}
+
+async function downloadSlotImportReport() {
+  try {
+    const payload = { errors: slotImportErrors.value || [], warnings: slotImportWarnings.value || [] }
+    const res = await fetch(`${API_BASE}/accounts/slots/report`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth.state.token}`,
+      },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      throw new Error(`report failed: ${res.status}`)
+    }
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'slots_import_report.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    slotImportError.value = mapApiError(e?.message)
+  }
+}
+
+async function cancelSlotImport() {
+  if (!slotImportJobId.value) return
+  slotImportAction.value = 'cancel'
+  slotImportLoading.value = true
+  try {
+    await apiPost(`/accounts/slots/validate/cancel?job_id=${encodeURIComponent(slotImportJobId.value)}`, {}, { token: auth.state.token })
+    startSlotImportStatusPolling()
+  } catch (e) {
+    slotImportError.value = mapApiError(e?.message)
+    slotImportLoading.value = false
+    slotImportAction.value = ''
   }
 }
 
@@ -9059,6 +9505,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopGameImportStatusPolling()
   stopAccountImportStatusPolling()
+  stopSlotImportStatusPolling()
   revokeTelegramMediaUrls()
   window.removeEventListener('mousemove', onModalDrag)
   window.removeEventListener('mouseup', stopModalDrag)
@@ -10461,7 +10908,6 @@ h2 {
   border-radius: 8px;
 }
 
-/* Hamster loader (Uiverse.io by Nawsome) */
 .wheel-and-hamster {
   --dur: 1s;
   position: relative;
@@ -11185,6 +11631,10 @@ h3 {
 
 .btn--glow-import {
   background: linear-gradient(120deg, #38bdf8, #2563eb);
+}
+
+.btn--glow-import-slots {
+  background: linear-gradient(120deg, #22c55e, #0ea5e9);
 }
 
 .btn--glow-export {
