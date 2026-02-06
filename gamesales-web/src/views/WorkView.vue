@@ -490,6 +490,7 @@
                             <tr>
                               <th>Строка</th>
                               <th>Поле</th>
+                              <th>Значение</th>
                               <th>Предупреждение</th>
                             </tr>
                           </thead>
@@ -497,6 +498,7 @@
                             <tr v-for="(e, idx) in accountImportWarnings" :key="`aw-${idx}`">
                               <td>{{ e.row }}</td>
                               <td>{{ e.field }}</td>
+                              <td>{{ e.value || '—' }}</td>
                               <td>{{ e.message }}</td>
                             </tr>
                           </tbody>
@@ -509,6 +511,7 @@
                             <tr>
                               <th>Строка</th>
                               <th>Поле</th>
+                              <th>Значение</th>
                               <th>Ошибка</th>
                             </tr>
                           </thead>
@@ -516,6 +519,7 @@
                             <tr v-for="(e, idx) in accountImportErrors" :key="`ae-${idx}`">
                               <td>{{ e.row }}</td>
                               <td>{{ e.field }}</td>
+                              <td>{{ e.value || '—' }}</td>
                               <td>{{ e.message }}</td>
                             </tr>
                           </tbody>

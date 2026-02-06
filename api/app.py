@@ -1330,8 +1330,7 @@ def validate_account_import_rows(conn, rows: List[dict], progress_cb=None) -> Tu
         login, domain = split_account(account_val)
         if not account_val or not login or not domain:
             warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Нужно значение в формате login@domain — строка будет пропущена"})
-        if not password:
-            errors.append({"row": report_row, "field": "Пароль", "value": password, "message": "Пароль обязателен"})
+        # Пароль не обязателен при импорте аккаунтов
         if not game_title:
             warnings.append({"row": report_row, "field": "Игра", "value": game_title, "message": "Игра не указана — строка будет пропущена"})
         else:
