@@ -922,7 +922,7 @@
                             </tr>
                           </thead>
                           <tbody>
-                            <tr v-for="s in accountSlotAssignments" :key="s.assignment_id">
+                            <tr v-for="s in sortedAccountSlotAssignments" :key="s.assignment_id">
                               <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
                               <td>{{ s.game_title || '—' }}</td>
                               <td>{{ s.customer_nickname || '—' }}</td>
@@ -4637,6 +4637,7 @@ const accountDeals = ref([])
 const accountDealsLoading = ref(false)
 const accountDealsError = ref(null)
 const accountSlotAssignments = ref([])
+const accountSlotAssignmentsSort = ref({ key: 'slot', dir: 'asc' })
 const accountSlotAssignmentsLoading = ref(false)
 const accountSlotAssignmentsError = ref(null)
 const accountSlotReleaseLoading = ref(false)
@@ -5274,6 +5275,31 @@ const getSortedSlotStatus = (list) => {
   return items
 }
 
+const compareSlotTypeCodes = (aCode, bCode) => {
+  const typeMap = new Map((slotTypes.value || []).map((t) => [t.code, t]))
+  const modeOrder = new Map([['activate', 0], ['play', 1]])
+  const at = typeMap.get(aCode)
+  const bt = typeMap.get(bCode)
+  const am = modeOrder.has(at?.mode) ? modeOrder.get(at?.mode) : 9
+  const bm = modeOrder.has(bt?.mode) ? modeOrder.get(bt?.mode) : 9
+  if (am !== bm) return am - bm
+  const ap = String(at?.platform_code || '').localeCompare(String(bt?.platform_code || ''))
+  if (ap !== 0) return ap
+  return String(aCode || '').localeCompare(String(bCode || ''))
+}
+
+const sortedAccountSlotAssignments = computed(() => {
+  const list = Array.isArray(accountSlotAssignments.value) ? [...accountSlotAssignments.value] : []
+  const { key, dir } = accountSlotAssignmentsSort.value || { key: 'slot', dir: 'asc' }
+  if (key === 'slot') {
+    list.sort((a, b) => {
+      const base = compareSlotTypeCodes(a.slot_type_code, b.slot_type_code)
+      return dir === 'desc' ? -base : base
+    })
+  }
+  return list
+})
+
 const getAccountSlotStatusList = (account) => {
   const list = Array.isArray(account?.slot_status) ? account.slot_status : []
   if (list.length) {
@@ -5316,6 +5342,21 @@ const getAccountSortState = (key) => {
 const getAccountSortClass = (key) => {
   const state = getAccountSortState(key)
   return getSortButtonClass(state)
+}
+
+const getAccountSlotSortClass = (key) => {
+  const sort = accountSlotAssignmentsSort.value
+  const state = sort?.key === key ? sort?.dir : ''
+  return getSortButtonClass(state)
+}
+
+const toggleAccountSlotSort = (key) => {
+  const sort = accountSlotAssignmentsSort.value
+  if (sort.key === key) {
+    accountSlotAssignmentsSort.value = { key, dir: sort.dir === 'asc' ? 'desc' : 'asc' }
+  } else {
+    accountSlotAssignmentsSort.value = { key, dir: 'asc' }
+  }
 }
 
 const getGamesSortClass = (key) => {
