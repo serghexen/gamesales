@@ -67,11 +67,10 @@
               </span>
             </router-link>
             <router-link
-              v-if="isAdmin"
+              v-if="isAdmin && showUsersTab"
               class="tab"
               :class="{ active: activeTab === 'users' }"
               :to="{ name: 'work', query: { ...route.query, tab: 'users' } }"
-              style="display:none"
             >
               Пользователи
             </router-link>
@@ -105,7 +104,7 @@
         </div>
       </header>
 
-      <section v-if="activeTab === 'dashboard'" class="hero" style="display:none">
+      <section v-if="showDashboard && activeTab === 'dashboard'" class="hero">
         <div>
           <h1 class="hero__title">Операции в реальном времени</h1>
           <p class="hero__text">
@@ -130,7 +129,7 @@
       </section>
 
       <main class="main">
-        <section v-if="activeTab === 'dashboard'" class="panel panel--wide" style="display:none">
+        <section v-if="showDashboard && activeTab === 'dashboard'" class="panel panel--wide">
           <div class="panel__body">
             <div class="status">
               <div class="dot" :class="{ ok: apiOk, bad: apiOk === false }"></div>
@@ -2079,13 +2078,44 @@
             <div v-else class="tg-shell">
               <div class="tg-dialogs">
                 <div class="tg-dialogs__head">
-                  <h3>Чаты</h3>
-                  <button class="btn btn--icon btn--glow btn--glow-refresh" type="button" @click="loadTelegramDialogs" :disabled="telegram.loading">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M20 12a8 8 0 1 1-2.3-5.7" />
-                      <path d="M20 4v6h-6" />
-                    </svg>
-                  </button>
+                  <div class="tg-dialog-tabs" role="tablist" aria-label="Статусы диалогов">
+                    <button
+                      class="tg-dialog-tab"
+                      :class="{ active: telegram.dialogStatusFilter === 'all' }"
+                      type="button"
+                      @click="setTelegramDialogFilter('all')"
+                    >
+                      Все
+                      <span v-if="telegram.dialogCounts.all" class="tg-dialog-tab__count">{{ telegram.dialogCounts.all }}</span>
+                    </button>
+                    <button
+                      class="tg-dialog-tab"
+                      :class="{ active: telegram.dialogStatusFilter === 'new' }"
+                      type="button"
+                      @click="setTelegramDialogFilter('new')"
+                    >
+                      Новые
+                      <span v-if="telegram.dialogCounts.new" class="tg-dialog-tab__count">{{ telegram.dialogCounts.new }}</span>
+                    </button>
+                    <button
+                      class="tg-dialog-tab"
+                      :class="{ active: telegram.dialogStatusFilter === 'accepted' }"
+                      type="button"
+                      @click="setTelegramDialogFilter('accepted')"
+                    >
+                      Принятые
+                      <span v-if="telegram.dialogCounts.accepted" class="tg-dialog-tab__count">{{ telegram.dialogCounts.accepted }}</span>
+                    </button>
+                    <button
+                      class="tg-dialog-tab"
+                      :class="{ active: telegram.dialogStatusFilter === 'archived' }"
+                      type="button"
+                      @click="setTelegramDialogFilter('archived')"
+                    >
+                      Архив
+                      <span v-if="telegram.dialogCounts.archived" class="tg-dialog-tab__count">{{ telegram.dialogCounts.archived }}</span>
+                    </button>
+                  </div>
                 </div>
                 <div class="tg-dialogs__list">
                   <button
@@ -2097,21 +2127,61 @@
                     @click="selectTelegramDialog(d.id)"
                   >
                     <span class="tg-dialog__title">{{ d.title || d.id }}</span>
-                    <span v-if="d.unread_count" class="tg-dialog__unread">{{ d.unread_count }}</span>
+                    <span class="tg-dialog__unread" :class="{ 'tg-dialog__unread--zero': !d.unread_count }">{{ d.unread_count || 0 }}</span>
                   </button>
                   <p v-if="!telegram.dialogs.length" class="muted">Чаты не найдены.</p>
                 </div>
               </div>
               <div class="tg-messages">
+                <div v-if="telegram.loadingMessages" class="tg-loading-overlay">
+                  <div class="loader-wrap loader-wrap--compact">
+                    <div class="newtons-cradle" aria-label="Loading" role="img">
+                      <div class="newtons-cradle__dot"></div>
+                      <div class="newtons-cradle__dot"></div>
+                      <div class="newtons-cradle__dot"></div>
+                      <div class="newtons-cradle__dot"></div>
+                    </div>
+                    <p class="muted">Загрузка сообщений...</p>
+                  </div>
+                </div>
                 <div class="tg-contact">
                   <div class="tg-contact__head">
                     <div class="tg-contact__title">{{ telegram.contact.title || telegram.contactMeta.name || telegram.contactMeta.username || 'Контакт' }}</div>
-                    <button class="btn btn--icon btn--glow btn--glow-edit" type="button" @click="toggleTelegramContactEdit" :disabled="!telegram.activeContactId">
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M4 20h4l10-10-4-4L4 16v4z" />
-                        <path d="M14 6l4 4" />
-                      </svg>
-                    </button>
+                    <div class="tg-contact__tools">
+                      <button
+                        v-if="telegram.activeDialog && telegram.activeDialog.status !== 'accepted'"
+                        class="ghost ghost--tiny"
+                        type="button"
+                        @click="setTelegramDialogStatus('accepted')"
+                        :disabled="telegram.loading || !telegram.activeChatId"
+                      >
+                        Принять
+                      </button>
+                      <button
+                        v-if="telegram.activeDialog && telegram.activeDialog.status !== 'archived'"
+                        class="ghost ghost--tiny"
+                        type="button"
+                        @click="setTelegramDialogStatus('archived')"
+                        :disabled="telegram.loading || !telegram.activeChatId"
+                      >
+                        В архив
+                      </button>
+                      <button
+                        v-if="telegram.activeDialog && telegram.activeDialog.status === 'archived'"
+                        class="ghost ghost--tiny"
+                        type="button"
+                        @click="setTelegramDialogStatus('accepted')"
+                        :disabled="telegram.loading || !telegram.activeChatId"
+                      >
+                        Из архива
+                      </button>
+                      <button class="btn btn--icon btn--glow btn--glow-edit" type="button" @click="toggleTelegramContactEdit" :disabled="!telegram.activeContactId">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 20h4l10-10-4-4L4 16v4z" />
+                          <path d="M14 6l4 4" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                   <div class="tg-contact__info">
                     {{
@@ -2139,43 +2209,121 @@
                     </div>
                   </div>
                 </div>
-                <div ref="tgMessagesList" class="tg-messages__list">
+                <div ref="tgMessagesList" class="tg-messages__list" @scroll="updateTelegramAutoStick">
                   <div
-                    v-for="m in telegram.messages"
+                    v-for="(m, idx) in telegram.messages"
                     :key="m.id"
-                    class="tg-message"
-                    :class="{ 'tg-message--out': m.out, 'tg-message--active': m.sender_id && m.sender_id === telegram.activeContactId }"
-                    @click="setTelegramActiveContact(m.sender_id)"
+                    class="tg-message-row"
+                    :class="{ 'tg-message-row--out': m.out }"
                   >
-                    <div class="tg-message__text">{{ m.text || '—' }}</div>
-                    <div v-if="telegram.activeDialog?.is_group && !m.out && formatTelegramSender(m)" class="tg-message__sender">
-                      {{ formatTelegramSender(m) }}
+                    <div
+                      class="tg-message"
+                      :class="{ 'tg-message--out': m.out, 'tg-message--active': m.sender_id && m.sender_id === telegram.activeContactId }"
+                      @click="setTelegramActiveContact(m.sender_id)"
+                    >
+                      <div class="tg-message__text" v-html="formatTelegramMessageHtml(m.text || '—')"></div>
+                      <div v-if="telegram.activeDialog?.is_group && !m.out && formatTelegramSender(m)" class="tg-message__sender">
+                        {{ formatTelegramSender(m) }}
+                      </div>
+                      <div v-if="m.has_media" class="tg-message__media">
+                        <img
+                          v-if="isTelegramImage(m) && m.media_url"
+                          :src="m.media_url"
+                          :alt="m.media_type === 'gif' ? 'GIF' : 'Image'"
+                          @load="onTelegramMediaRendered"
+                        />
+                        <video v-else-if="isTelegramVideo(m) && m.media_url" :src="m.media_url" controls @loadedmetadata="onTelegramMediaRendered" />
+                        <a v-else-if="m.media_url" :href="m.media_url" target="_blank" rel="noopener">
+                          Открыть файл
+                        </a>
+                        <div v-else class="tg-message__media-placeholder" aria-label="Загрузка медиа">
+                          <span class="muted">Загрузка...</span>
+                        </div>
+                      </div>
+                      <div class="tg-message__meta">
+                        <span v-if="m.sent_by" class="tg-message__sent-by">Отправил: {{ m.sent_by }}</span>
+                        <span>{{ formatDateTimeMinutes(m.date) }}</span>
+                      </div>
+                      <div v-if="showTelegramChannelLabel(idx)" class="tg-message__channel">
+                        Получено из Telegram {{ telegram.activeDialog?.is_group ? 'Группа' : 'Личный' }} — ASAT
+                      </div>
                     </div>
-                    <div v-if="m.has_media" class="tg-message__media">
-                      <img
-                        v-if="isTelegramImage(m)"
-                        :src="m.media_url"
-                        :alt="m.media_type === 'gif' ? 'GIF' : 'Image'"
-                      />
-                      <video v-else-if="isTelegramVideo(m)" :src="m.media_url" controls />
-                      <a v-else-if="m.media_url" :href="m.media_url" target="_blank" rel="noopener">
-                        Открыть файл
-                      </a>
-                      <span v-else class="muted">Загрузка...</span>
+                    <div v-if="!m.out" class="tg-message-row__actions">
+                      <button class="tg-message-action tg-message-action--blue" type="button" title="Ответить" @click.stop>
+                        <span class="tg-message-action__glyph" aria-hidden="true">↩</span>
+                      </button>
+                      <button class="tg-message-action tg-message-action--red" type="button" title="Перенаправить" @click.stop>
+                        <span class="tg-message-action__glyph" aria-hidden="true">↪</span>
+                      </button>
                     </div>
-                    <div class="tg-message__meta">
-                      <span v-if="m.sent_by" class="tg-message__sent-by">Отправил: {{ m.sent_by }}</span>
-                      <span>{{ formatDateTimeMinutes(m.date) }}</span>
+                    <div v-if="m.out" class="tg-message-row__actions-spacer" aria-hidden="true">
+                      <div class="tg-message-action tg-message-action--ghost"></div>
+                      <div class="tg-message-action tg-message-action--ghost"></div>
                     </div>
                   </div>
                 </div>
-                <div class="tg-messages__send">
-                  <input v-model.trim="telegram.messageText" class="input" placeholder="Сообщение..." />
-                  <button class="btn btn--icon btn--glow btn--glow-add" type="button" @click="sendTelegramMessage" :disabled="telegram.loading || !telegram.activeChatId">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
+                <div class="tg-compose">
+                  <div class="tg-compose__head">
+                    <span class="tg-compose__brand">ASAT</span>
+                    <span class="tg-compose__title">ответ в</span>
+                    <button class="tg-compose__link" type="button">сообщение</button>
+                  </div>
+                  <div class="tg-compose__body">
+                    <textarea
+                      v-model.trim="telegram.messageText"
+                      class="tg-compose__input"
+                      placeholder="Введите сообщение..."
+                    />
+                    <div class="tg-compose__actions">
+                      <button class="tg-compose__icon" type="button" aria-label="Голос" title="Голос">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3z" />
+                          <path d="M19 11a7 7 0 0 1-14 0" />
+                          <path d="M12 18v3" />
+                        </svg>
+                      </button>
+                      <button class="tg-compose__icon" type="button" aria-label="Просмотр" title="Просмотр">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      </button>
+                      <button class="tg-compose__icon" type="button" aria-label="Вложение" title="Вложение">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M21 12.5V17a2 2 0 0 1-2 2h-4.5" />
+                          <path d="M3 11.5V7a2 2 0 0 1 2-2h4.5" />
+                          <path d="M14 5h5v5" />
+                          <path d="M10 19H5v-5" />
+                          <path d="M19 5l-8 8" />
+                          <path d="M5 19l8-8" />
+                        </svg>
+                      </button>
+                      <button class="tg-compose__icon" type="button" aria-label="Скрепка" title="Скрепка">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M21.44 11.05l-8.49 8.49a6 6 0 0 1-8.49-8.49l8.49-8.49a4 4 0 0 1 5.66 5.66L10.6 16.24a2 2 0 0 1-2.83-2.83l7.07-7.07" />
+                        </svg>
+                      </button>
+                      <button class="tg-compose__icon" type="button" aria-label="Emoji" title="Emoji">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <circle cx="12" cy="12" r="9" />
+                          <path d="M9 10h.01M15 10h.01" />
+                          <path d="M8 14c1 1.5 2.5 2 4 2s3-.5 4-2" />
+                        </svg>
+                      </button>
+                      <button
+                        class="tg-compose__send"
+                        type="button"
+                        @click="sendTelegramMessage"
+                        :disabled="telegram.loading || !telegram.activeChatId || !telegram.messageText"
+                        aria-label="Отправить"
+                        title="Отправить"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M3 20l18-8L3 4v6l12 2-12 2z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -4777,6 +4925,8 @@ const activeAccountChips = computed(() => {
 const globalSaving = computed(() => accountSaving.value || dealSaving.value || gameSaving.value || catalogSaving.value)
 
 const isAdmin = computed(() => auth.state.role === 'admin')
+const showUsersTab = false
+const showDashboard = false
 
 const dealModalTitle = computed(() => {
   if (showDealForm.value) return 'Новая сделка'
@@ -5083,6 +5233,10 @@ const telegram = reactive({
   phone: '',
   code: '',
   password: '',
+  loadingMessages: false,
+  autoStickBottom: true,
+  dialogStatusFilter: 'all',
+  dialogCounts: { new: 0, accepted: 0, archived: 0, all: 0 },
   dialogs: [],
   activeChatId: null,
   activeDialog: null,
@@ -8694,6 +8848,7 @@ async function tgAuthDisconnect() {
     telegram.password = ''
     telegram.dialogs = []
     telegram.messages = []
+    telegram.loadingMessages = false
     telegram.activeChatId = null
     telegram.activeDialog = null
     telegram.activeContactId = null
@@ -8713,14 +8868,40 @@ async function loadTelegramDialogs() {
   telegram.loading = true
   telegram.error = ''
   try {
-    const data = await apiGet('/tg/dialogs', { token: auth.state.token })
+    const params = new URLSearchParams()
+    if (telegram.dialogStatusFilter && telegram.dialogStatusFilter !== 'all') {
+      params.set('status', telegram.dialogStatusFilter)
+    }
+    const data = await apiGet(`/tg/dialogs?${params.toString()}`, { token: auth.state.token })
     telegram.dialogs = data?.items || []
+    telegram.dialogCounts = data?.counts || { new: 0, accepted: 0, archived: 0, all: 0 }
+    if (telegram.activeChatId) {
+      telegram.activeDialog = telegram.dialogs.find((d) => d.id === telegram.activeChatId) || null
+      if (!telegram.activeDialog) {
+        revokeTelegramMediaUrls()
+        telegram.activeChatId = null
+        telegram.messages = []
+        telegram.activeContactId = null
+        telegram.contactEditing = false
+        telegram.contact = { title: '', info: '' }
+        telegram.contactEdit = { title: '', info: '' }
+        telegram.contactMeta = { name: '', username: '' }
+      }
+    }
   } catch (e) {
     telegram.error = mapApiError(e?.message)
     telegram.dialogs = []
+    telegram.dialogCounts = { new: 0, accepted: 0, archived: 0, all: 0 }
   } finally {
     telegram.loading = false
   }
+}
+
+async function setTelegramDialogFilter(status) {
+  if (!['all', 'new', 'accepted', 'archived'].includes(status)) return
+  if (telegram.dialogStatusFilter === status) return
+  telegram.dialogStatusFilter = status
+  await loadTelegramDialogs()
 }
 
 async function selectTelegramDialog(dialogId) {
@@ -8729,23 +8910,25 @@ async function selectTelegramDialog(dialogId) {
   telegram.activeDialog = telegram.dialogs.find((d) => d.id === dialogId) || null
   telegram.messages = []
   telegram.activeContactId = null
+  telegram.autoStickBottom = true
   telegram.contactEditing = false
   telegram.contact = { title: '', info: '' }
   telegram.contactMeta = { name: '', username: '' }
-  telegram.loading = true
+  telegram.loadingMessages = true
   telegram.error = ''
   try {
     const data = await apiGet(`/tg/messages?chat_id=${dialogId}`, { token: auth.state.token })
     telegram.messages = (data?.items || []).slice().reverse()
     setTelegramDefaultContact()
     await loadTelegramContact()
-    await loadTelegramMessageMedia()
     await nextTick()
-    scrollTelegramToBottom()
+    scrollTelegramToBottom(true)
+    telegram.loadingMessages = false
+    // Do not block the chat UI on media downloads.
+    loadTelegramMessageMedia()
   } catch (e) {
     telegram.error = mapApiError(e?.message)
-  } finally {
-    telegram.loading = false
+    telegram.loadingMessages = false
   }
 }
 
@@ -8760,21 +8943,63 @@ function revokeTelegramMediaUrls() {
 async function loadTelegramMessageMedia() {
   const chatId = telegram.activeChatId
   if (!chatId) return
+  const batch = []
+  const BATCH_SIZE = 4
+  const BATCH_DELAY_MS = 120
+  let lastFlushAt = Date.now()
+
+  const flushBatch = async (force = false) => {
+    if (!batch.length) return
+    const now = Date.now()
+    if (!force && batch.length < BATCH_SIZE && now - lastFlushAt < BATCH_DELAY_MS) return
+    const keepBottom = isTelegramNearBottom(140) || telegram.autoStickBottom
+    while (batch.length) {
+      const item = batch.shift()
+      if (!item) break
+      if (telegram.activeChatId !== chatId) return
+      item.msg.media_url = item.url
+    }
+    await nextTick()
+    if (keepBottom) scrollTelegramToBottom(true)
+    lastFlushAt = now
+  }
+
   for (const msg of telegram.messages) {
     if (!msg?.has_media || msg?.media_url) continue
+    if (telegram.activeChatId !== chatId) return
     try {
       const blob = await apiGetFile(`/tg/media?chat_id=${chatId}&message_id=${msg.id}`, { token: auth.state.token })
-      msg.media_url = URL.createObjectURL(blob)
+      batch.push({ msg, url: URL.createObjectURL(blob) })
+      await flushBatch(false)
     } catch (e) {
       // ignore media load failures
     }
   }
+  await flushBatch(true)
 }
 
-function scrollTelegramToBottom() {
+function isTelegramNearBottom(threshold = 100) {
+  const el = tgMessagesList.value
+  if (!el) return true
+  const distance = el.scrollHeight - el.clientHeight - el.scrollTop
+  return distance <= threshold
+}
+
+function updateTelegramAutoStick() {
+  telegram.autoStickBottom = isTelegramNearBottom(120)
+}
+
+function scrollTelegramToBottom(force = false) {
   const el = tgMessagesList.value
   if (!el) return
+  if (!force && !telegram.autoStickBottom) return
   el.scrollTop = el.scrollHeight
+}
+
+function onTelegramMediaRendered() {
+  if (telegram.autoStickBottom || isTelegramNearBottom(140)) {
+    requestAnimationFrame(() => scrollTelegramToBottom(true))
+  }
 }
 
 function setTelegramDefaultContact() {
@@ -8875,6 +9100,36 @@ function formatTelegramSender(message) {
   return ''
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function formatTelegramMessageHtml(value) {
+  const src = value == null ? '' : String(value)
+  const escaped = escapeHtml(src)
+  const withLinks = escaped.replace(
+    /(https?:\/\/[^\s<]+)/gi,
+    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+  )
+  return withLinks.replace(/\r?\n/g, '<br>')
+}
+
+function showTelegramChannelLabel(index) {
+  const list = telegram.messages || []
+  const current = list[index]
+  if (!current || current.out) return false
+  const next = list[index + 1]
+  if (!next) return true
+  if (next.out) return true
+  if ((next.sender_id || null) !== (current.sender_id || null)) return true
+  return false
+}
+
 async function sendTelegramMessage() {
   if (!telegram.activeChatId || !telegram.messageText) return
   telegram.loading = true
@@ -8882,7 +9137,32 @@ async function sendTelegramMessage() {
   try {
     await apiPost('/tg/messages', { chat_id: telegram.activeChatId, text: telegram.messageText }, { token: auth.state.token })
     telegram.messageText = ''
+    if (telegram.activeDialog) {
+      telegram.activeDialog.status = 'accepted'
+    }
+    await loadTelegramDialogs()
+    if (telegram.activeChatId) {
+      telegram.activeDialog = telegram.dialogs.find((d) => d.id === telegram.activeChatId) || telegram.activeDialog
+    }
     await selectTelegramDialog(telegram.activeChatId)
+  } catch (e) {
+    telegram.error = mapApiError(e?.message)
+  } finally {
+    telegram.loading = false
+  }
+}
+
+async function setTelegramDialogStatus(status) {
+  if (!telegram.activeChatId) return
+  if (!['new', 'accepted', 'archived'].includes(status)) return
+  telegram.loading = true
+  telegram.error = ''
+  try {
+    await apiPut(`/tg/dialogs/${telegram.activeChatId}/status`, { status }, { token: auth.state.token })
+    await loadTelegramDialogs()
+    if (telegram.activeChatId) {
+      telegram.activeDialog = telegram.dialogs.find((d) => d.id === telegram.activeChatId) || telegram.activeDialog
+    }
   } catch (e) {
     telegram.error = mapApiError(e?.message)
   } finally {
@@ -10420,7 +10700,8 @@ watch(
   display: grid;
   grid-template-columns: 260px 1fr;
   gap: 16px;
-  min-height: 320px;
+  min-height: clamp(560px, 74vh, 820px);
+  height: clamp(560px, 74vh, 820px);
 }
 
 .tg-dialogs {
@@ -10430,13 +10711,53 @@ watch(
   padding: 12px;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  height: 100%;
 }
 
 .tg-dialogs__head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   margin-bottom: 8px;
+}
+
+.tg-dialog-tabs {
+  display: inline-flex;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 4px;
+}
+
+.tg-dialog-tab {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tg-dialog-tab.active {
+  color: var(--ink);
+  background: rgba(80, 200, 255, 0.22);
+}
+
+.tg-dialog-tab__count {
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(58, 168, 86, 0.9);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  padding: 0 4px;
 }
 
 .tg-dialogs__list {
@@ -10444,7 +10765,8 @@ watch(
   flex-direction: column;
   gap: 6px;
   overflow: auto;
-  max-height: 360px;
+  flex: 1;
+  min-height: 0;
 }
 
 .tg-dialog {
@@ -10473,6 +10795,13 @@ watch(
   border-radius: 12px;
   font-size: 11px;
   padding: 2px 6px;
+  min-width: 22px;
+  text-align: center;
+}
+
+.tg-dialog__unread--zero {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--muted);
 }
 
 .tg-messages {
@@ -10482,7 +10811,9 @@ watch(
   padding: 12px;
   display: flex;
   flex-direction: column;
-  max-height: 360px;
+  min-height: 0;
+  height: 100%;
+  position: relative;
 }
 
 .tg-contact {
@@ -10497,6 +10828,12 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+.tg-contact__tools {
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
 }
 
@@ -10522,6 +10859,12 @@ watch(
   gap: 8px;
 }
 
+.ghost--tiny {
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
 .tg-messages__list {
   flex: 1;
   overflow: auto;
@@ -10530,6 +10873,28 @@ watch(
   gap: 8px;
   padding-right: 6px;
   min-height: 220px;
+  overflow-anchor: none;
+}
+
+.tg-loading-overlay {
+  position: absolute;
+  inset: 12px;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 12, 24, 0.58);
+  backdrop-filter: blur(4px);
+  border-radius: 12px;
+}
+
+.tg-message-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.tg-message-row--out {
+  justify-content: flex-end;
 }
 
 .tg-message {
@@ -10550,7 +10915,19 @@ watch(
 }
 .tg-message__text {
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.tg-message__text a {
+  color: #5ea3ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.tg-message--out .tg-message__text a {
+  color: #9dd2ff;
 }
 
 .tg-message__sender {
@@ -10561,23 +10938,53 @@ watch(
 
 .tg-message__media {
   margin-top: 6px;
+  width: min(320px, 100%);
+  min-height: 160px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .tg-message__media img {
+  width: 100%;
   max-width: 320px;
   max-height: 240px;
+  min-height: 160px;
   border-radius: 12px;
   display: block;
   object-fit: contain;
-  background: rgba(255, 255, 255, 0.04);
+  background: transparent;
 }
 
 .tg-message__media video {
+  width: 100%;
   max-width: 320px;
   max-height: 240px;
+  min-height: 160px;
   border-radius: 12px;
   display: block;
   background: rgba(0, 0, 0, 0.2);
+}
+
+.tg-message__media-placeholder {
+  width: 100%;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(110deg, rgba(255, 255, 255, 0.02) 8%, rgba(255, 255, 255, 0.08) 18%, rgba(255, 255, 255, 0.02) 33%);
+  background-size: 200% 100%;
+  animation: tgMediaShimmer 1.2s linear infinite;
+}
+
+@keyframes tgMediaShimmer {
+  to {
+    background-position-x: -200%;
+  }
 }
 
 .tg-message__meta {
@@ -10593,10 +11000,186 @@ watch(
   color: rgba(120, 200, 120, 0.9);
 }
 
-.tg-messages__send {
-  display: flex;
-  gap: 8px;
+.tg-message__channel {
+  margin-top: 4px;
+  font-size: 11px;
+  color: rgba(168, 182, 214, 0.9);
+}
+
+.tg-message-row__actions,
+.tg-message-row__actions-spacer {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 24px;
+  min-width: 24px;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+}
+
+.tg-message-action {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  color: #d3def8;
+}
+
+.tg-message-action__glyph {
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.tg-message-action--blue {
+  color: #67b9ff;
+}
+
+.tg-message-action--red {
+  color: #ff6c8a;
+}
+
+.tg-message-action--ghost {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tg-message-row__actions {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tg-message-row:hover .tg-message-row__actions,
+.tg-message-row:focus-within .tg-message-row__actions {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tg-compose {
   margin-top: 10px;
+  border: 1px solid rgba(180, 189, 206, 0.45);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(226, 231, 240, 0.08);
+}
+
+.tg-compose__head {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  background: rgba(196, 205, 220, 0.22);
+  border-bottom: 1px solid rgba(180, 189, 206, 0.35);
+}
+
+.tg-compose__brand {
+  color: #ff5a84;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.tg-compose__title {
+  color: #98a2b7;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.tg-compose__link {
+  border: none;
+  background: transparent;
+  color: #5f7dd7;
+  font-size: 18px;
+  line-height: 1;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 0;
+}
+
+.tg-compose__body {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.tg-compose__input {
+  flex: 1;
+  min-height: 72px;
+  max-height: 160px;
+  resize: vertical;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #dfe7f6;
+  font-size: 22px;
+  line-height: 1.25;
+  font-family: inherit;
+}
+
+.tg-compose__input::placeholder {
+  color: rgba(195, 205, 220, 0.85);
+}
+
+.tg-compose__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tg-compose__icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(180, 189, 206, 0.35);
+  background: rgba(180, 189, 206, 0.12);
+  color: #b8c3d8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tg-compose__icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tg-compose__send {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(103, 185, 255, 0.4);
+  background: rgba(103, 185, 255, 0.18);
+  color: #79c5ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tg-compose__send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tg-compose__send svg {
+  width: 19px;
+  height: 19px;
+  stroke: currentColor;
+  fill: currentColor;
+  stroke-width: 1;
 }
 
 .toolbar-actions--deal-create {
@@ -12541,6 +13124,11 @@ pre {
     width: 100%;
     justify-self: stretch;
   }
+
+  .form,
+  .form--stack {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -12558,10 +13146,14 @@ pre {
   }
 }
 
-@media (max-width: 1100px) {
-  .form,
-  .form--stack {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 </style>

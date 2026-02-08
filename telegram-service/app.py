@@ -45,7 +45,7 @@ class AuthPasswordIn(BaseModel):
 
 class DialogsIn(BaseModel):
     session_string: str
-    limit: int = 50
+    limit: int = 0
 
 
 class MessagesIn(BaseModel):
@@ -137,8 +137,9 @@ async def dialogs(payload: DialogsIn, x_api_key: str | None = Header(None)):
     client = _client(payload.session_string or "")
     await client.connect()
     try:
+        dialogs_limit = None if int(payload.limit or 0) <= 0 else int(payload.limit)
         items = []
-        async for d in client.iter_dialogs(limit=payload.limit):
+        async for d in client.iter_dialogs(limit=dialogs_limit):
             entity = d.entity
             items.append(
                 {

@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, date
-from typing import Optional, List, Tuple, Any
+from typing import Optional, List, Tuple, Any, Dict
 
 from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File, Form
 from fastapi.responses import Response
@@ -296,6 +296,7 @@ class TelegramAuthPasswordIn(BaseModel):
 
 class TelegramDialogsOut(BaseModel):
     items: list
+    counts: Dict[str, int] = {}
 
 
 class TelegramMessagesOut(BaseModel):
@@ -305,6 +306,9 @@ class TelegramMessagesOut(BaseModel):
 class TelegramSendMessageIn(BaseModel):
     chat_id: int
     text: str
+
+class TelegramDialogStatusIn(BaseModel):
+    status: str
 
 class TelegramContactIn(BaseModel):
     sender_id: int
@@ -1839,16 +1843,81 @@ def telegram_auth_disconnect(user: UserOut = Depends(require_role("admin"))):
 
 
 @app.get("/tg/dialogs", response_model=TelegramDialogsOut)
-def telegram_dialogs(user: UserOut = Depends(get_current_user)):
+def telegram_dialogs(status: Optional[str] = None, user: UserOut = Depends(get_current_user)):
     with psycopg.connect(DB_DSN) as conn:
         row = q1(conn, "SELECT session_string, status FROM tg.shared_session WHERE id=1")
         if not row or row[1] != "ready":
             raise HTTPException(400, "Telegram is not connected")
         session_string = row[0]
-        resp = _telegram_api_request("POST", "/dialogs", {"session_string": session_string})
+        resp = _telegram_api_request("POST", "/dialogs", {"session_string": session_string, "limit": 0})
+        user_id = get_user_id(conn, user.username)
+        items = resp.get("items", []) or []
+        chat_ids = [int(i.get("id")) for i in items if i.get("id") is not None]
+        if chat_ids:
+            with conn.cursor() as cur:
+                cur.executemany(
+                    """
+                    INSERT INTO tg.dialog_states(chat_id, status, updated_at, updated_by_user_id)
+                    VALUES (%s, 'new', now(), %s)
+                    ON CONFLICT (chat_id) DO NOTHING
+                    """,
+                    [(cid, user_id) for cid in chat_ids],
+                )
+            # New inbound messages should move dialog to "new".
+            unread_new_ids = [int(i.get("id")) for i in items if int(i.get("unread_count") or 0) > 0 and i.get("id") is not None]
+            if unread_new_ids:
+                exec1(
+                    conn,
+                    """
+                    UPDATE tg.dialog_states
+                    SET status='new', updated_at=now(), updated_by_user_id=%s
+                    WHERE chat_id = ANY(%s) AND status <> 'new'
+                    """,
+                    (user_id, unread_new_ids),
+                )
+            state_rows = qall(
+                conn,
+                "SELECT chat_id, status FROM tg.dialog_states WHERE chat_id = ANY(%s)",
+                (chat_ids,),
+            )
+            state_map = {int(r[0]): str(r[1]) for r in state_rows}
+            for item in items:
+                chat_id = item.get("id")
+                if chat_id is None:
+                    continue
+                item["status"] = state_map.get(int(chat_id), "new")
+        else:
+            items = []
         exec1(conn, "UPDATE tg.shared_session SET last_used_at=now() WHERE id=1")
         conn.commit()
-    return {"items": resp.get("items", [])}
+    counts = {"new": 0, "accepted": 0, "archived": 0, "all": len(items)}
+    for item in items:
+        key = str(item.get("status") or "new")
+        if key in counts:
+            counts[key] += 1
+    if status in ("new", "accepted", "archived"):
+        items = [i for i in items if str(i.get("status") or "new") == status]
+    return {"items": items, "counts": counts}
+
+@app.put("/tg/dialogs/{chat_id}/status")
+def telegram_dialog_status_set(chat_id: int, payload: TelegramDialogStatusIn, user: UserOut = Depends(get_current_user)):
+    status = (payload.status or "").strip().lower()
+    if status not in ("new", "accepted", "archived"):
+        raise HTTPException(400, "Invalid status")
+    with psycopg.connect(DB_DSN) as conn:
+        user_id = get_user_id(conn, user.username)
+        exec1(
+            conn,
+            """
+            INSERT INTO tg.dialog_states(chat_id, status, updated_at, updated_by_user_id)
+            VALUES (%s, %s, now(), %s)
+            ON CONFLICT (chat_id)
+            DO UPDATE SET status=excluded.status, updated_at=now(), updated_by_user_id=excluded.updated_by_user_id
+            """,
+            (chat_id, status, user_id),
+        )
+        conn.commit()
+    return {"ok": True, "chat_id": chat_id, "status": status}
 
 @app.get("/tg/contact")
 def telegram_contact(sender_id: int, user: UserOut = Depends(get_current_user)):
@@ -1890,7 +1959,7 @@ def telegram_messages(chat_id: int, user: UserOut = Depends(get_current_user)):
         if not row or row[1] != "ready":
             raise HTTPException(400, "Telegram is not connected")
         session_string = row[0]
-        resp = _telegram_api_request("POST", "/messages", {"session_string": session_string, "chat_id": chat_id, "limit": 50})
+        resp = _telegram_api_request("POST", "/messages", {"session_string": session_string, "chat_id": chat_id, "limit": 100})
         items = resp.get("items", [])
         message_ids = [int(i["id"]) for i in items if i.get("id")]
         sent_map = {}
@@ -1943,6 +2012,16 @@ def telegram_send_message(payload: TelegramSendMessageIn, user: UserOut = Depend
                 """,
                 (message_id, payload.chat_id, user_id),
             )
+        exec1(
+            conn,
+            """
+            INSERT INTO tg.dialog_states(chat_id, status, updated_at, updated_by_user_id)
+            VALUES (%s, 'accepted', now(), %s)
+            ON CONFLICT (chat_id)
+            DO UPDATE SET status='accepted', updated_at=now(), updated_by_user_id=excluded.updated_by_user_id
+            """,
+            (payload.chat_id, user_id),
+        )
         exec1(conn, "UPDATE tg.shared_session SET last_used_at=now() WHERE id=1")
         conn.commit()
     return {"ok": True}
@@ -2295,47 +2374,6 @@ def list_accounts(
     where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
 
     with psycopg.connect(DB_DSN) as conn:
-        total_row = q1(
-            conn,
-            f"""
-            WITH account_platforms AS (
-              SELECT
-                aa.account_id,
-                BOOL_OR(p.code = 'ps4') AS has_ps4,
-                COALESCE(array_agg(DISTINCT p.code ORDER BY p.code) FILTER (WHERE p.code IS NOT NULL), '{{}}'::text[]) AS platform_codes
-              FROM app.account_assets aa
-              JOIN app.game_platforms gp ON gp.game_id = aa.game_id
-              JOIN app.platforms p ON p.platform_id = gp.platform_id
-              WHERE aa.asset_type_code = 'game'
-              GROUP BY aa.account_id
-            ),
-            base AS (
-              SELECT
-                a.account_id,
-                r.code as region_code,
-                d.name as domain_name,
-                COALESCE(array_agg(DISTINCT g.title ORDER BY g.title) FILTER (WHERE g.title IS NOT NULL), '{{}}'::text[]) as game_titles,
-                COALESCE(string_agg(DISTINCT g.title, ' · ' ORDER BY g.title), '') as game_titles_text,
-                COALESCE(SUM(s.free), 0) as free_total,
-                COALESCE(string_agg(st.code || ' ' || s.occupied || '/' || s.capacity, ' · ' ORDER BY st.code), '') as slots_text
-              FROM app.accounts a
-              LEFT JOIN app.regions r ON r.region_id = a.region_id
-              LEFT JOIN app.domains d ON d.domain_id = a.domain_id
-              LEFT JOIN account_platforms ap ON ap.account_id = a.account_id
-              LEFT JOIN app.account_assets aa ON aa.account_id = a.account_id AND aa.asset_type_code = 'game'
-              LEFT JOIN app.game_titles g ON g.game_id = aa.game_id
-              LEFT JOIN app.v_account_slot_status s
-                ON s.account_id = a.account_id
-               AND (COALESCE(ap.has_ps4, false) OR s.platform_code = 'ps5')
-              LEFT JOIN app.slot_types st ON st.code = s.slot_type_code
-              {where_sql}
-              GROUP BY a.account_id, r.code, d.name
-            )
-            SELECT COUNT(*) FROM base
-            {"WHERE slots_text ILIKE %s" if slots_q else ""}
-            """,
-            params + ([f"%{slots_q}%"] if slots_q else []),
-        )
         rows = qall(
             conn,
             f"""
@@ -2384,7 +2422,10 @@ def list_accounts(
               {"WHERE slots_text ILIKE %s" if slots_q else ""}
             ),
             page AS (
-              SELECT * FROM filtered
+              SELECT
+                filtered.*,
+                COUNT(*) OVER() AS total_count
+              FROM filtered
               ORDER BY {sort_col} {sort_dir}, account_id DESC
               {"" if all else "LIMIT %s OFFSET %s"}
             )
@@ -2403,7 +2444,8 @@ def list_accounts(
               s.mode,
               s.capacity,
               s.occupied,
-              s.free
+              s.free,
+              page.total_count
             FROM page
             LEFT JOIN app.v_account_slot_status s ON s.account_id = page.account_id
             ORDER BY {sort_col} {sort_dir}, page.account_id DESC, s.slot_type_code
@@ -2413,8 +2455,10 @@ def list_accounts(
 
     acc_map = {}
     acc_list = []
-    total = int(total_row[0] or 0) if total_row else 0
+    total = 0
     for row in rows:
+        if not total:
+            total = int(row[15] or 0)
         account_id = row[0]
         if account_id not in acc_map:
             acc = AccountOut(
@@ -2445,49 +2489,6 @@ def list_accounts(
                     free=int(row[14] or 0),
                 )
             )
-    if not rows:
-        with psycopg.connect(DB_DSN) as conn:
-            total_row = q1(
-                conn,
-            f"""
-            WITH account_platforms AS (
-              SELECT
-                aa.account_id,
-                BOOL_OR(p.code = 'ps4') AS has_ps4
-              FROM app.account_assets aa
-              JOIN app.game_platforms gp ON gp.game_id = aa.game_id
-              JOIN app.platforms p ON p.platform_id = gp.platform_id
-              WHERE aa.asset_type_code = 'game'
-              GROUP BY aa.account_id
-            ),
-            base AS (
-                  SELECT
-                    a.account_id,
-                    r.code as region_code,
-                    d.name as domain_name,
-                    COALESCE(array_agg(DISTINCT g.title ORDER BY g.title) FILTER (WHERE g.title IS NOT NULL), '{{}}'::text[]) as game_titles,
-                    COALESCE(string_agg(DISTINCT g.title, ' · ' ORDER BY g.title), '') as game_titles_text,
-                    COALESCE(SUM(s.free), 0) as free_total,
-                    COALESCE(string_agg(st.code || ' ' || s.occupied || '/' || s.capacity, ' · ' ORDER BY st.code), '') as slots_text
-                  FROM app.accounts a
-                  LEFT JOIN app.regions r ON r.region_id = a.region_id
-                  LEFT JOIN app.domains d ON d.domain_id = a.domain_id
-                  LEFT JOIN account_platforms ap ON ap.account_id = a.account_id
-                  LEFT JOIN app.account_assets aa ON aa.account_id = a.account_id AND aa.asset_type_code = 'game'
-                  LEFT JOIN app.game_titles g ON g.game_id = aa.game_id
-                  LEFT JOIN app.v_account_slot_status s
-                    ON s.account_id = a.account_id
-                   AND (COALESCE(ap.has_ps4, false) OR s.platform_code = 'ps5')
-                  LEFT JOIN app.slot_types st ON st.code = s.slot_type_code
-                  {where_sql}
-                  GROUP BY a.account_id, r.code, d.name
-                )
-                SELECT COUNT(*) FROM base
-                {"WHERE slots_text ILIKE %s" if slots_q else ""}
-                """,
-                params + ([f"%{slots_q}%"] if slots_q else []),
-            )
-            total = int(total_row[0] or 0) if total_row else 0
     return {"total": total, "items": acc_list}
 
 @app.post("/accounts", response_model=AccountOut)

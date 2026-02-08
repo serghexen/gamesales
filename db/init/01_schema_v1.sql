@@ -184,8 +184,8 @@ INSERT INTO app.slot_types(code, name, platform_code, mode, capacity)
 VALUES
   ('play_ps4', 'П3 (PS4)', 'ps4', 'play', 2),
   ('play_ps5', 'П3 (PS5)', 'ps5', 'play', 2),
-  ('activate_ps4', 'П2 (PS4)', 'ps4', 'activate', 2),
-  ('activate_ps5', 'П2 (PS5)', 'ps5', 'activate', 2)
+  ('activate_ps4', 'П2 (PS4)', 'ps4', 'activate', 1),
+  ('activate_ps5', 'П2 (PS5)', 'ps5', 'activate', 1)
 ON CONFLICT (code) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS app.account_assets (
@@ -593,4 +593,12 @@ CREATE TABLE IF NOT EXISTS tg.sent_messages (
   sent_by_user_id bigint NOT NULL REFERENCES app.users(user_id),
   sent_at    timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (message_id, chat_id)
+);
+
+CREATE TABLE IF NOT EXISTS tg.dialog_states (
+  chat_id bigint PRIMARY KEY,
+  status text NOT NULL DEFAULT 'new',
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by_user_id bigint REFERENCES app.users(user_id),
+  CONSTRAINT ck_tg_dialog_states_status CHECK (status IN ('new', 'accepted', 'archived'))
 );
