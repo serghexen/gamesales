@@ -2122,7 +2122,9 @@
                     </button>
                   </div>
                   <div class="tg-dialogs__meta">
-                    <span v-if="telegram.dialogsSyncRunning" class="tg-dialogs__meta-pill tg-dialogs__meta-pill--running">Синхро: идет</span>
+                    <span v-if="telegram.dialogsSyncRunning" class="tg-dialogs__meta-pill tg-dialogs__meta-pill--running">
+                      Синхро: идет • батч {{ telegram.dialogsSyncBatches || 0 }} • загружено {{ telegram.dialogsSyncLoaded || 0 }}
+                    </span>
                     <span v-else-if="telegram.dialogsLastSyncAt" class="tg-dialogs__meta-pill">Синхро: {{ formatDateTimeMinutes(telegram.dialogsLastSyncAt) }}</span>
                     <span v-else class="tg-dialogs__meta-pill">Синхро: нет</span>
                     <span class="tg-dialogs__meta-pill tg-dialogs__meta-pill--count">Контактов: {{ telegram.dialogCounts.all || 0 }}</span>
@@ -5250,6 +5252,8 @@ const telegram = reactive({
   dialogCounts: { new: 0, accepted: 0, archived: 0, all: 0 },
   dialogsSyncRunning: false,
   dialogsLastSyncAt: '',
+  dialogsSyncLoaded: 0,
+  dialogsSyncBatches: 0,
   dialogs: [],
   activeChatId: null,
   activeDialog: null,
@@ -8862,6 +8866,8 @@ async function tgAuthDisconnect() {
     telegram.dialogs = []
     telegram.messages = []
     telegram.loadingMessages = false
+    telegram.dialogsSyncLoaded = 0
+    telegram.dialogsSyncBatches = 0
     telegram.activeChatId = null
     telegram.activeDialog = null
     telegram.activeContactId = null
@@ -8890,6 +8896,8 @@ async function loadTelegramDialogs() {
     telegram.dialogCounts = data?.counts || { new: 0, accepted: 0, archived: 0, all: 0 }
     telegram.dialogsSyncRunning = Boolean(data?.sync_running)
     telegram.dialogsLastSyncAt = data?.last_sync_at || ''
+    telegram.dialogsSyncLoaded = Number(data?.sync_loaded || 0)
+    telegram.dialogsSyncBatches = Number(data?.sync_batches || 0)
     if (telegram.activeChatId) {
       telegram.activeDialog = telegram.dialogs.find((d) => d.id === telegram.activeChatId) || null
       if (!telegram.activeDialog) {
@@ -8909,6 +8917,8 @@ async function loadTelegramDialogs() {
     telegram.dialogCounts = { new: 0, accepted: 0, archived: 0, all: 0 }
     telegram.dialogsSyncRunning = false
     telegram.dialogsLastSyncAt = ''
+    telegram.dialogsSyncLoaded = 0
+    telegram.dialogsSyncBatches = 0
   } finally {
     telegram.loading = false
   }

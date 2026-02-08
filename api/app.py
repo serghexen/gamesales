@@ -317,6 +317,8 @@ class TelegramDialogsOut(BaseModel):
     counts: Dict[str, int] = {}
     sync_running: bool = False
     last_sync_at: Optional[datetime] = None
+    sync_loaded: int = 0
+    sync_batches: int = 0
 
 
 class TelegramMessagesOut(BaseModel):
@@ -988,7 +990,9 @@ _TELEGRAM_API_KEY = os.getenv("TELEGRAM_API_KEY", "")
 _TELEGRAM_DIALOGS_SYNC_LOCK = threading.Lock()
 _TELEGRAM_DIALOGS_SYNC_RUNNING = False
 _TELEGRAM_DIALOGS_SYNC_LAST_STARTED_MONO = 0.0
-TELEGRAM_DIALOGS_SYNC_LIMIT = int(os.getenv("TELEGRAM_DIALOGS_SYNC_LIMIT", "1000") or "1000")
+_TELEGRAM_DIALOGS_SYNC_LOADED = 0
+_TELEGRAM_DIALOGS_SYNC_BATCHES = 0
+TELEGRAM_DIALOGS_SYNC_LIMIT = int(os.getenv("TELEGRAM_DIALOGS_SYNC_LIMIT", "0") or "0")
 TELEGRAM_DIALOGS_SYNC_BATCH = int(os.getenv("TELEGRAM_DIALOGS_SYNC_BATCH", "100") or "100")
 TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC = int(os.getenv("TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC", "45") or "45")
 TELEGRAM_DIALOGS_SYNC_BATCH_DELAY_MS = int(os.getenv("TELEGRAM_DIALOGS_SYNC_BATCH_DELAY_MS", "250") or "250")
@@ -1193,9 +1197,10 @@ def _telegram_fetch_dialog_batch_with_retry(
     return {"items": [], "has_more": False, "next_offset_date": None, "next_offset_id": 0}
 
 def _telegram_dialogs_sync_worker(session_string: str, user_id: int):
-    global _TELEGRAM_DIALOGS_SYNC_RUNNING
+    global _TELEGRAM_DIALOGS_SYNC_RUNNING, _TELEGRAM_DIALOGS_SYNC_LOADED, _TELEGRAM_DIALOGS_SYNC_BATCHES
     try:
-        sync_limit = TELEGRAM_DIALOGS_SYNC_LIMIT if TELEGRAM_DIALOGS_SYNC_LIMIT > 0 else 1000
+        # 0 or less means "sync all dialogs" in batches.
+        sync_limit: Optional[int] = TELEGRAM_DIALOGS_SYNC_LIMIT if TELEGRAM_DIALOGS_SYNC_LIMIT > 0 else None
         batch_size = TELEGRAM_DIALOGS_SYNC_BATCH if TELEGRAM_DIALOGS_SYNC_BATCH > 0 else 100
         batch_delay_sec = max(TELEGRAM_DIALOGS_SYNC_BATCH_DELAY_MS, 0) / 1000.0
         offset_date: Optional[str] = None
@@ -1206,10 +1211,13 @@ def _telegram_dialogs_sync_worker(session_string: str, user_id: int):
         completed_full_scan = False
         with psycopg.connect(DB_DSN) as conn:
             while True:
-                remaining = max(sync_limit - total_loaded, 0)
-                if remaining <= 0:
-                    break
-                current_batch = min(batch_size, remaining)
+                if sync_limit is not None:
+                    remaining = max(sync_limit - total_loaded, 0)
+                    if remaining <= 0:
+                        break
+                    current_batch = min(batch_size, remaining)
+                else:
+                    current_batch = batch_size
                 resp = _telegram_fetch_dialog_batch_with_retry(session_string, current_batch, offset_date, offset_id)
                 items = resp.get("items", []) or []
                 if not items:
@@ -1222,13 +1230,16 @@ def _telegram_dialogs_sync_worker(session_string: str, user_id: int):
                 conn.commit()
                 total_loaded += len(items)
                 rounds += 1
+                with _TELEGRAM_DIALOGS_SYNC_LOCK:
+                    _TELEGRAM_DIALOGS_SYNC_LOADED = total_loaded
+                    _TELEGRAM_DIALOGS_SYNC_BATCHES = rounds
                 has_more = bool(resp.get("has_more"))
                 if not has_more:
                     completed_full_scan = True
                     break
                 offset_date = resp.get("next_offset_date")
                 offset_id = int(resp.get("next_offset_id") or 0)
-                if not offset_date or rounds > 200:
+                if not offset_date or rounds > 500:
                     break
                 if batch_delay_sec > 0:
                     time.sleep(batch_delay_sec)
@@ -1245,7 +1256,7 @@ def _telegram_dialogs_sync_worker(session_string: str, user_id: int):
 
 
 def _trigger_telegram_dialogs_sync(session_string: str, user_id: int) -> bool:
-    global _TELEGRAM_DIALOGS_SYNC_RUNNING, _TELEGRAM_DIALOGS_SYNC_LAST_STARTED_MONO
+    global _TELEGRAM_DIALOGS_SYNC_RUNNING, _TELEGRAM_DIALOGS_SYNC_LAST_STARTED_MONO, _TELEGRAM_DIALOGS_SYNC_LOADED, _TELEGRAM_DIALOGS_SYNC_BATCHES
     now_mono = time.monotonic()
     with _TELEGRAM_DIALOGS_SYNC_LOCK:
         if _TELEGRAM_DIALOGS_SYNC_RUNNING:
@@ -1254,6 +1265,8 @@ def _trigger_telegram_dialogs_sync(session_string: str, user_id: int) -> bool:
             return False
         _TELEGRAM_DIALOGS_SYNC_RUNNING = True
         _TELEGRAM_DIALOGS_SYNC_LAST_STARTED_MONO = now_mono
+        _TELEGRAM_DIALOGS_SYNC_LOADED = 0
+        _TELEGRAM_DIALOGS_SYNC_BATCHES = 0
     thread = threading.Thread(
         target=_telegram_dialogs_sync_worker,
         args=(session_string, user_id),
@@ -2133,6 +2146,8 @@ def telegram_dialogs(status: Optional[str] = None, user: UserOut = Depends(get_c
         _trigger_telegram_dialogs_sync(session_string, user_id)
         with _TELEGRAM_DIALOGS_SYNC_LOCK:
             sync_running = bool(_TELEGRAM_DIALOGS_SYNC_RUNNING)
+            sync_loaded = int(_TELEGRAM_DIALOGS_SYNC_LOADED)
+            sync_batches = int(_TELEGRAM_DIALOGS_SYNC_BATCHES)
     counts = {"new": 0, "accepted": 0, "archived": 0, "all": len(items)}
     for item in items:
         key = str(item.get("status") or "new")
@@ -2140,7 +2155,14 @@ def telegram_dialogs(status: Optional[str] = None, user: UserOut = Depends(get_c
             counts[key] += 1
     if status in ("new", "accepted", "archived"):
         items = [i for i in items if str(i.get("status") or "new") == status]
-    return {"items": items, "counts": counts, "sync_running": sync_running, "last_sync_at": last_sync_at}
+    return {
+        "items": items,
+        "counts": counts,
+        "sync_running": sync_running,
+        "last_sync_at": last_sync_at,
+        "sync_loaded": sync_loaded,
+        "sync_batches": sync_batches,
+    }
 
 @app.put("/tg/dialogs/{chat_id}/status")
 def telegram_dialog_status_set(chat_id: int, payload: TelegramDialogStatusIn, user: UserOut = Depends(get_current_user)):
