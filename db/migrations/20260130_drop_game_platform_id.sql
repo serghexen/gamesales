@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE app.game_titles
+  DROP COLUMN IF EXISTS platform_id CASCADE;
+
+COMMIT;

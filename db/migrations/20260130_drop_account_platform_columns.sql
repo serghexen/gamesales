@@ -1,0 +1,8 @@
+BEGIN;
+
+ALTER TABLE app.accounts
+  DROP COLUMN IF EXISTS platform_id CASCADE,
+  DROP COLUMN IF EXISTS slot_capacity CASCADE,
+  DROP COLUMN IF EXISTS slot_reserved CASCADE;
+
+COMMIT;
