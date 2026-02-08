@@ -314,6 +314,8 @@ class TelegramAuthPasswordIn(BaseModel):
 class TelegramDialogsOut(BaseModel):
     items: list
     counts: Dict[str, int] = {}
+    sync_running: bool = False
+    last_sync_at: Optional[datetime] = None
 
 
 class TelegramMessagesOut(BaseModel):
@@ -1996,6 +1998,8 @@ def telegram_dialogs(status: Optional[str] = None, user: UserOut = Depends(get_c
             }
             for r in rows
         ]
+        last_sync_row = q1(conn, "SELECT MAX(updated_at) FROM tg.dialog_snapshot")
+        last_sync_at = last_sync_row[0] if last_sync_row else None
 
         # Fast bootstrap so first screen is not empty on fresh DB.
         if not items:
@@ -2036,8 +2040,12 @@ def telegram_dialogs(status: Optional[str] = None, user: UserOut = Depends(get_c
                     }
                     for r in rows
                 ]
+                last_sync_row = q1(conn, "SELECT MAX(updated_at) FROM tg.dialog_snapshot")
+                last_sync_at = last_sync_row[0] if last_sync_row else None
 
         _trigger_telegram_dialogs_sync(session_string, user_id)
+        with _TELEGRAM_DIALOGS_SYNC_LOCK:
+            sync_running = bool(_TELEGRAM_DIALOGS_SYNC_RUNNING)
     counts = {"new": 0, "accepted": 0, "archived": 0, "all": len(items)}
     for item in items:
         key = str(item.get("status") or "new")
@@ -2045,7 +2053,7 @@ def telegram_dialogs(status: Optional[str] = None, user: UserOut = Depends(get_c
             counts[key] += 1
     if status in ("new", "accepted", "archived"):
         items = [i for i in items if str(i.get("status") or "new") == status]
-    return {"items": items, "counts": counts}
+    return {"items": items, "counts": counts, "sync_running": sync_running, "last_sync_at": last_sync_at}
 
 @app.put("/tg/dialogs/{chat_id}/status")
 def telegram_dialog_status_set(chat_id: int, payload: TelegramDialogStatusIn, user: UserOut = Depends(get_current_user)):

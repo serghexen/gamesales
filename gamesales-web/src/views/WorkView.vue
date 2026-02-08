@@ -2116,6 +2116,12 @@
                       <span v-if="telegram.dialogCounts.archived" class="tg-dialog-tab__count">{{ telegram.dialogCounts.archived }}</span>
                     </button>
                   </div>
+                  <div class="tg-dialogs__meta">
+                    <span v-if="telegram.dialogsSyncRunning" class="tg-dialogs__meta-pill tg-dialogs__meta-pill--running">Синхро: идет</span>
+                    <span v-else-if="telegram.dialogsLastSyncAt" class="tg-dialogs__meta-pill">Синхро: {{ formatDateTimeMinutes(telegram.dialogsLastSyncAt) }}</span>
+                    <span v-else class="tg-dialogs__meta-pill">Синхро: нет</span>
+                    <span class="tg-dialogs__meta-pill tg-dialogs__meta-pill--count">Контактов: {{ telegram.dialogCounts.all || 0 }}</span>
+                  </div>
                 </div>
                 <div class="tg-dialogs__list">
                   <button
@@ -5237,6 +5243,8 @@ const telegram = reactive({
   autoStickBottom: true,
   dialogStatusFilter: 'all',
   dialogCounts: { new: 0, accepted: 0, archived: 0, all: 0 },
+  dialogsSyncRunning: false,
+  dialogsLastSyncAt: '',
   dialogs: [],
   activeChatId: null,
   activeDialog: null,
@@ -8875,6 +8883,8 @@ async function loadTelegramDialogs() {
     const data = await apiGet(`/tg/dialogs?${params.toString()}`, { token: auth.state.token })
     telegram.dialogs = data?.items || []
     telegram.dialogCounts = data?.counts || { new: 0, accepted: 0, archived: 0, all: 0 }
+    telegram.dialogsSyncRunning = Boolean(data?.sync_running)
+    telegram.dialogsLastSyncAt = data?.last_sync_at || ''
     if (telegram.activeChatId) {
       telegram.activeDialog = telegram.dialogs.find((d) => d.id === telegram.activeChatId) || null
       if (!telegram.activeDialog) {
@@ -8892,6 +8902,8 @@ async function loadTelegramDialogs() {
     telegram.error = mapApiError(e?.message)
     telegram.dialogs = []
     telegram.dialogCounts = { new: 0, accepted: 0, archived: 0, all: 0 }
+    telegram.dialogsSyncRunning = false
+    telegram.dialogsLastSyncAt = ''
   } finally {
     telegram.loading = false
   }
@@ -10717,9 +10729,11 @@ watch(
 
 .tg-dialogs__head {
   display: flex;
-  align-items: center;
-  justify-content: flex-start;
+  flex-direction: column;
+  align-items: stretch;
   margin-bottom: 8px;
+  gap: 8px;
+  min-width: 0;
 }
 
 .tg-dialog-tabs {
@@ -10729,6 +10743,8 @@ watch(
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
   padding: 4px;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .tg-dialog-tab {
@@ -10767,6 +10783,38 @@ watch(
   overflow: auto;
   flex: 1;
   min-height: 0;
+}
+
+.tg-dialogs__meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.tg-dialogs__meta-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  white-space: nowrap;
+}
+
+.tg-dialogs__meta-pill--running {
+  color: #8cd0ff;
+  border-color: rgba(140, 208, 255, 0.45);
+  background: rgba(140, 208, 255, 0.12);
+}
+
+.tg-dialogs__meta-pill--count {
+  color: #b9c7dc;
 }
 
 .tg-dialog {
