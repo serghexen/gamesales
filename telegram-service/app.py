@@ -2,6 +2,7 @@ import os
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import Response
 from pydantic import BaseModel
+from datetime import datetime
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, PhoneCodeExpiredError
@@ -46,6 +47,8 @@ class AuthPasswordIn(BaseModel):
 class DialogsIn(BaseModel):
     session_string: str
     limit: int = 50
+    offset_date: str | None = None
+    offset_id: int = 0
 
 
 class MessagesIn(BaseModel):
@@ -137,14 +140,25 @@ async def dialogs(payload: DialogsIn, x_api_key: str | None = Header(None)):
     client = _client(payload.session_string or "")
     await client.connect()
     try:
-        # Unlimited dialog scans may take very long and time out behind proxy layers.
-        # Keep a high but finite limit for predictable response time.
         dialogs_limit = int(payload.limit or 0)
         if dialogs_limit <= 0:
-            dialogs_limit = 1000
+            dialogs_limit = 100
+        offset_date = None
+        if payload.offset_date:
+            try:
+                offset_date = datetime.fromisoformat(str(payload.offset_date).replace("Z", "+00:00"))
+            except Exception:
+                raise HTTPException(400, "Invalid offset_date")
+        offset_id = int(payload.offset_id or 0)
         items = []
-        async for d in client.iter_dialogs(limit=dialogs_limit):
+        last_message_date = None
+        last_message_id = 0
+        async for d in client.iter_dialogs(limit=dialogs_limit, offset_date=offset_date, offset_id=offset_id):
             entity = d.entity
+            msg = getattr(d, "message", None)
+            if msg and getattr(msg, "date", None):
+                last_message_date = msg.date
+                last_message_id = int(getattr(msg, "id", 0) or 0)
             items.append(
                 {
                     "id": int(d.id),
@@ -154,7 +168,13 @@ async def dialogs(payload: DialogsIn, x_api_key: str | None = Header(None)):
                     "is_channel": bool(getattr(entity, "broadcast", False)),
                 }
             )
-        return {"items": items}
+        has_more = len(items) >= dialogs_limit and last_message_date is not None
+        return {
+            "items": items,
+            "has_more": has_more,
+            "next_offset_date": last_message_date.isoformat() if has_more else None,
+            "next_offset_id": last_message_id if has_more else 0,
+        }
     finally:
         await client.disconnect()
 

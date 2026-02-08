@@ -19,6 +19,7 @@ import re
 import imghdr
 import ssl
 import threading
+import socket
 import time
 import uuid
 import json
@@ -987,6 +988,7 @@ _TELEGRAM_API_KEY = os.getenv("TELEGRAM_API_KEY", "")
 _TELEGRAM_DIALOGS_SYNC_LOCK = threading.Lock()
 _TELEGRAM_DIALOGS_SYNC_RUNNING = False
 TELEGRAM_DIALOGS_SYNC_LIMIT = int(os.getenv("TELEGRAM_DIALOGS_SYNC_LIMIT", "1000") or "1000")
+TELEGRAM_DIALOGS_SYNC_BATCH = int(os.getenv("TELEGRAM_DIALOGS_SYNC_BATCH", "100") or "100")
 
 def get_redis():
     global _REDIS_CLIENT
@@ -1050,7 +1052,7 @@ def _telegram_api_request(method: str, path: str, data: Optional[dict] = None, t
         raise HTTPException(exc.code, message)
     except urllib.error.URLError as exc:
         raise HTTPException(502, f"Telegram service {method} {path} failed: {exc.reason}")
-    except TimeoutError:
+    except (TimeoutError, socket.timeout):
         raise HTTPException(504, f"Telegram service {method} {path} timed out")
 
 def _telegram_api_request_raw(method: str, path: str, data: Optional[dict] = None) -> Tuple[bytes, Optional[str]]:
@@ -1078,6 +1080,8 @@ def _telegram_api_request_raw(method: str, path: str, data: Optional[dict] = Non
         raise HTTPException(exc.code, message)
     except urllib.error.URLError as exc:
         raise HTTPException(502, f"Telegram service {method} {path} failed: {exc.reason}")
+    except (TimeoutError, socket.timeout):
+        raise HTTPException(504, f"Telegram service {method} {path} timed out")
 
 
 def _upsert_telegram_dialog_snapshot(conn, user_id: int, items: List[dict]):
@@ -1145,15 +1149,42 @@ def _telegram_dialogs_sync_worker(session_string: str, user_id: int):
     global _TELEGRAM_DIALOGS_SYNC_RUNNING
     try:
         sync_limit = TELEGRAM_DIALOGS_SYNC_LIMIT if TELEGRAM_DIALOGS_SYNC_LIMIT > 0 else 1000
-        resp = _telegram_api_request(
-            "POST",
-            "/dialogs",
-            {"session_string": session_string, "limit": sync_limit},
-            timeout_sec=120,
-        )
-        items = resp.get("items", []) or []
+        batch_size = TELEGRAM_DIALOGS_SYNC_BATCH if TELEGRAM_DIALOGS_SYNC_BATCH > 0 else 100
+        offset_date: Optional[str] = None
+        offset_id = 0
+        total_loaded = 0
+        rounds = 0
         with psycopg.connect(DB_DSN) as conn:
-            _upsert_telegram_dialog_snapshot(conn, user_id, items)
+            while True:
+                remaining = max(sync_limit - total_loaded, 0)
+                if remaining <= 0:
+                    break
+                current_batch = min(batch_size, remaining)
+                resp = _telegram_api_request(
+                    "POST",
+                    "/dialogs",
+                    {
+                        "session_string": session_string,
+                        "limit": current_batch,
+                        "offset_date": offset_date,
+                        "offset_id": offset_id,
+                    },
+                    timeout_sec=45,
+                )
+                items = resp.get("items", []) or []
+                if not items:
+                    break
+                _upsert_telegram_dialog_snapshot(conn, user_id, items)
+                conn.commit()
+                total_loaded += len(items)
+                rounds += 1
+                has_more = bool(resp.get("has_more"))
+                if not has_more:
+                    break
+                offset_date = resp.get("next_offset_date")
+                offset_id = int(resp.get("next_offset_id") or 0)
+                if not offset_date or rounds > 200:
+                    break
             exec1(conn, "UPDATE tg.shared_session SET last_used_at=now() WHERE id=1")
             conn.commit()
     except Exception as exc:
