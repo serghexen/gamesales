@@ -137,7 +137,11 @@ async def dialogs(payload: DialogsIn, x_api_key: str | None = Header(None)):
     client = _client(payload.session_string or "")
     await client.connect()
     try:
-        dialogs_limit = None if int(payload.limit or 0) <= 0 else int(payload.limit)
+        # Unlimited dialog scans may take very long and time out behind proxy layers.
+        # Keep a high but finite limit for predictable response time.
+        dialogs_limit = int(payload.limit or 0)
+        if dialogs_limit <= 0:
+            dialogs_limit = 1000
         items = []
         async for d in client.iter_dialogs(limit=dialogs_limit):
             entity = d.entity

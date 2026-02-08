@@ -986,6 +986,7 @@ _TELEGRAM_API_KEY = os.getenv("TELEGRAM_API_KEY", "")
 
 _TELEGRAM_DIALOGS_SYNC_LOCK = threading.Lock()
 _TELEGRAM_DIALOGS_SYNC_RUNNING = False
+TELEGRAM_DIALOGS_SYNC_LIMIT = int(os.getenv("TELEGRAM_DIALOGS_SYNC_LIMIT", "1000") or "1000")
 
 def get_redis():
     global _REDIS_CLIENT
@@ -1143,20 +1144,21 @@ def _upsert_telegram_dialog_snapshot(conn, user_id: int, items: List[dict]):
 def _telegram_dialogs_sync_worker(session_string: str, user_id: int):
     global _TELEGRAM_DIALOGS_SYNC_RUNNING
     try:
+        sync_limit = TELEGRAM_DIALOGS_SYNC_LIMIT if TELEGRAM_DIALOGS_SYNC_LIMIT > 0 else 1000
         resp = _telegram_api_request(
             "POST",
             "/dialogs",
-            {"session_string": session_string, "limit": 0},
-            timeout_sec=300,
+            {"session_string": session_string, "limit": sync_limit},
+            timeout_sec=120,
         )
         items = resp.get("items", []) or []
         with psycopg.connect(DB_DSN) as conn:
             _upsert_telegram_dialog_snapshot(conn, user_id, items)
             exec1(conn, "UPDATE tg.shared_session SET last_used_at=now() WHERE id=1")
             conn.commit()
-    except Exception:
+    except Exception as exc:
         # Background sync errors must not break API response path.
-        pass
+        print(f"Telegram dialogs sync failed: {exc}")
     finally:
         with _TELEGRAM_DIALOGS_SYNC_LOCK:
             _TELEGRAM_DIALOGS_SYNC_RUNNING = False
