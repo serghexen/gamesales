@@ -1003,7 +1003,7 @@ def _queue_api_request(method: str, path: str, data: Optional[dict] = None) -> O
         raise RuntimeError(f"Queue API {method} {path} failed: {exc.reason}") from exc
 
 
-def _telegram_api_request(method: str, path: str, data: Optional[dict] = None) -> dict:
+def _telegram_api_request(method: str, path: str, data: Optional[dict] = None, timeout_sec: int = 15) -> dict:
     if not _TELEGRAM_API_URL:
         raise HTTPException(500, "Telegram service is not configured")
     url = _TELEGRAM_API_URL.rstrip("/") + path
@@ -1015,7 +1015,7 @@ def _telegram_api_request(method: str, path: str, data: Optional[dict] = None) -
         body = json.dumps(data).encode("utf-8")
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
             content = resp.read()
             return json.loads(content.decode("utf-8")) if content else {}
     except urllib.error.HTTPError as exc:
@@ -1027,6 +1027,8 @@ def _telegram_api_request(method: str, path: str, data: Optional[dict] = None) -
         raise HTTPException(exc.code, message)
     except urllib.error.URLError as exc:
         raise HTTPException(502, f"Telegram service {method} {path} failed: {exc.reason}")
+    except TimeoutError:
+        raise HTTPException(504, f"Telegram service {method} {path} timed out")
 
 def _telegram_api_request_raw(method: str, path: str, data: Optional[dict] = None) -> Tuple[bytes, Optional[str]]:
     if not _TELEGRAM_API_URL:
@@ -1053,6 +1055,7 @@ def _telegram_api_request_raw(method: str, path: str, data: Optional[dict] = Non
         raise HTTPException(exc.code, message)
     except urllib.error.URLError as exc:
         raise HTTPException(502, f"Telegram service {method} {path} failed: {exc.reason}")
+
 
 def is_import_cancelled(job_id: str) -> bool:
     status = get_import_progress(job_id)
@@ -1849,7 +1852,12 @@ def telegram_dialogs(status: Optional[str] = None, user: UserOut = Depends(get_c
         if not row or row[1] != "ready":
             raise HTTPException(400, "Telegram is not connected")
         session_string = row[0]
-        resp = _telegram_api_request("POST", "/dialogs", {"session_string": session_string, "limit": 0})
+        resp = _telegram_api_request(
+            "POST",
+            "/dialogs",
+            {"session_string": session_string, "limit": 0},
+            timeout_sec=90,
+        )
         user_id = get_user_id(conn, user.username)
         items = resp.get("items", []) or []
         chat_ids = [int(i.get("id")) for i in items if i.get("id") is not None]
@@ -1863,31 +1871,44 @@ def telegram_dialogs(status: Optional[str] = None, user: UserOut = Depends(get_c
                     """,
                     [(cid, user_id) for cid in chat_ids],
                 )
-            # New inbound messages should move dialog to "new".
-            unread_new_ids = [int(i.get("id")) for i in items if int(i.get("unread_count") or 0) > 0 and i.get("id") is not None]
-            if unread_new_ids:
-                exec1(
-                    conn,
-                    """
-                    UPDATE tg.dialog_states
-                    SET status='new', updated_at=now(), updated_by_user_id=%s
-                    WHERE chat_id = ANY(%s) AND status <> 'new'
-                    """,
-                    (user_id, unread_new_ids),
-                )
             state_rows = qall(
                 conn,
                 "SELECT chat_id, status FROM tg.dialog_states WHERE chat_id = ANY(%s)",
                 (chat_ids,),
             )
             state_map = {int(r[0]): str(r[1]) for r in state_rows}
+
+            # Business logic:
+            # - new: only first-time contacts (insert default 'new')
+            # - accepted: ongoing dialogs
+            # - archived: finished dialogs
+            # - if archived contact writes again (unread > 0), move to accepted
+            to_accept_ids: List[int] = []
             for item in items:
                 chat_id = item.get("id")
                 if chat_id is None:
                     continue
-                item["status"] = state_map.get(int(chat_id), "new")
+                chat_id = int(chat_id)
+                current_status = state_map.get(chat_id, "new")
+                unread_count = int(item.get("unread_count") or 0)
+                if unread_count > 0 and current_status == "archived":
+                    to_accept_ids.append(chat_id)
+                    current_status = "accepted"
+                item["status"] = current_status
+
+            if to_accept_ids:
+                exec1(
+                    conn,
+                    """
+                    UPDATE tg.dialog_states
+                    SET status='accepted', updated_at=now(), updated_by_user_id=%s
+                    WHERE chat_id = ANY(%s)
+                    """,
+                    (user_id, to_accept_ids),
+                )
         else:
             items = []
+
         exec1(conn, "UPDATE tg.shared_session SET last_used_at=now() WHERE id=1")
         conn.commit()
     counts = {"new": 0, "accepted": 0, "archived": 0, "all": len(items)}
