@@ -38,6 +38,23 @@ def ensure_analytics_schema():
         with psycopg.connect(DB_DSN) as conn:
             exec1(conn, "ALTER TABLE app.regions ADD COLUMN IF NOT EXISTS purchase_cost_rate numeric(12,6) NOT NULL DEFAULT 1.0")
             exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS completed_at timestamptz")
+            exec1(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS tg.dialog_snapshot (
+                  chat_id       bigint PRIMARY KEY,
+                  title         text NOT NULL DEFAULT '',
+                  unread_count  integer NOT NULL DEFAULT 0,
+                  is_group      boolean NOT NULL DEFAULT false,
+                  is_channel    boolean NOT NULL DEFAULT false,
+                  updated_at    timestamptz NOT NULL DEFAULT now()
+                )
+                """,
+            )
+            exec1(
+                conn,
+                "CREATE INDEX IF NOT EXISTS idx_tg_dialog_snapshot_updated_at ON tg.dialog_snapshot(updated_at DESC)",
+            )
             conn.commit()
     except Exception:
         # Ignore startup migration errors to avoid breaking app boot
@@ -965,6 +982,9 @@ _QUEUE_API_KEY = os.getenv("QUEUE_API_KEY", "")
 _TELEGRAM_API_URL = os.getenv("TELEGRAM_API_URL", "")
 _TELEGRAM_API_KEY = os.getenv("TELEGRAM_API_KEY", "")
 
+_TELEGRAM_DIALOGS_SYNC_LOCK = threading.Lock()
+_TELEGRAM_DIALOGS_SYNC_RUNNING = False
+
 def get_redis():
     global _REDIS_CLIENT
     if _REDIS_CLIENT is None:
@@ -1055,6 +1075,103 @@ def _telegram_api_request_raw(method: str, path: str, data: Optional[dict] = Non
         raise HTTPException(exc.code, message)
     except urllib.error.URLError as exc:
         raise HTTPException(502, f"Telegram service {method} {path} failed: {exc.reason}")
+
+
+def _upsert_telegram_dialog_snapshot(conn, user_id: int, items: List[dict]):
+    if not items:
+        return
+    payload = []
+    chat_ids = []
+    archived_with_unread = []
+    for item in items:
+        raw_id = item.get("id")
+        if raw_id is None:
+            continue
+        chat_id = int(raw_id)
+        title = str(item.get("title") or "")
+        unread_count = int(item.get("unread_count") or 0)
+        is_group = bool(item.get("is_group"))
+        is_channel = bool(item.get("is_channel"))
+        payload.append((chat_id, title, unread_count, is_group, is_channel))
+        chat_ids.append(chat_id)
+        if unread_count > 0:
+            archived_with_unread.append(chat_id)
+
+    if not payload:
+        return
+
+    with conn.cursor() as cur:
+        cur.executemany(
+            """
+            INSERT INTO tg.dialog_snapshot(chat_id, title, unread_count, is_group, is_channel, updated_at)
+            VALUES (%s, %s, %s, %s, %s, now())
+            ON CONFLICT (chat_id)
+            DO UPDATE SET
+              title=excluded.title,
+              unread_count=excluded.unread_count,
+              is_group=excluded.is_group,
+              is_channel=excluded.is_channel,
+              updated_at=now()
+            """,
+            payload,
+        )
+        # First time seen contact -> new
+        cur.executemany(
+            """
+            INSERT INTO tg.dialog_states(chat_id, status, updated_at, updated_by_user_id)
+            VALUES (%s, 'new', now(), %s)
+            ON CONFLICT (chat_id) DO NOTHING
+            """,
+            [(cid, user_id) for cid in chat_ids],
+        )
+
+    # If archived contact writes again, move it to accepted.
+    if archived_with_unread:
+        exec1(
+            conn,
+            """
+            UPDATE tg.dialog_states
+            SET status='accepted', updated_at=now(), updated_by_user_id=%s
+            WHERE chat_id = ANY(%s) AND status='archived'
+            """,
+            (user_id, archived_with_unread),
+        )
+
+
+def _telegram_dialogs_sync_worker(session_string: str, user_id: int):
+    global _TELEGRAM_DIALOGS_SYNC_RUNNING
+    try:
+        resp = _telegram_api_request(
+            "POST",
+            "/dialogs",
+            {"session_string": session_string, "limit": 0},
+            timeout_sec=300,
+        )
+        items = resp.get("items", []) or []
+        with psycopg.connect(DB_DSN) as conn:
+            _upsert_telegram_dialog_snapshot(conn, user_id, items)
+            exec1(conn, "UPDATE tg.shared_session SET last_used_at=now() WHERE id=1")
+            conn.commit()
+    except Exception:
+        # Background sync errors must not break API response path.
+        pass
+    finally:
+        with _TELEGRAM_DIALOGS_SYNC_LOCK:
+            _TELEGRAM_DIALOGS_SYNC_RUNNING = False
+
+
+def _trigger_telegram_dialogs_sync(session_string: str, user_id: int):
+    global _TELEGRAM_DIALOGS_SYNC_RUNNING
+    with _TELEGRAM_DIALOGS_SYNC_LOCK:
+        if _TELEGRAM_DIALOGS_SYNC_RUNNING:
+            return
+        _TELEGRAM_DIALOGS_SYNC_RUNNING = True
+    thread = threading.Thread(
+        target=_telegram_dialogs_sync_worker,
+        args=(session_string, user_id),
+        daemon=True,
+    )
+    thread.start()
 
 
 def is_import_cancelled(job_id: str) -> bool:
@@ -1852,65 +1969,75 @@ def telegram_dialogs(status: Optional[str] = None, user: UserOut = Depends(get_c
         if not row or row[1] != "ready":
             raise HTTPException(400, "Telegram is not connected")
         session_string = row[0]
-        resp = _telegram_api_request(
-            "POST",
-            "/dialogs",
-            {"session_string": session_string, "limit": 0},
-            timeout_sec=90,
-        )
         user_id = get_user_id(conn, user.username)
-        items = resp.get("items", []) or []
-        chat_ids = [int(i.get("id")) for i in items if i.get("id") is not None]
-        if chat_ids:
-            with conn.cursor() as cur:
-                cur.executemany(
-                    """
-                    INSERT INTO tg.dialog_states(chat_id, status, updated_at, updated_by_user_id)
-                    VALUES (%s, 'new', now(), %s)
-                    ON CONFLICT (chat_id) DO NOTHING
-                    """,
-                    [(cid, user_id) for cid in chat_ids],
-                )
-            state_rows = qall(
-                conn,
-                "SELECT chat_id, status FROM tg.dialog_states WHERE chat_id = ANY(%s)",
-                (chat_ids,),
+        rows = qall(
+            conn,
+            """
+            SELECT
+              s.chat_id,
+              s.title,
+              s.unread_count,
+              s.is_group,
+              s.is_channel,
+              COALESCE(ds.status, 'new') AS status
+            FROM tg.dialog_snapshot s
+            LEFT JOIN tg.dialog_states ds ON ds.chat_id = s.chat_id
+            ORDER BY s.updated_at DESC, s.chat_id DESC
+            """,
+        )
+        items = [
+            {
+                "id": int(r[0]),
+                "title": str(r[1] or ""),
+                "unread_count": int(r[2] or 0),
+                "is_group": bool(r[3]),
+                "is_channel": bool(r[4]),
+                "status": str(r[5] or "new"),
+            }
+            for r in rows
+        ]
+
+        # Fast bootstrap so first screen is not empty on fresh DB.
+        if not items:
+            resp = _telegram_api_request(
+                "POST",
+                "/dialogs",
+                {"session_string": session_string, "limit": 50},
+                timeout_sec=30,
             )
-            state_map = {int(r[0]): str(r[1]) for r in state_rows}
-
-            # Business logic:
-            # - new: only first-time contacts (insert default 'new')
-            # - accepted: ongoing dialogs
-            # - archived: finished dialogs
-            # - if archived contact writes again (unread > 0), move to accepted
-            to_accept_ids: List[int] = []
-            for item in items:
-                chat_id = item.get("id")
-                if chat_id is None:
-                    continue
-                chat_id = int(chat_id)
-                current_status = state_map.get(chat_id, "new")
-                unread_count = int(item.get("unread_count") or 0)
-                if unread_count > 0 and current_status == "archived":
-                    to_accept_ids.append(chat_id)
-                    current_status = "accepted"
-                item["status"] = current_status
-
-            if to_accept_ids:
-                exec1(
+            bootstrap_items = resp.get("items", []) or []
+            if bootstrap_items:
+                _upsert_telegram_dialog_snapshot(conn, user_id, bootstrap_items)
+                exec1(conn, "UPDATE tg.shared_session SET last_used_at=now() WHERE id=1")
+                conn.commit()
+                rows = qall(
                     conn,
                     """
-                    UPDATE tg.dialog_states
-                    SET status='accepted', updated_at=now(), updated_by_user_id=%s
-                    WHERE chat_id = ANY(%s)
+                    SELECT
+                      s.chat_id,
+                      s.title,
+                      s.unread_count,
+                      s.is_group,
+                      s.is_channel,
+                      COALESCE(ds.status, 'new') AS status
+                    FROM tg.dialog_snapshot s
+                    LEFT JOIN tg.dialog_states ds ON ds.chat_id = s.chat_id
+                    ORDER BY s.updated_at DESC, s.chat_id DESC
                     """,
-                    (user_id, to_accept_ids),
                 )
-        else:
-            items = []
+                items = [
+                    {
+                        "id": int(r[0]),
+                        "title": str(r[1] or ""),
+                        "unread_count": int(r[2] or 0),
+                        "is_group": bool(r[3]),
+                        "is_channel": bool(r[4]),
+                        "status": str(r[5] or "new"),
+                    }
+                    for r in rows
+                ]
 
-        exec1(conn, "UPDATE tg.shared_session SET last_used_at=now() WHERE id=1")
-        conn.commit()
+        _trigger_telegram_dialogs_sync(session_string, user_id)
     counts = {"new": 0, "accepted": 0, "archived": 0, "all": len(items)}
     for item in items:
         key = str(item.get("status") or "new")

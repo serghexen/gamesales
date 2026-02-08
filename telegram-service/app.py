@@ -45,7 +45,7 @@ class AuthPasswordIn(BaseModel):
 
 class DialogsIn(BaseModel):
     session_string: str
-    limit: int = 0
+    limit: int = 50
 
 
 class MessagesIn(BaseModel):
