@@ -2086,15 +2086,6 @@
                   <div class="tg-dialog-tabs" role="tablist" aria-label="Статусы диалогов">
                     <button
                       class="tg-dialog-tab"
-                      :class="{ active: telegram.dialogStatusFilter === 'all' }"
-                      type="button"
-                      @click="setTelegramDialogFilter('all')"
-                    >
-                      Все
-                      <span v-if="telegram.dialogCounts.all" class="tg-dialog-tab__count">{{ telegram.dialogCounts.all }}</span>
-                    </button>
-                    <button
-                      class="tg-dialog-tab"
                       :class="{ active: telegram.dialogStatusFilter === 'new' }"
                       type="button"
                       @click="setTelegramDialogFilter('new')"
@@ -2222,7 +2213,13 @@
                     </div>
                   </div>
                 </div>
-                <div ref="tgMessagesList" class="tg-messages__list" @scroll="updateTelegramAutoStick">
+                <TransitionGroup
+                  ref="tgMessagesList"
+                  tag="div"
+                  name="tg-message-fade"
+                  class="tg-messages__list"
+                  @scroll="updateTelegramAutoStick"
+                >
                   <div
                     v-for="(m, idx) in telegram.messages"
                     :key="m.id"
@@ -2274,7 +2271,7 @@
                       <div class="tg-message-action tg-message-action--ghost"></div>
                     </div>
                   </div>
-                </div>
+                </TransitionGroup>
                 <div class="tg-compose">
                   <div class="tg-compose__head">
                     <span class="tg-compose__brand">ASAT</span>
@@ -5248,7 +5245,7 @@ const telegram = reactive({
   password: '',
   loadingMessages: false,
   autoStickBottom: true,
-  dialogStatusFilter: 'all',
+  dialogStatusFilter: 'new',
   dialogCounts: { new: 0, accepted: 0, archived: 0, all: 0 },
   dialogsSyncRunning: false,
   dialogsLastSyncAt: '',
@@ -5320,6 +5317,13 @@ const accountImportDetailsRef = ref(null)
 let gameImportStatusTimer = null
 let accountImportStatusTimer = null
 let slotImportStatusTimer = null
+let telegramDialogsPollTimer = null
+let telegramMessagesPollTimer = null
+let telegramDialogsPollBusy = false
+let telegramMessagesPollBusy = false
+const TELEGRAM_DIALOGS_POLL_MS = 5000
+const TELEGRAM_MESSAGES_POLL_MS = 1000
+const TELEGRAM_POLL_ERROR_MS = 30000
 const GAME_IMPORT_JOB_KEY = 'gamesales_game_import_job_v1'
 const ACCOUNT_IMPORT_JOB_KEY = 'gamesales_account_import_job_v1'
 const SLOT_VALIDATE_JOB_KEY = 'gamesales_slot_validate_job_v1'
@@ -8860,6 +8864,7 @@ async function tgAuthDisconnect() {
   try {
     await apiPost('/tg/auth/disconnect', {}, { token: auth.state.token })
     telegram.status = 'not_connected'
+    stopTelegramPolling()
     telegram.phone = ''
     telegram.code = ''
     telegram.password = ''
@@ -8921,6 +8926,33 @@ async function loadTelegramDialogs() {
     telegram.dialogsSyncBatches = 0
   } finally {
     telegram.loading = false
+  }
+}
+
+async function loadTelegramDialogsQuiet() {
+  const params = new URLSearchParams()
+  if (telegram.dialogStatusFilter && telegram.dialogStatusFilter !== 'all') {
+    params.set('status', telegram.dialogStatusFilter)
+  }
+  const data = await apiGet(`/tg/dialogs?${params.toString()}`, { token: auth.state.token })
+  telegram.dialogs = data?.items || []
+  telegram.dialogCounts = data?.counts || { new: 0, accepted: 0, archived: 0, all: 0 }
+  telegram.dialogsSyncRunning = Boolean(data?.sync_running)
+  telegram.dialogsLastSyncAt = data?.last_sync_at || ''
+  telegram.dialogsSyncLoaded = Number(data?.sync_loaded || 0)
+  telegram.dialogsSyncBatches = Number(data?.sync_batches || 0)
+  if (telegram.activeChatId) {
+    telegram.activeDialog = telegram.dialogs.find((d) => d.id === telegram.activeChatId) || null
+    if (!telegram.activeDialog) {
+      revokeTelegramMediaUrls()
+      telegram.activeChatId = null
+      telegram.messages = []
+      telegram.activeContactId = null
+      telegram.contactEditing = false
+      telegram.contact = { title: '', info: '' }
+      telegram.contactEdit = { title: '', info: '' }
+      telegram.contactMeta = { name: '', username: '' }
+    }
   }
 }
 
@@ -9003,6 +9035,23 @@ async function loadTelegramMessageMedia() {
     }
   }
   await flushBatch(true)
+}
+
+async function refreshActiveTelegramMessagesQuiet() {
+  const chatId = telegram.activeChatId
+  if (!chatId) return
+  const keepBottom = isTelegramNearBottom(140) || telegram.autoStickBottom
+  const prevById = new Map((telegram.messages || []).map((m) => [m.id, m]))
+  const data = await apiGet(`/tg/messages?chat_id=${chatId}`, { token: auth.state.token })
+  const nextMessages = (data?.items || []).slice().reverse().map((m) => {
+    const prev = prevById.get(m.id)
+    return prev?.media_url ? { ...m, media_url: prev.media_url } : m
+  })
+  telegram.messages = nextMessages
+  setTelegramDefaultContact()
+  await nextTick()
+  if (keepBottom) scrollTelegramToBottom(true)
+  loadTelegramMessageMedia()
 }
 
 function isTelegramNearBottom(threshold = 100) {
@@ -9157,6 +9206,67 @@ function showTelegramChannelLabel(index) {
   return false
 }
 
+function shouldTelegramPoll() {
+  return activeTab.value === 'telegram' && telegram.status === 'ready' && auth.isAuthed()
+}
+
+function stopTelegramPolling() {
+  if (telegramDialogsPollTimer) clearTimeout(telegramDialogsPollTimer)
+  if (telegramMessagesPollTimer) clearTimeout(telegramMessagesPollTimer)
+  telegramDialogsPollTimer = null
+  telegramMessagesPollTimer = null
+}
+
+function scheduleTelegramDialogsPoll(delayMs = TELEGRAM_DIALOGS_POLL_MS) {
+  if (!shouldTelegramPoll()) return
+  if (telegramDialogsPollTimer) clearTimeout(telegramDialogsPollTimer)
+  telegramDialogsPollTimer = setTimeout(async () => {
+    if (!shouldTelegramPoll()) return
+    if (telegramDialogsPollBusy) {
+      scheduleTelegramDialogsPoll(TELEGRAM_DIALOGS_POLL_MS)
+      return
+    }
+    telegramDialogsPollBusy = true
+    try {
+      await loadTelegramDialogsQuiet()
+      scheduleTelegramDialogsPoll(TELEGRAM_DIALOGS_POLL_MS)
+    } catch {
+      scheduleTelegramDialogsPoll(TELEGRAM_POLL_ERROR_MS)
+    } finally {
+      telegramDialogsPollBusy = false
+    }
+  }, delayMs)
+}
+
+function scheduleTelegramMessagesPoll(delayMs = TELEGRAM_MESSAGES_POLL_MS) {
+  if (!shouldTelegramPoll()) return
+  if (!telegram.activeChatId) return
+  if (telegramMessagesPollTimer) clearTimeout(telegramMessagesPollTimer)
+  telegramMessagesPollTimer = setTimeout(async () => {
+    if (!shouldTelegramPoll() || !telegram.activeChatId) return
+    if (telegramMessagesPollBusy) {
+      scheduleTelegramMessagesPoll(TELEGRAM_MESSAGES_POLL_MS)
+      return
+    }
+    telegramMessagesPollBusy = true
+    try {
+      await refreshActiveTelegramMessagesQuiet()
+      scheduleTelegramMessagesPoll(TELEGRAM_MESSAGES_POLL_MS)
+    } catch {
+      scheduleTelegramMessagesPoll(TELEGRAM_POLL_ERROR_MS)
+    } finally {
+      telegramMessagesPollBusy = false
+    }
+  }, delayMs)
+}
+
+function startTelegramPolling() {
+  stopTelegramPolling()
+  if (!shouldTelegramPoll()) return
+  scheduleTelegramDialogsPoll(2000)
+  if (telegram.activeChatId) scheduleTelegramMessagesPoll(1500)
+}
+
 async function sendTelegramMessage() {
   if (!telegram.activeChatId || !telegram.messageText) return
   telegram.loading = true
@@ -9172,6 +9282,7 @@ async function sendTelegramMessage() {
       telegram.activeDialog = telegram.dialogs.find((d) => d.id === telegram.activeChatId) || telegram.activeDialog
     }
     await selectTelegramDialog(telegram.activeChatId)
+    scheduleTelegramMessagesPoll(500)
   } catch (e) {
     telegram.error = mapApiError(e?.message)
   } finally {
@@ -10049,6 +10160,7 @@ onBeforeUnmount(() => {
   stopGameImportStatusPolling()
   stopAccountImportStatusPolling()
   stopSlotImportStatusPolling()
+  stopTelegramPolling()
   revokeTelegramMediaUrls()
   window.removeEventListener('mousemove', onModalDrag)
   window.removeEventListener('mouseup', stopModalDrag)
@@ -10096,6 +10208,9 @@ watch(activeAccountFilter, (val) => {
 })
 
 watch(activeTab, async (tab) => {
+  if (tab !== 'telegram') {
+    stopTelegramPolling()
+  }
   if (tab === 'dashboard') {
     checkApi()
     return
@@ -10203,6 +10318,7 @@ watch(activeTab, async (tab) => {
   }
   if (tab === 'telegram') {
     await loadTelegramStatus()
+    startTelegramPolling()
     return
   }
   if (tab === 'catalogs') {
@@ -10234,6 +10350,27 @@ watch(
     }
   },
   { immediate: true }
+)
+
+watch(
+  () => telegram.status,
+  (status) => {
+    if (status === 'ready') startTelegramPolling()
+    else stopTelegramPolling()
+  }
+)
+
+watch(
+  () => telegram.activeChatId,
+  () => {
+    if (!shouldTelegramPoll()) return
+    if (!telegram.activeChatId) {
+      if (telegramMessagesPollTimer) clearTimeout(telegramMessagesPollTimer)
+      telegramMessagesPollTimer = null
+      return
+    }
+    scheduleTelegramMessagesPoll(800)
+  }
 )
 
 watch([() => editAccount.open], async ([showEdit]) => {
@@ -10954,6 +11091,20 @@ watch(
   display: flex;
   align-items: flex-start;
   gap: 10px;
+}
+
+.tg-message-fade-enter-active {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.tg-message-fade-enter-from {
+  opacity: 0;
+  transform: translateY(8px) scale(0.99);
+}
+
+.tg-message-fade-enter-to {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 .tg-message-row--out {

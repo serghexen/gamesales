@@ -2149,11 +2149,14 @@ def telegram_dialogs(status: Optional[str] = None, user: UserOut = Depends(get_c
             sync_running = bool(_TELEGRAM_DIALOGS_SYNC_RUNNING)
             sync_loaded = int(_TELEGRAM_DIALOGS_SYNC_LOADED)
             sync_batches = int(_TELEGRAM_DIALOGS_SYNC_BATCHES)
+    # Tab counters should show unread messages count, not contacts count.
+    # Keep "all" as contacts count for the "Контактов" badge in UI.
     counts = {"new": 0, "accepted": 0, "archived": 0, "all": len(items)}
     for item in items:
         key = str(item.get("status") or "new")
-        if key in counts:
-            counts[key] += 1
+        unread = int(item.get("unread_count") or 0)
+        if key in ("new", "accepted", "archived"):
+            counts[key] += unread
     if status in ("new", "accepted", "archived"):
         items = [i for i in items if str(i.get("status") or "new") == status]
     return {
