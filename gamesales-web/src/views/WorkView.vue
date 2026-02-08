@@ -2006,7 +2006,12 @@
           <div class="panel__head">
             <div>
               <div class="toolbar-actions">
-                <button class="btn btn--icon btn--glow btn--glow-refresh" type="button" @click="loadTelegramStatus" :disabled="telegram.loading">
+                <button
+                  class="btn btn--icon btn--glow btn--glow-refresh"
+                  type="button"
+                  @click="loadTelegramStatus"
+                  :disabled="telegram.loading || (telegram.status === 'ready' && telegram.dialogsSyncRunning)"
+                >
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M20 12a8 8 0 1 1-2.3-5.7" />
                     <path d="M20 4v6h-6" />

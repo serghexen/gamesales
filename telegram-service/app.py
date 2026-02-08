@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, PhoneCodeExpiredError
+from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, PhoneCodeExpiredError, FloodWaitError
 
 API_ID = int(os.getenv("TELEGRAM_API_ID", "0"))
 API_HASH = os.getenv("TELEGRAM_API_HASH", "")
@@ -68,8 +68,14 @@ class MediaIn(BaseModel):
     message_id: int
 
 async def _resolve_entity(client: TelegramClient, chat_id: int):
-    dialogs = await client.get_dialogs(limit=200)
-    for d in dialogs:
+    # First try fast path via session/entity cache.
+    try:
+        return await client.get_input_entity(int(chat_id))
+    except Exception:
+        pass
+
+    # Fallback: scan dialogs with a high finite limit.
+    async for d in client.iter_dialogs(limit=2000):
         if int(d.id) == int(chat_id):
             return d.entity
     raise HTTPException(404, "Chat not found")
@@ -175,6 +181,9 @@ async def dialogs(payload: DialogsIn, x_api_key: str | None = Header(None)):
             "next_offset_date": last_message_date.isoformat() if has_more else None,
             "next_offset_id": last_message_id if has_more else 0,
         }
+    except FloodWaitError as exc:
+        wait_seconds = int(getattr(exc, "seconds", 0) or 0)
+        raise HTTPException(429, f"Flood wait: retry after {wait_seconds}s")
     finally:
         await client.disconnect()
 

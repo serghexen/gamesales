@@ -987,8 +987,11 @@ _TELEGRAM_API_KEY = os.getenv("TELEGRAM_API_KEY", "")
 
 _TELEGRAM_DIALOGS_SYNC_LOCK = threading.Lock()
 _TELEGRAM_DIALOGS_SYNC_RUNNING = False
+_TELEGRAM_DIALOGS_SYNC_LAST_STARTED_MONO = 0.0
 TELEGRAM_DIALOGS_SYNC_LIMIT = int(os.getenv("TELEGRAM_DIALOGS_SYNC_LIMIT", "1000") or "1000")
 TELEGRAM_DIALOGS_SYNC_BATCH = int(os.getenv("TELEGRAM_DIALOGS_SYNC_BATCH", "100") or "100")
+TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC = int(os.getenv("TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC", "45") or "45")
+TELEGRAM_DIALOGS_SYNC_BATCH_DELAY_MS = int(os.getenv("TELEGRAM_DIALOGS_SYNC_BATCH_DELAY_MS", "250") or "250")
 
 def get_redis():
     global _REDIS_CLIENT
@@ -1144,47 +1147,93 @@ def _upsert_telegram_dialog_snapshot(conn, user_id: int, items: List[dict]):
             (user_id, archived_with_unread),
         )
 
+def _delete_unseen_dialogs_from_snapshot(conn, seen_chat_ids: List[int]):
+    if not seen_chat_ids:
+        return
+    exec1(
+        conn,
+        "DELETE FROM tg.dialog_snapshot WHERE NOT (chat_id = ANY(%s))",
+        (seen_chat_ids,),
+    )
+
+def _delete_dead_dialog(conn, chat_id: int):
+    exec1(conn, "DELETE FROM tg.dialog_snapshot WHERE chat_id=%s", (chat_id,))
+    # Keep status row for audit/history semantics; it will be reused if chat appears again.
+
+def _telegram_fetch_dialog_batch_with_retry(
+    session_string: str,
+    limit: int,
+    offset_date: Optional[str],
+    offset_id: int,
+) -> dict:
+    delays = (0, 2, 5)
+    last_exc: Optional[HTTPException] = None
+    for idx, delay_sec in enumerate(delays):
+        if delay_sec > 0:
+            time.sleep(delay_sec)
+        try:
+            return _telegram_api_request(
+                "POST",
+                "/dialogs",
+                {
+                    "session_string": session_string,
+                    "limit": limit,
+                    "offset_date": offset_date,
+                    "offset_id": offset_id,
+                },
+                timeout_sec=45,
+            )
+        except HTTPException as exc:
+            last_exc = exc
+            # Retry only for transient transport/rate limit conditions.
+            if exc.status_code not in (429, 502, 504) or idx == len(delays) - 1:
+                raise
+    if last_exc:
+        raise last_exc
+    return {"items": [], "has_more": False, "next_offset_date": None, "next_offset_id": 0}
 
 def _telegram_dialogs_sync_worker(session_string: str, user_id: int):
     global _TELEGRAM_DIALOGS_SYNC_RUNNING
     try:
         sync_limit = TELEGRAM_DIALOGS_SYNC_LIMIT if TELEGRAM_DIALOGS_SYNC_LIMIT > 0 else 1000
         batch_size = TELEGRAM_DIALOGS_SYNC_BATCH if TELEGRAM_DIALOGS_SYNC_BATCH > 0 else 100
+        batch_delay_sec = max(TELEGRAM_DIALOGS_SYNC_BATCH_DELAY_MS, 0) / 1000.0
         offset_date: Optional[str] = None
         offset_id = 0
         total_loaded = 0
         rounds = 0
+        seen_chat_ids: List[int] = []
+        completed_full_scan = False
         with psycopg.connect(DB_DSN) as conn:
             while True:
                 remaining = max(sync_limit - total_loaded, 0)
                 if remaining <= 0:
                     break
                 current_batch = min(batch_size, remaining)
-                resp = _telegram_api_request(
-                    "POST",
-                    "/dialogs",
-                    {
-                        "session_string": session_string,
-                        "limit": current_batch,
-                        "offset_date": offset_date,
-                        "offset_id": offset_id,
-                    },
-                    timeout_sec=45,
-                )
+                resp = _telegram_fetch_dialog_batch_with_retry(session_string, current_batch, offset_date, offset_id)
                 items = resp.get("items", []) or []
                 if not items:
+                    completed_full_scan = True
                     break
                 _upsert_telegram_dialog_snapshot(conn, user_id, items)
+                for item in items:
+                    if item.get("id") is not None:
+                        seen_chat_ids.append(int(item["id"]))
                 conn.commit()
                 total_loaded += len(items)
                 rounds += 1
                 has_more = bool(resp.get("has_more"))
                 if not has_more:
+                    completed_full_scan = True
                     break
                 offset_date = resp.get("next_offset_date")
                 offset_id = int(resp.get("next_offset_id") or 0)
                 if not offset_date or rounds > 200:
                     break
+                if batch_delay_sec > 0:
+                    time.sleep(batch_delay_sec)
+            if completed_full_scan and seen_chat_ids:
+                _delete_unseen_dialogs_from_snapshot(conn, seen_chat_ids)
             exec1(conn, "UPDATE tg.shared_session SET last_used_at=now() WHERE id=1")
             conn.commit()
     except Exception as exc:
@@ -1195,18 +1244,23 @@ def _telegram_dialogs_sync_worker(session_string: str, user_id: int):
             _TELEGRAM_DIALOGS_SYNC_RUNNING = False
 
 
-def _trigger_telegram_dialogs_sync(session_string: str, user_id: int):
-    global _TELEGRAM_DIALOGS_SYNC_RUNNING
+def _trigger_telegram_dialogs_sync(session_string: str, user_id: int) -> bool:
+    global _TELEGRAM_DIALOGS_SYNC_RUNNING, _TELEGRAM_DIALOGS_SYNC_LAST_STARTED_MONO
+    now_mono = time.monotonic()
     with _TELEGRAM_DIALOGS_SYNC_LOCK:
         if _TELEGRAM_DIALOGS_SYNC_RUNNING:
-            return
+            return False
+        if (now_mono - _TELEGRAM_DIALOGS_SYNC_LAST_STARTED_MONO) < TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC:
+            return False
         _TELEGRAM_DIALOGS_SYNC_RUNNING = True
+        _TELEGRAM_DIALOGS_SYNC_LAST_STARTED_MONO = now_mono
     thread = threading.Thread(
         target=_telegram_dialogs_sync_worker,
         args=(session_string, user_id),
         daemon=True,
     )
     thread.start()
+    return True
 
 
 def is_import_cancelled(job_id: str) -> bool:
@@ -2148,7 +2202,14 @@ def telegram_messages(chat_id: int, user: UserOut = Depends(get_current_user)):
         if not row or row[1] != "ready":
             raise HTTPException(400, "Telegram is not connected")
         session_string = row[0]
-        resp = _telegram_api_request("POST", "/messages", {"session_string": session_string, "chat_id": chat_id, "limit": 100})
+        try:
+            resp = _telegram_api_request("POST", "/messages", {"session_string": session_string, "chat_id": chat_id, "limit": 100})
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                _delete_dead_dialog(conn, chat_id)
+                conn.commit()
+                raise HTTPException(404, "Chat is unavailable and was removed from the list")
+            raise
         items = resp.get("items", [])
         message_ids = [int(i["id"]) for i in items if i.get("id")]
         sent_map = {}
