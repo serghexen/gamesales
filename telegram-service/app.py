@@ -49,6 +49,7 @@ class DialogsIn(BaseModel):
     limit: int = 50
     offset_date: str | None = None
     offset_id: int = 0
+    only_private: bool = False
 
 
 class MessagesIn(BaseModel):
@@ -160,6 +161,8 @@ async def dialogs(payload: DialogsIn, x_api_key: str | None = Header(None)):
         last_message_date = None
         last_message_id = 0
         async for d in client.iter_dialogs(limit=dialogs_limit, offset_date=offset_date, offset_id=offset_id):
+            if payload.only_private and not bool(getattr(d, "is_user", False)):
+                continue
             entity = d.entity
             msg = getattr(d, "message", None)
             if msg and getattr(msg, "date", None):

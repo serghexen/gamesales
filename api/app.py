@@ -1184,6 +1184,7 @@ def _telegram_fetch_dialog_batch_with_retry(
                     "limit": limit,
                     "offset_date": offset_date,
                     "offset_id": offset_id,
+                    "only_private": True,
                 },
                 timeout_sec=45,
             )
@@ -2106,7 +2107,7 @@ def telegram_dialogs(status: Optional[str] = None, user: UserOut = Depends(get_c
             resp = _telegram_api_request(
                 "POST",
                 "/dialogs",
-                {"session_string": session_string, "limit": 50},
+                {"session_string": session_string, "limit": 50, "only_private": True},
                 timeout_sec=30,
             )
             bootstrap_items = resp.get("items", []) or []
