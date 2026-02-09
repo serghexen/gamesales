@@ -378,7 +378,13 @@
                     </div>
                     <div v-else class="form deal-form" :class="{ 'deal-form--sale': newDeal.deal_type_code === 'sale' || newDeal.deal_type_code === 'rental' }">
                       <div class="deal-form__col deal-form__col--left">
-                        <div class="deal-form__triple" :class="{ 'deal-form__triple--sale-top': newDeal.deal_type_code === 'sale' }">
+                        <div
+                          class="deal-form__triple"
+                          :class="{
+                            'deal-form__triple--sale-top': newDeal.deal_type_code === 'sale',
+                            'deal-form__triple--rental-top': newDeal.deal_type_code === 'rental',
+                          }"
+                        >
                           <label class="field">
                             <span class="label">Откуда</span>
                             <select v-model.number="newDeal.source_id" class="input input--select">
@@ -388,16 +394,13 @@
                               </option>
                             </select>
                           </label>
+                          <label v-if="newDeal.deal_type_code === 'sale' || newDeal.deal_type_code === 'rental'" class="field">
+                            <span class="label">{{ newDeal.deal_type_code === 'rental' ? 'Номер заявки' : 'Номер заказа' }}</span>
+                            <input v-model.trim="newDeal.order_number" class="input" placeholder="например, 12345" />
+                          </label>
                           <label class="field">
                             <span class="label">Покупатель</span>
                             <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="nickname" />
-                          </label>
-                          <label v-if="newDeal.deal_type_code === 'sale'" class="field">
-                            <span class="label">Ответственный</span>
-                            <select v-model="newDealResponsible" class="input input--select">
-                              <option value="">— не выбрано —</option>
-                              <option value="current_user">{{ auth.state.user || 'Текущий пользователь' }}</option>
-                            </select>
                           </label>
                           <label v-if="newDeal.deal_type_code === 'rental'" class="field">
                             <span class="label">Сумма</span>
@@ -657,7 +660,7 @@
                             :rows="getCompactNotesRows(newDeal.notes)"
                           />
                         </div>
-                        <div v-if="newDeal.deal_type_code === 'sale'" class="deal-form__triple">
+                        <div v-if="newDeal.deal_type_code === 'sale'" class="deal-form__quad deal-form__quad--sale-costs">
                           <label class="field">
                             <span class="label">Регион</span>
                             <select v-model="newDeal.region_code" class="input input--select">
@@ -665,6 +668,13 @@
                               <option v-for="r in regions" :key="r.code" :value="r.code">
                                 {{ r.name }} ({{ r.code }})
                               </option>
+                            </select>
+                          </label>
+                          <label class="field">
+                            <span class="label">Ответственный</span>
+                            <select v-model="newDealResponsible" class="input input--select">
+                              <option value="">— не выбрано —</option>
+                              <option value="current_user">{{ auth.state.user || 'Текущий пользователь' }}</option>
                             </select>
                           </label>
                           <label class="field">

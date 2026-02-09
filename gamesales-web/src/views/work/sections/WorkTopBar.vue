@@ -13,7 +13,7 @@
     <div class="actions">
       <nav class="tabs">
         <router-link class="tab" :class="{ active: activeTab === 'deals' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'deals' } }">
-          Продажи/Шеринг
+          Сделки
         </router-link>
         <router-link class="tab" :class="{ active: activeTab === 'accounts' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'accounts' } }">
           Аккаунты

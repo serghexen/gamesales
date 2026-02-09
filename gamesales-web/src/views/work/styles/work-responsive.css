@@ -36,6 +36,15 @@
     justify-self: stretch;
   }
 
+  .work-page .deal-form__quad,
+  .work-page .deal-form__quad--sale-costs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .work-page .deal-form__triple--rental-top {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .work-page .form,
   .work-page .form--stack {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -56,6 +65,11 @@
   }
 
   .work-page .deal-form__double {
+    grid-template-columns: 1fr;
+  }
+
+  .work-page .deal-form__quad,
+  .work-page .deal-form__quad--sale-costs {
     grid-template-columns: 1fr;
   }
 

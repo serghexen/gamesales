@@ -1,9 +1,11 @@
 export function createNewDealState() {
+  // Базовое состояние для новой сделки в модалке.
   return {
     deal_type_code: 'sale',
     account_id: '',
     game_id: '',
     customer_nickname: '',
+    order_number: '',
     source_id: '',
     region_code: '',
     slot_type_code: '',
@@ -17,6 +19,7 @@ export function createNewDealState() {
 }
 
 export function createEditDealState() {
+  // Базовое состояние для просмотра/редактирования существующей сделки.
   return {
     open: false,
     deal_id: null,
@@ -39,6 +42,7 @@ export function createEditDealState() {
 }
 
 export function createDealFiltersState() {
+  // Пустые фильтры таблицы сделок при первом открытии экрана.
   return {
     search_q: '',
     customer_q: '',

@@ -11,6 +11,7 @@ describe('dealsUtils', () => {
   it('createNewDealState returns expected defaults', () => {
     const state = createNewDealState()
     expect(state.deal_type_code).toBe('sale')
+    expect(state.order_number).toBe('')
     expect(state.price).toBe(0)
     expect(state.slots_used).toBe(1)
     expect(state.notes).toBe('')

@@ -852,6 +852,16 @@
   gap: 8px;
 }
 
+.work-page .deal-form__quad {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.work-page .deal-form__quad--sale-costs {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.5fr) minmax(0, 0.5fr);
+}
+
 .work-page .field--comment-collapsible {
   align-content: start;
 }
@@ -877,6 +887,10 @@
 
 .work-page .deal-form__triple--sale-top {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.work-page .deal-form__triple--rental-top {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.85fr);
 }
 
 .work-page .deal-form__full {

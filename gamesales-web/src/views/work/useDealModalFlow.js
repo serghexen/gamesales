@@ -95,6 +95,8 @@ export function useDealModalFlow({
     newDeal.account_id = ''
     newDeal.game_id = ''
     newDeal.customer_nickname = ''
+    // Очищаем номер заказа, чтобы старое значение не переносилось в новую сделку.
+    newDeal.order_number = ''
     newDeal.source_id = ''
     newDeal.region_code = ''
     newDeal.slot_type_code = ''
