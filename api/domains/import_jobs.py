@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import os
+import threading
 from typing import Callable, Optional
 
 
@@ -9,6 +11,10 @@ class ImportJobs:
     run_accounts_import_job: Callable[[str, bytes, str], None]
     run_slots_validate_job: Callable[[str, bytes, str, Optional[int]], None]
     run_slots_import_job: Callable[[str, bytes, str], None]
+
+
+_MAX_IMPORT_JOBS = max(1, int(os.getenv("IMPORT_MAX_CONCURRENT_JOBS", "1") or "1"))
+_IMPORT_JOBS_SEMAPHORE = threading.BoundedSemaphore(_MAX_IMPORT_JOBS)
 
 
 def build_import_jobs(
@@ -61,6 +67,23 @@ def build_import_jobs(
         )
 
     def run_games_import_job(job_id: str, content: bytes, owner: str):
+        acquired = _IMPORT_JOBS_SEMAPHORE.acquire(blocking=False)
+        if not acquired:
+            set_import_progress(
+                job_id,
+                owner,
+                {
+                    "phase": "error",
+                    "current": 0,
+                    "total": 0,
+                    "done": True,
+                    "result": {
+                        "ok": False,
+                        "errors": [{"row": 0, "field": "Импорт", "message": "Слишком много задач импорта. Повторите чуть позже."}],
+                    },
+                },
+            )
+            return
         try:
             with psycopg.connect(DB_DSN) as conn:
                 rows = read_games_from_excel(content)
@@ -165,8 +188,27 @@ def build_import_jobs(
                 set_import_progress(job_id, owner, {"phase": "upload", "current": total, "total": total, "done": True, "result": result})
         except Exception as exc:
             set_import_progress(job_id, owner, {"phase": "error", "current": 0, "total": 0, "done": True, "result": {"ok": False, "errors": [{"row": 0, "field": "Импорт", "message": str(exc)}]}})
+        finally:
+            _IMPORT_JOBS_SEMAPHORE.release()
 
     def run_accounts_import_job(job_id: str, content: bytes, owner: str):
+        acquired = _IMPORT_JOBS_SEMAPHORE.acquire(blocking=False)
+        if not acquired:
+            set_import_progress(
+                job_id,
+                owner,
+                {
+                    "phase": "error",
+                    "current": 0,
+                    "total": 0,
+                    "done": True,
+                    "result": {
+                        "ok": False,
+                        "errors": [{"row": 0, "field": "Импорт", "message": "Слишком много задач импорта. Повторите чуть позже."}],
+                    },
+                },
+            )
+            return
         try:
             with psycopg.connect(DB_DSN) as conn:
                 rows = read_accounts_from_excel(content)
@@ -274,8 +316,27 @@ def build_import_jobs(
                 set_import_progress(job_id, owner, {"phase": "upload", "current": total, "total": total, "done": True, "result": result})
         except Exception as exc:
             set_import_progress(job_id, owner, {"phase": "error", "current": 0, "total": 0, "done": True, "result": {"ok": False, "errors": [{"row": 0, "field": "Импорт", "message": str(exc)}]}})
+        finally:
+            _IMPORT_JOBS_SEMAPHORE.release()
 
     def run_slots_validate_job(job_id: str, content: bytes, owner: str, limit: Optional[int]):
+        acquired = _IMPORT_JOBS_SEMAPHORE.acquire(blocking=False)
+        if not acquired:
+            set_import_progress(
+                job_id,
+                owner,
+                {
+                    "phase": "error",
+                    "current": 0,
+                    "total": 0,
+                    "done": True,
+                    "result": {
+                        "ok": False,
+                        "errors": [{"row": 0, "field": "Проверка", "message": "Слишком много задач импорта. Повторите чуть позже."}],
+                    },
+                },
+            )
+            return
         try:
             set_import_progress(job_id, owner, {"phase": "validate", "current": 0, "total": 0, "done": False})
             rows = read_slots_from_excel(content)
@@ -301,8 +362,27 @@ def build_import_jobs(
                 owner,
                 {"phase": "error", "current": 0, "total": 0, "done": True, "result": {"ok": False, "errors": [{"row": 0, "field": "Проверка", "message": str(exc)}]}},
             )
+        finally:
+            _IMPORT_JOBS_SEMAPHORE.release()
 
     def run_slots_import_job(job_id: str, content: bytes, owner: str):
+        acquired = _IMPORT_JOBS_SEMAPHORE.acquire(blocking=False)
+        if not acquired:
+            set_import_progress(
+                job_id,
+                owner,
+                {
+                    "phase": "error",
+                    "current": 0,
+                    "total": 0,
+                    "done": True,
+                    "result": {
+                        "ok": False,
+                        "errors": [{"row": 0, "field": "Импорт", "message": "Слишком много задач импорта. Повторите чуть позже."}],
+                    },
+                },
+            )
+            return
         try:
             with psycopg.connect(DB_DSN) as conn:
                 rows = read_slots_from_excel(content)
@@ -508,6 +588,8 @@ def build_import_jobs(
                 set_import_progress(job_id, owner, {"phase": "upload", "current": total, "total": total, "done": True, "result": result})
         except Exception as exc:
             set_import_progress(job_id, owner, {"phase": "error", "current": 0, "total": 0, "done": True, "result": {"ok": False, "errors": [{"row": 0, "field": "Импорт", "message": str(exc)}]}})
+        finally:
+            _IMPORT_JOBS_SEMAPHORE.release()
 
     return ImportJobs(
         run_games_import_job=run_games_import_job,
