@@ -1,0 +1,10 @@
+.git
+.gitignore
+node_modules/
+dist/
+.vscode/
+.idea/
+coverage/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
