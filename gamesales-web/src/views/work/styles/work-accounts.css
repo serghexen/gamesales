@@ -1,0 +1,26 @@
+.work-page .account-head-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: nowrap;
+}
+
+.work-page .toolbar-actions--account-create {
+  flex: 0 0 auto;
+}
+
+.work-page .toolbar-actions--account-search {
+  flex: 0 0 360px;
+  max-width: 360px;
+  display: flex;
+}
+
+.work-page .toolbar-actions--account-search .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.work-page .input--account-search {
+  width: 100%;
+}
+

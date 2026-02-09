@@ -5,3 +5,5 @@
 - Добавить частичный индекс активных слотов для ускорения `/accounts/for-deal/availability` (например, `WHERE released_at IS NULL`).
 - Исправить лимит `loadAccountDeals`: пагинация/“Показать ещё” или явное уведомление “первые N”.
 - Защититься от гонки при одновременном создании шеринга: уникальный индекс активного слота (`account_id + slot_type_code WHERE released_at IS NULL`) + обработка 409 на API и сообщение на фронте.
+- Добавить CI (GitHub Actions): автоматический запуск `cd gamesales-web && npm run check` на каждый PR.
+- Добавить PR-шаблон (`.github/pull_request_template.md`) с чеклистом: комментарии, тесты, локальные проверки.

@@ -1,5 +1,7 @@
 # GameSales
 
+Development rules and quality checklist: `CONTRIBUTING.md`.
+
 Local development is intended to run **frontend + backend on your machine**
 while **PostgreSQL lives on the VDS**.
 

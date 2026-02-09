@@ -1,0 +1,111 @@
+<template>
+  <section class="panel panel--wide">
+    <WorkDealsHeader
+      :deal-filters="ctx.dealFilters"
+      :apply-deal-search="ctx.applyDealSearch"
+      :open-create-sale-modal="ctx.openCreateSaleModal"
+      :open-create-sharing-modal="ctx.openCreateSharingModal"
+      :deal-show-completed="ctx.dealShowCompleted"
+      :set-deal-show-completed="ctx.setDealShowCompleted"
+      :load-deals="ctx.loadDeals"
+      :deal-list-loading="ctx.dealListLoading"
+    />
+
+    <div class="panel__body">
+      <p v-if="ctx.dealListError" class="bad">{{ ctx.dealListError }}</p>
+      <div v-else-if="ctx.dealListLoading" class="loader-wrap loader-overlay">
+        <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
+          <div class="wheel"></div>
+          <div class="hamster">
+            <div class="hamster__body">
+              <div class="hamster__head">
+                <div class="hamster__ear"></div>
+                <div class="hamster__eye"></div>
+                <div class="hamster__nose"></div>
+              </div>
+              <div class="hamster__limb hamster__limb--fr"></div>
+              <div class="hamster__limb hamster__limb--fl"></div>
+              <div class="hamster__limb hamster__limb--br"></div>
+              <div class="hamster__limb hamster__limb--bl"></div>
+              <div class="hamster__tail"></div>
+            </div>
+          </div>
+          <div class="spoke"></div>
+        </div>
+      </div>
+
+      <WorkDealFilterChips
+        v-else-if="ctx.activeDealChips.length"
+        :active-deal-chips="ctx.activeDealChips"
+        :reset-deal-filter="ctx.resetDealFilter"
+      />
+
+      <WorkDealsTableSection
+        :sorted-deals="ctx.sortedDeals"
+        :deal-filters="ctx.dealFilters"
+        :deal-type-options="ctx.dealTypeOptions"
+        :deal-flow-status-options="ctx.dealFlowStatusOptions"
+        :regions="ctx.regions"
+        :active-deal-filter="ctx.activeDealFilter"
+        :set-active-deal-filter="ctx.setActiveDealFilter"
+        :toggle-deal-sort="ctx.toggleDealSort"
+        :get-deal-sort-class="ctx.getDealSortClass"
+        :load-deals="ctx.loadDeals"
+        :reset-deal-filter="ctx.resetDealFilter"
+        :validate-deal-range="ctx.validateDealRange"
+        :deal-filter-errors="ctx.dealFilterErrors"
+        :min-date="ctx.minDate"
+        :max-date="ctx.maxDate"
+        :edit-deal="ctx.editDeal"
+        :start-edit-deal="ctx.startEditDeal"
+        :format-date-time-minutes="ctx.formatDateTimeMinutes"
+        :deal-show-completed="ctx.dealShowCompleted"
+        :mark-deal-completed="ctx.markDealCompleted"
+        :deal-saving="ctx.dealSaving"
+      />
+
+      <div v-if="ctx.dealTotal > 0" class="pager">
+        <span class="muted">Всего: {{ ctx.dealTotal }}</span>
+        <label class="pager__size">
+          <span class="muted">Показывать</span>
+          <select v-model.number="ctx.dealPageSize" class="input input--select input--compact">
+            <option :value="20">20</option>
+            <option :value="50">50</option>
+            <option :value="100">100</option>
+          </select>
+        </label>
+        <button class="ghost" @click="ctx.setDealPage(1)" :disabled="ctx.dealPage <= 1 || ctx.dealListLoading">«</button>
+        <button class="ghost" @click="ctx.prevDealPage" :disabled="ctx.dealPage <= 1 || ctx.dealListLoading">← Назад</button>
+        <label class="pager__jump">
+          <span class="muted">Стр.</span>
+          <input
+            v-model.number="ctx.dealPageInput"
+            class="input input--compact input--page"
+            type="number"
+            min="1"
+            :max="ctx.totalPages"
+            @keydown.enter.prevent="ctx.jumpDealPage"
+            @blur="ctx.jumpDealPage"
+          />
+        </label>
+        <span class="muted">из {{ ctx.totalPages }}</span>
+        <button class="ghost" @click="ctx.nextDealPage" :disabled="ctx.dealPage >= ctx.totalPages || ctx.dealListLoading">Вперёд →</button>
+        <button class="ghost" @click="ctx.setDealPage(ctx.totalPages)" :disabled="ctx.dealPage >= ctx.totalPages || ctx.dealListLoading">»</button>
+      </div>
+
+      <slot />
+    </div>
+  </section>
+</template>
+
+<script setup>
+import WorkDealsHeader from './WorkDealsHeader.vue'
+import WorkDealFilterChips from './WorkDealFilterChips.vue'
+import WorkDealsTableSection from './WorkDealsTableSection.vue'
+
+// Передаем один контекст, чтобы не плодить длинный список пропсов на уровне WorkView.
+const props = defineProps({
+  ctx: { type: Object, required: true },
+})
+const { ctx } = props
+</script>

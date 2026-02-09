@@ -1,0 +1,444 @@
+.work-page .toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.work-page .toolbar__filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  flex: 1 1 0;
+}
+
+.work-page .toolbar__filters .field {
+  min-width: 0;
+}
+
+.work-page .toolbar__filters .input {
+  min-width: 0;
+}
+
+.work-page .toolbar-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.work-page .switch-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 6px;
+}
+
+.work-page .switch-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.work-page .switch {
+  --switch-width: 46px;
+  --switch-height: 24px;
+  --switch-bg: rgb(131, 131, 131);
+  --switch-checked-bg: rgb(0, 218, 80);
+  --switch-offset: calc((var(--switch-height) - var(--circle-diameter)) / 2);
+  --switch-transition: all 0.2s cubic-bezier(0.27, 0.2, 0.25, 1.51);
+  --circle-diameter: 18px;
+  --circle-bg: #fff;
+  --circle-shadow: 1px 1px 2px rgba(146, 146, 146, 0.45);
+  --circle-checked-shadow: -1px 1px 2px rgba(163, 163, 163, 0.45);
+  --circle-transition: var(--switch-transition);
+  --icon-transition: all 0.2s cubic-bezier(0.27, 0.2, 0.25, 1.51);
+  --icon-cross-color: var(--switch-bg);
+  --icon-cross-size: 6px;
+  --icon-checkmark-color: var(--switch-checked-bg);
+  --icon-checkmark-size: 10px;
+  --effect-width: calc(var(--circle-diameter) / 2);
+  --effect-height: calc(var(--effect-width) / 2 - 1px);
+  --effect-bg: var(--circle-bg);
+  --effect-border-radius: 1px;
+  --effect-transition: all 0.2s ease-in-out;
+  display: inline-block;
+}
+
+.work-page .switch input {
+  display: none;
+}
+
+.work-page .switch svg {
+  transition: var(--icon-transition);
+  position: absolute;
+  height: auto;
+}
+
+.work-page .switch .checkmark {
+  width: var(--icon-checkmark-size);
+  color: var(--icon-checkmark-color);
+  transform: scale(0);
+}
+
+.work-page .switch .cross {
+  width: var(--icon-cross-size);
+  color: var(--icon-cross-color);
+}
+
+.work-page .slider {
+  box-sizing: border-box;
+  width: var(--switch-width);
+  height: var(--switch-height);
+  background: var(--switch-bg);
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  position: relative;
+  transition: var(--switch-transition);
+  cursor: pointer;
+}
+
+.work-page .circle {
+  width: var(--circle-diameter);
+  height: var(--circle-diameter);
+  background: var(--circle-bg);
+  border-radius: inherit;
+  box-shadow: var(--circle-shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--circle-transition);
+  z-index: 1;
+  position: absolute;
+  left: var(--switch-offset);
+}
+
+.work-page .slider::before {
+  content: "";
+  position: absolute;
+  width: var(--effect-width);
+  height: var(--effect-height);
+  left: calc(var(--switch-offset) + (var(--effect-width) / 2));
+  background: var(--effect-bg);
+  border-radius: var(--effect-border-radius);
+  transition: var(--effect-transition);
+}
+
+.work-page .switch input:checked + .slider {
+  background: var(--switch-checked-bg);
+}
+
+.work-page .switch input:checked + .slider .checkmark {
+  transform: scale(1);
+}
+
+.work-page .switch input:checked + .slider .cross {
+  transform: scale(0);
+}
+
+.work-page .switch input:checked + .slider::before {
+  left: calc(100% - var(--effect-width) - (var(--effect-width) / 2) - var(--switch-offset));
+}
+
+.work-page .switch input:checked + .slider .circle {
+  left: calc(100% - var(--circle-diameter) - var(--switch-offset));
+  box-shadow: var(--circle-checked-shadow);
+}
+
+
+.work-page .import-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  align-self: flex-start;
+  padding: 8px 0;
+  background: linear-gradient(0deg, rgba(10, 16, 32, 0.95) 0%, rgba(10, 16, 32, 0.7) 70%, rgba(10, 16, 32, 0) 100%);
+}
+
+.work-page .import-actions--fixed {
+  top: 0;
+  bottom: auto;
+  margin-bottom: 8px;
+  background: linear-gradient(180deg, rgba(10, 16, 32, 0.95) 0%, rgba(10, 16, 32, 0.7) 70%, rgba(10, 16, 32, 0) 100%);
+}
+
+.work-page .field,
+.work-page .input {
+  box-sizing: border-box;
+}
+
+.work-page .field--compact .label {
+  font-size: 11px;
+}
+
+.work-page .table--compact th,
+.work-page .table--compact td {
+  padding: 6px 8px;
+  font-size: 11px;
+}
+
+.work-page .btn--ghost {
+  background: var(--ghost-bg);
+  color: var(--ghost-text);
+}
+
+.work-page .btn--icon {
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  aspect-ratio: 1 / 1;
+  display: grid;
+  place-items: center;
+}
+
+.work-page .btn--icon svg {
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.work-page .btn--glow {
+  border-radius: 50% !important;
+  border: none;
+  position: relative;
+  z-index: 0;
+  color: #fff;
+  transition: transform 0.1s ease, filter 0.2s ease;
+}
+
+.work-page .btn--glow::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: var(--glow-ring);
+  z-index: -1;
+  transition: 0.35s ease;
+}
+
+.work-page .btn--glow:hover::before {
+  inset: 100%;
+}
+
+.work-page .btn--glow:active {
+  transform: scale(0.9);
+}
+
+.work-page .btn--glow-add {
+  background: linear-gradient(120deg, #02ff2c, #008a12);
+}
+
+.work-page .btn--glow-import {
+  background: linear-gradient(120deg, #38bdf8, #2563eb);
+}
+
+.work-page .btn--glow-import-slots {
+  background: linear-gradient(120deg, #22c55e, #0ea5e9);
+}
+
+.work-page .btn--glow-export {
+  background: linear-gradient(120deg, #facc15, #fb7185);
+}
+
+.work-page .btn--glow-filter {
+  background: linear-gradient(120deg, #3b82f6, #06b6d4);
+}
+
+.work-page .btn--glow-eye {
+  background: linear-gradient(120deg, #833ab4, #fd1d1d, #fcb045);
+}
+
+.work-page .btn--glow-refresh {
+  background: linear-gradient(120deg, #f97316, #ef4444);
+}
+
+.work-page .btn--glow-danger {
+  background: linear-gradient(120deg, #ff6b6b, #ef4444);
+}
+
+.work-page .btn--glow svg {
+  color: #fff;
+  stroke: currentColor;
+  fill: none;
+}
+
+.work-page .field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.work-page .label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.work-page .input {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--ink);
+  outline: none;
+  font-size: 14px;
+}
+
+.work-page .input--textarea {
+  height: auto;
+  min-height: 120px;
+  padding: 8px 12px;
+  resize: vertical;
+}
+
+.work-page .input--textarea--tall {
+  min-height: 180px;
+}
+
+.work-page .input--textarea--compact {
+  min-height: 64px;
+}
+
+.work-page .deal-form .label {
+  font-size: 11px;
+}
+
+.work-page .deal-form .input {
+  height: 38px;
+  border-radius: 11px;
+  font-size: 13px;
+}
+
+.work-page .deal-form .input--compact {
+  height: 30px;
+  font-size: 12px;
+}
+
+.work-page .deal-form .input--textarea {
+  min-height: 88px;
+  padding: 8px 10px;
+}
+
+.work-page .deal-form .input--textarea--tall {
+  min-height: 128px;
+}
+
+.work-page .deal-form .input--textarea--compact {
+  min-height: 64px;
+}
+
+.work-page .deal-form .slot-status {
+  margin-top: 2px;
+}
+
+.work-page .deal-form .slot-status__list {
+  gap: 4px;
+}
+
+.work-page .deal-form .quick-create {
+  gap: 6px;
+  padding: 8px;
+}
+
+.work-page .deal-form .quick-create--game-empty {
+  margin-top: 6px;
+}
+
+.work-page .deal-form .quick-create .loader-wrap--compact {
+  min-height: 84px;
+  padding: 6px 0;
+}
+
+.work-page .deal-form .quick-create .wheel-and-hamster--mini {
+  width: 6.8em;
+  height: 6.8em;
+  font-size: 9px;
+}
+
+.work-page .field--game {
+  justify-self: stretch;
+  width: 100%;
+  max-width: 100%;
+}
+
+.work-page .field--game-selected {
+  width: 100%;
+}
+
+.work-page .field--game .input--select-wrap--selected {
+  width: 100%;
+  max-width: 100%;
+}
+
+.work-page .deal-form__col--right .field--game,
+.work-page .deal-form__col--right .field--game .input,
+.work-page .deal-form__col--right .field--game .input--search,
+.work-page .deal-form__col--right .field--game .input--select-wrap,
+.work-page .deal-form__col--right .field--game .quick-create--game-empty {
+  width: 100%;
+  max-width: 100%;
+  justify-self: stretch;
+}
+
+.work-page .input--file {
+  height: auto;
+  padding: 8px 10px;
+}
+
+.work-page .logo-upload {
+  display: grid;
+  gap: 10px;
+}
+
+.work-page .logo-preview {
+  width: 140px;
+  height: 140px;
+  border-radius: 12px;
+  border: 1px solid var(--input-border);
+  background: rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.work-page .logo-preview--loading {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.work-page .logo-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.work-page .logo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.work-page .import-errors {
+  display: grid;
+  gap: 8px;
+}
+
+.work-page .form--inline .btn {
+  width: 100%;
+  height: 44px;
+}
+
+.work-page .input--select {
+  appearance: none;
+}
+
+.work-page .ok {
+  color: #3ee8b5;
+  font-size: 13px;
+}

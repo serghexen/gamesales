@@ -1,43 +1,43 @@
 <template>
-  <div class="page">
-    <div class="shell">
-      <div class="card" role="region" aria-label="Авторизация">
-        <div class="card__head">
-          <div class="logo">
+  <div class="login-page">
+    <div class="login-shell">
+      <div class="login-card" role="region" aria-label="Авторизация">
+        <div class="login-card__head">
+          <div class="login-logo">
             <img src="../assets/logo.jpg" alt="Логотип" />
           </div>
           <div>
-            <h2 class="title">Вход в панель</h2>
-            <p class="subtitle">Введите логин и пароль для продолжения</p>
+            <h2 class="login-title">Вход в панель</h2>
+            <p class="login-subtitle">Введите логин и пароль для продолжения</p>
           </div>
         </div>
 
-        <form class="form" @submit.prevent="onSubmit">
-          <label class="field">
-            <span class="label">Логин</span>
+        <form class="login-form" @submit.prevent="onSubmit">
+          <label class="login-field">
+            <span class="login-label">Логин</span>
             <input
               v-model.trim="username"
-              class="input"
+              class="login-input"
               autocomplete="username"
               inputmode="text"
               required
             />
           </label>
 
-          <label class="field">
-            <span class="label">Пароль</span>
+          <label class="login-field">
+            <span class="login-label">Пароль</span>
             <input
               v-model="password"
-              class="input"
+              class="login-input"
               type="password"
               autocomplete="current-password"
               required
             />
           </label>
 
-          <p v-if="error" class="error" role="alert">{{ error }}</p>
+          <p v-if="error" class="login-error" role="alert">{{ error }}</p>
 
-          <button class="btn" type="submit" :disabled="loading">
+          <button class="login-btn" type="submit" :disabled="loading">
             <span v-if="loading">Входим…</span>
             <span v-else>Войти</span>
           </button>
@@ -79,7 +79,7 @@ async function onSubmit() {
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,650&display=swap');
 
-:root {
+.login-page {
   --bg-1: #0c1024;
   --bg-2: #151b35;
   --bg-3: #0f2431;
@@ -92,7 +92,7 @@ async function onSubmit() {
 }
 
 /* Mobile-first */
-.page {
+.login-page {
   min-height: 100svh;
   display: grid;
   place-items: center;
@@ -111,8 +111,8 @@ async function onSubmit() {
   overflow: hidden;
 }
 
-.page::before,
-.page::after {
+.login-page::before,
+.login-page::after {
   content: '';
   position: absolute;
   width: 320px;
@@ -123,19 +123,19 @@ async function onSubmit() {
   z-index: 0;
 }
 
-.page::before {
+.login-page::before {
   background: #3ee8b5;
   top: -120px;
   left: -120px;
 }
 
-.page::after {
+.login-page::after {
   background: #f7b955;
   bottom: -160px;
   right: -120px;
 }
 
-.shell {
+.login-shell {
   width: min(980px, 100%);
   display: grid;
   gap: 20px;
@@ -143,7 +143,7 @@ async function onSubmit() {
   z-index: 1;
 }
 
-.card {
+.login-card {
   width: 100%;
   max-width: 460px;
   border-radius: 20px;
@@ -154,14 +154,14 @@ async function onSubmit() {
   animation: rise 0.7s ease 0.1s both;
 }
 
-.card__head {
+.login-card__head {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 14px;
 }
 
-.logo {
+.login-logo {
   width: 44px;
   height: 44px;
   border-radius: 14px;
@@ -173,49 +173,50 @@ async function onSubmit() {
   overflow: hidden;
 }
 
-.logo img {
+.login-logo img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.title {
+.login-title {
   margin: 0;
   font-size: clamp(20px, 4.6vw, 26px);
   line-height: 1.15;
 }
 
-.subtitle {
+.login-subtitle {
   margin: 6px 0 0;
   opacity: 0.8;
   font-size: clamp(12px, 3.4vw, 14px);
 }
 
-.form {
+.login-form {
   display: grid;
+  grid-template-columns: 1fr;
   gap: 14px;
 }
 
-.field {
+.login-field {
   display: grid;
   gap: 6px;
   animation: fadeIn 0.6s ease both;
 }
 
-.field:nth-of-type(1) {
+.login-field:nth-of-type(1) {
   animation-delay: 0.05s;
 }
 
-.field:nth-of-type(2) {
+.login-field:nth-of-type(2) {
   animation-delay: 0.12s;
 }
 
-.label {
+.login-label {
   font-size: clamp(12px, 3.4vw, 13px);
   color: var(--muted);
 }
 
-.input {
+.login-input {
   width: 100%;
   height: 48px;
   padding: 0 14px;
@@ -229,22 +230,22 @@ async function onSubmit() {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.input::placeholder {
+.login-input::placeholder {
   color: rgba(238, 242, 255, 0.45);
 }
 
-.input:focus {
+.login-input:focus {
   border-color: rgba(62, 232, 181, 0.75);
   box-shadow: 0 0 0 3px rgba(62, 232, 181, 0.2);
 }
 
-.error {
+.login-error {
   margin: 2px 0 0;
   color: #ff9aa2;
   font-size: 13px;
 }
 
-.btn {
+.login-btn {
   margin-top: 6px;
   height: 48px;
   border-radius: 14px;
@@ -258,12 +259,12 @@ async function onSubmit() {
   box-shadow: 0 12px 22px rgba(62, 232, 181, 0.18);
 }
 
-.btn:hover {
+.login-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 14px 30px rgba(62, 232, 181, 0.25);
 }
 
-.btn:disabled {
+.login-btn:disabled {
   opacity: 0.7;
   cursor: not-allowed;
   transform: none;
@@ -293,12 +294,12 @@ async function onSubmit() {
 }
 
 @media (min-width: 900px) {
-  .shell {
+  .login-shell {
     align-items: center;
     justify-items: center;
   }
 
-  .card {
+  .login-card {
     border-radius: 22px;
   }
 }

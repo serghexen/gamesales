@@ -1,0 +1,564 @@
+.work-page .tg-auth {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.work-page .tg-auth__card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.work-page .tg-auth__card h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.work-page .tg-shell {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 16px;
+  min-height: clamp(560px, 74vh, 820px);
+  height: clamp(560px, 74vh, 820px);
+}
+
+.work-page .tg-dialogs {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.work-page .tg-dialogs__head {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  margin-bottom: 8px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.work-page .tg-dialog-tabs {
+  display: inline-flex;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 4px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.work-page .tg-dialog-tab {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.work-page .tg-dialog-tab.active {
+  color: var(--ink);
+  background: rgba(80, 200, 255, 0.22);
+}
+
+.work-page .tg-dialog-tab__count {
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(58, 168, 86, 0.9);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  padding: 0 4px;
+}
+
+.work-page .tg-dialogs__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.work-page .tg-dialogs__meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.work-page .tg-dialogs__meta-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  white-space: nowrap;
+}
+
+.work-page .tg-dialogs__meta-pill--running {
+  color: #8cd0ff;
+  border-color: rgba(140, 208, 255, 0.45);
+  background: rgba(140, 208, 255, 0.12);
+}
+
+.work-page .tg-dialogs__meta-pill--count {
+  color: #b9c7dc;
+}
+
+.work-page .tg-dialog {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--ink);
+}
+
+.work-page .tg-dialog.active {
+  border-color: rgba(80, 200, 255, 0.5);
+  box-shadow: 0 0 0 1px rgba(80, 200, 255, 0.3) inset;
+}
+
+.work-page .tg-dialog__title {
+  font-size: 12px;
+}
+
+.work-page .tg-dialog__unread {
+  background: #3aa856;
+  color: white;
+  border-radius: 12px;
+  font-size: 11px;
+  padding: 2px 6px;
+  min-width: 22px;
+  text-align: center;
+}
+
+.work-page .tg-dialog__unread--zero {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--muted);
+}
+
+.work-page .tg-messages {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  position: relative;
+}
+
+.work-page .tg-contact {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.work-page .tg-contact__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.work-page .tg-contact__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.work-page .tg-contact__title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.work-page .tg-contact__info {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.work-page .tg-contact__edit {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.work-page .tg-contact__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.work-page .ghost--tiny {
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+.work-page .tg-messages__list {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 6px;
+  min-height: 220px;
+  overflow-anchor: none;
+}
+
+.work-page .tg-messages__older-loading {
+  align-self: center;
+  font-size: 11px;
+  color: #9ad8ff;
+  background: rgba(40, 115, 180, 0.18);
+  border: 1px solid rgba(80, 170, 255, 0.35);
+  border-radius: 999px;
+  padding: 4px 10px;
+  margin: 2px 0 4px;
+}
+
+.work-page .tg-loading-overlay {
+  position: absolute;
+  inset: 12px;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 12, 24, 0.58);
+  backdrop-filter: blur(4px);
+  border-radius: 12px;
+}
+
+.work-page .tg-message-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.work-page .tg-message-fade-enter-active {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.work-page .tg-message-fade-enter-from {
+  opacity: 0;
+  transform: translateY(8px) scale(0.99);
+}
+
+.work-page .tg-message-fade-enter-to {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.work-page .tg-message-row--out {
+  justify-content: flex-end;
+}
+
+.work-page .tg-message {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 8px 10px;
+  max-width: 70%;
+  cursor: pointer;
+}
+
+.work-page .tg-message--out {
+  align-self: flex-end;
+  background: rgba(58, 168, 86, 0.25);
+}
+
+.work-page .tg-message--active {
+  border: 1px solid rgba(80, 200, 255, 0.35);
+}
+.work-page .tg-message__text {
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.work-page .tg-message__text a {
+  color: #5ea3ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.work-page .tg-message--out .tg-message__text a {
+  color: #9dd2ff;
+}
+
+.work-page .tg-message__sender {
+  margin-top: 4px;
+  font-size: 11px;
+  color: rgba(140, 200, 255, 0.85);
+}
+
+.work-page .tg-message__media {
+  margin-top: 6px;
+  width: min(320px, 100%);
+  min-height: 160px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.work-page .tg-message__media img {
+  width: 100%;
+  max-width: 320px;
+  max-height: 240px;
+  min-height: 160px;
+  border-radius: 12px;
+  display: block;
+  object-fit: contain;
+  background: transparent;
+}
+
+.work-page .tg-message__media video {
+  width: 100%;
+  max-width: 320px;
+  max-height: 240px;
+  min-height: 160px;
+  border-radius: 12px;
+  display: block;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.work-page .tg-message__media-placeholder {
+  width: 100%;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(110deg, rgba(255, 255, 255, 0.02) 8%, rgba(255, 255, 255, 0.08) 18%, rgba(255, 255, 255, 0.02) 33%);
+  background-size: 200% 100%;
+  animation: tgMediaShimmer 1.2s linear infinite;
+}
+
+@keyframes tgMediaShimmer {
+  to {
+    background-position-x: -200%;
+  }
+}
+
+.work-page .tg-message__meta {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--muted);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.work-page .tg-message__sent-by {
+  color: rgba(120, 200, 120, 0.9);
+}
+
+.work-page .tg-message__channel {
+  margin-top: 4px;
+  font-size: 11px;
+  color: rgba(168, 182, 214, 0.9);
+}
+
+.work-page .tg-message-row__actions,
+.work-page .tg-message-row__actions-spacer {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 24px;
+  min-width: 24px;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+}
+
+.work-page .tg-message-action {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  color: #d3def8;
+}
+
+.work-page .tg-message-action__glyph {
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.work-page .tg-message-action--blue {
+  color: #67b9ff;
+}
+
+.work-page .tg-message-action--red {
+  color: #ff6c8a;
+}
+
+.work-page .tg-message-action--ghost {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.work-page .tg-message-row__actions {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.work-page .tg-message-row:hover .tg-message-row__actions,
+.work-page .tg-message-row:focus-within .tg-message-row__actions {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.work-page .tg-compose {
+  margin-top: 10px;
+  border: 1px solid rgba(180, 189, 206, 0.45);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(226, 231, 240, 0.08);
+}
+
+.work-page .tg-compose__head {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  background: rgba(196, 205, 220, 0.22);
+  border-bottom: 1px solid rgba(180, 189, 206, 0.35);
+}
+
+.work-page .tg-compose__brand {
+  color: #ff5a84;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.work-page .tg-compose__title {
+  color: #98a2b7;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.work-page .tg-compose__link {
+  border: none;
+  background: transparent;
+  color: #5f7dd7;
+  font-size: 18px;
+  line-height: 1;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 0;
+}
+
+.work-page .tg-compose__body {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.work-page .tg-compose__input {
+  flex: 1;
+  min-height: 72px;
+  max-height: 160px;
+  resize: vertical;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #dfe7f6;
+  font-size: 22px;
+  line-height: 1.25;
+  font-family: inherit;
+}
+
+.work-page .tg-compose__input::placeholder {
+  color: rgba(195, 205, 220, 0.85);
+}
+
+.work-page .tg-compose__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.work-page .tg-compose__icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(180, 189, 206, 0.35);
+  background: rgba(180, 189, 206, 0.12);
+  color: #b8c3d8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.work-page .tg-compose__icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.work-page .tg-compose__send {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(103, 185, 255, 0.4);
+  background: rgba(103, 185, 255, 0.18);
+  color: #79c5ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.work-page .tg-compose__send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.work-page .tg-compose__send svg {
+  width: 19px;
+  height: 19px;
+  stroke: currentColor;
+  fill: currentColor;
+  stroke-width: 1;
+}

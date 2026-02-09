@@ -1,0 +1,134 @@
+import { computed, ref, watch } from 'vue'
+
+export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilter, dealFilters, dealShowCompleted }) {
+  // Данные таблицы сделок + состояние списка.
+  const dealItems = ref([])
+  const dealListError = ref(null)
+  const dealListLoading = ref(false)
+  const dealPage = ref(1)
+  const dealPageInput = ref(1)
+  const dealPageSize = ref(20)
+  const dealTotal = ref(0)
+  const dealSort = ref({ key: 'date', dir: 'desc' })
+
+  // Общее число страниц по текущему размеру страницы.
+  const totalPages = computed(() => {
+    const pages = Math.ceil(dealTotal.value / dealPageSize.value)
+    return pages > 0 ? pages : 1
+  })
+
+  // Если страниц стало меньше, возвращаемся в допустимый диапазон.
+  watch(totalPages, (total) => {
+    if (dealPage.value > total) dealPage.value = total
+  })
+
+  // Держим поле "номер страницы" синхронно с реальной страницей.
+  watch(dealPage, (val) => {
+    dealPageInput.value = val
+  })
+
+  // При смене размера страницы начинаем с первой.
+  watch(dealPageSize, () => {
+    dealPage.value = 1
+    loadDeals(1)
+  })
+
+  // Локальная сортировка уже загруженных строк.
+  const sortedDeals = computed(() => {
+    const list = [...dealItems.value]
+    const { key, dir } = dealSort.value
+    const getVal = (d) => {
+      if (key === 'type') return d.deal_type || ''
+      if (key === 'customer') return d.customer_nickname || ''
+      if (key === 'region') return d.region_code || ''
+      if (key === 'status') return d.flow_status || ''
+      if (key === 'date') return new Date(d.purchase_at || d.created_at || 0).getTime()
+      return ''
+    }
+    list.sort((a, b) => {
+      const av = getVal(a)
+      const bv = getVal(b)
+      if (typeof av === 'number' && typeof bv === 'number') {
+        return dir === 'asc' ? av - bv : bv - av
+      }
+      return dir === 'asc'
+        ? String(av || '').localeCompare(String(bv || ''))
+        : String(bv || '').localeCompare(String(av || ''))
+    })
+    return list
+  })
+
+  // Переключает направление сортировки по колонке.
+  function toggleDealSort(key) {
+    const current = dealSort.value
+    if (current.key === key) {
+      current.dir = current.dir === 'asc' ? 'desc' : 'asc'
+    } else {
+      dealSort.value = { key, dir: 'asc' }
+    }
+  }
+
+  // Безопасный переход на страницу.
+  function setDealPage(page) {
+    const target = Math.min(Math.max(1, Number(page) || 1), totalPages.value)
+    if (target === dealPage.value) return
+    loadDeals(target)
+  }
+
+  function jumpDealPage() {
+    setDealPage(dealPageInput.value)
+  }
+
+  function prevDealPage() {
+    setDealPage(dealPage.value - 1)
+  }
+
+  function nextDealPage() {
+    setDealPage(dealPage.value + 1)
+  }
+
+  // Загружает сделки с учетом фильтров и пагинации.
+  async function loadDeals(page = 1) {
+    dealListError.value = null
+    dealListLoading.value = true
+    try {
+      const params = new URLSearchParams()
+      if (dealFilters.search_q) params.set('q', dealFilters.search_q)
+      if (dealFilters.type_q) params.set('type_q', dealFilters.type_q)
+      if (dealFilters.customer_q) params.set('customer_q', dealFilters.customer_q)
+      if (dealFilters.region_q) params.set('region_q', dealFilters.region_q)
+      params.set('flow_status_q', resolveDealFlowStatusFilter(dealFilters.status_q, dealShowCompleted.value))
+      if (dealFilters.purchase_from) params.set('purchase_from', dealFilters.purchase_from)
+      if (dealFilters.purchase_to) params.set('purchase_to', dealFilters.purchase_to)
+      params.set('page', String(page))
+      params.set('page_size', String(dealPageSize.value))
+      const res = await apiGet(`/deals?${params.toString()}`, { token: auth.state.token })
+      dealItems.value = res?.items || []
+      dealTotal.value = res?.total || 0
+      dealPage.value = page
+    } catch (e) {
+      dealListError.value = mapApiError(e?.message)
+    } finally {
+      dealListLoading.value = false
+    }
+  }
+
+  return {
+    dealItems,
+    dealListError,
+    dealListLoading,
+    dealPage,
+    dealPageInput,
+    dealPageSize,
+    dealTotal,
+    dealSort,
+    totalPages,
+    sortedDeals,
+    toggleDealSort,
+    setDealPage,
+    jumpDealPage,
+    prevDealPage,
+    nextDealPage,
+    loadDeals,
+  }
+}
