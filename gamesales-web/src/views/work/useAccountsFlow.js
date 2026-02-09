@@ -1,3 +1,5 @@
+import { confirmDiscardIfNeeded, isSameNormalized } from './unsavedChanges'
+
 export function useAccountsFlow({
   auth,
   apiGet,
@@ -34,7 +36,10 @@ export function useAccountsFlow({
   accountsLoading,
   accountSaving,
   loadAccountSlotAssignments,
+  suppressUnsavedConfirm,
+  requestUnsavedConfirm,
 }) {
+  let initialEditAccountSnapshot = null
   // Раскодирует base64-строку с учетом UTF-8.
   function decodeSecret(value) {
     try {
@@ -216,7 +221,26 @@ export function useAccountsFlow({
     editAccount.has_account = Boolean(account)
     editAccount.has_email = Boolean(email)
     editAccount.has_auth = Boolean(authSecret)
-    loadAccountGames(a.account_id)
+    // Фиксируем исходное состояние, чтобы уметь определять несохраненные изменения.
+    const syncInitialAccountSnapshot = () => {
+      initialEditAccountSnapshot = {
+        login_name: editAccount.login_name,
+        domain_code: editAccount.domain_code,
+        region_code: editAccount.region_code,
+        status_code: editAccount.status_code,
+        notes: editAccount.notes,
+        account_date: editAccount.account_date,
+        email_password: editAccount.email_password,
+        account_password: editAccount.account_password,
+        auth_code: editAccount.auth_code,
+        reserve_text: editAccount.reserve_text,
+        game_ids: [...(editAccount.game_ids || [])],
+      }
+    }
+    syncInitialAccountSnapshot()
+    loadAccountGames(a.account_id).finally(() => {
+      if (editAccount.open && accountEditMode.value === 'view') syncInitialAccountSnapshot()
+    })
     loadAccountDeals(a.account_id)
     loadAccountSlotAssignments(a.account_id)
   }
@@ -242,9 +266,39 @@ export function useAccountsFlow({
     newAccount.auth_code = ''
     newAccount.game_ids = []
     accountGameSearch.value = ''
+    initialEditAccountSnapshot = null
   }
 
-  function cancelEditAccount() {
+  async function cancelEditAccount() {
+    const guardEnabled = !suppressUnsavedConfirm?.value
+    const createDirty = accountModalMode.value === 'create' && isSameNormalized(newAccount, {
+      login_name: '',
+      domain_code: '',
+      region_code: '',
+      notes: '',
+      account_date: '',
+      email_password: '',
+      account_password: '',
+      reserve_text: '',
+      auth_code: '',
+      game_ids: [],
+    }) === false
+    const editCurrent = {
+      login_name: editAccount.login_name,
+      domain_code: editAccount.domain_code,
+      region_code: editAccount.region_code,
+      status_code: editAccount.status_code,
+      notes: editAccount.notes,
+      account_date: editAccount.account_date,
+      email_password: editAccount.email_password,
+      account_password: editAccount.account_password,
+      auth_code: editAccount.auth_code,
+      reserve_text: editAccount.reserve_text,
+      game_ids: [...(editAccount.game_ids || [])],
+    }
+    const editDirty = accountModalMode.value === 'edit' && accountEditMode.value === 'edit' && !isSameNormalized(editCurrent, initialEditAccountSnapshot || {})
+    if (guardEnabled && !(await confirmDiscardIfNeeded(createDirty || editDirty, { requestConfirm: requestUnsavedConfirm }))) return false
+
     editAccount.open = false
     accountModalMode.value = 'edit'
     editAccount.account_id = null
@@ -285,6 +339,8 @@ export function useAccountsFlow({
     newAccount.auth_code = ''
     newAccount.game_ids = []
     accountGameSearch.value = ''
+    initialEditAccountSnapshot = null
+    return true
   }
 
   async function createAccount() {

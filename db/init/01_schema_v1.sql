@@ -249,6 +249,8 @@ CREATE TABLE IF NOT EXISTS app.deals (
   flow_status_code text NOT NULL DEFAULT 'pending' REFERENCES app.deal_flow_statuses(code),
   region_id    smallint REFERENCES app.regions(region_id),
   customer_id  bigint REFERENCES app.customers(customer_id),
+  order_number text,
+  responsible_username text,
   currency     text NOT NULL DEFAULT 'RUB',
   total_amount numeric(14,2),
   notes        text,
@@ -262,6 +264,8 @@ COMMENT ON COLUMN app.deals.status_code IS 'Статус сделки';
 COMMENT ON COLUMN app.deals.flow_status_code IS 'Статус процесса сделки';
 COMMENT ON COLUMN app.deals.region_id IS 'Регион сделки';
 COMMENT ON COLUMN app.deals.customer_id IS 'Клиент';
+COMMENT ON COLUMN app.deals.order_number IS 'Номер заказа/заявки';
+COMMENT ON COLUMN app.deals.responsible_username IS 'Ответственный менеджер';
 COMMENT ON COLUMN app.deals.currency IS 'Валюта';
 COMMENT ON COLUMN app.deals.total_amount IS 'Сумма сделки';
 COMMENT ON COLUMN app.deals.notes IS 'Заметки';

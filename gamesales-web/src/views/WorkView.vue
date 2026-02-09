@@ -55,6 +55,24 @@
         />
       </main>
     </div>
+
+    <!-- Единый confirm в стиле интерфейса для несохраненных изменений -->
+    <teleport to="body">
+      <div v-if="unsavedConfirm.open" class="work-page work-modal-root modal-backdrop unsaved-confirm" @click.self="answerUnsavedConfirm(false)">
+        <div class="modal modal--auto unsaved-confirm__modal">
+          <div class="panel__head panel__head--tight unsaved-confirm__head">
+            <h3 class="unsaved-confirm__title">Несохраненные изменения</h3>
+          </div>
+          <div class="modal__body">
+            <p class="muted unsaved-confirm__text">{{ unsavedConfirm.message }}</p>
+            <div class="toolbar-actions unsaved-confirm__actions">
+              <button class="ghost" type="button" @click="answerUnsavedConfirm(false)">Остаться</button>
+              <button class="btn btn--danger" type="button" @click="answerUnsavedConfirm(true)">Закрыть без сохранения</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
@@ -163,6 +181,29 @@ const closeDealModal = () => closeDealModalDeferred.call()
 const loadAccountsAll = (...args) => loadAccountsAllDeferred.call(...args)
 const loadAccountSlotAssignments = (...args) => loadAccountSlotAssignmentsDeferred.call(...args)
 const loadGameSlotAssignments = (...args) => loadGameSlotAssignmentsDeferred.call(...args)
+const suppressUnsavedConfirm = ref(false)
+const unsavedConfirm = reactive({
+  open: false,
+  message: '',
+  resolver: null,
+})
+
+function requestUnsavedConfirm(message) {
+  // Показывает кастомное модальное подтверждение вместо системного confirm.
+  return new Promise((resolve) => {
+    unsavedConfirm.open = true
+    unsavedConfirm.message = message || 'Есть несохраненные изменения. Закрыть без сохранения?'
+    unsavedConfirm.resolver = resolve
+  })
+}
+
+function answerUnsavedConfirm(accepted) {
+  const resolve = unsavedConfirm.resolver
+  unsavedConfirm.open = false
+  unsavedConfirm.message = ''
+  unsavedConfirm.resolver = null
+  if (typeof resolve === 'function') resolve(Boolean(accepted))
+}
 
 // Основное состояние экрана: списки, флаги загрузки, ошибки, успехи.
 const apiOk = ref(null)
@@ -353,9 +394,10 @@ const dealModalTitle = computed(() => {
     const dealKind = newDeal.deal_type_code === 'sale' ? 'ПРОДАЖА' : 'ШЕРИНГ'
     return `НОВАЯ СДЕЛКА - ${dealKind}`
   }
-  if (!editDeal.open) return 'Сделка'
+  if (!editDeal.open) return 'СДЕЛКА'
+  const dealKind = editDeal.deal_type_code === 'sale' ? 'ПРОДАЖА' : 'ШЕРИНГ'
   const dateLabel = formatDateOnly(editDeal.purchase_at || editDeal.created_at)
-  return dateLabel === '—' ? 'Сделка' : `Сделка ${dateLabel}`
+  return dateLabel === '—' ? `СДЕЛКА - ${dealKind}` : `СДЕЛКА (${dealKind}) - ${dateLabel}`
 })
 
 const {
@@ -369,18 +411,24 @@ const {
 
 // Закрывает все открытые модалки перед переключением на другой сценарий.
 function closeAllModals() {
-  closePwdModal()
-  closeAccountImport()
-  closeGameImport()
-  closeSlotImport()
-  closeGameModal()
-  closeDealModal()
-  closeDomainModal()
-  closeSourceModal()
-  closePlatformModal()
-  closeRegionModal()
-  closeUserModal()
-  cancelEditAccount()
+  suppressUnsavedConfirm.value = true
+  try {
+    if (unsavedConfirm.open) answerUnsavedConfirm(false)
+    closePwdModal()
+    closeAccountImport()
+    closeGameImport()
+    closeSlotImport()
+    closeGameModal()
+    closeDealModal()
+    closeDomainModal()
+    closeSourceModal()
+    closePlatformModal()
+    closeRegionModal()
+    closeUserModal()
+    cancelEditAccount()
+  } finally {
+    suppressUnsavedConfirm.value = false
+  }
 }
 
 const newUser = reactive({
@@ -424,6 +472,7 @@ const newDealResponsible = ref('')
 const newDealCommentOpen = ref(false)
 
 const editDeal = reactive(createEditDealState())
+const editDealResponsible = ref('')
 
 const games = ref([])
 const gamesAll = ref([])
@@ -623,6 +672,8 @@ const { createDeal, updateDeal, markDealCompleted } = useDealsActions({
   toUtcDateTime,
   newDeal,
   editDeal,
+  newDealResponsible,
+  editDealResponsible,
   dealPage,
   dealError,
   dealOk,
@@ -632,6 +683,7 @@ const { createDeal, updateDeal, markDealCompleted } = useDealsActions({
   loadDeals,
   loadAccountsAll,
   closeDealModal,
+  suppressUnsavedConfirm,
 })
 const usersSort = ref({ key: 'created_at', dir: 'desc' })
 const domainsSortAsc = ref(true)
@@ -807,6 +859,8 @@ const {
   writeLogoCache,
   clearLogoCache,
   loadGameSlotAssignments,
+  suppressUnsavedConfirm,
+  requestUnsavedConfirm,
 })
 
 const {
@@ -855,6 +909,8 @@ const {
   accountsLoading,
   accountSaving,
   loadAccountSlotAssignments,
+  suppressUnsavedConfirm,
+  requestUnsavedConfirm,
 })
 
 loadAccountsAllDeferred.set(loadAccountsAllFromAccountsFlow)
@@ -926,6 +982,7 @@ const {
   openCreateSharingModal,
   closeDealModal: closeDealModalFromFlow,
   startEditDeal,
+  toggleDealEditMode,
 } = useDealModalFlow({
   closeAllModals,
   resetModalPos,
@@ -938,6 +995,7 @@ const {
   dealEditMode,
   dealInitLock,
   newDealResponsible,
+  editDealResponsible,
   newDealCommentOpen,
   newDealGameSearch,
   editDealGameSearch,
@@ -957,6 +1015,8 @@ const {
   dealSlotAvailabilityEdit,
   nextTick,
   loadDealSlotAvailability,
+  suppressUnsavedConfirm,
+  requestUnsavedConfirm,
 })
 
 closeDealModalDeferred.set(closeDealModalFromFlow)
@@ -1036,6 +1096,8 @@ const {
   pwdLoading,
   showPwdForm,
   pwdForm,
+  suppressUnsavedConfirm,
+  requestUnsavedConfirm,
 })
 
 // Контекст верхней панели: вкладки, пользователь и кнопка выхода.
@@ -1162,6 +1224,8 @@ const {
   loadGamesAll,
   loadAccounts,
   loadAccountsAll,
+  suppressUnsavedConfirm,
+  requestUnsavedConfirm,
 })
 
 // Работа со справочниками: платформы, регионы, источники, домены.
@@ -1231,6 +1295,8 @@ const {
   newDeal,
   editDeal,
   loadDealSlotAvailability,
+  suppressUnsavedConfirm,
+  requestUnsavedConfirm,
 })
 
 const {
@@ -1666,6 +1732,7 @@ const {
   closeDealModal,
   dealModalTitle,
   dealEditMode,
+  toggleDealEditMode,
   updateDeal,
   dealLoading,
   dealBackgroundSync,
@@ -1717,6 +1784,7 @@ const {
   dealOk,
   newDeal,
   newDealResponsible,
+  editDealResponsible,
   auth,
   newDealGameSearch,
   onNewDealGameSearch,

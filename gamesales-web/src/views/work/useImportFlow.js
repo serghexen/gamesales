@@ -1,3 +1,5 @@
+import { confirmDiscardIfNeeded } from './unsavedChanges'
+
 export function useImportFlow({
   auth,
   API_BASE,
@@ -56,6 +58,8 @@ export function useImportFlow({
   loadGamesAll,
   loadAccounts,
   loadAccountsAll,
+  suppressUnsavedConfirm,
+  requestUnsavedConfirm,
 }) {
   // Таймеры опроса фоновых задач импорта.
   let gameImportStatusTimer = null
@@ -155,7 +159,11 @@ export function useImportFlow({
   }
 
   // Полностью очищает состояние импорта слотов и останавливает опрос.
-  function closeSlotImport() {
+  async function closeSlotImport() {
+    const guardEnabled = !suppressUnsavedConfirm?.value
+    const isDirty = Boolean(slotImportFile.value || slotImportValidated.value || slotImportErrors.value.length || slotImportWarnings.value.length || slotImportJobId.value || slotImportMessage.value || slotImportError.value)
+    if (guardEnabled && !(await confirmDiscardIfNeeded(isDirty, { requestConfirm: requestUnsavedConfirm }))) return false
+
     showSlotImport.value = false
     slotImportFile.value = null
     slotImportMessage.value = ''
@@ -175,10 +183,15 @@ export function useImportFlow({
     stopSlotImportStatusPolling()
     localStorage.removeItem(SLOT_VALIDATE_JOB_KEY)
     localStorage.removeItem(SLOT_IMPORT_JOB_KEY)
+    return true
   }
 
   // Закрывает импорт игр и очищает временные данные.
-  function closeGameImport() {
+  async function closeGameImport() {
+    const guardEnabled = !suppressUnsavedConfirm?.value
+    const isDirty = Boolean(gameImportFile.value || gameImportValidated.value || gameImportErrors.value.length || gameImportWarnings.value.length || gameImportJobId.value || gameImportMessage.value)
+    if (guardEnabled && !(await confirmDiscardIfNeeded(isDirty, { requestConfirm: requestUnsavedConfirm }))) return false
+
     showGameImport.value = false
     gameImportFile.value = null
     gameImportValidated.value = false
@@ -194,10 +207,15 @@ export function useImportFlow({
     gameImportProgress.phase = ''
     gameImportJobId.value = ''
     stopGameImportStatusPolling()
+    return true
   }
 
   // Закрывает импорт аккаунтов и очищает временные данные.
-  function closeAccountImport() {
+  async function closeAccountImport() {
+    const guardEnabled = !suppressUnsavedConfirm?.value
+    const isDirty = Boolean(accountImportFile.value || accountImportValidated.value || accountImportErrors.value.length || accountImportWarnings.value.length || accountImportJobId.value || accountImportMessage.value)
+    if (guardEnabled && !(await confirmDiscardIfNeeded(isDirty, { requestConfirm: requestUnsavedConfirm }))) return false
+
     showAccountImport.value = false
     accountImportFile.value = null
     accountImportValidated.value = false
@@ -213,6 +231,7 @@ export function useImportFlow({
     accountImportProgress.phase = ''
     accountImportJobId.value = ''
     stopAccountImportStatusPolling()
+    return true
   }
 
   // Один шаг опроса статуса импорта игр.

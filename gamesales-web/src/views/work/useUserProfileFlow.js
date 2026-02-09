@@ -1,3 +1,5 @@
+import { confirmDiscardIfNeeded, isSameNormalized } from './unsavedChanges'
+
 export function useUserProfileFlow({
   auth,
   router,
@@ -22,7 +24,19 @@ export function useUserProfileFlow({
   pwdLoading,
   showPwdForm,
   pwdForm,
+  suppressUnsavedConfirm,
+  requestUnsavedConfirm,
 }) {
+  // Закрывает модалку программно, чтобы confirm не срабатывал после успешного сохранения.
+  async function closeModalSilently(closeFn) {
+    if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = true
+    try {
+      return await closeFn()
+    } finally {
+      if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = false
+    }
+  }
+
   // Простая проверка, что API доступен.
   async function checkApi() {
     loading.value = true
@@ -69,8 +83,9 @@ export function useUserProfileFlow({
       userOk.value = `Пользователь ${newUser.username} создан`
       newUser.username = ''
       newUser.password = ''
+      newUser.role_code = 'manager'
       await loadUsers()
-      closeUserModal()
+      await closeModalSilently(closeUserModal)
     } catch (e) {
       userError.value = mapApiError(e?.message)
     } finally {
@@ -88,12 +103,17 @@ export function useUserProfileFlow({
   }
 
   // Закрывает модалку создания пользователя и чистит форму.
-  function closeUserModal() {
+  async function closeUserModal() {
+    const guardEnabled = !suppressUnsavedConfirm?.value
+    const isDirty = !isSameNormalized(newUser, { username: '', password: '', role_code: 'manager' })
+    if (guardEnabled && !(await confirmDiscardIfNeeded(isDirty, { requestConfirm: requestUnsavedConfirm }))) return false
+
     showUserForm.value = false
     userError.value = null
     userOk.value = null
     newUser.username = ''
     newUser.password = ''
+    return true
   }
 
   // Меняет пароль текущего пользователя.
@@ -136,13 +156,18 @@ export function useUserProfileFlow({
   }
 
   // Закрывает модалку смены пароля и чистит поля.
-  function closePwdModal() {
+  async function closePwdModal() {
+    const guardEnabled = !suppressUnsavedConfirm?.value
+    const isDirty = !isSameNormalized(pwdForm, { current: '', next: '', next2: '' })
+    if (guardEnabled && !(await confirmDiscardIfNeeded(isDirty, { requestConfirm: requestUnsavedConfirm }))) return false
+
     showPwdForm.value = false
     pwdError.value = null
     pwdOk.value = false
     pwdForm.current = ''
     pwdForm.next = ''
     pwdForm.next2 = ''
+    return true
   }
 
   // Выход из аккаунта и переход на страницу логина.

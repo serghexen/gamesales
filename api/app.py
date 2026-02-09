@@ -21,8 +21,11 @@ load_dotenv(ROOT_DIR / ".env.dev", override=True)
 def ensure_analytics_schema():
     try:
         with psycopg.connect(DB_DSN) as conn:
+            # Поддерживаем схему в актуальном состоянии для локального запуска без ручных миграций.
             exec1(conn, "ALTER TABLE app.regions ADD COLUMN IF NOT EXISTS purchase_cost_rate numeric(12,6) NOT NULL DEFAULT 1.0")
             exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS completed_at timestamptz")
+            exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS order_number text")
+            exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS responsible_username text")
             exec1(
                 conn,
                 """

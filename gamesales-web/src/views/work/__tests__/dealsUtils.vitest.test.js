@@ -21,6 +21,8 @@ describe('dealsUtils', () => {
     const state = createEditDealState()
     expect(state.open).toBe(false)
     expect(state.deal_id).toBeNull()
+    expect(state.order_number).toBe('')
+    expect(state.completed_at).toBe('')
     expect(state.flow_status_code).toBe('')
   })
 

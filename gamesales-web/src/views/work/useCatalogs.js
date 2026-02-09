@@ -1,3 +1,5 @@
+import { confirmDiscardIfNeeded, isSameNormalized } from './unsavedChanges'
+
 export function useCatalogs({
   auth,
   apiGet,
@@ -35,7 +37,22 @@ export function useCatalogs({
   newDeal,
   editDeal,
   loadDealSlotAvailability,
+  suppressUnsavedConfirm,
+  requestUnsavedConfirm,
 }) {
+  let initialDomainSnapshot = null
+  let initialSourceSnapshot = null
+  let initialPlatformSnapshot = null
+  let initialRegionSnapshot = null
+  // Закрывает модалку программно и временно отключает confirm о несохраненных изменениях.
+  async function closeModalSilently(closeFn) {
+    if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = true
+    try {
+      return await closeFn()
+    } finally {
+      if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = false
+    }
+  }
   // Загружает базовые справочники для форм: платформы и регионы.
   async function loadCatalogs() {
     catalogsLoading.value = true
@@ -101,6 +118,7 @@ export function useCatalogs({
     editDomain.name = d.name
     editDomain.original = d.name
     domainEditMode.value = 'view'
+    initialDomainSnapshot = { name: d.name }
   }
 
   function cancelEditDomain() {
@@ -108,6 +126,7 @@ export function useCatalogs({
     editDomain.name = ''
     editDomain.original = ''
     domainEditMode.value = 'view'
+    initialDomainSnapshot = null
   }
 
   // Открывает модалку создания домена.
@@ -120,12 +139,18 @@ export function useCatalogs({
     catalogsOk.value = null
   }
 
-  function closeDomainModal() {
+  async function closeDomainModal() {
+    const guardEnabled = !suppressUnsavedConfirm?.value
+    const createDirty = showDomainForm.value && !isSameNormalized(newDomain.value, '')
+    const editDirty = editDomain.open && domainEditMode.value === 'edit' && !isSameNormalized({ name: editDomain.name }, initialDomainSnapshot || {})
+    if (guardEnabled && !(await confirmDiscardIfNeeded(createDirty || editDirty, { requestConfirm: requestUnsavedConfirm }))) return false
+
     showDomainForm.value = false
     cancelEditDomain()
     catalogsError.value = null
     catalogsOk.value = null
     newDomain.value = ''
+    return true
   }
 
   // Сохраняет изменения домена.
@@ -139,7 +164,7 @@ export function useCatalogs({
       await apiPut(`/domains/${encodeURIComponent(editDomain.original)}`, { name: editDomain.name }, { token: auth.state.token })
       catalogsOk.value = 'Домен обновлён'
       await loadDomains()
-      closeDomainModal()
+      await closeModalSilently(closeDomainModal)
     } catch (e) {
       catalogsError.value = mapApiError(e?.message)
     } finally {
@@ -158,6 +183,7 @@ export function useCatalogs({
     editSource.code = s.code
     editSource.name = s.name
     sourceEditMode.value = 'view'
+    initialSourceSnapshot = { code: s.code, name: s.name }
   }
 
   function cancelEditSource() {
@@ -166,6 +192,7 @@ export function useCatalogs({
     editSource.code = ''
     editSource.name = ''
     sourceEditMode.value = 'view'
+    initialSourceSnapshot = null
   }
 
   function openSourceModal() {
@@ -177,13 +204,19 @@ export function useCatalogs({
     catalogsOk.value = null
   }
 
-  function closeSourceModal() {
+  async function closeSourceModal() {
+    const guardEnabled = !suppressUnsavedConfirm?.value
+    const createDirty = showSourceForm.value && !isSameNormalized(newSource, { code: '', name: '' })
+    const editDirty = editSource.open && sourceEditMode.value === 'edit' && !isSameNormalized({ code: editSource.code, name: editSource.name }, initialSourceSnapshot || {})
+    if (guardEnabled && !(await confirmDiscardIfNeeded(createDirty || editDirty, { requestConfirm: requestUnsavedConfirm }))) return false
+
     showSourceForm.value = false
     cancelEditSource()
     catalogsError.value = null
     catalogsOk.value = null
     newSource.code = ''
     newSource.name = ''
+    return true
   }
 
   // Сохраняет изменения источника.
@@ -201,7 +234,7 @@ export function useCatalogs({
       )
       catalogsOk.value = 'Источник обновлён'
       await loadSources()
-      closeSourceModal()
+      await closeModalSilently(closeSourceModal)
     } catch (e) {
       catalogsError.value = mapApiError(e?.message)
     } finally {
@@ -220,6 +253,7 @@ export function useCatalogs({
     editPlatform.name = p.name
     editPlatform.slot_capacity = p.slot_capacity || 0
     platformEditMode.value = 'view'
+    initialPlatformSnapshot = { name: p.name, slot_capacity: p.slot_capacity || 0 }
   }
 
   function cancelEditPlatform() {
@@ -228,6 +262,7 @@ export function useCatalogs({
     editPlatform.name = ''
     editPlatform.slot_capacity = 0
     platformEditMode.value = 'view'
+    initialPlatformSnapshot = null
   }
 
   function openPlatformModal() {
@@ -239,7 +274,12 @@ export function useCatalogs({
     catalogsOk.value = null
   }
 
-  function closePlatformModal() {
+  async function closePlatformModal() {
+    const guardEnabled = !suppressUnsavedConfirm?.value
+    const createDirty = showPlatformForm.value && !isSameNormalized(newPlatform, { code: '', name: '', slot_capacity: 0 })
+    const editDirty = editPlatform.open && platformEditMode.value === 'edit' && !isSameNormalized({ name: editPlatform.name, slot_capacity: editPlatform.slot_capacity }, initialPlatformSnapshot || {})
+    if (guardEnabled && !(await confirmDiscardIfNeeded(createDirty || editDirty, { requestConfirm: requestUnsavedConfirm }))) return false
+
     showPlatformForm.value = false
     cancelEditPlatform()
     catalogsError.value = null
@@ -247,6 +287,7 @@ export function useCatalogs({
     newPlatform.code = ''
     newPlatform.name = ''
     newPlatform.slot_capacity = 0
+    return true
   }
 
   async function saveEditPlatform() {
@@ -263,7 +304,7 @@ export function useCatalogs({
       )
       catalogsOk.value = 'Платформа обновлена'
       await loadCatalogs()
-      closePlatformModal()
+      await closeModalSilently(closePlatformModal)
     } catch (e) {
       catalogsError.value = mapApiError(e?.message)
     } finally {
@@ -281,6 +322,7 @@ export function useCatalogs({
     editRegion.name = r.name
     editRegion.purchase_cost_rate = Number(r.purchase_cost_rate ?? 1)
     regionEditMode.value = 'view'
+    initialRegionSnapshot = { name: r.name, purchase_cost_rate: Number(r.purchase_cost_rate ?? 1) }
   }
 
   function cancelEditRegion() {
@@ -289,6 +331,7 @@ export function useCatalogs({
     editRegion.name = ''
     editRegion.purchase_cost_rate = 1
     regionEditMode.value = 'view'
+    initialRegionSnapshot = null
   }
 
   function openRegionModal() {
@@ -300,7 +343,12 @@ export function useCatalogs({
     catalogsOk.value = null
   }
 
-  function closeRegionModal() {
+  async function closeRegionModal() {
+    const guardEnabled = !suppressUnsavedConfirm?.value
+    const createDirty = showRegionForm.value && !isSameNormalized(newRegion, { code: '', name: '', purchase_cost_rate: 1 })
+    const editDirty = editRegion.open && regionEditMode.value === 'edit' && !isSameNormalized({ name: editRegion.name, purchase_cost_rate: editRegion.purchase_cost_rate }, initialRegionSnapshot || {})
+    if (guardEnabled && !(await confirmDiscardIfNeeded(createDirty || editDirty, { requestConfirm: requestUnsavedConfirm }))) return false
+
     showRegionForm.value = false
     cancelEditRegion()
     catalogsError.value = null
@@ -308,6 +356,7 @@ export function useCatalogs({
     newRegion.code = ''
     newRegion.name = ''
     newRegion.purchase_cost_rate = 1
+    return true
   }
 
   async function saveEditRegion() {
@@ -324,7 +373,7 @@ export function useCatalogs({
       )
       catalogsOk.value = 'Регион обновлён'
       await loadCatalogs()
-      closeRegionModal()
+      await closeModalSilently(closeRegionModal)
     } catch (e) {
       catalogsError.value = mapApiError(e?.message)
     } finally {
@@ -347,7 +396,7 @@ export function useCatalogs({
       catalogsOk.value = `Домен ${newDomain.value} добавлен`
       newDomain.value = ''
       await loadDomains()
-      closeDomainModal()
+      await closeModalSilently(closeDomainModal)
     } catch (e) {
       catalogsError.value = mapApiError(e?.message)
     } finally {
@@ -371,7 +420,7 @@ export function useCatalogs({
       newSource.code = ''
       newSource.name = ''
       await loadSources()
-      closeSourceModal()
+      await closeModalSilently(closeSourceModal)
     } catch (e) {
       catalogsError.value = mapApiError(e?.message)
     } finally {
@@ -396,7 +445,7 @@ export function useCatalogs({
       newPlatform.name = ''
       newPlatform.slot_capacity = 0
       await loadCatalogs()
-      closePlatformModal()
+      await closeModalSilently(closePlatformModal)
     } catch (e) {
       catalogsError.value = mapApiError(e?.message)
     } finally {
@@ -421,7 +470,7 @@ export function useCatalogs({
       newRegion.name = ''
       newRegion.purchase_cost_rate = 1
       await loadCatalogs()
-      closeRegionModal()
+      await closeModalSilently(closeRegionModal)
     } catch (e) {
       catalogsError.value = mapApiError(e?.message)
     } finally {
@@ -440,7 +489,7 @@ export function useCatalogs({
       await apiDelete(`/domains/${encodeURIComponent(name)}`, { token: auth.state.token })
       catalogsOk.value = `Домен ${name} удалён`
       await loadDomains()
-      if (editDomain.open && editDomain.original === name) closeDomainModal()
+      if (editDomain.open && editDomain.original === name) await closeModalSilently(closeDomainModal)
     } catch (e) {
       catalogsError.value = mapApiError(e?.message)
     } finally {
@@ -460,7 +509,7 @@ export function useCatalogs({
       await apiDelete(`/sources/${encodeURIComponent(sourceId)}`, { token: auth.state.token })
       catalogsOk.value = 'Источник удалён'
       await loadSources()
-      if (editSource.open && editSource.source_id === sourceId) closeSourceModal()
+      if (editSource.open && editSource.source_id === sourceId) await closeModalSilently(closeSourceModal)
     } catch (e) {
       catalogsError.value = mapApiError(e?.message)
     } finally {
@@ -479,7 +528,7 @@ export function useCatalogs({
       await apiDelete(`/platforms/${encodeURIComponent(code)}`, { token: auth.state.token })
       catalogsOk.value = `Платформа ${code} удалена`
       await loadCatalogs()
-      if (editPlatform.open && editPlatform.code === code) closePlatformModal()
+      if (editPlatform.open && editPlatform.code === code) await closeModalSilently(closePlatformModal)
     } catch (e) {
       catalogsError.value = mapApiError(e?.message)
     } finally {
@@ -498,7 +547,7 @@ export function useCatalogs({
       await apiDelete(`/regions/${encodeURIComponent(code)}`, { token: auth.state.token })
       catalogsOk.value = `Регион ${code} удалён`
       await loadCatalogs()
-      if (editRegion.open && editRegion.code === code) closeRegionModal()
+      if (editRegion.open && editRegion.code === code) await closeModalSilently(closeRegionModal)
     } catch (e) {
       catalogsError.value = mapApiError(e?.message)
     } finally {

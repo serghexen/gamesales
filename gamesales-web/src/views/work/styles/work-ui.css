@@ -829,6 +829,91 @@
   gap: 10px;
 }
 
+.work-page .deal-form .input[readonly],
+.work-page .deal-form .input:disabled,
+.work-page .deal-form textarea[readonly],
+.work-page .deal-form textarea:disabled {
+  /* Пунктир и приглушенный фон помогают мгновенно узнать поле "только чтение". */
+  border-style: dashed;
+  background: color-mix(in srgb, var(--input-bg) 82%, #0a1428 18%);
+  color: color-mix(in srgb, var(--ink) 82%, #a4b2ca 18%);
+  box-shadow: none;
+}
+
+.work-page .deal-form .input[readonly]:focus,
+.work-page .deal-form .input:disabled:focus,
+.work-page .deal-form textarea[readonly]:focus,
+.work-page .deal-form textarea:disabled:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.work-page .unsaved-confirm {
+  z-index: 2500;
+}
+
+.work-page.work-modal-root.modal-backdrop.unsaved-confirm {
+  align-items: center;
+  padding: 16px;
+}
+
+.work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__modal {
+  width: min(340px, calc(100vw - 24px));
+  max-width: 340px;
+  min-height: 0;
+  max-height: none;
+  height: auto;
+  padding: 10px;
+  border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(3, 8, 20, 0.42);
+}
+
+.work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__head {
+  margin-bottom: 0;
+  min-height: 34px;
+}
+
+.work-page .unsaved-confirm__title {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__modal .modal__body {
+  flex: initial;
+  overflow: visible;
+  padding: 6px 8px 8px;
+}
+
+.work-page .unsaved-confirm__text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.work-page .unsaved-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.work-page .unsaved-confirm__modal .btn,
+.work-page .unsaved-confirm__modal .ghost {
+  min-height: 30px;
+  padding: 0 9px;
+  font-size: 12px;
+  border-radius: 9px;
+}
+
+@media (max-width: 480px) {
+  .work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__modal {
+    width: min(320px, calc(100vw - 20px));
+    max-width: 320px;
+  }
+}
+
 .work-page .deal-form--sale {
   grid-template-columns: 1fr;
 }
@@ -887,6 +972,11 @@
 
 .work-page .deal-form__triple--sale-top {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.work-page .deal-form__triple--sale-status-row {
+  /* В одной линии держим статус и служебные даты сделки. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .work-page .deal-form__triple--rental-top {

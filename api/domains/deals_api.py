@@ -80,10 +80,12 @@ def mount_deals_routes(
             region_row = q1(conn, "SELECT region_id FROM app.accounts WHERE account_id=%s", (payload.account_id,))
             region_id = int(region_row[0]) if region_row and region_row[0] is not None else None
             deal_row = q1(conn, """
-                INSERT INTO app.deals(deal_type_code, status_code, flow_status_code, region_id, customer_id, currency, total_amount)
-                VALUES ('rental', 'confirmed', 'pending', %s, %s, 'RUB', %s)
+                INSERT INTO app.deals(
+                  deal_type_code, status_code, flow_status_code, region_id, customer_id, currency, total_amount, responsible_username
+                )
+                VALUES ('rental', 'confirmed', 'pending', %s, %s, 'RUB', %s, %s)
                 RETURNING deal_id
-            """, (region_id, customer_id, payload.price))
+            """, (region_id, customer_id, payload.price, user.username))
             deal_id = int(deal_row[0])
     
             row_item = q1(conn, """
@@ -141,6 +143,11 @@ def mount_deals_routes(
         validate_date_range(payload.start_at, payload.end_at, "end_at")
     
         with psycopg.connect(DB_DSN) as conn:
+            # Нормализуем поля "номер заказа" и "ответственный", чтобы не хранить служебные значения.
+            order_number = (payload.order_number or "").strip() or None
+            responsible_username = (payload.responsible_username or "").strip() or None
+            if responsible_username == "current_user":
+                responsible_username = user.username
             if deal_type == "rental":
                 ensure_account_exists(conn, payload.account_id)
                 ensure_game_active(conn, payload.game_id)
@@ -178,10 +185,12 @@ def mount_deals_routes(
                     raise HTTPException(409, "Not enough free slots for selected slot type")
     
             deal_row = q1(conn, """
-                INSERT INTO app.deals(deal_type_code, status_code, flow_status_code, region_id, customer_id, currency, total_amount)
-                VALUES (%s, 'confirmed', 'pending', %s, %s, 'RUB', %s)
+                INSERT INTO app.deals(
+                  deal_type_code, status_code, flow_status_code, region_id, customer_id, currency, total_amount, order_number, responsible_username
+                )
+                VALUES (%s, 'confirmed', 'pending', %s, %s, 'RUB', %s, %s, %s)
                 RETURNING deal_id
-            """, (deal_type, region_id, customer_id, payload.price))
+            """, (deal_type, region_id, customer_id, payload.price, order_number, responsible_username))
             deal_id = int(deal_row[0])
     
             row_item = q1(conn, """
@@ -233,6 +242,8 @@ def mount_deals_routes(
                   d.region_id,
                   d.customer_id,
                   d.total_amount,
+                  d.order_number,
+                  d.responsible_username,
                   di.deal_item_id,
                   di.account_id,
                   di.game_id,
@@ -257,7 +268,7 @@ def mount_deals_routes(
             if not row:
                 raise HTTPException(404, "Deal not found")
     
-            current_type, status_code, flow_status_code, region_id, customer_id, total_amount, deal_item_id, \
+            current_type, status_code, flow_status_code, region_id, customer_id, total_amount, order_number, responsible_username, deal_item_id, \
                 account_id, game_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link = row
     
             deal_type = (payload.deal_type_code or current_type or "").strip().lower()
@@ -293,6 +304,14 @@ def mount_deals_routes(
             new_end_at = payload.end_at if payload.end_at is not None else end_at
             new_notes = payload.notes if payload.notes is not None else notes
             new_game_link = payload.game_link if payload.game_link is not None else game_link
+            new_order_number = order_number if payload.order_number is None else ((payload.order_number or "").strip() or None)
+            if payload.responsible_username is None:
+                new_responsible_username = responsible_username
+            else:
+                normalized_responsible = (payload.responsible_username or "").strip()
+                if normalized_responsible == "current_user":
+                    normalized_responsible = user.username
+                new_responsible_username = normalized_responsible or None
             new_slots_used = payload.slots_used if payload.slots_used is not None else slots_used
             new_flow_status = payload.flow_status_code if payload.flow_status_code is not None else flow_status_code
             if payload.flow_status_code is not None:
@@ -350,10 +369,23 @@ def mount_deals_routes(
                     total_amount=%s,
                     flow_status_code=%s,
                     region_id=%s,
+                    order_number=%s,
+                    responsible_username=%s,
                     completed_at=CASE WHEN %s THEN %s ELSE completed_at END
                 WHERE deal_id=%s
                 """,
-                (deal_type, customer_id, new_price, new_flow_status, region_id, completed_at_changed, completed_at_value, deal_id),
+                (
+                    deal_type,
+                    customer_id,
+                    new_price,
+                    new_flow_status,
+                    region_id,
+                    new_order_number,
+                    new_responsible_username,
+                    completed_at_changed,
+                    completed_at_value,
+                    deal_id,
+                ),
             )
     
             exec1(
@@ -516,6 +548,8 @@ def mount_deals_routes(
                   ds.name as status_name,
                   d.flow_status_code,
                   fs.name as flow_status_name,
+                  d.order_number,
+                  d.responsible_username,
                   COALESCE(rd.code, ra.code) as region_code,
                   di.account_id,
                   a.login_name,
@@ -530,6 +564,7 @@ def mount_deals_routes(
                   di.purchase_cost,
                   di.purchase_at,
                   d.created_at,
+                  d.completed_at,
                   di.slots_used,
                   di.slot_type_code,
                   di.notes,
@@ -554,7 +589,7 @@ def mount_deals_routes(
     
         items = []
         for r in rows:
-            login_full = f"{r[8]}@{r[9]}" if r[8] and r[9] else None
+            login_full = f"{r[10]}@{r[11]}" if r[10] and r[11] else None
             items.append(
                 DealListItem(
                     deal_id=r[0],
@@ -563,23 +598,26 @@ def mount_deals_routes(
                     status=r[3],
                     flow_status_code=r[4],
                     flow_status=r[5],
-                    region_code=r[6],
-                    account_id=r[7],
+                    order_number=r[6],
+                    responsible_username=r[7],
+                    region_code=r[8],
+                    account_id=r[9],
                     account_login=login_full,
-                    game_id=r[10],
-                    game_title=r[11],
-                    game_short_title=r[12],
-                    platform_code=r[13],
-                    customer_nickname=r[14],
-                    source_id=r[15],
-                    price=float(r[16] or 0),
-                    purchase_cost=float(r[17] or 0),
-                    purchase_at=r[18],
-                    created_at=r[19],
-                    slots_used=r[20],
-                    slot_type_code=r[21],
-                    notes=r[22],
-                    game_link=r[23],
+                    game_id=r[12],
+                    game_title=r[13],
+                    game_short_title=r[14],
+                    platform_code=r[15],
+                    customer_nickname=r[16],
+                    source_id=r[17],
+                    price=float(r[18] or 0),
+                    purchase_cost=float(r[19] or 0),
+                    purchase_at=r[20],
+                    created_at=r[21],
+                    completed_at=r[22],
+                    slots_used=r[23],
+                    slot_type_code=r[24],
+                    notes=r[25],
+                    game_link=r[26],
                 )
             )
     

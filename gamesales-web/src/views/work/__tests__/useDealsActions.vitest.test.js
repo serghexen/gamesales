@@ -8,7 +8,7 @@ function ref(initial) {
 
 function createDeps(overrides = {}) {
   return {
-    auth: { state: { token: 'token' } },
+    auth: { state: { token: 'token', user: 'tester' } },
     apiPost: vi.fn().mockResolvedValue({}),
     apiPut: vi.fn().mockResolvedValue({}),
     mapApiError: vi.fn((msg) => String(msg || 'Ошибка')),
@@ -18,6 +18,7 @@ function createDeps(overrides = {}) {
       account_id: '',
       game_id: '',
       customer_nickname: 'buyer',
+      order_number: 'ORD-1',
       source_id: '',
       region_code: 'RU',
       slot_type_code: '',
@@ -33,6 +34,7 @@ function createDeps(overrides = {}) {
       account_id: '',
       game_id: '',
       customer_nickname: 'buyer',
+      order_number: 'ORD-2',
       source_id: '',
       region_code: 'RU',
       slot_type_code: '',
@@ -43,12 +45,15 @@ function createDeps(overrides = {}) {
       notes: '',
       flow_status_code: '',
     },
+    newDealResponsible: ref('current_user'),
+    editDealResponsible: ref('alice'),
     dealPage: ref(1),
     dealError: ref(null),
     dealOk: ref(null),
     dealLoading: ref(false),
     dealSaving: ref(false),
     dealBackgroundSync: ref(false),
+    suppressUnsavedConfirm: ref(false),
     loadDeals: vi.fn().mockResolvedValue(undefined),
     loadAccountsAll: vi.fn().mockResolvedValue(undefined),
     closeDealModal: vi.fn(),
@@ -66,10 +71,13 @@ describe('useDealsActions', () => {
     await createDeal()
 
     expect(deps.apiPost).toHaveBeenCalledTimes(1)
+    expect(deps.apiPost.mock.calls[0][1].order_number).toBe('ORD-1')
+    expect(deps.apiPost.mock.calls[0][1].responsible_username).toBe('tester')
     expect(deps.closeDealModal).toHaveBeenCalledTimes(1)
     expect(deps.dealLoading.value).toBe(false)
     expect(deps.dealSaving.value).toBe(false)
     expect(deps.dealBackgroundSync.value).toBe(false)
+    expect(deps.suppressUnsavedConfirm.value).toBe(false)
     expect(deps.dealError.value).toBeNull()
   })
 
@@ -86,5 +94,16 @@ describe('useDealsActions', () => {
     expect(deps.dealSaving.value).toBe(false)
     expect(deps.dealBackgroundSync.value).toBe(false)
     expect(deps.dealError.value).toBe('save failed')
+  })
+
+  it('updateDeal sends responsible and order number', async () => {
+    const deps = createDeps()
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.apiPut).toHaveBeenCalledTimes(1)
+    expect(deps.apiPut.mock.calls[0][1].order_number).toBe('ORD-2')
+    expect(deps.apiPut.mock.calls[0][1].responsible_username).toBe('alice')
   })
 })

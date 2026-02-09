@@ -1,19 +1,6 @@
 <template>
-                    <div v-if="editDeal.open" class="form deal-form">
+                    <div v-if="editDeal.open" class="form deal-form" :class="{ 'deal-form--sale': editDeal.deal_type_code === 'sale' }">
                       <div class="deal-form__col deal-form__col--left">
-                        <label class="field">
-                          <span class="label">Тип</span>
-                          <input
-                            v-if="dealEditMode === 'view'"
-                            class="input"
-                            :value="getDealTypeName(editDeal.deal_type_code)"
-                            readonly
-                          />
-                          <select v-else v-model="editDeal.deal_type_code" class="input input--select">
-                            <option value="sale">Продажа</option>
-                            <option value="rental">Шеринг</option>
-                          </select>
-                        </label>
                         <label
                           v-if="editDeal.deal_type_code === 'rental' && (dealEditMode === 'view' || dealAccountsForGameLoading || !editDeal.game_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length)"
                           class="field"
@@ -181,26 +168,119 @@
                           </table>
                           <p v-else class="muted">Пока нет назначенных слотов.</p>
                         </div>
-                        <label class="field">
+                        <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-status-row">
+                          <label class="field">
+                            <span class="label">Дата создания</span>
+                            <input class="input" :value="formatDateTimeMinutes(editDeal.created_at)" readonly />
+                          </label>
+                          <label class="field">
+                            <span class="label">Дата завершения</span>
+                            <input
+                              class="input"
+                              :value="editDeal.completed_at ? formatDateTimeMinutes(editDeal.completed_at) : '—'"
+                              readonly
+                            />
+                          </label>
+                          <label class="field">
+                            <span class="label">Статус</span>
+                            <input
+                              v-if="dealEditMode === 'view'"
+                              class="input"
+                              :value="getFlowStatusLabel(editDeal.flow_status_code)"
+                              readonly
+                            />
+                            <select v-else v-model="editDeal.flow_status_code" class="input input--select">
+                              <option value="">— не выбрано —</option>
+                              <option v-for="s in dealFlowStatusOptions" :key="s.code" :value="s.code">
+                                {{ s.name }}
+                              </option>
+                            </select>
+                          </label>
+                        </div>
+                        <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-top">
+                          <label class="field">
+                            <span class="label">Откуда</span>
+                            <input
+                              v-if="dealEditMode === 'view'"
+                              class="input"
+                              :value="getSourceLabelById(editDeal.source_id)"
+                              readonly
+                            />
+                            <select v-else v-model.number="editDeal.source_id" class="input input--select">
+                              <option value="">— не выбрано —</option>
+                              <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">
+                                {{ s.name }} ({{ s.code }})
+                              </option>
+                            </select>
+                          </label>
+                          <label class="field">
+                            <span class="label">Номер заказа</span>
+                            <input v-model.trim="editDeal.order_number" class="input" placeholder="например, 12345" :readonly="dealEditMode === 'view'" />
+                          </label>
+                          <label class="field">
+                            <span class="label">Покупатель</span>
+                            <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="nickname" :readonly="dealEditMode === 'view'" />
+                          </label>
+                        </div>
+                        <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__quad deal-form__quad--sale-costs">
+                          <label class="field">
+                            <span class="label">Регион</span>
+                            <input
+                              v-if="dealEditMode === 'view'"
+                              class="input"
+                              :value="getRegionLabel(editDeal.region_code)"
+                              readonly
+                            />
+                            <select v-else v-model="editDeal.region_code" class="input input--select">
+                              <option value="">— не выбрано —</option>
+                              <option v-for="r in regions" :key="r.code" :value="r.code">
+                                {{ r.name }} ({{ r.code }})
+                              </option>
+                            </select>
+                          </label>
+                          <label class="field">
+                            <span class="label">Ответственный</span>
+                            <input
+                              v-if="dealEditMode === 'view'"
+                              class="input"
+                              :value="editDealResponsible || '— не выбрано —'"
+                              readonly
+                            />
+                            <select v-else v-model="editDealResponsible" class="input input--select">
+                              <option value="">— не выбрано —</option>
+                              <option value="current_user">{{ auth.state.user || 'Текущий пользователь' }}</option>
+                            </select>
+                          </label>
+                          <label class="field">
+                            <span class="label">Закуп</span>
+                            <input
+                              v-model.number="editDeal.purchase_cost"
+                              class="input"
+                              type="number"
+                              min="0"
+                              :max="maxPrice"
+                              @input="editDeal.purchase_cost = clampPrice(editDeal.purchase_cost)"
+                              :readonly="dealEditMode === 'view'"
+                            />
+                          </label>
+                          <label class="field">
+                            <span class="label">Сумма</span>
+                            <input
+                              v-model.number="editDeal.price"
+                              class="input"
+                              type="number"
+                              min="0"
+                              :max="maxPrice"
+                              @input="editDeal.price = clampPrice(editDeal.price)"
+                              :readonly="dealEditMode === 'view'"
+                            />
+                          </label>
+                        </div>
+                        <label v-else class="field">
                           <span class="label">Покупатель</span>
                           <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="nickname" :readonly="dealEditMode === 'view'" />
                         </label>
-                        <label v-if="editDeal.deal_type_code === 'sale'" class="field">
-                          <span class="label">Регион</span>
-                          <input
-                            v-if="dealEditMode === 'view'"
-                            class="input"
-                            :value="getRegionLabel(editDeal.region_code)"
-                            readonly
-                          />
-                          <select v-else v-model="editDeal.region_code" class="input input--select">
-                            <option value="">— не выбрано —</option>
-                            <option v-for="r in regions" :key="r.code" :value="r.code">
-                              {{ r.name }} ({{ r.code }})
-                            </option>
-                          </select>
-                        </label>
-                        <label class="field">
+                        <label v-if="editDeal.deal_type_code !== 'sale'" class="field">
                           <span class="label">Откуда</span>
                           <input
                             v-if="dealEditMode === 'view'"
@@ -234,19 +314,7 @@
                             :readonly="dealEditMode === 'view'"
                           />
                         </label>
-                        <label v-if="editDeal.deal_type_code === 'sale'" class="field">
-                          <span class="label">Закуп</span>
-                          <input
-                            v-model.number="editDeal.purchase_cost"
-                            class="input"
-                            type="number"
-                            min="0"
-                            :max="maxPrice"
-                            @input="editDeal.purchase_cost = clampPrice(editDeal.purchase_cost)"
-                            :readonly="dealEditMode === 'view'"
-                          />
-                        </label>
-                        <label class="field">
+                        <label v-if="editDeal.deal_type_code !== 'sale'" class="field">
                           <span class="label">Сумма</span>
                           <input
                             v-model.number="editDeal.price"
@@ -258,7 +326,7 @@
                             :readonly="dealEditMode === 'view'"
                           />
                         </label>
-                        <label class="field">
+                        <label v-if="editDeal.deal_type_code !== 'sale'" class="field">
                           <span class="label">Статус</span>
                           <input
                             v-if="dealEditMode === 'view'"
@@ -273,8 +341,17 @@
                             </option>
                           </select>
                         </label>
+                        <label v-if="editDeal.deal_type_code === 'sale'" class="field">
+                          <span class="label">Комментарий</span>
+                          <textarea
+                            v-model.trim="editDeal.notes"
+                            class="input input--textarea input--textarea--compact"
+                            :rows="getCompactNotesRows(editDeal.notes)"
+                            :readonly="dealEditMode === 'view'"
+                          />
+                        </label>
                       </div>
-                      <div class="deal-form__col deal-form__col--right">
+                      <div v-if="editDeal.deal_type_code !== 'sale'" class="deal-form__col deal-form__col--right">
                         <label
                           v-if="editDeal.deal_type_code === 'rental'"
                           class="field field--game"
@@ -736,7 +813,6 @@ const ctx = reactive(props.ctx)
 const {
   editDeal,
   dealEditMode,
-  getDealTypeName,
   dealAccountsForGameLoading,
   isDealSlotTypeUnsupported,
   dealAccountsForEdit,
@@ -788,6 +864,7 @@ const {
   dealOk,
   newDeal,
   newDealResponsible,
+  editDealResponsible,
   auth,
   newDealGameSearch,
   onNewDealGameSearch,

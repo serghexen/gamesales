@@ -6,6 +6,8 @@ export function useDealsActions({
   toUtcDateTime,
   newDeal,
   editDeal,
+  newDealResponsible,
+  editDealResponsible,
   dealPage,
   dealError,
   dealOk,
@@ -15,7 +17,15 @@ export function useDealsActions({
   loadDeals,
   loadAccountsAll,
   closeDealModal,
+  suppressUnsavedConfirm,
 }) {
+  // Приводит поле ответственного к значению, которое понимает API.
+  function normalizeResponsible(value) {
+    if (value === 'current_user') return auth.state.user || null
+    const normalized = String(value || '').trim()
+    return normalized || null
+  }
+
   // Создает новую сделку после простых проверок формы.
   async function createDeal() {
     dealError.value = null
@@ -49,6 +59,8 @@ export function useDealsActions({
           account_id: newDeal.deal_type_code === 'rental' ? newDeal.account_id : null,
           game_id: newDeal.deal_type_code === 'rental' ? newDeal.game_id : null,
           customer_nickname: newDeal.customer_nickname,
+          order_number: newDeal.order_number || null,
+          responsible_username: normalizeResponsible(newDealResponsible?.value),
           source_id: newDeal.source_id || null,
           region_code: newDeal.region_code || null,
           slot_type_code: newDeal.deal_type_code === 'rental' ? (newDeal.slot_type_code || null) : null,
@@ -80,8 +92,13 @@ export function useDealsActions({
     }
 
     if (createdOk) {
-      // После успешного сохранения сначала закрываем модалку и снимаем блокировку UI.
-      closeDealModal()
+      // Закрываем модалку программно без лишнего предупреждения о несохраненных изменениях.
+      if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = true
+      try {
+        closeDealModal()
+      } finally {
+        if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = false
+      }
       dealLoading.value = false
       dealSaving.value = false
       // Обновляем списки в фоне, чтобы подвисший запрос не держал модалку в лоадере.
@@ -128,6 +145,8 @@ export function useDealsActions({
           account_id: editDeal.deal_type_code === 'rental' ? editDeal.account_id : null,
           game_id: editDeal.deal_type_code === 'rental' ? editDeal.game_id : null,
           customer_nickname: editDeal.customer_nickname,
+          order_number: editDeal.order_number || null,
+          responsible_username: normalizeResponsible(editDealResponsible?.value),
           source_id: editDeal.source_id || null,
           region_code: editDeal.region_code || null,
           slot_type_code: editDeal.deal_type_code === 'rental' ? (editDeal.slot_type_code || null) : null,
@@ -154,8 +173,13 @@ export function useDealsActions({
     }
 
     if (updatedOk) {
-      // Закрываем форму сразу после успеха, а списки догружаем отдельно.
-      closeDealModal()
+      // После сохранения закрываем форму как "безопасное" действие, без confirm-диалога.
+      if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = true
+      try {
+        closeDealModal()
+      } finally {
+        if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = false
+      }
       dealLoading.value = false
       dealSaving.value = false
       dealBackgroundSync.value = true

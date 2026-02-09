@@ -40,6 +40,8 @@ class DealCreate(BaseModel):
     account_id: Optional[int] = None
     game_id: Optional[int] = None
     customer_nickname: str
+    order_number: Optional[str] = None
+    responsible_username: Optional[str] = None
     source_id: Optional[int] = None
     region_code: Optional[str] = None
     platform_code: Optional[str] = None
@@ -64,6 +66,8 @@ class DealUpdate(BaseModel):
     account_id: Optional[int] = None
     game_id: Optional[int] = None
     customer_nickname: Optional[str] = None
+    order_number: Optional[str] = None
+    responsible_username: Optional[str] = None
     source_id: Optional[int] = None
     region_code: Optional[str] = None
     platform_code: Optional[str] = None
@@ -100,12 +104,15 @@ class DealListItem(BaseModel):
     platform_code: Optional[str]
     slot_type_code: Optional[str] = None
     customer_nickname: Optional[str]
+    order_number: Optional[str] = None
+    responsible_username: Optional[str] = None
     source_id: Optional[int]
     price: float
     purchase_cost: Optional[float] = None
     game_link: Optional[str] = None
     purchase_at: Optional[datetime]
     created_at: datetime
+    completed_at: Optional[datetime] = None
     slots_used: Optional[int] = None
     notes: Optional[str] = None
 

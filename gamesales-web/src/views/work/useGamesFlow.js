@@ -1,3 +1,5 @@
+import { confirmDiscardIfNeeded, isSameNormalized } from './unsavedChanges'
+
 export function useGamesFlow({
   auth,
   apiGet,
@@ -42,7 +44,10 @@ export function useGamesFlow({
   writeLogoCache,
   clearLogoCache,
   loadGameSlotAssignments,
+  suppressUnsavedConfirm,
+  requestUnsavedConfirm,
 }) {
+  let initialEditGameSnapshot = null
   // Открывает игру в режиме просмотра и подгружает логотип.
   function startEditGame(game) {
     closeAllModals()
@@ -62,6 +67,20 @@ export function useGamesFlow({
     editGame.vr_support = game.vr_support || ''
     editGame.platform_codes = Array.isArray(game.platform_codes) ? [...game.platform_codes] : []
     editGame.region_code = game.region_code || ''
+    // Сохраняем исходные данные для проверки несохраненных правок.
+    initialEditGameSnapshot = {
+      title: editGame.title,
+      short_title: editGame.short_title,
+      link: editGame.link,
+      logo_url: editGame.logo_url,
+      text_lang: editGame.text_lang,
+      audio_lang: editGame.audio_lang,
+      vr_support: editGame.vr_support,
+      platform_codes: [...(editGame.platform_codes || [])],
+      region_code: editGame.region_code,
+      logo_b64: '',
+      logo_mime: '',
+    }
     loadGameLogo(game.game_id)
   }
 
@@ -87,6 +106,7 @@ export function useGamesFlow({
     gameSlotAssignments.value = []
     gameSlotAssignmentsError.value = null
     gameSlotAssignmentsLoading.value = false
+    initialEditGameSnapshot = null
   }
 
   // Открывает форму создания новой игры.
@@ -101,7 +121,35 @@ export function useGamesFlow({
   }
 
   // Закрывает модалку игры и очищает все временные поля.
-  function closeGameModal() {
+  async function closeGameModal() {
+    const guardEnabled = !suppressUnsavedConfirm?.value
+    const createDirty = showGameForm.value && !isSameNormalized(newGame, {
+      title: '',
+      short_title: '',
+      link: '',
+      logo_url: '',
+      text_lang: '',
+      audio_lang: '',
+      vr_support: '',
+      platform_codes: [],
+      region_code: '',
+    })
+    const editCurrent = {
+      title: editGame.title,
+      short_title: editGame.short_title,
+      link: editGame.link,
+      logo_url: editGame.logo_url,
+      text_lang: editGame.text_lang,
+      audio_lang: editGame.audio_lang,
+      vr_support: editGame.vr_support,
+      platform_codes: [...(editGame.platform_codes || [])],
+      region_code: editGame.region_code,
+      logo_b64: editGame.logo_b64 || '',
+      logo_mime: editGame.logo_mime || '',
+    }
+    const editDirty = editGame.open && gameEditMode.value === 'edit' && !isSameNormalized(editCurrent, initialEditGameSnapshot || {})
+    if (guardEnabled && !(await confirmDiscardIfNeeded(createDirty || editDirty, { requestConfirm: requestUnsavedConfirm }))) return false
+
     showGameForm.value = false
     cancelEditGame()
     gameError.value = null
@@ -121,6 +169,7 @@ export function useGamesFlow({
     newGame.vr_support = ''
     newGame.platform_codes = []
     newGame.region_code = ''
+    return true
   }
 
   // Открывает модалку игры и грузит связанные аккаунты/слоты.
@@ -170,6 +219,10 @@ export function useGamesFlow({
       // no logo or error, ignore
     } finally {
       gameLogoLoading.value = false
+      if (editGame.open && gameEditMode.value === 'view' && initialEditGameSnapshot) {
+        initialEditGameSnapshot.logo_b64 = editGame.logo_b64 || ''
+        initialEditGameSnapshot.logo_mime = editGame.logo_mime || ''
+      }
     }
   }
 

@@ -23,6 +23,7 @@ describe('useWorkSectionContexts', () => {
       dealModalTitle: ref('Title'),
       updateDeal: () => {},
       createDeal: () => {},
+      toggleDealEditMode: () => {},
     })
 
     expect(ctx.dealEditorModalShellCtx.isOpen).toBe(false)
@@ -33,7 +34,7 @@ describe('useWorkSectionContexts', () => {
     dealEditMode.value = 'edit'
     expect(ctx.dealEditorModalShellCtx.showSaveEdit).toBe(true)
     expect(ctx.dealEditorModalShellCtx.showCreate).toBe(false)
-    expect(ctx.dealEditorModalShellCtx.editDisabled).toBe(true)
+    expect(ctx.dealEditorModalShellCtx.editDisabled).toBe(false)
 
     dealQuickAccountBusy.value = true
     expect(ctx.dealEditorModalBodyCtx.isLocked).toBe(true)

@@ -107,6 +107,8 @@ class DealsEndpointsTests(unittest.TestCase):
                         "Подтверждена",
                         "pending",
                         "В ожидании",
+                        "ORD-1",
+                        "admin",
                         "RU",
                         7,
                         "login1",
@@ -121,6 +123,7 @@ class DealsEndpointsTests(unittest.TestCase):
                         500.0,
                         datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
                         datetime(2026, 2, 1, 11, 0, tzinfo=timezone.utc),
+                        None,
                         0,
                         None,
                         "note",
@@ -143,6 +146,8 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(len(body["items"]), 1)
             self.assertEqual(body["items"][0]["deal_id"], 15)
             self.assertEqual(body["items"][0]["account_login"], "login1@gmail.com")
+            self.assertEqual(body["items"][0]["order_number"], "ORD-1")
+            self.assertEqual(body["items"][0]["responsible_username"], "admin")
 
     # Валидация create_deal: тип сделки должен быть sale/rental.
     def test_create_deal_invalid_type(self):
@@ -349,6 +354,8 @@ class DealsEndpointsTests(unittest.TestCase):
             10,
             5,
             500.0,
+            "A-100",
+            "admin",
             77,
             None,
             None,
@@ -390,6 +397,8 @@ class DealsEndpointsTests(unittest.TestCase):
             None,
             5,
             500.0,
+            "A-100",
+            "admin",
             77,
             None,
             None,
@@ -427,6 +436,8 @@ class DealsEndpointsTests(unittest.TestCase):
             10,
             5,
             500.0,
+            "A-100",
+            "admin",
             77,
             7,
             21,

@@ -113,6 +113,7 @@ export function useWorkSectionContexts({
   closeDealModal,
   dealModalTitle,
   dealEditMode,
+  toggleDealEditMode,
   updateDeal,
   dealLoading,
   createDeal,
@@ -163,6 +164,7 @@ export function useWorkSectionContexts({
   dealOk,
   newDeal,
   newDealResponsible,
+  editDealResponsible,
   auth,
   newDealGameSearch,
   onNewDealGameSearch,
@@ -349,12 +351,11 @@ export function useWorkSectionContexts({
     showSaveEdit: computed(() => editDeal.open && dealEditMode.value === 'edit'),
     showCreate: computed(() => !editDeal.open),
     showEdit: computed(() => editDeal.open),
-    editDisabled: computed(() => dealEditMode.value === 'edit'),
+    // Кнопка редактирования теперь работает как переключатель режимов view/edit.
+    editDisabled: computed(() => dealLoading.value),
     onSaveEdit: updateDeal,
     onCreate: createDeal,
-    onEdit: () => {
-      dealEditMode.value = 'edit'
-    },
+    onEdit: toggleDealEditMode,
     actionsDisabled: dealLoading,
   })
 
@@ -422,6 +423,7 @@ export function useWorkSectionContexts({
     dealOk,
     newDeal,
     newDealResponsible,
+    editDealResponsible,
     auth,
     newDealGameSearch,
     onNewDealGameSearch,
