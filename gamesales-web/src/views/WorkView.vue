@@ -223,6 +223,7 @@ const gameAccountsPageSize = 15
 const dealError = ref(null)
 const dealOk = ref(null)
 const dealLoading = ref(false)
+const dealBackgroundSync = ref(false)
 const dealInitLock = ref(false)
 const pwdError = ref(null)
 const pwdOk = ref(false)
@@ -627,6 +628,7 @@ const { createDeal, updateDeal, markDealCompleted } = useDealsActions({
   dealOk,
   dealLoading,
   dealSaving,
+  dealBackgroundSync,
   loadDeals,
   loadAccountsAll,
   closeDealModal,
@@ -1666,6 +1668,7 @@ const {
   dealEditMode,
   updateDeal,
   dealLoading,
+  dealBackgroundSync,
   createDeal,
   dealQuickAccountBusy,
   dealQuickGameBusy,

@@ -70,6 +70,7 @@ export const formatPercent = (value) => {
 export const toUtcDateTime = (value) => (value ? `${value}T00:00:00Z` : null)
 
 export const mapApiError = (message) => {
+  // Приводим ошибки API к коротким и понятным текстам для интерфейса.
   const text = String(message || '')
   if (!text) return 'Ошибка'
   if (text.includes('Not enough free slots.')) {
@@ -104,6 +105,9 @@ export const mapApiError = (message) => {
   if (text.includes('Domain not found')) return 'Домен не найден'
   if (text.includes('Region not found')) return 'Регион не найден'
   if (text.includes('Platform not found')) return 'Платформа не найдена'
+  if (text.includes('query.payload: Field required') || text.includes('body.payload: Field required')) {
+    return 'Некорректный формат запроса. Обновите страницу и попробуйте снова'
+  }
   if (text.includes('Game already exists for platforms:')) {
     const list = text.split('Game already exists for platforms:')[1]?.trim()
     return `Игра с таким названием уже есть на платформах: ${list || ''}`.trim()

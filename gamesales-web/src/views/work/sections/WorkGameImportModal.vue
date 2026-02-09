@@ -151,7 +151,8 @@
 defineProps({
   showGameImport: { type: Boolean, required: true },
   closeGameImport: { type: Function, required: true },
-  modalRef: { type: Object, required: true },
+  // Контейнер модалки появляется позже, поэтому до открытия здесь может быть null.
+  modalRef: { type: [Object, null], default: null },
   modalStyle: { type: Object, required: true },
   startModalDrag: { type: Function, required: true },
   gameImportLoading: { type: Boolean, required: true },
@@ -166,7 +167,8 @@ defineProps({
   scrollToImportDetails: { type: Function, required: true },
   gameImportProgress: { type: Object, required: true },
   onGameImportFile: { type: Function, required: true },
-  importDetailsRef: { type: Object, required: true },
+  // На первом рендере ref может быть null, это нормальное состояние.
+  importDetailsRef: { type: [Object, null], default: null },
   gameImportMessage: { type: String, default: '' },
   gameImportErrors: { type: Array, required: true },
   gameImportWarnings: { type: Array, required: true },

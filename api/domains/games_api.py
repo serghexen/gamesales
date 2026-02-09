@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 from typing import List, Optional
 
-from fastapi import Depends, File, HTTPException, UploadFile
+from fastapi import Body, Depends, File, HTTPException, UploadFile
 
 
 def mount_games_routes(
@@ -190,7 +188,8 @@ def mount_games_routes(
         return [SlotTypeOut(code=r[0], name=r[1], platform_code=r[2], mode=r[3], capacity=int(r[4] or 0)) for r in rows]
 
     @app.post("/games", response_model=GameOut)
-    def create_game(payload: GameCreate, user: UserOut = Depends(get_current_user)):
+    # Явно берём payload из тела запроса, чтобы FastAPI не трактовал его как query-параметр.
+    def create_game(payload: GameCreate = Body(...), user: UserOut = Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
             platform_codes = normalize_platform_codes(payload.platform_codes)
             conflicts = find_game_title_platform_conflicts(conn, payload.title, platform_codes)
@@ -240,7 +239,8 @@ def mount_games_routes(
         )
 
     @app.put("/games/{game_id}", response_model=GameOut)
-    def update_game(game_id: int, payload: GameUpdate, user: UserOut = Depends(get_current_user)):
+    # Для обновления игры тоже фиксируем источник payload как body.
+    def update_game(game_id: int, payload: GameUpdate = Body(...), user: UserOut = Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
             row = q1(
                 conn,

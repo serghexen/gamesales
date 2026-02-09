@@ -11,6 +11,7 @@ export function useDealsActions({
   dealOk,
   dealLoading,
   dealSaving,
+  dealBackgroundSync,
   loadDeals,
   loadAccountsAll,
   closeDealModal,
@@ -39,6 +40,7 @@ export function useDealsActions({
     }
     dealLoading.value = true
     dealSaving.value = true
+    let createdOk = false
     try {
       await apiPost(
         '/deals',
@@ -59,6 +61,7 @@ export function useDealsActions({
         },
         { token: auth.state.token }
       )
+      createdOk = true
       dealOk.value = 'Сделка сохранена'
       newDeal.customer_nickname = ''
       newDeal.price = 0
@@ -66,14 +69,28 @@ export function useDealsActions({
       newDeal.game_link = ''
       newDeal.purchase_at = ''
       newDeal.notes = ''
-      await loadDeals(1)
-      await loadAccountsAll()
-      closeDealModal()
     } catch (e) {
       dealError.value = mapApiError(e?.message)
     } finally {
+      // Если сохранение не удалось, сразу снимаем лоадер здесь.
+      if (!createdOk) {
+        dealLoading.value = false
+        dealSaving.value = false
+      }
+    }
+
+    if (createdOk) {
+      // После успешного сохранения сначала закрываем модалку и снимаем блокировку UI.
+      closeDealModal()
       dealLoading.value = false
       dealSaving.value = false
+      // Обновляем списки в фоне, чтобы подвисший запрос не держал модалку в лоадере.
+      dealBackgroundSync.value = true
+      try {
+        await Promise.allSettled([loadDeals(1), loadAccountsAll()])
+      } finally {
+        dealBackgroundSync.value = false
+      }
     }
   }
 
@@ -102,6 +119,7 @@ export function useDealsActions({
     }
     dealLoading.value = true
     dealSaving.value = true
+    let updatedOk = false
     try {
       await apiPut(
         `/deals/${editDeal.deal_id}`,
@@ -123,15 +141,29 @@ export function useDealsActions({
         },
         { token: auth.state.token }
       )
+      updatedOk = true
       dealOk.value = 'Сделка обновлена'
-      await loadDeals(dealPage.value)
-      await loadAccountsAll()
-      closeDealModal()
     } catch (e) {
       dealError.value = mapApiError(e?.message)
     } finally {
+      // Если обновление не удалось, снимаем блокировку сразу.
+      if (!updatedOk) {
+        dealLoading.value = false
+        dealSaving.value = false
+      }
+    }
+
+    if (updatedOk) {
+      // Закрываем форму сразу после успеха, а списки догружаем отдельно.
+      closeDealModal()
       dealLoading.value = false
       dealSaving.value = false
+      dealBackgroundSync.value = true
+      try {
+        await Promise.allSettled([loadDeals(dealPage.value), loadAccountsAll()])
+      } finally {
+        dealBackgroundSync.value = false
+      }
     }
   }
 

@@ -6,10 +6,44 @@ function makeHttpError(message, status) {
   return err
 }
 
+function formatValidationLocation(location) {
+  // Собираем путь поля из массива FastAPI loc: ["body","field"] -> "body.field".
+  if (!Array.isArray(location) || !location.length) return ''
+  return location.map((part) => String(part)).join('.')
+}
+
+function formatErrorDetail(detail) {
+  // Превращаем detail из API в читаемую строку для интерфейса.
+  if (!detail) return ''
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const lines = detail
+      .map((item) => formatErrorDetail(item))
+      .filter(Boolean)
+    return lines.join('; ')
+  }
+  if (typeof detail === 'object') {
+    const message = typeof detail.msg === 'string' ? detail.msg : ''
+    const location = formatValidationLocation(detail.loc)
+    if (message && location) return `${location}: ${message}`
+    if (message) return message
+    try {
+      return JSON.stringify(detail)
+    } catch {
+      return String(detail)
+    }
+  }
+  return String(detail)
+}
+
 async function parseError(res, fallback) {
+  // Пытаемся взять понятный текст ошибки из JSON-ответа сервера.
   try {
     const data = await res.json()
-    if (data?.detail) return String(data.detail)
+    if (data?.detail) {
+      const parsed = formatErrorDetail(data.detail)
+      if (parsed) return parsed
+    }
   } catch {
     // ignore parse errors
   }
@@ -112,7 +146,8 @@ export function apiPostFormWithProgress(path, formData, { token, onProgress } = 
       if (xhr.status < 200 || xhr.status >= 300) {
         try {
           const data = JSON.parse(xhr.responseText)
-          reject(makeHttpError(data?.detail || `POST ${path} failed: ${xhr.status}`, xhr.status))
+          const parsed = formatErrorDetail(data?.detail)
+          reject(makeHttpError(parsed || `POST ${path} failed: ${xhr.status}`, xhr.status))
         } catch {
           reject(makeHttpError(`POST ${path} failed: ${xhr.status}`, xhr.status))
         }
