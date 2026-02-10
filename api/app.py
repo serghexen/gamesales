@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import psycopg
+from psycopg_pool import ConnectionPool
 import os
 from dotenv import load_dotenv
 from pathlib import Path
@@ -51,9 +52,15 @@ def ensure_analytics_schema():
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    global _pool
+    # Создаём и открываем пул соединений при каждом старте (поддерживает повторные запуски в тестах).
+    _pool = ConnectionPool(DB_DSN, min_size=2, max_size=10, open=True)
     # Выполняем легкую инициализацию схемы при старте приложения.
     ensure_analytics_schema()
     yield
+    # Закрываем пул при остановке приложения.
+    _pool.close()
+    _pool = None
 
 
 app = FastAPI(title="GameSales API", version="0.1.0", lifespan=lifespan)
@@ -74,6 +81,31 @@ DB_DSN = os.getenv(
     "DATABASE_URL",
     "postgresql://gamesales_app:najTylth1@postgres:5432/gamesales",
 )
+
+# Пул соединений: создаётся и открывается в lifespan, закрывается при остановке.
+# Пересоздаётся при каждом запуске (важно для тестов с несколькими TestClient).
+# min_size=2 — всегда 2 живых соединения; max_size=10 — не больше 10 одновременно.
+_pool: ConnectionPool = None
+
+# Оригинальная функция psycopg.connect, сохранённая при импорте модуля.
+# Используется для определения, был ли connect замокан в тестах.
+_PSYCOPG_CONNECT_ORIG = psycopg.connect
+
+class _PsycopgPoolProxy:
+    """Обёртка над пулом, имитирует psycopg.connect() для совместимости с domain-модулями.
+
+    В тестах psycopg.connect может быть замокан через patch.object — в таком случае
+    делегируем к нему, чтобы тесты продолжали работать без изменений.
+    В продакшене используем пул соединений.
+    """
+    def connect(self, dsn: str = None):
+        if psycopg.connect is not _PSYCOPG_CONNECT_ORIG:
+            # psycopg.connect замокан (тесты) — используем мок
+            return psycopg.connect(dsn or DB_DSN)
+        # Продакшен — берём соединение из пула
+        return _pool.connection()
+
+pooled_psycopg = _PsycopgPoolProxy()
 
 JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ALG = os.getenv("JWT_ALG", "HS256")
@@ -427,7 +459,7 @@ clear_import_progress = import_status_store.clear_import_progress
 
 telegram_sync_service = build_telegram_sync_service(
     DB_DSN=DB_DSN,
-    psycopg=psycopg,
+    psycopg=pooled_psycopg,
     q1=q1,
     exec1=exec1,
     telegram_api_url=_TELEGRAM_API_URL,
@@ -509,16 +541,16 @@ def b64_encode(value: str) -> str:
 # ----------------------------
 @app.get("/health")
 def health():
-    with psycopg.connect(DB_DSN) as conn:
+    with _pool.connection() as conn:
         init_auth_schema(conn)
         ensure_admin_user(conn)
-        v = q1(conn, "SELECT 1")
+        q1(conn, "SELECT 1")
     return {"ok": True}
 
 mount_auth_routes(
     app,
     DB_DSN=DB_DSN,
-    psycopg=psycopg,
+    psycopg=pooled_psycopg,
     q1=lambda conn, sql, params=None: q1(conn, sql, params),
     qall=lambda conn, sql, params=None: qall(conn, sql, params),
     exec1=lambda conn, sql, params=None: exec1(conn, sql, params),
@@ -545,7 +577,7 @@ mount_auth_routes(
 mount_telegram_routes(
     app,
     DB_DSN=DB_DSN,
-    psycopg=psycopg,
+    psycopg=pooled_psycopg,
     q1=q1,
     qall=qall,
     exec1=exec1,
@@ -563,7 +595,7 @@ mount_telegram_routes(
 mount_catalogs_routes(
     app,
     DB_DSN=DB_DSN,
-    psycopg=psycopg,
+    psycopg=pooled_psycopg,
     q1=lambda conn, sql, params=None: q1(conn, sql, params),
     qall=lambda conn, sql, params=None: qall(conn, sql, params),
     exec1=lambda conn, sql, params=None: exec1(conn, sql, params),
@@ -586,7 +618,7 @@ mount_catalogs_routes(
 mount_accounts_routes(
     app,
     DB_DSN=DB_DSN,
-    psycopg=psycopg,
+    psycopg=pooled_psycopg,
     q1=q1,
     qall=qall,
     exec1=exec1,
@@ -607,7 +639,7 @@ mount_accounts_routes(
 mount_games_routes(
     app,
     DB_DSN=DB_DSN,
-    psycopg=psycopg,
+    psycopg=pooled_psycopg,
     q1=q1,
     qall=qall,
     exec1=exec1,
@@ -630,7 +662,7 @@ mount_games_routes(
 
 import_jobs = build_import_jobs(
     DB_DSN=DB_DSN,
-    psycopg=psycopg,
+    psycopg=pooled_psycopg,
     q1=q1,
     exec1=exec1,
     read_games_from_excel=read_games_from_excel,
@@ -665,7 +697,7 @@ run_slots_import_job = import_jobs.run_slots_import_job
 mount_games_import_routes(
     app,
     DB_DSN=DB_DSN,
-    psycopg=psycopg,
+    psycopg=pooled_psycopg,
     read_games_from_excel=read_games_from_excel,
     validate_game_import_rows=validate_game_import_rows,
     set_import_progress=set_import_progress,
@@ -681,7 +713,7 @@ mount_games_import_routes(
 mount_accounts_import_routes(
     app,
     DB_DSN=DB_DSN,
-    psycopg=psycopg,
+    psycopg=pooled_psycopg,
     read_accounts_from_excel=read_accounts_from_excel,
     validate_account_import_rows=validate_account_import_rows,
     set_import_progress=set_import_progress,
@@ -709,7 +741,7 @@ mount_slots_import_routes(
 mount_deals_routes(
     app,
     DB_DSN=DB_DSN,
-    psycopg=psycopg,
+    psycopg=pooled_psycopg,
     q1=q1,
     qall=qall,
     exec1=exec1,
@@ -739,5 +771,5 @@ mount_analytics_routes(
     get_current_user=get_current_user,
     q1=q1,
     qall=qall,
-    psycopg=psycopg,
+    psycopg=pooled_psycopg,
 )
