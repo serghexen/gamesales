@@ -48,7 +48,11 @@ def mount_deals_routes(
         end_at = payload.end_at
     
         with psycopg.connect(DB_DSN) as conn:
-            ensure_account_exists(conn, payload.account_id)
+            # Получаем region_id и заодно проверяем существование аккаунта — один запрос вместо двух
+            account_row = q1(conn, "SELECT region_id FROM app.accounts WHERE account_id=%s", (payload.account_id,))
+            if not account_row:
+                raise HTTPException(400, f"Unknown account_id: {payload.account_id}")
+            region_id = int(account_row[0]) if account_row[0] is not None else None
             ensure_game_active(conn, payload.game_id)
             ensure_source_exists(conn, payload.source_id)
             slot_type = ensure_account_allows_slot_type(conn, payload.account_id, payload.slot_type_code)
@@ -77,8 +81,6 @@ def mount_deals_routes(
                 raise HTTPException(409, "Not enough free slots for selected slot type")
     
             # create deal + item
-            region_row = q1(conn, "SELECT region_id FROM app.accounts WHERE account_id=%s", (payload.account_id,))
-            region_id = int(region_row[0]) if region_row and region_row[0] is not None else None
             deal_row = q1(conn, """
                 INSERT INTO app.deals(
                   deal_type_code, status_code, flow_status_code, region_id, customer_id, currency, total_amount, responsible_username

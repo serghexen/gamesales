@@ -264,13 +264,12 @@ class DealsEndpointsTests(unittest.TestCase):
     # Успешный rental должен создать сделку и вернуть обновленные слоты.
     def test_create_rental_success(self):
         script = [
-            {"one": (1,)},  # ensure_account_exists
+            {"one": (7,)},  # SELECT region_id FROM accounts (проверка существования + region_id)
             {"one": (1,)},  # ensure_game_active
             {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
             {"one": (2,)},  # get_platform_id
             {"one": (5, None)},  # customer exists
             {"one": (1,)},  # get_account_slot_free
-            {"one": (7,)},  # region from account
             {"one": (33,)},  # deal insert
             {"one": (44,)},  # deal_item insert
             {"rowcount": 1},  # assignment insert

@@ -195,7 +195,20 @@ def mount_games_routes(
             conflicts = find_game_title_platform_conflicts(conn, payload.title, platform_codes)
             if conflicts:
                 raise HTTPException(409, f"Game already exists for platforms: {', '.join(conflicts)}")
-            platform_ids = [get_platform_id(conn, code) for code in platform_codes]
+            # Загружаем все platform_id одним запросом вместо N отдельных
+            if platform_codes:
+                rows = qall(
+                    conn,
+                    "SELECT code, platform_id FROM app.platforms WHERE code = ANY(%s) AND is_archived IS NOT TRUE",
+                    (platform_codes,),
+                )
+                id_by_code = {r[0]: int(r[1]) for r in rows}
+                missing = [c for c in platform_codes if c not in id_by_code]
+                if missing:
+                    raise HTTPException(400, f"Unknown platform_code: {', '.join(missing)}")
+                platform_ids = [id_by_code[c] for c in platform_codes]
+            else:
+                platform_ids = []
             region_id = get_region_id(conn, payload.region_code)
 
             row = q1(
