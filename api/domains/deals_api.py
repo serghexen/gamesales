@@ -34,6 +34,7 @@ def mount_deals_routes(
     build_deals_filters,
     slots_summary,
     get_current_user,
+    publish_deal_event=None,
 ):
     # Нормализуем текстовые поля клиента, чтобы в БД не попадали пустые строки.
     def normalize_customer_field(value: Optional[str]) -> Optional[str]:
@@ -297,6 +298,13 @@ def mount_deals_routes(
                     (payload.account_id, payload.slot_type_code, customer_id, payload.game_id, deal_id, deal_item_id, user.username),
                 )
             conn.commit()
+            # После фиксации публикуем событие, чтобы клиенты могли обновить список сделок в реальном времени.
+            if publish_deal_event:
+                try:
+                    publish_deal_event("deal_created", deal_id, user.username)
+                except Exception:
+                    # Ошибка нотификации не должна ломать сохранение сделки.
+                    pass
     
             return {"deal_id": deal_id}
     
@@ -540,6 +548,13 @@ def mount_deals_routes(
                         (new_account_id, new_slot_type_code, customer_id, new_game_id, deal_id, deal_item_id, user.username),
                     )
             conn.commit()
+            # После успешного update отправляем событие об изменении сделки.
+            if publish_deal_event:
+                try:
+                    publish_deal_event("deal_updated", deal_id, user.username)
+                except Exception:
+                    # Ошибка нотификации не должна ломать update сделки.
+                    pass
     
         return {"ok": True}
     

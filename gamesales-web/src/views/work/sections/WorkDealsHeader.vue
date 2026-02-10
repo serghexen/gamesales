@@ -41,6 +41,9 @@
       </div>
     </div>
     <div class="toolbar-actions">
+      <span v-if="isAdmin" class="muted">
+        Realtime: {{ realtimeStatusLabel }}
+      </span>
       <div class="switch-wrap">
         <label class="switch">
           <input v-model="dealShowCompletedModel" type="checkbox" @change="loadDeals(1)" />
@@ -77,6 +80,8 @@
 import { computed } from 'vue'
 
 const props = defineProps({
+  isAdmin: { type: Boolean, default: false },
+  dealsRealtimeStatus: { type: String, default: 'offline' },
   dealFilters: { type: Object, required: true },
   applyDealSearch: { type: Function, required: true },
   openCreateSaleModal: { type: Function, required: true },
@@ -90,5 +95,12 @@ const props = defineProps({
 const dealShowCompletedModel = computed({
   get: () => props.dealShowCompleted,
   set: (value) => props.setDealShowCompleted(value),
+})
+
+const realtimeStatusLabel = computed(() => {
+  if (props.dealsRealtimeStatus === 'online') return 'онлайн'
+  if (props.dealsRealtimeStatus === 'connecting') return 'подключение...'
+  if (props.dealsRealtimeStatus === 'reconnecting') return 'переподключение...'
+  return 'не в сети'
 })
 </script>

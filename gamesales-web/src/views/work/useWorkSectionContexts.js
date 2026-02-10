@@ -73,6 +73,7 @@ export function useWorkSectionContexts({
   createRegion,
   newRegion,
   isAdmin,
+  dealsRealtimeStatus,
   dealFilters,
   applyDealSearch,
   openCreateSaleModal,
@@ -300,6 +301,8 @@ export function useWorkSectionContexts({
 
   // Контекст вкладки сделок.
   const dealsSectionCtx = proxyRefs({
+    isAdmin,
+    dealsRealtimeStatus,
     dealFilters,
     applyDealSearch,
     openCreateSaleModal,

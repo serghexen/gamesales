@@ -1,6 +1,8 @@
 <template>
   <section class="panel panel--wide">
     <WorkDealsHeader
+      :is-admin="ctx.isAdmin"
+      :deals-realtime-status="ctx.dealsRealtimeStatus"
       :deal-filters="ctx.dealFilters"
       :apply-deal-search="ctx.applyDealSearch"
       :open-create-sale-modal="ctx.openCreateSaleModal"

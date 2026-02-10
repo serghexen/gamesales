@@ -132,6 +132,7 @@ import { useDealsViewState } from './work/useDealsViewState'
 import { useWorkFormatters } from './work/useWorkFormatters'
 import { useFilterPopouts } from './work/useFilterPopouts'
 import { useDealsWatchers } from './work/useDealsWatchers'
+import { useDealsRealtime } from './work/useDealsRealtime'
 import { useActiveTabWatcher } from './work/useActiveTabWatcher'
 import { useWorkLifecycleWatchers } from './work/useWorkLifecycleWatchers'
 import { useWorkLifecycle } from './work/useWorkLifecycle'
@@ -293,6 +294,7 @@ const setActiveDealFilter = (value) => {
   activeDealFilter.value = value
 }
 const dealsBootstrapped = ref(false)
+const dealsRealtimeStatus = ref('offline')
 
 // Загружает кандидатов для поля "Ответственный" в сделках.
 async function loadResponsibleUsers() {
@@ -1773,6 +1775,7 @@ const {
   createRegion,
   newRegion,
   isAdmin,
+  dealsRealtimeStatus,
   dealFilters,
   applyDealSearch,
   openCreateSaleModal,
@@ -2120,6 +2123,17 @@ useDealsWatchers({
   loadAccountSlotStatus,
   loadDealAccountAssignments,
   loadDealSlotAvailability,
+})
+
+// Подключает realtime-обновления списка сделок через WebSocket.
+useDealsRealtime({
+  activeTab,
+  auth,
+  dealPage,
+  editDeal,
+  showDealForm,
+  loadDeals,
+  wsState: dealsRealtimeStatus,
 })
 
 </script>

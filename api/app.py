@@ -256,6 +256,7 @@ from domains.deals_models import (
     DealListOut,
 )
 from domains.deals_api import mount_deals_routes
+from domains.deals_ws import build_deals_events, mount_deals_ws_routes
 from domains.telegram_api import mount_telegram_routes
 from domains.imports_models import ImportReportIn
 from domains.analytics_api import mount_analytics_routes
@@ -529,6 +530,13 @@ _upsert_telegram_dialog_snapshot = telegram_sync_service.upsert_telegram_dialog_
 _delete_dead_dialog = telegram_sync_service.delete_dead_dialog
 _trigger_telegram_dialogs_sync = telegram_sync_service.trigger_telegram_dialogs_sync
 _get_telegram_sync_stats = telegram_sync_service.get_sync_stats
+
+parse_ws_user, publish_deal_event = build_deals_events(
+    redis_url=_REDIS_URL,
+    jwt_secret=JWT_SECRET,
+    jwt_alg=JWT_ALG,
+    UserOut=UserOut,
+)
 
 games_lookup_service = build_games_lookup_service(
     q1=lambda conn, sql, params=None: q1(conn, sql, params),
@@ -816,6 +824,13 @@ mount_deals_routes(
     build_deals_filters=build_deals_filters,
     slots_summary=slots_summary,
     get_current_user=get_current_user,
+    publish_deal_event=publish_deal_event,
+)
+
+mount_deals_ws_routes(
+    app,
+    redis_url=_REDIS_URL,
+    parse_ws_user=parse_ws_user,
 )
 
 mount_analytics_routes(
