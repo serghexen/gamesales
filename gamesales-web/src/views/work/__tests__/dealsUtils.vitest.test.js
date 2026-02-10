@@ -12,6 +12,8 @@ describe('dealsUtils', () => {
     const state = createNewDealState()
     expect(state.deal_type_code).toBe('sale')
     expect(state.order_number).toBe('')
+    expect(state.login).toBe('')
+    expect(state.password).toBe('')
     expect(state.price).toBe(0)
     expect(state.slots_used).toBe(1)
     expect(state.notes).toBe('')
@@ -22,6 +24,8 @@ describe('dealsUtils', () => {
     expect(state.open).toBe(false)
     expect(state.deal_id).toBeNull()
     expect(state.order_number).toBe('')
+    expect(state.login).toBe('')
+    expect(state.password).toBe('')
     expect(state.completed_at).toBe('')
     expect(state.flow_status_code).toBe('')
   })
@@ -30,6 +34,7 @@ describe('dealsUtils', () => {
     expect(createDealFiltersState()).toEqual({
       search_q: '',
       customer_q: '',
+      responsible_q: '',
       region_q: '',
       status_q: '',
       purchase_from: '',

@@ -19,11 +19,13 @@ function createDeps(overrides = {}) {
       game_id: '',
       customer_nickname: 'buyer',
       order_number: 'ORD-1',
-      source_id: '',
+      source_id: 10,
       region_code: 'RU',
       slot_type_code: '',
       price: 100,
       purchase_cost: 50,
+      login: 'deal-login',
+      password: 'deal-pass',
       game_link: '',
       purchase_at: '',
       notes: '',
@@ -35,11 +37,13 @@ function createDeps(overrides = {}) {
       game_id: '',
       customer_nickname: 'buyer',
       order_number: 'ORD-2',
-      source_id: '',
+      source_id: 10,
       region_code: 'RU',
       slot_type_code: '',
       price: 100,
       purchase_cost: 50,
+      login: 'edit-login',
+      password: 'edit-pass',
       game_link: '',
       purchase_at: '',
       notes: '',
@@ -72,6 +76,8 @@ describe('useDealsActions', () => {
 
     expect(deps.apiPost).toHaveBeenCalledTimes(1)
     expect(deps.apiPost.mock.calls[0][1].order_number).toBe('ORD-1')
+    expect(deps.apiPost.mock.calls[0][1].login).toBe('deal-login')
+    expect(deps.apiPost.mock.calls[0][1].password).toBe('deal-pass')
     expect(deps.apiPost.mock.calls[0][1].responsible_username).toBe('tester')
     expect(deps.closeDealModal).toHaveBeenCalledTimes(1)
     expect(deps.dealLoading.value).toBe(false)
@@ -96,6 +102,28 @@ describe('useDealsActions', () => {
     expect(deps.dealError.value).toBe('save failed')
   })
 
+  it('createDeal validates required source for sale', async () => {
+    const deps = createDeps()
+    deps.newDeal.source_id = ''
+    const { createDeal } = useDealsActions(deps)
+
+    await createDeal()
+
+    expect(deps.apiPost).not.toHaveBeenCalled()
+    expect(deps.dealError.value).toBe('Укажите источник')
+  })
+
+  it('updateDeal validates required price for sale', async () => {
+    const deps = createDeps()
+    deps.editDeal.price = 0
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.apiPut).not.toHaveBeenCalled()
+    expect(deps.dealError.value).toBe('Укажите сумму')
+  })
+
   it('updateDeal sends responsible and order number', async () => {
     const deps = createDeps()
     const { updateDeal } = useDealsActions(deps)
@@ -104,6 +132,8 @@ describe('useDealsActions', () => {
 
     expect(deps.apiPut).toHaveBeenCalledTimes(1)
     expect(deps.apiPut.mock.calls[0][1].order_number).toBe('ORD-2')
+    expect(deps.apiPut.mock.calls[0][1].login).toBe('edit-login')
+    expect(deps.apiPut.mock.calls[0][1].password).toBe('edit-pass')
     expect(deps.apiPut.mock.calls[0][1].responsible_username).toBe('alice')
   })
 })

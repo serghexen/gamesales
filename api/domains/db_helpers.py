@@ -125,6 +125,7 @@ def build_db_helpers(
         status_code: Optional[str],
         flow_status_code: Optional[str],
         customer_q: Optional[str],
+        responsible_q: Optional[str],
         source_id: Optional[int],
         purchase_from: Optional[date],
         purchase_to: Optional[date],
@@ -157,6 +158,7 @@ def build_db_helpers(
             where.append("""
               (
                 c.nickname ILIKE %s
+                OR d.responsible_username ILIKE %s
                 OR COALESCE(rd.code, ra.code) ILIKE %s
                 OR dt.name ILIKE %s
                 OR dt.code ILIKE %s
@@ -166,7 +168,7 @@ def build_db_helpers(
               )
             """)
             like = f"%{q}%"
-            params.extend([like, like, like, like, like, like, like])
+            params.extend([like, like, like, like, like, like, like, like])
         if deal_type_code:
             where.append("d.deal_type_code = %s")
             params.append(deal_type_code)
@@ -179,6 +181,9 @@ def build_db_helpers(
         if customer_q:
             where.append("c.nickname ILIKE %s")
             params.append(f"%{customer_q}%")
+        if responsible_q:
+            where.append("d.responsible_username ILIKE %s")
+            params.append(f"%{responsible_q}%")
         if source_id:
             where.append("c.source_id = %s")
             params.append(source_id)

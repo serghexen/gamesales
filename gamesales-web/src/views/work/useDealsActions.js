@@ -45,8 +45,19 @@ export function useDealsActions({
       }
     }
     if (newDeal.deal_type_code === 'sale' && !newDeal.region_code) {
-      dealError.value = 'Для продажи укажите регион'
+      dealError.value = 'Укажите регион'
       return
+    }
+    // Для продажи держим единый набор обязательных полей, чтобы форма не сохранялась с неполными данными.
+    if (newDeal.deal_type_code === 'sale') {
+      if (!newDeal.source_id) {
+        dealError.value = 'Укажите источник'
+        return
+      }
+      if (!(Number(newDeal.price) > 0)) {
+        dealError.value = 'Укажите сумму'
+        return
+      }
     }
     dealLoading.value = true
     dealSaving.value = true
@@ -66,6 +77,8 @@ export function useDealsActions({
           slot_type_code: newDeal.deal_type_code === 'rental' ? (newDeal.slot_type_code || null) : null,
           price: newDeal.price || 0,
           purchase_cost: newDeal.purchase_cost || 0,
+          login: newDeal.login || null,
+          password: newDeal.password || null,
           game_link: newDeal.game_link || null,
           purchase_at: newDeal.deal_type_code === 'sale' ? null : toUtcDateTime(newDeal.purchase_at),
           slots_used: newDeal.deal_type_code === 'rental' ? 1 : 0,
@@ -78,6 +91,8 @@ export function useDealsActions({
       newDeal.customer_nickname = ''
       newDeal.price = 0
       newDeal.purchase_cost = 0
+      newDeal.login = ''
+      newDeal.password = ''
       newDeal.game_link = ''
       newDeal.purchase_at = ''
       newDeal.notes = ''
@@ -131,8 +146,19 @@ export function useDealsActions({
       }
     }
     if (editDeal.deal_type_code === 'sale' && !editDeal.region_code) {
-      dealError.value = 'Для продажи укажите регион'
+      dealError.value = 'Укажите регион'
       return
+    }
+    // Повторяем обязательные поля продажи и в режиме редактирования, чтобы правила были одинаковыми.
+    if (editDeal.deal_type_code === 'sale') {
+      if (!editDeal.source_id) {
+        dealError.value = 'Укажите источник'
+        return
+      }
+      if (!(Number(editDeal.price) > 0)) {
+        dealError.value = 'Укажите сумму'
+        return
+      }
     }
     dealLoading.value = true
     dealSaving.value = true
@@ -152,6 +178,8 @@ export function useDealsActions({
           slot_type_code: editDeal.deal_type_code === 'rental' ? (editDeal.slot_type_code || null) : null,
           price: editDeal.price,
           purchase_cost: editDeal.purchase_cost || 0,
+          login: editDeal.login || null,
+          password: editDeal.password || null,
           game_link: editDeal.game_link || null,
           purchase_at: editDeal.deal_type_code === 'sale' ? null : toUtcDateTime(editDeal.purchase_at),
           slots_used: editDeal.deal_type_code === 'rental' ? 1 : 0,

@@ -35,6 +35,67 @@ def mount_deals_routes(
     slots_summary,
     get_current_user,
 ):
+    # Нормализуем текстовые поля клиента, чтобы в БД не попадали пустые строки.
+    def normalize_customer_field(value: Optional[str]) -> Optional[str]:
+        normalized = (value or "").strip()
+        return normalized or None
+
+    # Обновляем дополнительные поля клиента только когда пришли непустые значения.
+    def update_customer_credentials(conn, customer_id: Optional[int], login: Optional[str], password: Optional[str]):
+        if not customer_id:
+            return
+        customer_login = normalize_customer_field(login)
+        customer_password = normalize_customer_field(password)
+        if customer_login is None and customer_password is None:
+            return
+        updates = []
+        params = []
+        if customer_login is not None:
+            updates.append("customer_login=%s")
+            params.append(customer_login)
+        if customer_password is not None:
+            updates.append("customer_password=%s")
+            params.append(customer_password)
+        if not updates:
+            return
+        params.append(customer_id)
+        exec1(conn, f"UPDATE app.customers SET {', '.join(updates)} WHERE customer_id=%s", tuple(params))
+
+    # Проверяет уникальность номера заказа для market-источников в связке (source_id, order_number).
+    def validate_market_order_number_unique(
+        conn,
+        source_id: Optional[int],
+        order_number: Optional[str],
+        exclude_deal_id: Optional[int] = None,
+    ):
+        normalized_order = (order_number or "").strip()
+        if not source_id or not normalized_order:
+            return
+        source_row = q1(
+            conn,
+            "SELECT code FROM app.sources WHERE source_id=%s AND is_archived IS NOT TRUE",
+            (source_id,),
+        )
+        source_code = str(source_row[0] or "") if source_row else ""
+        # Правило включается только для источников, где код содержит market.
+        if "market" not in source_code.lower():
+            return
+        conflict_row = q1(
+            conn,
+            """
+            SELECT d.deal_id
+            FROM app.deals d
+            JOIN app.customers c ON c.customer_id = d.customer_id
+            WHERE c.source_id=%s
+              AND lower(btrim(COALESCE(d.order_number, ''))) = lower(btrim(%s))
+              AND (%s IS NULL OR d.deal_id <> %s)
+            LIMIT 1
+            """,
+            (source_id, normalized_order, exclude_deal_id, exclude_deal_id),
+        )
+        if conflict_row:
+            raise HTTPException(409, "order_number must be unique for market source")
+
     @app.post("/rentals")
     def create_rental(payload: RentalCreate, user=Depends(get_current_user)):
         if not payload.slot_type_code:
@@ -176,10 +237,26 @@ def mount_deals_routes(
             else:
                 row = q1(
                     conn,
-                    "INSERT INTO app.customers(nickname, source_id) VALUES (%s, %s) RETURNING customer_id",
-                    (payload.customer_nickname, payload.source_id),
+                    """
+                    INSERT INTO app.customers(nickname, source_id, customer_login, customer_password)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING customer_id
+                    """,
+                    (
+                        payload.customer_nickname,
+                        payload.source_id,
+                        normalize_customer_field(payload.login),
+                        normalize_customer_field(payload.password),
+                    ),
                 )
                 customer_id = int(row[0])
+            # Для уже существующего клиента обновляем логин/пароль, если они реально переданы.
+            update_customer_credentials(conn, customer_id, payload.login, payload.password)
+            # Проверяем уникальность только когда номер заказа действительно заполнен.
+            if order_number:
+                customer_row = q1(conn, "SELECT source_id FROM app.customers WHERE customer_id=%s", (customer_id,))
+                customer_source_id = int(customer_row[0]) if customer_row and customer_row[0] is not None else None
+                validate_market_order_number_unique(conn, customer_source_id, order_number)
     
             if deal_type == "rental":
                 free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
@@ -298,6 +375,8 @@ def mount_deals_routes(
             cust_source = payload.source_id if payload.source_id is not None else None
             if cust_nickname:
                 customer_id = ensure_customer(conn, cust_nickname, cust_source)
+            # Если передали логин/пароль, обновляем их у текущего клиента сделки.
+            update_customer_credentials(conn, customer_id, payload.login, payload.password)
     
             new_price = payload.price if payload.price is not None else price
             new_purchase_cost = payload.purchase_cost if payload.purchase_cost is not None else purchase_cost
@@ -314,6 +393,11 @@ def mount_deals_routes(
                 if normalized_responsible == "current_user":
                     normalized_responsible = user.username
                 new_responsible_username = normalized_responsible or None
+            # Для update проверяем правило только если пользователь менял номер заказа или источник.
+            if (payload.order_number is not None or payload.source_id is not None) and new_order_number:
+                customer_row = q1(conn, "SELECT source_id FROM app.customers WHERE customer_id=%s", (customer_id,))
+                customer_source_id = int(customer_row[0]) if customer_row and customer_row[0] is not None else None
+                validate_market_order_number_unique(conn, customer_source_id, new_order_number, exclude_deal_id=deal_id)
             new_slots_used = payload.slots_used if payload.slots_used is not None else slots_used
             new_flow_status = payload.flow_status_code if payload.flow_status_code is not None else flow_status_code
             if payload.flow_status_code is not None:
@@ -469,6 +553,7 @@ def mount_deals_routes(
         status_code: Optional[str] = None,
         flow_status_code: Optional[str] = None,
         customer_q: Optional[str] = None,
+        responsible_q: Optional[str] = None,
         source_id: Optional[int] = None,
         purchase_from: Optional[date] = None,
         purchase_to: Optional[date] = None,
@@ -505,6 +590,7 @@ def mount_deals_routes(
                 status_code,
                 flow_status_code,
                 customer_q,
+                responsible_q,
                 source_id,
                 purchase_from,
                 purchase_to,
@@ -561,6 +647,8 @@ def mount_deals_routes(
                   g.short_title,
                   p.code as platform_code,
                   c.nickname,
+                  c.customer_login,
+                  c.customer_password,
                   c.source_id,
                   di.price,
                   di.purchase_cost,
@@ -592,6 +680,8 @@ def mount_deals_routes(
         items = []
         for r in rows:
             login_full = f"{r[10]}@{r[11]}" if r[10] and r[11] else None
+            # Поддерживаем оба формата: новый (с login/password) и старый (без них) для тестовых фикстур.
+            has_customer_credentials = len(r) >= 29
             items.append(
                 DealListItem(
                     deal_id=r[0],
@@ -610,16 +700,18 @@ def mount_deals_routes(
                     game_short_title=r[14],
                     platform_code=r[15],
                     customer_nickname=r[16],
-                    source_id=r[17],
-                    price=float(r[18] or 0),
-                    purchase_cost=float(r[19] or 0),
-                    purchase_at=r[20],
-                    created_at=r[21],
-                    completed_at=r[22],
-                    slots_used=r[23],
-                    slot_type_code=r[24],
-                    notes=r[25],
-                    game_link=r[26],
+                    login=r[17] if has_customer_credentials else None,
+                    password=r[18] if has_customer_credentials else None,
+                    source_id=r[19] if has_customer_credentials else r[17],
+                    price=float((r[20] if has_customer_credentials else r[18]) or 0),
+                    purchase_cost=float((r[21] if has_customer_credentials else r[19]) or 0),
+                    purchase_at=r[22] if has_customer_credentials else r[20],
+                    created_at=r[23] if has_customer_credentials else r[21],
+                    completed_at=r[24] if has_customer_credentials else r[22],
+                    slots_used=r[25] if has_customer_credentials else r[23],
+                    slot_type_code=r[26] if has_customer_credentials else r[24],
+                    notes=r[27] if has_customer_credentials else r[25],
+                    game_link=r[28] if has_customer_credentials else r[26],
                 )
             )
     

@@ -40,6 +40,7 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
     const getVal = (d) => {
       if (key === 'type') return d.deal_type || ''
       if (key === 'customer') return d.customer_nickname || ''
+      if (key === 'responsible') return d.responsible_username || ''
       if (key === 'region') return d.region_code || ''
       if (key === 'status') return d.flow_status || ''
       if (key === 'date') return new Date(d.purchase_at || d.created_at || 0).getTime()
@@ -96,6 +97,7 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
       if (dealFilters.search_q) params.set('q', dealFilters.search_q)
       if (dealFilters.type_q) params.set('type_q', dealFilters.type_q)
       if (dealFilters.customer_q) params.set('customer_q', dealFilters.customer_q)
+      if (dealFilters.responsible_q) params.set('responsible_q', dealFilters.responsible_q)
       if (dealFilters.region_q) params.set('region_q', dealFilters.region_q)
       params.set('flow_status_q', resolveDealFlowStatusFilter(dealFilters.status_q, dealShowCompleted.value))
       if (dealFilters.purchase_from) params.set('purchase_from', dealFilters.purchase_from)

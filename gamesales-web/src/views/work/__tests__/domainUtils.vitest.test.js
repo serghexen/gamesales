@@ -53,6 +53,7 @@ describe('domainUtils', () => {
 
   it('mapApiError maps known messages and keeps unknown text', () => {
     expect(mapApiError('slot_type_code is required for rental')).toBe('Для шеринга нужно выбрать тип слота')
+    expect(mapApiError('order_number must be unique for market source')).toBe('Для market-источника номер заказа уже используется')
     expect(mapApiError('query.payload: Field required')).toBe('Некорректный формат запроса. Обновите страницу и попробуйте снова')
     expect(mapApiError('custom backend error')).toBe('custom backend error')
     expect(mapApiError('')).toBe('Ошибка')

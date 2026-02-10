@@ -45,6 +45,7 @@
         :deal-filters="ctx.dealFilters"
         :deal-type-options="ctx.dealTypeOptions"
         :deal-flow-status-options="ctx.dealFlowStatusOptions"
+        :responsible-options="ctx.responsibleUserOptions"
         :regions="ctx.regions"
         :active-deal-filter="ctx.activeDealFilter"
         :set-active-deal-filter="ctx.setActiveDealFilter"

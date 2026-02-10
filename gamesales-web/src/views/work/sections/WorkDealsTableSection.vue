@@ -247,6 +247,51 @@
             <button class="ghost ghost--small" type="button" @click="resetDealFilter('status')">Сбросить</button>
           </div>
         </th>
+        <th class="cell--tight">
+          <span class="th-title th-title--filter">
+            Ответств.
+            <span class="th-actions">
+              <button
+                class="filter-icon"
+                :class="{ 'filter-icon--active': Boolean(dealFilters.responsible_q) }"
+                type="button"
+                aria-label="Фильтр по ответственному"
+                title="Фильтр по ответственному"
+                @click.stop="setActiveDealFilter(activeDealFilter === 'responsible' ? '' : 'responsible')"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 6h16M7 12h10M10 18h4" />
+                </svg>
+              </button>
+              <button
+                class="filter-icon filter-icon--sort"
+                type="button"
+                aria-label="Сортировка по ответственному"
+                title="Сортировка по ответственному"
+                @click.stop="toggleDealSort('responsible')"
+                :class="getDealSortClass('responsible')"
+              >
+                <svg viewBox="0 0 24 24">
+                  <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                  <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                </svg>
+              </button>
+            </span>
+          </span>
+          <div v-if="activeDealFilter === 'responsible'" class="filter-pop filter-pop--center" @click.stop>
+            <label class="field">
+              <span class="label">Ответственный</span>
+              <select v-model="dealFilters.responsible_q" class="input input--select">
+                <option value="">— не выбрано —</option>
+                <option v-for="name in responsibleOptions" :key="`deal-responsible-${name}`" :value="name">
+                  {{ name }}
+                </option>
+              </select>
+            </label>
+            <button class="ghost ghost--small" type="button" @click="loadDeals(1); setActiveDealFilter('')">Применить</button>
+            <button class="ghost ghost--small" type="button" @click="resetDealFilter('responsible')">Сбросить</button>
+          </div>
+        </th>
         <th v-if="!dealShowCompleted" class="cell--tight">Действие</th>
       </tr>
     </thead>
@@ -263,6 +308,7 @@
         <td class="cell--tight">{{ d.region_code || '—' }}</td>
         <td>{{ formatDateTimeMinutes(d.purchase_at || d.created_at) }}</td>
         <td class="cell--tight">{{ d.flow_status || '—' }}</td>
+        <td class="cell--tight">{{ d.responsible_username || '—' }}</td>
         <td v-if="!dealShowCompleted" class="cell--tight">
           <button class="mini-btn" type="button" @click.stop="markDealCompleted(d)" :disabled="dealSaving">
             Завершить
@@ -280,6 +326,7 @@ defineProps({
   dealFilters: { type: Object, required: true },
   dealTypeOptions: { type: Array, required: true },
   dealFlowStatusOptions: { type: Array, required: true },
+  responsibleOptions: { type: Array, required: true },
   regions: { type: Array, required: true },
   activeDealFilter: { type: String, default: '' },
   setActiveDealFilter: { type: Function, required: true },

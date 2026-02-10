@@ -66,8 +66,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         "статус": "status",
         "Пользователь": "customer",
         "пользователь": "customer",
-        "Откуда": "source",
-        "откуда": "source",
+        "Источник": "source",
+        "источник": "source",
         "Дата": "date",
         "дата": "date",
         "Слот": "slot",
@@ -476,7 +476,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                         (source_val, source_val),
                     )
                 if not row_source:
-                    warnings.append({"row": report_row, "field": "Откуда", "value": source_val, "message": "Источник не найден"})
+                    warnings.append({"row": report_row, "field": "Источник", "value": source_val, "message": "Источник не найден"})
 
             if date_val not in (None, ""):
                 normalized_date = normalize_slot_date(date_val)

@@ -127,8 +127,19 @@ def mount_catalogs_routes(
 
     @app.get("/domains", response_model=list[PlatformOut])
     def list_domains(user: UserOut = Depends(get_current_user)):
-        with psycopg.connect(DB_DSN) as conn:
-            rows = qall(conn, "SELECT name, name FROM app.domains WHERE is_archived IS NOT TRUE ORDER BY name")
+        def load_rows():
+            with psycopg.connect(DB_DSN) as conn:
+                return qall(conn, "SELECT name, name FROM app.domains WHERE is_archived IS NOT TRUE ORDER BY name")
+
+        try:
+            rows = load_rows()
+        except Exception as e:
+            # После перезапуска PostgreSQL из пула может прийти "мертвый" коннект; один ретрай обычно решает.
+            text = str(e).lower()
+            if "server closed the connection unexpectedly" in text or "consuming input failed" in text:
+                rows = load_rows()
+            else:
+                raise
         return [PlatformOut(code=r0, name=r1, slot_capacity=0) for (r0, r1) in rows]
 
     @app.get("/sources", response_model=list[SourceOut])

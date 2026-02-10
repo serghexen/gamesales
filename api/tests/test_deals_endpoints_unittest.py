@@ -118,6 +118,8 @@ class DealsEndpointsTests(unittest.TestCase):
                         "GA",
                         "ps5",
                         "cust1",
+                        "cust-login",
+                        "cust-pass",
                         3,
                         1200.0,
                         500.0,
@@ -146,6 +148,8 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(len(body["items"]), 1)
             self.assertEqual(body["items"][0]["deal_id"], 15)
             self.assertEqual(body["items"][0]["account_login"], "login1@gmail.com")
+            self.assertEqual(body["items"][0]["login"], "cust-login")
+            self.assertEqual(body["items"][0]["password"], "cust-pass")
             self.assertEqual(body["items"][0]["order_number"], "ORD-1")
             self.assertEqual(body["items"][0]["responsible_username"], "admin")
 
@@ -209,6 +213,37 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"deal_id": 33})
 
+    # Если клиент уже есть, логин/пароль должны обновляться в app.customers.
+    def test_create_deal_updates_customer_credentials_for_existing_customer(self):
+        script = [
+            {"one": (10,)},  # region_id by code
+            {"one": (22, None)},  # customer lookup
+            {"rowcount": 1},  # customer credentials update
+            {"one": (33,)},  # deal insert
+            {"one": (44,)},  # deal_item insert
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/deals",
+                    headers=self._auth_headers(role="manager"),
+                    json={
+                        "deal_type_code": "sale",
+                        "region_code": "RU",
+                        "customer_nickname": "cust",
+                        "price": 1000,
+                        "login": "cust-login",
+                        "password": "cust-pass",
+                    },
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"deal_id": 33})
+
     # Для аренды при нехватке слотов должен возвращаться 409.
     def test_create_deal_rental_not_enough_slots(self):
         script = [
@@ -237,6 +272,37 @@ class DealsEndpointsTests(unittest.TestCase):
                         "slot_type_code": "ps5_p1",
                         "customer_nickname": "cust",
                         "price": 500,
+                    },
+                )
+            self.assertEqual(res.status_code, 409)
+
+    # Для market-источника номер заказа должен быть уникален в связке source+order.
+    def test_create_deal_market_source_order_number_must_be_unique(self):
+        script = [
+            {"one": (10,)},  # region_id by code
+            {"one": (1,)},  # ensure_source_exists
+            {"one": (22, 5)},  # customer lookup
+            {"one": (5,)},  # customer source_id
+            {"one": ("my_market_source",)},  # source code
+            {"one": (99,)},  # conflicting deal
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/deals",
+                    headers=self._auth_headers(role="manager"),
+                    json={
+                        "deal_type_code": "sale",
+                        "region_code": "RU",
+                        "customer_nickname": "cust",
+                        "source_id": 5,
+                        "order_number": "A-100",
+                        "price": 1000,
                     },
                 )
             self.assertEqual(res.status_code, 409)
@@ -426,6 +492,53 @@ class DealsEndpointsTests(unittest.TestCase):
                 res = client.put("/deals/77", headers=self._auth_headers(role="manager"), json={"deal_type_code": "sale"})
             self.assertEqual(res.status_code, 400)
 
+    # В update сделки логин/пароль клиента должны сохраняться в app.customers.
+    def test_update_deal_updates_customer_credentials(self):
+        current_row = (
+            "sale",
+            "confirmed",
+            "pending",
+            10,
+            5,
+            500.0,
+            "A-100",
+            "admin",
+            77,
+            None,
+            None,
+            None,
+            500.0,
+            100.0,
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+            None,
+            None,
+            0,
+            None,
+            "note",
+            None,
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+            {"rowcount": 1},  # customer credentials update
+            {"rowcount": 1},  # update deals
+            {"rowcount": 1},  # update deal_items
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="manager"),
+                    json={"login": "new-login", "password": "new-pass"},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
+
     # Успешный update rental должен завершаться ok=true.
     def test_update_deal_rental_success(self):
         current_row = (
@@ -478,6 +591,52 @@ class DealsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
+
+    # В update номер заказа тоже должен быть уникальным для market-источника.
+    def test_update_deal_market_source_order_number_must_be_unique(self):
+        current_row = (
+            "sale",
+            "confirmed",
+            "pending",
+            10,
+            5,
+            500.0,
+            "A-100",
+            "admin",
+            77,
+            None,
+            None,
+            None,
+            500.0,
+            100.0,
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+            None,
+            None,
+            0,
+            None,
+            "note",
+            None,
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+            {"one": (5,)},  # customer source_id
+            {"one": ("my_market_source",)},  # source code
+            {"one": (88,)},  # conflicting deal
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="manager"),
+                    json={"order_number": "a-100"},
+                )
+            self.assertEqual(res.status_code, 409)
 
 
 if __name__ == "__main__":

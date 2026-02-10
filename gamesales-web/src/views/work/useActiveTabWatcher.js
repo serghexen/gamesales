@@ -3,6 +3,8 @@ import { watch } from 'vue'
 export function useActiveTabWatcher({
   activeTab,
   isAdmin,
+  dealFilters,
+  defaultDealsResponsibleFilter,
   showUserForm,
   showGameForm,
   showGameFilters,
@@ -103,6 +105,16 @@ export function useActiveTabWatcher({
       return
     }
     if (tab === 'deals') {
+      // Для manager/operator по умолчанию показываем только сделки "на себя".
+      if (!dealFilters.responsible_q) {
+        const rawDefault = typeof defaultDealsResponsibleFilter === 'object' && defaultDealsResponsibleFilter
+          ? defaultDealsResponsibleFilter.value
+          : defaultDealsResponsibleFilter
+        const normalizedDefault = String(rawDefault || '').trim()
+        if (normalizedDefault) {
+          dealFilters.responsible_q = normalizedDefault
+        }
+      }
       const tasks = [loadDeals(1)]
       if (!dealsBootstrapped.value) {
         if (!accountsAllLoadedOnce.value) {

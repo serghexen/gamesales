@@ -77,7 +77,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, nextTick, proxyRefs } from 'vue'
+import { ref, reactive, computed, nextTick, proxyRefs, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../stores/auth'
 import { API_BASE, apiGet, apiPost, apiDelete, apiPut, apiPostForm, apiGetFile, apiPostFormWithProgress } from '../api/http'
@@ -234,6 +234,7 @@ const catalogSaving = createBooleanFlag(false)
 const tgMessagesList = ref(null)
 const users = ref([])
 const roles = ref([])
+const responsibleUsers = ref([])
 const platforms = ref([])
 const regions = ref([])
 const domains = ref([])
@@ -292,6 +293,62 @@ const setActiveDealFilter = (value) => {
   activeDealFilter.value = value
 }
 const dealsBootstrapped = ref(false)
+
+// Загружает кандидатов для поля "Ответственный" в сделках.
+async function loadResponsibleUsers() {
+  try {
+    const data = await apiGet('/users', { token: auth.state.token })
+    responsibleUsers.value = Array.isArray(data) ? data : []
+  } catch {
+    // Если список не загрузился, оставляем только локальный fallback по текущему пользователю.
+    responsibleUsers.value = []
+  }
+}
+
+const canViewPrivilegedResponsible = computed(() => {
+  const role = String(auth.state.role || '').trim().toLowerCase()
+  const me = String(auth.state.user || '').trim().toLowerCase()
+  return role === 'admin' || role === 'owner' || me === 'admin' || me === 'owner'
+})
+
+const currentUserResponsibleName = computed(() => {
+  const me = String(auth.state.user || '').trim().toLowerCase()
+  if (!me) return ''
+  const row = responsibleUsers.value.find((user) => String(user?.username || '').trim().toLowerCase() === me)
+  return String(row?.name || '').trim()
+})
+
+const defaultDealsResponsibleFilter = computed(() => {
+  // Для manager/operator в сделках по умолчанию ставим фильтр по себе.
+  const role = String(auth.state.role || '').trim().toLowerCase()
+  if (role !== 'manager' && role !== 'operator') return ''
+  // Фильтруем строго по name, без fallback на username.
+  return String(currentUserResponsibleName.value || '').trim()
+})
+
+const responsibleUserOptions = computed(() => {
+  // Строит список ответственных и скрывает admin/owner для остальных пользователей.
+  const hiddenRoles = new Set(['admin', 'owner'])
+  const seen = new Set()
+  const options = []
+
+  const pushName = (rawName, roleCode = '') => {
+    const name = String(rawName || '').trim()
+    if (!name) return
+    const role = String(roleCode || '').trim().toLowerCase()
+    const key = name.toLowerCase()
+    if (seen.has(key)) return
+    if (!canViewPrivilegedResponsible.value && hiddenRoles.has(role)) return
+    seen.add(key)
+    options.push(name)
+  }
+
+  for (const user of responsibleUsers.value) {
+    pushName(user?.name, user?.role)
+  }
+  pushName(currentUserResponsibleName.value)
+  return options
+})
 const catalogsLoadedOnce = ref(false)
 const domainsLoadedOnce = ref(false)
 const sourcesLoadedOnce = ref(false)
@@ -336,6 +393,7 @@ const activeDealChips = computed(() => {
     chips.push({ key: 'type', label: 'Тип', value: label })
   }
   if (dealFilters.customer_q) chips.push({ key: 'customer', label: 'Покупатель', value: dealFilters.customer_q })
+  if (dealFilters.responsible_q) chips.push({ key: 'responsible', label: 'Ответств.', value: dealFilters.responsible_q })
   if (dealFilters.region_q) {
     const label = regions.value.find((r) => r.code === dealFilters.region_q)?.name || dealFilters.region_q
     chips.push({ key: 'region', label: 'Регион', value: label })
@@ -454,6 +512,27 @@ const setActiveTab = (tab) => {
     router.replace({ name: 'work', query: { ...route.query, tab: next } })
   }
 }
+
+watch(
+  [activeTab, () => auth.state.token],
+  async ([tab, token]) => {
+    // Подгружает список ответственных при входе в сделки.
+    if (tab !== 'deals' || !token) return
+    if (!responsibleUsers.value.length) {
+      await loadResponsibleUsers()
+    }
+    // После загрузки users ставим фильтр "Ответств." по name для manager/operator.
+    const role = String(auth.state.role || '').trim().toLowerCase()
+    if ((role === 'manager' || role === 'operator') && !dealFilters.responsible_q) {
+      const byName = String(currentUserResponsibleName.value || '').trim()
+      if (byName) {
+        dealFilters.responsible_q = byName
+        await loadDeals(1)
+      }
+    }
+  },
+  { immediate: true },
+)
 
 const newGame = reactive({
   title: '',
@@ -1017,6 +1096,7 @@ const {
   loadDealSlotAvailability,
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
+  currentResponsibleName: currentUserResponsibleName,
 })
 
 closeDealModalDeferred.set(closeDealModalFromFlow)
@@ -1783,9 +1863,9 @@ const {
   dealError,
   dealOk,
   newDeal,
+  responsibleUserOptions,
   newDealResponsible,
   editDealResponsible,
-  auth,
   newDealGameSearch,
   onNewDealGameSearch,
   filteredNewDealGames,
@@ -1963,6 +2043,8 @@ useWorkLifecycle({
 useActiveTabWatcher({
   activeTab,
   isAdmin,
+  dealFilters,
+  defaultDealsResponsibleFilter,
   showUserForm,
   showGameForm,
   showGameFilters,

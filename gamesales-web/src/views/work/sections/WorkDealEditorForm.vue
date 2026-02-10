@@ -199,7 +199,7 @@
                         </div>
                         <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-top">
                           <label class="field">
-                            <span class="label">Откуда</span>
+                            <span class="label">Источник</span>
                             <input
                               v-if="dealEditMode === 'view'"
                               class="input"
@@ -215,14 +215,43 @@
                           </label>
                           <label class="field">
                             <span class="label">Номер заказа</span>
-                            <input v-model.trim="editDeal.order_number" class="input" placeholder="например, 12345" :readonly="dealEditMode === 'view'" />
+                            <input v-model.trim="editDeal.order_number" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
                           </label>
                           <label class="field">
-                            <span class="label">Покупатель</span>
-                            <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="nickname" :readonly="dealEditMode === 'view'" />
+                            <span class="label">Ответственный</span>
+                            <input
+                              v-if="dealEditMode === 'view'"
+                              class="input"
+                              :value="editDealResponsible || '— не выбрано —'"
+                              readonly
+                            />
+                            <select v-else v-model="editDealResponsible" class="input input--select">
+                              <option value="">— не выбрано —</option>
+                              <option
+                                v-for="responsibleName in responsibleUserOptions"
+                                :key="`edit-responsible-${responsibleName}`"
+                                :value="responsibleName"
+                              >
+                                {{ responsibleName }}
+                              </option>
+                            </select>
                           </label>
                         </div>
-                        <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__quad deal-form__quad--sale-costs">
+                        <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-auth">
+                          <label class="field">
+                            <span class="label">Покупатель</span>
+                            <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
+                          </label>
+                          <label class="field">
+                            <span class="label">Логин</span>
+                            <input v-model.trim="editDeal.login" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
+                          </label>
+                          <label class="field">
+                            <span class="label">Пароль</span>
+                            <input v-model.trim="editDeal.password" class="input" placeholder="-" :readonly="dealEditMode === 'view'"/>
+                          </label>
+                        </div>
+                        <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-costs">
                           <label class="field">
                             <span class="label">Регион</span>
                             <input
@@ -236,19 +265,6 @@
                               <option v-for="r in regions" :key="r.code" :value="r.code">
                                 {{ r.name }} ({{ r.code }})
                               </option>
-                            </select>
-                          </label>
-                          <label class="field">
-                            <span class="label">Ответственный</span>
-                            <input
-                              v-if="dealEditMode === 'view'"
-                              class="input"
-                              :value="editDealResponsible || '— не выбрано —'"
-                              readonly
-                            />
-                            <select v-else v-model="editDealResponsible" class="input input--select">
-                              <option value="">— не выбрано —</option>
-                              <option value="current_user">{{ auth.state.user || 'Текущий пользователь' }}</option>
                             </select>
                           </label>
                           <label class="field">
@@ -278,10 +294,10 @@
                         </div>
                         <label v-else class="field">
                           <span class="label">Покупатель</span>
-                          <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="nickname" :readonly="dealEditMode === 'view'" />
+                          <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
                         </label>
                         <label v-if="editDeal.deal_type_code !== 'sale'" class="field">
-                          <span class="label">Откуда</span>
+                          <span class="label">Источник</span>
                           <input
                             v-if="dealEditMode === 'view'"
                             class="input"
@@ -463,7 +479,7 @@
                           }"
                         >
                           <label class="field">
-                            <span class="label">Откуда</span>
+                            <span class="label">Источник</span>
                             <select v-model.number="newDeal.source_id" class="input input--select">
                               <option value="">— не выбрано —</option>
                               <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">
@@ -473,11 +489,24 @@
                           </label>
                           <label v-if="newDeal.deal_type_code === 'sale' || newDeal.deal_type_code === 'rental'" class="field">
                             <span class="label">{{ newDeal.deal_type_code === 'rental' ? 'Номер заявки' : 'Номер заказа' }}</span>
-                            <input v-model.trim="newDeal.order_number" class="input" placeholder="например, 12345" />
+                            <input v-model.trim="newDeal.order_number" class="input" placeholder="-" />
                           </label>
-                          <label class="field">
+                          <label v-if="newDeal.deal_type_code !== 'sale'" class="field">
                             <span class="label">Покупатель</span>
-                            <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="nickname" />
+                            <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="-" />
+                          </label>
+                          <label v-if="newDeal.deal_type_code === 'sale'" class="field">
+                            <span class="label">Ответственный</span>
+                            <select v-model="newDealResponsible" class="input input--select">
+                              <option value="">— не выбрано —</option>
+                              <option
+                                v-for="responsibleName in responsibleUserOptions"
+                                :key="`new-sale-responsible-${responsibleName}`"
+                                :value="responsibleName"
+                              >
+                                {{ responsibleName }}
+                              </option>
+                            </select>
                           </label>
                           <label v-if="newDeal.deal_type_code === 'rental'" class="field">
                             <span class="label">Сумма</span>
@@ -589,7 +618,13 @@
                             <span class="label">Ответственный</span>
                             <select v-model="newDealResponsible" class="input input--select">
                               <option value="">— не выбрано —</option>
-                              <option value="current_user">{{ auth.state.user || 'Текущий пользователь' }}</option>
+                              <option
+                                v-for="responsibleName in responsibleUserOptions"
+                                :key="`new-rental-responsible-${responsibleName}`"
+                                :value="responsibleName"
+                              >
+                                {{ responsibleName }}
+                              </option>
                             </select>
                           </label>
                         </div>
@@ -737,7 +772,21 @@
                             :rows="getCompactNotesRows(newDeal.notes)"
                           />
                         </div>
-                        <div v-if="newDeal.deal_type_code === 'sale'" class="deal-form__quad deal-form__quad--sale-costs">
+                        <div v-if="newDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-auth">
+                          <label class="field">
+                            <span class="label">Покупатель</span>
+                            <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="-" />
+                          </label>
+                          <label class="field">
+                            <span class="label">Логин</span>
+                            <input v-model.trim="newDeal.login" class="input" placeholder="-" />
+                          </label>
+                          <label class="field">
+                            <span class="label">Пароль</span>
+                            <input v-model.trim="newDeal.password" class="input" placeholder="-"/>
+                          </label>
+                        </div>
+                        <div v-if="newDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-costs">
                           <label class="field">
                             <span class="label">Регион</span>
                             <select v-model="newDeal.region_code" class="input input--select">
@@ -745,13 +794,6 @@
                               <option v-for="r in regions" :key="r.code" :value="r.code">
                                 {{ r.name }} ({{ r.code }})
                               </option>
-                            </select>
-                          </label>
-                          <label class="field">
-                            <span class="label">Ответственный</span>
-                            <select v-model="newDealResponsible" class="input input--select">
-                              <option value="">— не выбрано —</option>
-                              <option value="current_user">{{ auth.state.user || 'Текущий пользователь' }}</option>
                             </select>
                           </label>
                           <label class="field">
@@ -863,9 +905,9 @@ const {
   dealError,
   dealOk,
   newDeal,
+  responsibleUserOptions,
   newDealResponsible,
   editDealResponsible,
-  auth,
   newDealGameSearch,
   onNewDealGameSearch,
   filteredNewDealGames,

@@ -91,6 +91,58 @@ _pool: ConnectionPool = None
 # Используется для определения, был ли connect замокан в тестах.
 _PSYCOPG_CONNECT_ORIG = psycopg.connect
 
+def _is_retryable_conn_error(exc: Exception) -> bool:
+    # Определяет ошибки "протухшего" соединения, когда безопасно один раз взять новый коннект из пула.
+    text = str(exc or "").lower()
+    return (
+        "server closed the connection unexpectedly" in text
+        or "consuming input failed" in text
+        or "terminating connection due to administrator command" in text
+        or "connection not open" in text
+    )
+
+class _PoolConnectionContext:
+    """Контекст менеджер выдачи коннекта из пула с одной попыткой восстановиться на битом соединении."""
+    def __init__(self, pool: ConnectionPool):
+        self._pool = pool
+        self._ctx = None
+        self._conn = None
+
+    def __enter__(self):
+        # Даем несколько попыток, чтобы пережить пачку "протухших" коннектов в пуле.
+        attempts = 3
+        for attempt in range(attempts):
+            self._ctx = self._pool.connection()
+            self._conn = self._ctx.__enter__()
+            try:
+                # Быстрый ping перед возвратом соединения, чтобы не отдавать "мертвый" коннект в endpoint.
+                with self._conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                return self._conn
+            except Exception as e:
+                # Закрываем текущий коннект явно, чтобы не вернуть в пул "битое" соединение.
+                try:
+                    if self._conn is not None:
+                        self._conn.close()
+                except Exception:
+                    pass
+                self._ctx.__exit__(type(e), e, e.__traceback__)
+                self._ctx = None
+                self._conn = None
+                if attempt + 1 >= attempts or not _is_retryable_conn_error(e):
+                    raise
+                # Просим пул проверить и заменить невалидные соединения перед следующей попыткой.
+                try:
+                    self._pool.check()
+                except Exception:
+                    pass
+        raise RuntimeError("Failed to acquire database connection")
+
+    def __exit__(self, exc_type, exc, tb):
+        if self._ctx is None:
+            return False
+        return self._ctx.__exit__(exc_type, exc, tb)
+
 class _PsycopgPoolProxy:
     """Обёртка над пулом, имитирует psycopg.connect() для совместимости с domain-модулями.
 
@@ -103,7 +155,7 @@ class _PsycopgPoolProxy:
             # psycopg.connect замокан (тесты) — используем мок
             return psycopg.connect(dsn or DB_DSN)
         # Продакшен — берём соединение из пула
-        return _pool.connection()
+        return _PoolConnectionContext(_pool)
 
 pooled_psycopg = _PsycopgPoolProxy()
 
@@ -314,6 +366,7 @@ class UserCreate(BaseModel):
 
 class UserListOut(BaseModel):
     username: str
+    name: str = ""
     role: str
     created_at: datetime
 

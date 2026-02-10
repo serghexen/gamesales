@@ -848,7 +848,8 @@
   box-shadow: none;
 }
 
-.work-page .unsaved-confirm {
+.work-page.unsaved-confirm,
+.work-modal-root.modal-backdrop.unsaved-confirm {
   z-index: 2500;
 }
 
@@ -943,8 +944,9 @@
   gap: 8px;
 }
 
-.work-page .deal-form__quad--sale-costs {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.5fr) minmax(0, 0.5fr);
+.work-page .deal-form__triple--sale-auth,
+.work-page .deal-form__triple--sale-costs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .work-page .field--comment-collapsible {

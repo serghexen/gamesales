@@ -119,6 +119,8 @@ def build_auth_service(
                 );
                 """
             )
+            # Поддерживает новые инсталляции и старые БД, где столбца name еще нет.
+            cur.execute("ALTER TABLE app.users ADD COLUMN IF NOT EXISTS name text NOT NULL DEFAULT ''")
             cur.execute(
                 """
                 INSERT INTO app.user_roles(code, name)

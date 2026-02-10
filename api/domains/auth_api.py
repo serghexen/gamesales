@@ -30,7 +30,7 @@ def mount_auth_routes(
     @app.post("/auth/login", response_model=LoginOut)
     def login(payload: LoginIn):
         with psycopg.connect(DB_DSN) as conn:
-            init_auth_schema(conn)
+            # На логине не запускаем DDL, чтобы не зависеть от состояния миграций и не ронять коннект к БД.
             ensure_admin_user(conn)
             row = get_user_by_username(conn, payload.username)
             if not row:
@@ -70,10 +70,23 @@ def mount_auth_routes(
         return [RoleOut(code=r0, name=r1) for (r0, r1) in rows]
 
     @app.get("/users", response_model=list[UserListOut])
-    def list_users(user: UserOut = Depends(require_role("admin"))):
+    def list_users(user: UserOut = Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
-            rows = qall(conn, "SELECT username, role_code, created_at FROM app.users ORDER BY user_id")
-        return [UserListOut(username=r0, role=r1, created_at=r2) for (r0, r1, r2) in rows]
+            # Для обычных пользователей скрываем системные роли admin/owner из списка ответственных.
+            can_view_all = (user.role in ("admin", "owner")) or (user.username in ("admin", "owner"))
+            if can_view_all:
+                rows = qall(conn, "SELECT username, name, role_code, created_at FROM app.users ORDER BY user_id")
+            else:
+                rows = qall(
+                    conn,
+                    """
+                    SELECT username, name, role_code, created_at
+                    FROM app.users
+                    WHERE lower(role_code) NOT IN ('admin', 'owner')
+                    ORDER BY user_id
+                    """,
+                )
+        return [UserListOut(username=r0, name=(r1 or ""), role=r2, created_at=r3) for (r0, r1, r2, r3) in rows]
 
     @app.post("/users", response_model=UserOut)
     def create_user(payload: UserCreate, user: UserOut = Depends(require_role("admin"))):

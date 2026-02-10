@@ -25,6 +25,8 @@ function createDeps() {
       slot_type_code: '',
       price: 0,
       purchase_cost: 0,
+      login: '',
+      password: '',
       game_link: '',
       purchase_at: '',
       slots_used: 1,
@@ -45,6 +47,8 @@ function createDeps() {
       slot_type_code: '',
       price: 0,
       purchase_cost: 0,
+      login: '',
+      password: '',
       game_link: '',
       purchase_at: '',
       slots_used: 1,
@@ -76,6 +80,7 @@ function createDeps() {
     loadDealSlotAvailability: vi.fn(),
     suppressUnsavedConfirm: ref(false),
     requestUnsavedConfirm: vi.fn().mockResolvedValue(true),
+    currentResponsibleName: 'Тестер',
   }
 }
 
@@ -106,6 +111,8 @@ describe('useDealModalFlow', () => {
       slot_type_code: '',
       price: 100,
       purchase_cost: 10,
+      login: 'deal-login',
+      password: 'deal-pass',
       game_link: 'https://game',
       purchase_at: '',
       slots_used: 1,
@@ -123,6 +130,8 @@ describe('useDealModalFlow', () => {
     expect(deps.dealEditMode.value).toBe('view')
     expect(deps.editDeal.customer_nickname).toBe('initial-buyer')
     expect(deps.editDeal.price).toBe(100)
+    expect(deps.editDeal.login).toBe('deal-login')
+    expect(deps.editDeal.password).toBe('deal-pass')
     expect(deps.editDeal.created_at).toBe('2026-02-09T10:00:00Z')
   })
 
@@ -135,5 +144,14 @@ describe('useDealModalFlow', () => {
 
     expect(closed).toBe(true)
     expect(deps.requestUnsavedConfirm).not.toHaveBeenCalled()
+  })
+
+  it('prefills responsible with current session user for new sale', () => {
+    const deps = createDeps()
+    const api = useDealModalFlow(deps)
+
+    api.openCreateSaleModal()
+
+    expect(deps.newDealResponsible.value).toBe('Тестер')
   })
 })

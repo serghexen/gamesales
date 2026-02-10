@@ -161,6 +161,8 @@ export function useWorkFilters({
   const resetDealFilter = (kind) => {
     if (kind === 'customer') {
       dealFilters.customer_q = ''
+    } else if (kind === 'responsible') {
+      dealFilters.responsible_q = ''
     } else if (kind === 'region') {
       dealFilters.region_q = ''
     } else if (kind === 'type') {
@@ -177,6 +179,7 @@ export function useWorkFilters({
       dealFilters.search_q = ''
       dealFilters.type_q = ''
       dealFilters.customer_q = ''
+      dealFilters.responsible_q = ''
       dealFilters.region_q = ''
       dealFilters.status_q = ''
       dealFilters.purchase_from = ''

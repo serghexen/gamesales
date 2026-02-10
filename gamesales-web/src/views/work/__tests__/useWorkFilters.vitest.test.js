@@ -28,6 +28,7 @@ function createHarness() {
   const dealFilters = reactive({
     search_q: 'abc',
     customer_q: 'customer',
+    responsible_q: 'manager',
     region_q: 'RU',
     status_q: 'pending',
     purchase_from: '',
@@ -152,6 +153,7 @@ describe('useWorkFilters', () => {
     expect(h.dealFilters.search_q).toBe('')
     expect(h.dealFilters.type_q).toBe('')
     expect(h.dealFilters.customer_q).toBe('')
+    expect(h.dealFilters.responsible_q).toBe('')
     expect(h.dealFilters.region_q).toBe('')
     expect(h.dealFilters.status_q).toBe('')
     expect(h.dealFilters.purchase_from).toBe('')

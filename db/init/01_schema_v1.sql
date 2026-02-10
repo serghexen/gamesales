@@ -229,6 +229,8 @@ COMMENT ON COLUMN app.account_secrets.created_at IS 'Дата создания �
 CREATE TABLE IF NOT EXISTS app.customers (
   customer_id bigserial PRIMARY KEY,
   nickname    text NOT NULL,
+  customer_login text,
+  customer_password text,
   source_id   bigint REFERENCES app.sources(source_id),
   contacts    text,
   notes       text,
@@ -237,6 +239,8 @@ CREATE TABLE IF NOT EXISTS app.customers (
 COMMENT ON TABLE app.customers IS 'Клиенты';
 COMMENT ON COLUMN app.customers.customer_id IS 'Идентификатор клиента';
 COMMENT ON COLUMN app.customers.nickname IS 'Имя/ник клиента';
+COMMENT ON COLUMN app.customers.customer_login IS 'Логин клиента';
+COMMENT ON COLUMN app.customers.customer_password IS 'Пароль клиента';
 COMMENT ON COLUMN app.customers.source_id IS 'Источник привлечения';
 COMMENT ON COLUMN app.customers.contacts IS 'Контакты клиента';
 COMMENT ON COLUMN app.customers.notes IS 'Заметки';
@@ -540,6 +544,7 @@ CREATE TABLE IF NOT EXISTS app.user_roles (
 CREATE TABLE IF NOT EXISTS app.users (
   user_id bigserial PRIMARY KEY,
   username text NOT NULL UNIQUE,
+  name text NOT NULL DEFAULT '',
   password_hash text NOT NULL,
   role_code text NOT NULL DEFAULT 'manager' REFERENCES app.user_roles(code),
   created_at timestamptz NOT NULL DEFAULT now()

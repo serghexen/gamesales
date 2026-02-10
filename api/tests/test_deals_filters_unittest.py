@@ -14,6 +14,7 @@ def call_build_deals_filters(**overrides):
         status_code=None,
         flow_status_code=None,
         customer_q=None,
+        responsible_q=None,
         source_id=None,
         purchase_from=None,
         purchase_to=None,
@@ -62,12 +63,19 @@ class DealsFiltersTests(unittest.TestCase):
         self.assertIn("c.source_id = %s", where_sql)
         self.assertEqual(params, [11, 22, "ps5", "sale", "open", "new", 5])
 
-    # Текстовый q должен добавлять 7 ILIKE-параметров с одним и тем же шаблоном.
+    # Текстовый q должен добавлять 8 ILIKE-параметров с одним и тем же шаблоном.
     def test_build_deals_filters_global_query(self):
         where_sql, params = call_build_deals_filters(q="test")
         self.assertIn("c.nickname ILIKE %s", where_sql)
+        self.assertIn("d.responsible_username ILIKE %s", where_sql)
         self.assertIn("COALESCE(di.purchase_at, d.created_at)::text ILIKE %s", where_sql)
-        self.assertEqual(params, ["%test%"] * 7)
+        self.assertEqual(params, ["%test%"] * 8)
+
+    # Фильтр по ответственному должен искать по полю сделки responsible_username.
+    def test_build_deals_filters_responsible_q(self):
+        where_sql, params = call_build_deals_filters(responsible_q="ivan")
+        self.assertIn("d.responsible_username ILIKE %s", where_sql)
+        self.assertEqual(params, ["%ivan%"])
 
     # Фильтры диапазонов по дате и цене должны попасть в where и params.
     def test_build_deals_filters_ranges(self):

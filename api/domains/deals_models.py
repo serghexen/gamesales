@@ -43,6 +43,8 @@ class DealCreate(BaseModel):
     order_number: Optional[str] = None
     responsible_username: Optional[str] = None
     source_id: Optional[int] = None
+    login: Optional[str] = None
+    password: Optional[str] = None
     region_code: Optional[str] = None
     platform_code: Optional[str] = None
     slot_type_code: Optional[str] = None
@@ -69,6 +71,8 @@ class DealUpdate(BaseModel):
     order_number: Optional[str] = None
     responsible_username: Optional[str] = None
     source_id: Optional[int] = None
+    login: Optional[str] = None
+    password: Optional[str] = None
     region_code: Optional[str] = None
     platform_code: Optional[str] = None
     slot_type_code: Optional[str] = None
@@ -104,6 +108,8 @@ class DealListItem(BaseModel):
     platform_code: Optional[str]
     slot_type_code: Optional[str] = None
     customer_nickname: Optional[str]
+    login: Optional[str] = None
+    password: Optional[str] = None
     order_number: Optional[str] = None
     responsible_username: Optional[str] = None
     source_id: Optional[int]
