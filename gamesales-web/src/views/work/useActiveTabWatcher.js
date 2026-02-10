@@ -5,6 +5,7 @@ export function useActiveTabWatcher({
   isAdmin,
   dealFilters,
   defaultDealsResponsibleFilter,
+  mustPrefillDealsResponsible,
   showUserForm,
   showGameForm,
   showGameFilters,
@@ -105,6 +106,9 @@ export function useActiveTabWatcher({
       return
     }
     if (tab === 'deals') {
+      const needResponsiblePrefill = typeof mustPrefillDealsResponsible === 'object' && mustPrefillDealsResponsible
+        ? Boolean(mustPrefillDealsResponsible.value)
+        : Boolean(mustPrefillDealsResponsible)
       // Для manager/operator по умолчанию показываем только сделки "на себя".
       if (!dealFilters.responsible_q) {
         const rawDefault = typeof defaultDealsResponsibleFilter === 'object' && defaultDealsResponsibleFilter
@@ -115,7 +119,8 @@ export function useActiveTabWatcher({
           dealFilters.responsible_q = normalizedDefault
         }
       }
-      const tasks = [loadDeals(1)]
+      const canLoadDealsNow = !needResponsiblePrefill || Boolean(String(dealFilters.responsible_q || '').trim())
+      const tasks = canLoadDealsNow ? [loadDeals(1)] : []
       if (!dealsBootstrapped.value) {
         if (!accountsAllLoadedOnce.value) {
           tasks.push(loadAccountsAll().then(() => {

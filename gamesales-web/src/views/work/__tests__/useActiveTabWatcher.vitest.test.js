@@ -18,6 +18,7 @@ function createHarness({ role = 'manager', responsible = '', preset = '' } = {})
     isAdmin,
     dealFilters,
     defaultDealsResponsibleFilter,
+    mustPrefillDealsResponsible: ref(role === 'manager' || role === 'operator'),
     showUserForm: ref(false),
     showGameForm: ref(false),
     showGameFilters: ref(false),
@@ -84,5 +85,12 @@ describe('useActiveTabWatcher', () => {
     await Promise.resolve()
     expect(h.dealFilters.responsible_q).toBe('')
     expect(h.loadDeals).toHaveBeenCalledWith(1)
+  })
+
+  it('does not load deals immediately for manager when default responsible is not ready yet', async () => {
+    const h = createHarness({ role: 'manager', responsible: '', preset: '' })
+    await Promise.resolve()
+    expect(h.dealFilters.responsible_q).toBe('')
+    expect(h.loadDeals).not.toHaveBeenCalled()
   })
 })

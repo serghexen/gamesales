@@ -127,6 +127,14 @@
   margin-left: auto;
 }
 
+.work-page .top-role {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .work-page .tab {
   background: var(--tab-bg);
   border: 1px solid var(--tab-border);

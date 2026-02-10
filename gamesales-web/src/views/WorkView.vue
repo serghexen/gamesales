@@ -320,6 +320,22 @@ const currentUserResponsibleName = computed(() => {
   return String(row?.name || '').trim()
 })
 
+const topBarRoleName = computed(() => {
+  // Показывает роль рядом с кнопкой профиля в человекочитаемом виде.
+  const roleCode = String(auth.state.role || '').trim().toLowerCase()
+  if (!roleCode) return ''
+  const roleRow = roles.value.find((role) => String(role?.code || '').trim().toLowerCase() === roleCode)
+  const roleName = String(roleRow?.name || '').trim()
+  if (roleName) return roleName
+  const fallbackNames = {
+    admin: 'Администратор',
+    owner: 'Владелец',
+    manager: 'Менеджер',
+    operator: 'Оператор',
+  }
+  return String(fallbackNames[roleCode] || roleCode).trim()
+})
+
 const defaultDealsResponsibleFilter = computed(() => {
   // Для manager/operator в сделках по умолчанию ставим фильтр по себе.
   const role = String(auth.state.role || '').trim().toLowerCase()
@@ -446,6 +462,10 @@ const activeAccountChips = computed(() => {
 })
 
 const isAdmin = computed(() => auth.state.role === 'admin')
+const mustPrefillDealsResponsible = computed(() => {
+  const role = String(auth.state.role || '').trim().toLowerCase()
+  return role === 'manager' || role === 'operator'
+})
 const showUsersTab = false
 const showDashboard = false
 
@@ -514,6 +534,16 @@ const setActiveTab = (tab) => {
     router.replace({ name: 'work', query: { ...route.query, tab: next } })
   }
 }
+
+watch(
+  () => auth.state.token,
+  async (token) => {
+    // Подгружает список пользователей сразу после входа, чтобы имя в шапке не мигало username.
+    if (!token || responsibleUsers.value.length) return
+    await loadResponsibleUsers()
+  },
+  { immediate: true },
+)
 
 watch(
   [activeTab, () => auth.state.token],
@@ -1184,7 +1214,7 @@ const {
 
 // Контекст верхней панели: вкладки, пользователь и кнопка выхода.
 const topBarCtx = asCtx({
-  userName: computed(() => auth.state.user),
+  userRoleName: topBarRoleName,
   activeTab,
   routeQuery: computed(() => route.query || {}),
   isAdmin,
@@ -2048,6 +2078,7 @@ useActiveTabWatcher({
   isAdmin,
   dealFilters,
   defaultDealsResponsibleFilter,
+  mustPrefillDealsResponsible,
   showUserForm,
   showGameForm,
   showGameFilters,

@@ -56,11 +56,32 @@ def mount_deals_ws_routes(
             return
 
         await websocket.accept()
-        client = redis_async.Redis.from_url(redis_url, decode_responses=True)
-        pubsub = client.pubsub()
+        client = None
+        pubsub = None
         disconnect_task = None
+
+        # Поднимает новое подключение к Redis Pub/Sub и подписывается на канал сделок.
+        async def open_pubsub():
+            local_client = redis_async.Redis.from_url(redis_url, decode_responses=True)
+            local_pubsub = local_client.pubsub()
+            await local_pubsub.subscribe(DEALS_EVENTS_CHANNEL)
+            return local_client, local_pubsub
+
+        # Аккуратно закрывает текущие объекты redis даже при ошибках.
+        async def close_pubsub(local_client, local_pubsub):
+            if local_pubsub is not None:
+                try:
+                    await local_pubsub.unsubscribe(DEALS_EVENTS_CHANNEL)
+                    await local_pubsub.close()
+                except Exception:
+                    pass
+            if local_client is not None:
+                try:
+                    await local_client.aclose()
+                except Exception:
+                    pass
         try:
-            await pubsub.subscribe(DEALS_EVENTS_CHANNEL)
+            client, pubsub = await open_pubsub()
             # Отправляем служебное событие, чтобы клиент понимал, что подписка установлена.
             await websocket.send_text(json.dumps({"event": "connected"}, ensure_ascii=True))
 
@@ -73,9 +94,17 @@ def mount_deals_ws_routes(
             while True:
                 if disconnect_task.done():
                     break
-                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-                if message and message.get("type") == "message":
-                    await websocket.send_text(str(message.get("data") or ""))
+                try:
+                    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                    if message and message.get("type") == "message":
+                        await websocket.send_text(str(message.get("data") or ""))
+                except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError):
+                    # Если связь с Redis оборвалась, переподписываемся и продолжаем WS-сессию.
+                    await close_pubsub(client, pubsub)
+                    client = None
+                    pubsub = None
+                    await asyncio.sleep(0.5)
+                    client, pubsub = await open_pubsub()
         except WebSocketDisconnect:
             return
         except RuntimeError:
@@ -84,8 +113,4 @@ def mount_deals_ws_routes(
         finally:
             if disconnect_task is not None:
                 disconnect_task.cancel()
-            try:
-                await pubsub.unsubscribe(DEALS_EVENTS_CHANNEL)
-                await pubsub.close()
-            finally:
-                await client.aclose()
+            await close_pubsub(client, pubsub)

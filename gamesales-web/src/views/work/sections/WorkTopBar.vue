@@ -6,7 +6,6 @@
       </div>
       <div>
         <div class="title">Рабочая зона</div>
-        <div class="sub">Пользователь: <b>{{ userName }}</b></div>
       </div>
     </div>
 
@@ -62,6 +61,7 @@
         </router-link>
       </nav>
       <div class="tabs tabs--right">
+        <span v-if="userRoleName" class="top-role">{{ userRoleName }}</span>
         <router-link
           class="tab tab--icon"
           :class="{ active: activeTab === 'profile' }"
@@ -107,5 +107,5 @@ const routeQuery = computed(() => unref(props.ctx.routeQuery) || {})
 const isAdmin = computed(() => unref(props.ctx.isAdmin))
 const showChatsTab = computed(() => unref(props.ctx.showChatsTab))
 const showUsersTab = computed(() => unref(props.ctx.showUsersTab))
-const userName = computed(() => unref(props.ctx.userName))
+const userRoleName = computed(() => unref(props.ctx.userRoleName))
 </script>
