@@ -81,19 +81,34 @@ def mount_deals_routes(
         # Правило включается только для источников, где код содержит market.
         if "market" not in source_code.lower():
             return
-        conflict_row = q1(
-            conn,
-            """
-            SELECT d.deal_id
-            FROM app.deals d
-            JOIN app.customers c ON c.customer_id = d.customer_id
-            WHERE c.source_id=%s
-              AND lower(btrim(COALESCE(d.order_number, ''))) = lower(btrim(%s))
-              AND (%s IS NULL OR d.deal_id <> %s)
-            LIMIT 1
-            """,
-            (source_id, normalized_order, exclude_deal_id, exclude_deal_id),
-        )
+        # Разделяем запросы на две ветки, чтобы Postgres не получал "безтиповый" NULL-параметр.
+        if exclude_deal_id is None:
+            conflict_row = q1(
+                conn,
+                """
+                SELECT d.deal_id
+                FROM app.deals d
+                JOIN app.customers c ON c.customer_id = d.customer_id
+                WHERE c.source_id=%s
+                  AND lower(btrim(COALESCE(d.order_number, ''))) = lower(btrim(%s))
+                LIMIT 1
+                """,
+                (source_id, normalized_order),
+            )
+        else:
+            conflict_row = q1(
+                conn,
+                """
+                SELECT d.deal_id
+                FROM app.deals d
+                JOIN app.customers c ON c.customer_id = d.customer_id
+                WHERE c.source_id=%s
+                  AND lower(btrim(COALESCE(d.order_number, ''))) = lower(btrim(%s))
+                  AND d.deal_id <> %s
+                LIMIT 1
+                """,
+                (source_id, normalized_order, exclude_deal_id),
+            )
         if conflict_row:
             raise HTTPException(409, "order_number must be unique for market source")
 
