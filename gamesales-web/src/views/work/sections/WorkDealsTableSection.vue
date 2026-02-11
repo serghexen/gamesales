@@ -34,17 +34,15 @@
             </span>
           </span>
           <div v-if="activeDealFilter === 'type'" class="filter-pop filter-pop--left" @click.stop>
-            <label class="field">
+            <div class="field">
               <span class="label">Тип</span>
-              <select v-model="dealFilters.type_q" class="input input--select">
-                <option value="">— не выбрано —</option>
-                <option v-for="t in dealTypeOptions" :key="t.code" :value="t.code">
-                  {{ t.name }}
-                </option>
-              </select>
-            </label>
-            <button class="ghost ghost--small" type="button" @click="loadDeals(1); setActiveDealFilter('')">Применить</button>
-            <button class="ghost ghost--small" type="button" @click="resetDealFilter('type')">Сбросить</button>
+              <div class="check-list check-list--compact">
+                <label v-for="t in dealTypeOptions" :key="`deal-type-${t.code}`" class="check-item">
+                  <input v-model="typeFilterValues" type="checkbox" :value="t.code" @change="applyDealMultiFilter" />
+                  <span>{{ t.name }}</span>
+                </label>
+              </div>
+            </div>
           </div>
         </th>
         <th class="deal-col-customer">
@@ -124,17 +122,15 @@
             </span>
           </span>
           <div v-if="activeDealFilter === 'region'" class="filter-pop filter-pop--center" @click.stop>
-            <label class="field">
+            <div class="field">
               <span class="label">Регион</span>
-              <select v-model="dealFilters.region_q" class="input input--select">
-                <option value="">— не выбрано —</option>
-                <option v-for="r in regions" :key="r.code" :value="r.code">
-                  {{ r.name }} ({{ r.code }})
-                </option>
-              </select>
-            </label>
-            <button class="ghost ghost--small" type="button" @click="loadDeals(1); setActiveDealFilter('')">Применить</button>
-            <button class="ghost ghost--small" type="button" @click="resetDealFilter('region')">Сбросить</button>
+              <div class="check-list check-list--compact">
+                <label v-for="r in regions" :key="`deal-region-${r.code}`" class="check-item">
+                  <input v-model="regionFilterValues" type="checkbox" :value="r.code" @change="applyDealMultiFilter" />
+                  <span>{{ r.name }} ({{ r.code }})</span>
+                </label>
+              </div>
+            </div>
           </div>
         </th>
         <th class="deal-col-date">
@@ -234,17 +230,15 @@
             </span>
           </span>
           <div v-if="activeDealFilter === 'status'" class="filter-pop filter-pop--right" @click.stop>
-            <label class="field">
+            <div class="field">
               <span class="label">Статус</span>
-              <select v-model="dealFilters.status_q" class="input input--select">
-                <option value="">— не выбрано —</option>
-                <option v-for="s in dealFlowStatusOptions" :key="s.code" :value="s.code">
-                  {{ s.name }}
-                </option>
-              </select>
-            </label>
-            <button class="ghost ghost--small" type="button" @click="loadDeals(1); setActiveDealFilter('')">Применить</button>
-            <button class="ghost ghost--small" type="button" @click="resetDealFilter('status')">Сбросить</button>
+              <div class="check-list check-list--compact">
+                <label v-for="s in dealFlowStatusOptions" :key="`deal-status-${s.code}`" class="check-item">
+                  <input v-model="statusFilterValues" type="checkbox" :value="s.code" @change="applyDealMultiFilter" />
+                  <span>{{ s.name }}</span>
+                </label>
+              </div>
+            </div>
           </div>
         </th>
         <th class="cell--tight deal-col-responsible">
@@ -283,13 +277,11 @@
               <span class="label">Ответственный</span>
               <div class="check-list check-list--compact">
                 <label v-for="name in responsibleOptions" :key="`deal-responsible-${name}`" class="check-item">
-                  <input v-model="responsibleFilterValues" type="checkbox" :value="name" />
+                  <input v-model="responsibleFilterValues" type="checkbox" :value="name" @change="applyDealMultiFilter" />
                   <span>{{ name }}</span>
                 </label>
               </div>
             </div>
-            <button class="ghost ghost--small" type="button" @click="loadDeals(1); setActiveDealFilter('')">Применить</button>
-            <button class="ghost ghost--small" type="button" @click="resetDealFilter('responsible')">Сбросить</button>
           </div>
         </th>
         <th v-if="!dealShowCompleted" class="cell--tight deal-col-action">Действие</th>
@@ -336,7 +328,12 @@
 <script setup>
 import { computed } from 'vue'
 
-import { parseResponsibleFilterQuery, stringifyResponsibleFilterQuery } from '../dealsFilterUtils.js'
+import {
+  parseMultiValueFilterQuery,
+  stringifyMultiValueFilterQuery,
+  parseResponsibleFilterQuery,
+  stringifyResponsibleFilterQuery,
+} from '../dealsFilterUtils.js'
 
 const props = defineProps({
   sortedDeals: { type: Array, required: true },
@@ -371,4 +368,33 @@ const responsibleFilterValues = computed({
     props.dealFilters.responsible_q = stringifyResponsibleFilterQuery(values)
   },
 })
+
+const typeFilterValues = computed({
+  get: () => parseMultiValueFilterQuery(props.dealFilters.type_q),
+  set: (values) => {
+    // Держим в фильтре строку кодов, чтобы API получил единый формат.
+    props.dealFilters.type_q = stringifyMultiValueFilterQuery(values)
+  },
+})
+
+const regionFilterValues = computed({
+  get: () => parseMultiValueFilterQuery(props.dealFilters.region_q),
+  set: (values) => {
+    // Храним выбранные регионы в строке через запятую как и другие мультифильтры.
+    props.dealFilters.region_q = stringifyMultiValueFilterQuery(values)
+  },
+})
+
+const statusFilterValues = computed({
+  get: () => parseMultiValueFilterQuery(props.dealFilters.status_q),
+  set: (values) => {
+    // Формируем мультифильтр статусов для flow_status_q на уровне загрузки списка.
+    props.dealFilters.status_q = stringifyMultiValueFilterQuery(values)
+  },
+})
+
+// Применяет мультифильтр сразу после клика по чекбоксу, без отдельной кнопки.
+function applyDealMultiFilter() {
+  props.loadDeals(1)
+}
 </script>

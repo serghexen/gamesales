@@ -109,6 +109,24 @@ class DealsFiltersTests(unittest.TestCase):
         self.assertIn("(fs.code = %s OR fs.code = %s)", where_sql)
         self.assertEqual(params, ["pending", "draft"])
 
+    # Список типов через запятую должен давать точный OR по кодам типа сделки.
+    def test_build_deals_filters_type_q_multiple_values(self):
+        where_sql, params = call_build_deals_filters(type_q="sale,share")
+        self.assertIn("(dt.code = %s OR dt.code = %s)", where_sql)
+        self.assertEqual(params, ["sale", "share"])
+
+    # Список регионов через запятую должен фильтровать по точным кодам региона.
+    def test_build_deals_filters_region_q_multiple_values(self):
+        where_sql, params = call_build_deals_filters(region_q="TR,PL")
+        self.assertIn("(COALESCE(rd.code, ra.code) = %s OR COALESCE(rd.code, ra.code) = %s)", where_sql)
+        self.assertEqual(params, ["TR", "PL"])
+
+    # Список системных статусов через запятую должен работать как OR по кодам.
+    def test_build_deals_filters_status_q_multiple_values(self):
+        where_sql, params = call_build_deals_filters(status_q="open,closed")
+        self.assertIn("(ds.code = %s OR ds.code = %s)", where_sql)
+        self.assertEqual(params, ["open", "closed"])
+
 
 if __name__ == "__main__":
     unittest.main()

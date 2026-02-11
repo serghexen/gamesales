@@ -116,19 +116,20 @@ def build_db_helpers(
         if not row:
             raise HTTPException(400, f"Unknown source_id: {source_id}")
 
-    # Разбирает фильтр ответственных из строки в список значений.
-    def parse_responsible_filter_values(raw_value: Optional[str]) -> list[str]:
+    # Разбирает строку фильтра "a,b,c" в список значений без пустых элементов.
+    def parse_multi_filter_values(raw_value: Optional[str]) -> list[str]:
         if not raw_value:
             return []
         parts = [str(part or "").strip() for part in str(raw_value).split(",")]
         return [part for part in parts if part]
 
+    # Разбирает фильтр ответственных из строки в список значений.
+    def parse_responsible_filter_values(raw_value: Optional[str]) -> list[str]:
+        return parse_multi_filter_values(raw_value)
+
     # Разбирает фильтр статусов сделки из строки "a,b,c" в список кодов.
     def parse_flow_status_filter_values(raw_value: Optional[str]) -> list[str]:
-        if not raw_value:
-            return []
-        parts = [str(part or "").strip() for part in str(raw_value).split(",")]
-        return [part for part in parts if part]
+        return parse_multi_filter_values(raw_value)
 
     def build_deals_filters(
         account_id: Optional[int],
@@ -212,9 +213,16 @@ def build_db_helpers(
             where.append("(a.login_name ILIKE %s OR dm.name ILIKE %s)")
             params.extend([like, like])
         if region_q:
-            like = f"%{region_q}%"
-            where.append("COALESCE(rd.code, ra.code) ILIKE %s")
-            params.append(like)
+            region_values = parse_multi_filter_values(region_q)
+            if len(region_values) > 1:
+                # Для множественного выбора регионов используем точное сравнение кодов.
+                region_where = " OR ".join(["COALESCE(rd.code, ra.code) = %s"] * len(region_values))
+                where.append(f"({region_where})")
+                params.extend(region_values)
+            else:
+                like = f"%{region_q}%"
+                where.append("COALESCE(rd.code, ra.code) ILIKE %s")
+                params.append(like)
         if game_q:
             where.append("g.title ILIKE %s")
             params.append(f"%{game_q}%")
@@ -223,13 +231,27 @@ def build_db_helpers(
             where.append("(p.code ILIKE %s OR p.name ILIKE %s)")
             params.extend([like, like])
         if type_q:
-            like = f"%{type_q}%"
-            where.append("(dt.code ILIKE %s OR dt.name ILIKE %s)")
-            params.extend([like, like])
+            type_values = parse_multi_filter_values(type_q)
+            if len(type_values) > 1:
+                # Для множественного выбора типов фильтруем по точным кодам.
+                type_where = " OR ".join(["dt.code = %s"] * len(type_values))
+                where.append(f"({type_where})")
+                params.extend(type_values)
+            else:
+                like = f"%{type_q}%"
+                where.append("(dt.code ILIKE %s OR dt.name ILIKE %s)")
+                params.extend([like, like])
         if status_q:
-            like = f"%{status_q}%"
-            where.append("(ds.code ILIKE %s OR ds.name ILIKE %s)")
-            params.extend([like, like])
+            status_values = parse_multi_filter_values(status_q)
+            if len(status_values) > 1:
+                # Для множественного выбора статусов используем точное сравнение кодов.
+                status_where = " OR ".join(["ds.code = %s"] * len(status_values))
+                where.append(f"({status_where})")
+                params.extend(status_values)
+            else:
+                like = f"%{status_q}%"
+                where.append("(ds.code ILIKE %s OR ds.name ILIKE %s)")
+                params.extend([like, like])
         if flow_status_q:
             flow_values = parse_flow_status_filter_values(flow_status_q)
             if len(flow_values) > 1:

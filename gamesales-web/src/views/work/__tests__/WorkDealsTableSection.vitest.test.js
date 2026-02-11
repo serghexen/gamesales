@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import WorkDealsTableSection from '../sections/WorkDealsTableSection.vue'
@@ -65,5 +65,92 @@ describe('WorkDealsTableSection', () => {
     expect(text).toContain('Создана:')
     expect(text).toContain('Завершена:')
     expect(text).toContain('2026-02-11 11:00')
+  })
+
+  it('supports multi-select for type filter', async () => {
+    const dealFilters = {
+      type_q: '',
+      customer_q: '',
+      region_q: '',
+      purchase_from: '',
+      purchase_to: '',
+      status_q: '',
+      responsible_q: '',
+    }
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        dealFilters,
+        activeDealFilter: 'type',
+        dealTypeOptions: [
+          { code: 'sale', name: 'Продажа' },
+          { code: 'share', name: 'Шеринг' },
+        ],
+      }),
+    })
+
+    const checkboxes = wrapper.findAll('input[type="checkbox"]')
+    await checkboxes[0].setValue(true)
+    await checkboxes[1].setValue(true)
+
+    expect(dealFilters.type_q).toBe('sale,share')
+  })
+
+  it('applies type multi-filter immediately on checkbox click', async () => {
+    const loadDeals = vi.fn()
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        loadDeals,
+        activeDealFilter: 'type',
+        dealTypeOptions: [{ code: 'sale', name: 'Продажа' }],
+      }),
+    })
+
+    await wrapper.find('input[type="checkbox"]').setValue(true)
+
+    expect(loadDeals).toHaveBeenCalledWith(1)
+    expect(wrapper.text()).not.toContain('Применить')
+    expect(wrapper.text()).not.toContain('Сбросить')
+  })
+
+  it('supports multi-select for region and status filters', async () => {
+    const dealFilters = {
+      type_q: '',
+      customer_q: '',
+      region_q: '',
+      purchase_from: '',
+      purchase_to: '',
+      status_q: '',
+      responsible_q: '',
+    }
+
+    const regionWrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        dealFilters,
+        activeDealFilter: 'region',
+        regions: [
+          { code: 'TR', name: 'Turkey' },
+          { code: 'PL', name: 'Poland' },
+        ],
+      }),
+    })
+    const regionCheckboxes = regionWrapper.findAll('input[type="checkbox"]')
+    await regionCheckboxes[0].setValue(true)
+    await regionCheckboxes[1].setValue(true)
+    expect(dealFilters.region_q).toBe('TR,PL')
+
+    const statusWrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        dealFilters,
+        activeDealFilter: 'status',
+        dealFlowStatusOptions: [
+          { code: 'pending', name: 'В ожидании' },
+          { code: 'draft', name: 'Черновик' },
+        ],
+      }),
+    })
+    const statusCheckboxes = statusWrapper.findAll('input[type="checkbox"]')
+    await statusCheckboxes[0].setValue(true)
+    await statusCheckboxes[1].setValue(true)
+    expect(dealFilters.status_q).toBe('pending,draft')
   })
 })
