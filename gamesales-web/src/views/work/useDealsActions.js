@@ -79,7 +79,6 @@ export function useDealsActions({
     if (deal.deal_type_code === 'sale' && !saleDraft) {
       if (!deal.region_code) return 'Укажите регион'
       if (!deal.source_id) return 'Укажите источник'
-      if (!(Number(deal.price) > 0)) return 'Укажите сумму'
     }
     return null
   }

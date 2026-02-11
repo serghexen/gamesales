@@ -132,15 +132,15 @@ describe('useDealsActions', () => {
     expect(deps.dealError.value).toBeNull()
   })
 
-  it('updateDeal validates required price for sale', async () => {
+  it('updateDeal allows zero price for sale', async () => {
     const deps = createDeps()
     deps.editDeal.price = 0
     const { updateDeal } = useDealsActions(deps)
 
     await updateDeal()
 
-    expect(deps.apiPut).not.toHaveBeenCalled()
-    expect(deps.dealError.value).toBe('Укажите сумму')
+    expect(deps.apiPut).toHaveBeenCalledTimes(1)
+    expect(deps.dealError.value).toBeNull()
   })
 
   it('updateDeal sends responsible and order number', async () => {

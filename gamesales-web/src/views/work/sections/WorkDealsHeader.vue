@@ -41,9 +41,6 @@
       </div>
     </div>
     <div class="toolbar-actions">
-      <span v-if="isAdmin" class="muted">
-        Realtime: {{ realtimeStatusLabel }}
-      </span>
       <div class="switch-wrap">
         <label class="switch">
           <input v-model="dealShowCompletedModel" type="checkbox" @change="loadDeals(1)" />
@@ -97,10 +94,4 @@ const dealShowCompletedModel = computed({
   set: (value) => props.setDealShowCompleted(value),
 })
 
-const realtimeStatusLabel = computed(() => {
-  if (props.dealsRealtimeStatus === 'online') return 'онлайн'
-  if (props.dealsRealtimeStatus === 'connecting') return 'подключение...'
-  if (props.dealsRealtimeStatus === 'reconnecting') return 'переподключение...'
-  return 'не в сети'
-})
 </script>
