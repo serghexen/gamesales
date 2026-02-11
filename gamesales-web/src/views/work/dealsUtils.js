@@ -17,6 +17,7 @@ export function createNewDealState() {
     purchase_at: '',
     slots_used: 1,
     notes: '',
+    is_refund: false,
   }
 }
 
@@ -44,6 +45,7 @@ export function createEditDealState() {
     slots_used: 1,
     notes: '',
     flow_status_code: '',
+    is_refund: false,
   }
 }
 

@@ -11,10 +11,11 @@ import app as app_module
 
 
 class _ScriptedCursor:
-    def __init__(self, script):
+    def __init__(self, script, sql_collector=None):
         self._script = script
         self._current = None
         self.rowcount = 0
+        self._sql_collector = sql_collector
 
     def __enter__(self):
         return self
@@ -23,6 +24,9 @@ class _ScriptedCursor:
         return False
 
     def execute(self, sql, params=None):
+        # Сохраняем SQL в тестах, где нужно проверить дополнительные условия фильтрации.
+        if self._sql_collector is not None:
+            self._sql_collector.append(str(sql))
         if not self._script:
             raise AssertionError(f"Unexpected SQL without scripted response: {sql}")
         self._current = self._script.pop(0)
@@ -40,8 +44,9 @@ class _ScriptedCursor:
 
 
 class _ScriptedConnCtx:
-    def __init__(self, script):
+    def __init__(self, script, sql_collector=None):
         self._script = list(script)
+        self._sql_collector = sql_collector
 
     def __enter__(self):
         return self
@@ -53,7 +58,7 @@ class _ScriptedConnCtx:
         return None
 
     def cursor(self):
-        return _ScriptedCursor(self._script)
+        return _ScriptedCursor(self._script, sql_collector=self._sql_collector)
 
 
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
@@ -130,6 +135,7 @@ class DealsEndpointsTests(unittest.TestCase):
                         None,
                         "note",
                         "https://game",
+                        True,
                     )
                 ]
             },
@@ -152,6 +158,28 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(body["items"][0]["password"], "cust-pass")
             self.assertEqual(body["items"][0]["order_number"], "ORD-1")
             self.assertEqual(body["items"][0]["responsible_username"], "admin")
+            self.assertEqual(body["items"][0]["is_refund"], True)
+
+    # Для manager/operator возвратные сделки должны отсеиваться на уровне SQL.
+    def test_list_deals_hides_refunds_for_manager(self):
+        script = [
+            {"one": (0,)},  # total
+            {"all": []},  # rows
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/deals?page=1&page_size=20",
+                    headers=self._auth_headers(role="manager", username="manager1"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertTrue(any("di.returned_at IS NULL" in sql for sql in sql_collector))
 
     # Валидация create_deal: тип сделки должен быть sale/rental.
     def test_create_deal_invalid_type(self):
@@ -434,6 +462,7 @@ class DealsEndpointsTests(unittest.TestCase):
             None,
             "note",
             None,
+            None,
         )
         script = [
             {"rowcount": 1},  # set_config('app.user', ...)
@@ -477,6 +506,7 @@ class DealsEndpointsTests(unittest.TestCase):
             None,
             "note",
             None,
+            None,
         )
         script = [
             {"rowcount": 1},  # set_config('app.user', ...)
@@ -515,6 +545,7 @@ class DealsEndpointsTests(unittest.TestCase):
             0,
             None,
             "note",
+            None,
             None,
         )
         script = [
@@ -562,6 +593,7 @@ class DealsEndpointsTests(unittest.TestCase):
             1,
             "ps5_p1",
             "note",
+            None,
             None,
         )
         script = [
@@ -616,6 +648,7 @@ class DealsEndpointsTests(unittest.TestCase):
             None,
             "note",
             None,
+            None,
         )
         script = [
             {"rowcount": 1},  # set_config('app.user', ...)
@@ -637,6 +670,144 @@ class DealsEndpointsTests(unittest.TestCase):
                     json={"order_number": "a-100"},
                 )
             self.assertEqual(res.status_code, 409)
+
+    # Завершение возврата должно быть доступно только admin/owner.
+    def test_update_deal_refund_completion_forbidden_for_manager(self):
+        current_row = (
+            "sale",
+            "confirmed",
+            "pending",
+            10,
+            5,
+            500.0,
+            "A-100",
+            "admin",
+            77,
+            None,
+            None,
+            None,
+            500.0,
+            100.0,
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+            None,
+            None,
+            0,
+            None,
+            "note",
+            None,
+            datetime(2026, 2, 1, 13, 0, tzinfo=timezone.utc),
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+            {"one": (1,)},  # flow_status lookup
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="manager"),
+                    json={"flow_status_code": "completed"},
+                )
+            self.assertEqual(res.status_code, 403)
+            self.assertIn("не достаточно прав для проведения возврата", res.text)
+
+    # Признак возврата можно менять только у сделок в ожидании.
+    def test_update_deal_refund_flag_can_be_changed_only_for_pending(self):
+        current_row = (
+            "sale",
+            "confirmed",
+            "completed",
+            10,
+            5,
+            500.0,
+            "A-100",
+            "admin",
+            77,
+            None,
+            None,
+            None,
+            500.0,
+            100.0,
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+            None,
+            None,
+            0,
+            None,
+            "note",
+            None,
+            None,
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="manager"),
+                    json={"is_refund": True},
+                )
+            self.assertEqual(res.status_code, 400)
+
+    # Если признак возврата не изменился, сделку можно вернуть из completed в pending.
+    def test_update_deal_completed_to_pending_with_same_refund_flag_is_allowed(self):
+        current_row = (
+            "sale",
+            "confirmed",
+            "completed",
+            10,
+            5,
+            500.0,
+            "A-100",
+            "admin",
+            77,
+            None,
+            None,
+            None,
+            500.0,
+            100.0,
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+            None,
+            None,
+            0,
+            None,
+            "note",
+            None,
+            None,
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+            {"one": (1,)},  # flow_status lookup
+            {"rowcount": 1},  # update deals
+            {"rowcount": 1},  # update deal_items
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="manager"),
+                    json={"flow_status_code": "pending", "is_refund": False},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
 
 
 if __name__ == "__main__":

@@ -29,6 +29,7 @@ function createDeps(overrides = {}) {
       game_link: '',
       purchase_at: '',
       notes: '',
+      is_refund: false,
     },
     editDeal: {
       deal_id: 1,
@@ -48,6 +49,7 @@ function createDeps(overrides = {}) {
       purchase_at: '',
       notes: '',
       flow_status_code: '',
+      is_refund: false,
     },
     newDealResponsible: ref('current_user'),
     editDealResponsible: ref('alice'),
@@ -58,6 +60,7 @@ function createDeps(overrides = {}) {
     dealSaving: ref(false),
     dealBackgroundSync: ref(false),
     suppressUnsavedConfirm: ref(false),
+    showDealWarning: vi.fn(),
     loadDeals: vi.fn().mockResolvedValue(undefined),
     loadAccountsAll: vi.fn().mockResolvedValue(undefined),
     closeDealModal: vi.fn(),
@@ -135,5 +138,34 @@ describe('useDealsActions', () => {
     expect(deps.apiPut.mock.calls[0][1].login).toBe('edit-login')
     expect(deps.apiPut.mock.calls[0][1].password).toBe('edit-pass')
     expect(deps.apiPut.mock.calls[0][1].responsible_username).toBe('alice')
+    expect(deps.apiPut.mock.calls[0][1].is_refund).toBe(false)
+  })
+
+  it('markDealCompleted blocks refund completion for non-admin roles', async () => {
+    const deps = createDeps({
+      auth: { state: { token: 'token', user: 'tester', role: 'manager' } },
+    })
+    const { markDealCompleted } = useDealsActions(deps)
+
+    await markDealCompleted({ deal_id: 10, is_refund: true })
+
+    expect(deps.apiPut).not.toHaveBeenCalled()
+    expect(deps.dealError.value).toBeNull()
+    expect(deps.showDealWarning).toHaveBeenCalledWith('не достаточно прав для проведения возврата')
+  })
+
+  it('updateDeal blocks refund completion for non-admin roles', async () => {
+    const deps = createDeps({
+      auth: { state: { token: 'token', user: 'tester', role: 'manager' } },
+    })
+    deps.editDeal.is_refund = true
+    deps.editDeal.flow_status_code = 'completed'
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.apiPut).not.toHaveBeenCalled()
+    expect(deps.dealError.value).toBeNull()
+    expect(deps.showDealWarning).toHaveBeenCalledWith('не достаточно прав для проведения возврата')
   })
 })

@@ -437,6 +437,18 @@
   background: rgba(247, 185, 85, 0.18);
 }
 
+.work-page .row-refund td {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.work-page .row-refund:hover td {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.work-page .row-refund.row-active td {
+  background: rgba(239, 68, 68, 0.24);
+}
+
 .work-page .overlay {
   position: fixed;
   inset: 0;

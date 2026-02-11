@@ -15,7 +15,9 @@
 
     <div class="panel__body">
       <p v-if="ctx.dealListError" class="bad">{{ ctx.dealListError }}</p>
-      <div v-else-if="ctx.dealListLoading" class="loader-wrap loader-overlay">
+      <p v-if="ctx.dealError" class="bad">{{ ctx.dealError }}</p>
+      <p v-if="ctx.dealOk" class="ok">{{ ctx.dealOk }}</p>
+      <div v-if="!ctx.dealListError && ctx.dealListLoading" class="loader-wrap loader-overlay">
         <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
           <div class="wheel"></div>
           <div class="hamster">
@@ -37,7 +39,7 @@
       </div>
 
       <WorkDealFilterChips
-        v-else-if="ctx.activeDealChips.length"
+        v-if="!ctx.dealListError && !ctx.dealListLoading && ctx.activeDealChips.length"
         :active-deal-chips="ctx.activeDealChips"
         :reset-deal-filter="ctx.resetDealFilter"
       />
@@ -65,6 +67,7 @@
         :deal-show-completed="ctx.dealShowCompleted"
         :mark-deal-completed="ctx.markDealCompleted"
         :deal-saving="ctx.dealSaving"
+        :deal-completing-id="ctx.dealCompletingId"
       />
 
       <div v-if="ctx.dealTotal > 0" class="pager">

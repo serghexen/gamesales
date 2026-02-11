@@ -31,6 +31,7 @@ function createDeps() {
       purchase_at: '',
       slots_used: 1,
       notes: '',
+      is_refund: false,
     },
     editDeal: {
       open: false,
@@ -54,6 +55,7 @@ function createDeps() {
       slots_used: 1,
       notes: '',
       flow_status_code: '',
+      is_refund: false,
     },
     dealEditMode: ref('view'),
     dealInitLock: ref(false),
@@ -118,6 +120,7 @@ describe('useDealModalFlow', () => {
       slots_used: 1,
       notes: 'init',
       flow_status_code: 'pending',
+      is_refund: true,
       responsible_username: 'admin',
     })
 
@@ -133,6 +136,7 @@ describe('useDealModalFlow', () => {
     expect(deps.editDeal.login).toBe('deal-login')
     expect(deps.editDeal.password).toBe('deal-pass')
     expect(deps.editDeal.created_at).toBe('2026-02-09T10:00:00Z')
+    expect(deps.editDeal.is_refund).toBe(true)
   })
 
   it('closes fresh sharing form without unsaved warning', async () => {

@@ -17,6 +17,7 @@ describe('dealsUtils', () => {
     expect(state.price).toBe(0)
     expect(state.slots_used).toBe(1)
     expect(state.notes).toBe('')
+    expect(state.is_refund).toBe(false)
   })
 
   it('createEditDealState contains edit-specific fields', () => {
@@ -28,6 +29,7 @@ describe('dealsUtils', () => {
     expect(state.password).toBe('')
     expect(state.completed_at).toBe('')
     expect(state.flow_status_code).toBe('')
+    expect(state.is_refund).toBe(false)
   })
 
   it('createDealFiltersState returns empty filters', () => {

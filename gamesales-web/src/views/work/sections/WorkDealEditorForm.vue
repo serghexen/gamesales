@@ -197,6 +197,23 @@
                             </select>
                           </label>
                         </div>
+                        <div v-if="editDeal.deal_type_code === 'sale' && (dealEditMode !== 'view' || editDeal.is_refund)" class="field">
+                          <span class="label">Возврат</span>
+                          <input
+                            v-if="dealEditMode === 'view'"
+                            class="input"
+                            :value="editDeal.is_refund ? 'Да' : 'Нет'"
+                            readonly
+                          />
+                          <label v-else class="check-item" :title="editDeal.flow_status_code !== 'pending' ? 'Признак можно менять только в статусе В ожидании' : ''">
+                            <input
+                              v-model="editDeal.is_refund"
+                              type="checkbox"
+                              :disabled="editDeal.flow_status_code !== 'pending'"
+                            />
+                            <span>Произвести возврат</span>
+                          </label>
+                        </div>
                         <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-top">
                           <label class="field">
                             <span class="label">Источник</span>

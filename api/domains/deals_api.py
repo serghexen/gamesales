@@ -343,7 +343,8 @@ def mount_deals_routes(
                   di.slots_used,
                   di.slot_type_code,
                   di.notes,
-                  di.game_link
+                  di.game_link,
+                  di.returned_at
                 FROM app.deals d
                 JOIN app.deal_items di ON di.deal_id = d.deal_id
                 WHERE d.deal_id=%s
@@ -356,7 +357,7 @@ def mount_deals_routes(
                 raise HTTPException(404, "Deal not found")
     
             current_type, status_code, flow_status_code, region_id, customer_id, total_amount, order_number, responsible_username, deal_item_id, \
-                account_id, game_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link = row
+                account_id, game_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link, returned_at = row
     
             deal_type = (payload.deal_type_code or current_type or "").strip().lower()
             if deal_type not in ("sale", "rental"):
@@ -412,6 +413,26 @@ def mount_deals_routes(
                 row = q1(conn, "SELECT 1 FROM app.deal_flow_statuses WHERE code=%s", (payload.flow_status_code,))
                 if not row:
                     raise HTTPException(400, "Unknown flow_status_code")
+            current_is_refund = returned_at is not None
+            new_is_refund = current_is_refund if payload.is_refund is None else bool(payload.is_refund)
+            is_refund_changed = new_is_refund != current_is_refund
+            # Признак возврата можно менять только в pending, но неизменное значение пропускаем.
+            if is_refund_changed and flow_status_code != "pending":
+                raise HTTPException(400, "is_refund can be changed only for pending deals")
+            if payload.is_refund and deal_type != "sale":
+                raise HTTPException(400, "is_refund is allowed only for sale deals")
+            # Проведение возврата в completed разрешено только владельцу или администратору.
+            user_role = (getattr(user, "role", "") or "").strip().lower()
+            is_completing_now = flow_status_code != "completed" and new_flow_status == "completed"
+            if is_completing_now and new_is_refund and user_role not in {"admin", "owner"}:
+                raise HTTPException(403, "не достаточно прав для проведения возврата")
+            # Храним признак возврата через returned_at: timestamp при включении и null при выключении.
+            new_returned_at = returned_at
+            if is_refund_changed:
+                if new_is_refund:
+                    new_returned_at = returned_at or now_utc()
+                else:
+                    new_returned_at = None
             if deal_type == "sale":
                 new_slots_used = 0
                 new_account_id = None
@@ -422,6 +443,7 @@ def mount_deals_routes(
                     raise HTTPException(400, "region_code is required for sale")
             if deal_type == "rental":
                 new_slots_used = 1
+                new_returned_at = None
             validate_date_range(new_start_at, new_end_at, "end_at")
     
             # check slots for rental
@@ -494,6 +516,7 @@ def mount_deals_routes(
                     purchase_at=%s,
                     start_at=%s,
                     end_at=%s,
+                    returned_at=%s,
                     slots_used=%s,
                     slot_type_code=%s,
                     notes=%s,
@@ -509,6 +532,7 @@ def mount_deals_routes(
                     new_purchase_at,
                     new_start_at,
                     new_end_at,
+                    new_returned_at,
                     new_slots_used,
                     new_slot_type_code,
                     new_notes,
@@ -623,7 +647,16 @@ def mount_deals_routes(
                 date_q,
                 price_q,
             )
-    
+            # Возвратные сделки в списке видят только admin/owner.
+            user_role = (getattr(user, "role", "") or "").strip().lower()
+            user_name = (getattr(user, "username", "") or "").strip().lower()
+            can_view_refunds = user_role in {"admin", "owner"} or user_name in {"admin", "owner"}
+            if not can_view_refunds:
+                if where_sql:
+                    where_sql = f"{where_sql} AND di.returned_at IS NULL"
+                else:
+                    where_sql = "WHERE di.returned_at IS NULL"
+
             total_row = q1(conn, f"""
                 SELECT COUNT(*)
                 FROM app.deal_items di
@@ -673,7 +706,8 @@ def mount_deals_routes(
                   di.slots_used,
                   di.slot_type_code,
                   di.notes,
-                  di.game_link
+                  di.game_link,
+                  (di.returned_at IS NOT NULL) as is_refund
                 FROM app.deal_items di
                 JOIN app.deals d ON d.deal_id = di.deal_id
                 LEFT JOIN app.deal_types dt ON dt.code = d.deal_type_code
@@ -727,6 +761,7 @@ def mount_deals_routes(
                     slot_type_code=r[26] if has_customer_credentials else r[24],
                     notes=r[27] if has_customer_credentials else r[25],
                     game_link=r[28] if has_customer_credentials else r[26],
+                    is_refund=bool(r[29]) if has_customer_credentials and len(r) >= 30 else False,
                 )
             )
     

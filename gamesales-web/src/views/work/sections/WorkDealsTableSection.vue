@@ -300,7 +300,7 @@
         v-for="d in sortedDeals"
         :key="d.deal_id"
         class="clickable-row"
-        :class="{ 'row-active': editDeal.open && editDeal.deal_id === d.deal_id }"
+        :class="{ 'row-active': editDeal.open && editDeal.deal_id === d.deal_id, 'row-refund': d.is_refund }"
         @click="startEditDeal(d)"
       >
         <td class="cell--tight">{{ d.deal_type || '—' }}</td>
@@ -311,7 +311,8 @@
         <td class="cell--tight">{{ d.responsible_username || '—' }}</td>
         <td v-if="!dealShowCompleted" class="cell--tight">
           <button class="mini-btn" type="button" @click.stop="markDealCompleted(d)" :disabled="dealSaving">
-            Завершить
+            <span v-if="dealSaving && dealCompletingId === d.deal_id" class="spinner spinner--small" aria-hidden="true"></span>
+            {{ dealSaving && dealCompletingId === d.deal_id ? 'Завершаем...' : 'Завершить' }}
           </button>
         </td>
       </tr>
@@ -344,5 +345,6 @@ defineProps({
   dealShowCompleted: { type: Boolean, required: true },
   markDealCompleted: { type: Function, required: true },
   dealSaving: { type: Boolean, required: true },
+  dealCompletingId: { type: [Number, null], default: null },
 })
 </script>

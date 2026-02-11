@@ -13,12 +13,20 @@ export function useDealsActions({
   dealOk,
   dealLoading,
   dealSaving,
+  dealCompletingId,
   dealBackgroundSync,
   loadDeals,
   loadAccountsAll,
   closeDealModal,
   suppressUnsavedConfirm,
+  showDealWarning,
 }) {
+  // Проверяет, может ли текущий пользователь проводить возврат (admin/owner).
+  function canCompleteRefund() {
+    const role = String(auth?.state?.role || '').trim().toLowerCase()
+    return role === 'admin' || role === 'owner'
+  }
+
   // Приводит поле ответственного к значению, которое понимает API.
   function normalizeResponsible(value) {
     if (value === 'current_user') return auth.state.user || null
@@ -160,6 +168,17 @@ export function useDealsActions({
         return
       }
     }
+    // Для возврата проверяем право проведения заранее, чтобы не ждать ответ сервера.
+    const triesCompleteRefund = editDeal.deal_type_code === 'sale'
+      && Boolean(editDeal.is_refund)
+      && editDeal.flow_status_code === 'completed'
+      && !editDeal.completed_at
+    if (triesCompleteRefund && !canCompleteRefund()) {
+      const warningText = 'не достаточно прав для проведения возврата'
+      // Показываем явное предупреждение, чтобы в таблице было понятно, почему действие не выполнено.
+      if (typeof showDealWarning === 'function') showDealWarning(warningText)
+      return
+    }
     dealLoading.value = true
     dealSaving.value = true
     let updatedOk = false
@@ -185,6 +204,8 @@ export function useDealsActions({
           slots_used: editDeal.deal_type_code === 'rental' ? 1 : 0,
           notes: editDeal.notes || null,
           flow_status_code: editDeal.flow_status_code || null,
+          // Признак возврата отправляем только для продаж, для остальных типов не трогаем поле.
+          is_refund: editDeal.deal_type_code === 'sale' ? Boolean(editDeal.is_refund) : null,
         },
         { token: auth.state.token }
       )
@@ -224,6 +245,15 @@ export function useDealsActions({
     if (!deal?.deal_id) return
     dealError.value = null
     dealOk.value = null
+    // Не даем обычным ролям проводить возврат, чтобы сразу показать понятную ошибку в UI.
+    if (deal.is_refund && !canCompleteRefund()) {
+      const warningText = 'не достаточно прав для проведения возврата'
+      // Для быстрого завершения тоже показываем модальное предупреждение в стиле интерфейса.
+      if (typeof showDealWarning === 'function') showDealWarning(warningText)
+      return
+    }
+    // Сохраняем id строки, чтобы сразу показать лоадер на нужной кнопке в таблице.
+    if (dealCompletingId) dealCompletingId.value = deal.deal_id
     dealSaving.value = true
     try {
       await apiPut(
@@ -236,6 +266,7 @@ export function useDealsActions({
       dealError.value = mapApiError(e?.message)
     } finally {
       dealSaving.value = false
+      if (dealCompletingId) dealCompletingId.value = null
     }
   }
 

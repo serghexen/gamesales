@@ -73,6 +73,22 @@
         </div>
       </div>
     </teleport>
+
+    <teleport to="body">
+      <div v-if="dealWarning.open" class="work-page work-modal-root modal-backdrop unsaved-confirm deal-warning" @click.self="closeDealWarning">
+        <div class="modal modal--auto unsaved-confirm__modal deal-warning__modal">
+          <div class="panel__head panel__head--tight unsaved-confirm__head deal-warning__head">
+            <h3 class="unsaved-confirm__title deal-warning__title">{{ dealWarning.title }}</h3>
+          </div>
+          <div class="modal__body deal-warning__body">
+            <p class="muted unsaved-confirm__text deal-warning__text">{{ dealWarning.message }}</p>
+            <div class="toolbar-actions unsaved-confirm__actions deal-warning__actions">
+              <button class="btn btn--danger deal-warning__btn" type="button" @click="closeDealWarning">Ок</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
@@ -188,6 +204,11 @@ const unsavedConfirm = reactive({
   message: '',
   resolver: null,
 })
+const dealWarning = reactive({
+  open: false,
+  title: 'Предупреждение',
+  message: '',
+})
 
 function requestUnsavedConfirm(message) {
   // Показывает кастомное модальное подтверждение вместо системного confirm.
@@ -204,6 +225,19 @@ function answerUnsavedConfirm(accepted) {
   unsavedConfirm.message = ''
   unsavedConfirm.resolver = null
   if (typeof resolve === 'function') resolve(Boolean(accepted))
+}
+
+function showDealWarning(message) {
+  // Открываем компактное предупреждение в фирменном модальном стиле.
+  dealWarning.open = true
+  dealWarning.title = 'Предупреждение'
+  dealWarning.message = message || 'Операция недоступна'
+}
+
+function closeDealWarning() {
+  dealWarning.open = false
+  dealWarning.title = 'Предупреждение'
+  dealWarning.message = ''
 }
 
 // Основное состояние экрана: списки, флаги загрузки, ошибки, успехи.
@@ -267,6 +301,7 @@ const dealError = ref(null)
 const dealOk = ref(null)
 const dealLoading = ref(false)
 const dealBackgroundSync = ref(false)
+const dealCompletingId = ref(null)
 const dealInitLock = ref(false)
 const pwdError = ref(null)
 const pwdOk = ref(false)
@@ -790,11 +825,13 @@ const { createDeal, updateDeal, markDealCompleted } = useDealsActions({
   dealOk,
   dealLoading,
   dealSaving,
+  dealCompletingId,
   dealBackgroundSync,
   loadDeals,
   loadAccountsAll,
   closeDealModal,
   suppressUnsavedConfirm,
+  showDealWarning,
 })
 const usersSort = ref({ key: 'created_at', dir: 'desc' })
 const domainsSortAsc = ref(true)
@@ -1832,6 +1869,7 @@ const {
   startEditDeal,
   markDealCompleted,
   dealSaving,
+  dealCompletingId,
   dealTotal,
   dealPageSize,
   setDealPage,

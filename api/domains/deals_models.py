@@ -85,6 +85,7 @@ class DealUpdate(BaseModel):
     slots_used: Optional[int] = None
     notes: Optional[str] = None
     flow_status_code: Optional[str] = None
+    is_refund: Optional[bool] = None
 
     @field_validator("purchase_at", "start_at", "end_at", mode="before")
     @classmethod
@@ -121,6 +122,7 @@ class DealListItem(BaseModel):
     completed_at: Optional[datetime] = None
     slots_used: Optional[int] = None
     notes: Optional[str] = None
+    is_refund: bool = False
 
 
 class DealListOut(BaseModel):

@@ -85,6 +85,8 @@ export const mapApiError = (message) => {
   if (text.includes('deal_type_code must be sale or rental')) return 'Тип сделки должен быть продажа или шеринг'
   if (text.includes('order_number must be unique for market source')) return 'Для market-источника номер заказа уже используется'
   if (text.includes('Unknown flow_status_code')) return 'Неизвестный статус'
+  if (text.includes('is_refund can be changed only for pending deals')) return 'Признак возврата можно менять только у сделки в ожидании'
+  if (text.includes('не достаточно прав для проведения возврата')) return 'не достаточно прав для проведения возврата'
   if (text.includes('region_code is required for sale')) return 'Укажите регион'
   if (text.includes('account_id is required for rental')) return 'Для шеринга укажите аккаунт'
   if (text.includes('game_id is required for rental')) return 'Для шеринга укажите игру'

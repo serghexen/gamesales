@@ -761,6 +761,9 @@
 }
 
 .work-page .mini-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: #cfe1ff;
@@ -768,6 +771,11 @@
   padding: 4px 10px;
   font-size: 12px;
   cursor: pointer;
+}
+
+.work-page .mini-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
 }
 
 .work-page .mini-btn:hover {
@@ -859,12 +867,12 @@
 }
 
 .work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__modal {
-  width: min(340px, calc(100vw - 24px));
-  max-width: 340px;
+  width: min(460px, calc(100vw - 24px));
+  max-width: 460px;
   min-height: 0;
   max-height: none;
   height: auto;
-  padding: 10px;
+  padding: 12px;
   border-radius: 14px;
   box-shadow: 0 20px 50px rgba(3, 8, 20, 0.42);
 }
@@ -872,46 +880,96 @@
 .work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__head {
   margin-bottom: 0;
   min-height: 34px;
+  justify-content: center;
 }
 
 .work-page .unsaved-confirm__title {
   margin: 0;
-  font-size: 13px;
+  width: 100%;
+  text-align: center;
+  font-size: 17px;
   letter-spacing: 0.02em;
 }
 
 .work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__modal .modal__body {
   flex: initial;
   overflow: visible;
-  padding: 6px 8px 8px;
+  padding: 10px 10px 12px;
 }
 
 .work-page .unsaved-confirm__text {
   margin: 0;
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 15px;
+  line-height: 1.45;
+  text-align: center;
 }
 
 .work-page .unsaved-confirm__actions {
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 8px;
+  margin-top: 14px;
+  width: 100%;
 }
 
 .work-page .unsaved-confirm__modal .btn,
 .work-page .unsaved-confirm__modal .ghost {
-  min-height: 30px;
-  padding: 0 9px;
-  font-size: 12px;
-  border-radius: 9px;
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+
+.work-page .deal-warning__modal {
+  width: min(460px, calc(100vw - 28px)) !important;
+  max-width: 460px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, #ef4444 45%, transparent);
+  box-shadow: 0 22px 56px rgba(111, 19, 19, 0.38);
+}
+
+.work-page .deal-warning__head {
+  min-height: 38px;
+  justify-content: center;
+}
+
+.work-page .deal-warning__title {
+  width: 100%;
+  text-align: center;
+  font-size: 18px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, #ffd6d6 88%, #ffffff 12%);
+}
+
+.work-page .deal-warning__body {
+  padding: 10px 10px 12px !important;
+}
+
+.work-page .deal-warning__text {
+  font-size: 15px;
+  line-height: 1.45;
+  color: color-mix(in srgb, #d8deec 82%, #ffffff 18%);
+  text-align: center;
+}
+
+.work-page .deal-warning__actions {
+  margin-top: 14px;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.work-page .deal-warning__btn {
+  min-height: 36px !important;
+  padding: 0 16px !important;
+  border-radius: 10px !important;
 }
 
 @media (max-width: 480px) {
   .work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__modal {
-    width: min(320px, calc(100vw - 20px));
-    max-width: 320px;
+    width: min(360px, calc(100vw - 20px));
+    max-width: 360px;
   }
 }
 

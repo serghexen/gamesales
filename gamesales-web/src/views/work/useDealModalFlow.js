@@ -93,6 +93,7 @@ export function useDealModalFlow({
     editDeal.slots_used = deal.slots_used || (deal.deal_type_code === 'rental' ? 1 : 0)
     editDeal.notes = deal.notes || ''
     editDeal.flow_status_code = deal.flow_status_code || ''
+    editDeal.is_refund = Boolean(deal.is_refund)
     // Для существующей сделки показываем сохраненное значение как есть, без подмены на текущего пользователя.
     editDealResponsible.value = deal.responsible_username || ''
   }
@@ -120,6 +121,7 @@ export function useDealModalFlow({
     editDeal.slots_used = 1
     editDeal.notes = ''
     editDeal.flow_status_code = ''
+    editDeal.is_refund = false
     editDealResponsible.value = ''
     dealEditMode.value = 'view'
     initialEditDealSnapshot = null
@@ -223,6 +225,7 @@ export function useDealModalFlow({
       slots_used: editDeal.slots_used,
       notes: editDeal.notes,
       flow_status_code: editDeal.flow_status_code,
+      is_refund: editDeal.is_refund,
       responsible_username: editDealResponsible.value,
     }
     const createDirty = showDealForm.value && !isSameNormalized(createCurrent, createBaseline)
@@ -316,6 +319,8 @@ export function useDealModalFlow({
       slots_used: deal.slots_used || (deal.deal_type_code === 'rental' ? 1 : 0),
       notes: deal.notes || '',
       flow_status_code: deal.flow_status_code || '',
+      // Для снимка фиксируем и признак возврата, чтобы корректно откатывать изменения формы.
+      is_refund: Boolean(deal.is_refund),
       // Снимок редактирования должен хранить фактическое значение сделки, чтобы не было ложной подстановки.
       responsible_username: deal.responsible_username || '',
     }
