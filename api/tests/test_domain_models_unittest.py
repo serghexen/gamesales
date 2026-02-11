@@ -1,8 +1,6 @@
 import unittest
 from datetime import date, datetime, timezone
 
-from pydantic import ValidationError
-
 from domains.accounts_models import AccountCreate, AccountOut, AccountUpdate
 from domains.analytics_models import (
     RepeatCustomersOut,
@@ -73,10 +71,10 @@ class DealsModelsTests(unittest.TestCase):
         model = DealUpdate(purchase_at=aware)
         self.assertEqual(model.purchase_at, aware)
 
-    # Обязательные поля должны валидироваться.
-    def test_deal_create_requires_customer_nickname(self):
-        with self.assertRaises(ValidationError):
-            DealCreate(deal_type_code="sale")
+    # Для черновика покупатель может быть пустым, поэтому поле не является обязательным в модели.
+    def test_deal_create_allows_empty_customer_nickname(self):
+        model = DealCreate(deal_type_code="sale")
+        self.assertIsNone(model.customer_nickname)
 
 
 class AnalyticsModelsTests(unittest.TestCase):

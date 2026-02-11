@@ -27,6 +27,15 @@ def ensure_analytics_schema():
             exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS completed_at timestamptz")
             exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS order_number text")
             exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS responsible_username text")
+            # Добавляем статус черновика для flow-логики, чтобы можно было сохранять неполные продажи.
+            exec1(
+                conn,
+                """
+                INSERT INTO app.deal_flow_statuses(code, name)
+                VALUES ('draft', 'Черновик')
+                ON CONFLICT (code) DO NOTHING
+                """,
+            )
             exec1(
                 conn,
                 """

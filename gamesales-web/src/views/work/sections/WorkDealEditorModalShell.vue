@@ -26,6 +26,21 @@
               </svg>
             </button>
             <button
+              v-if="showSaveDraft"
+              class="btn btn--icon-plain btn--draft"
+              type="button"
+              aria-label="Сохранить как черновик"
+              title="Сохранить как черновик"
+              @click="onSaveDraft"
+              :disabled="actionsDisabled"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 4h8l4 4v12H4V4h4" />
+                <path d="M9 12h6" />
+                <path d="M12 9v6" />
+              </svg>
+            </button>
+            <button
               v-if="showCreate"
               class="btn btn--icon-plain"
               type="button"
@@ -41,6 +56,21 @@
               </svg>
             </button>
             <button
+              v-if="showCreateDraft"
+              class="btn btn--icon-plain btn--draft"
+              type="button"
+              aria-label="Создать черновик"
+              title="Создать черновик"
+              @click="onCreateDraft"
+              :disabled="actionsDisabled"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 4h8l4 4v12H4V4h4" />
+                <path d="M9 12h6" />
+                <path d="M12 9v6" />
+              </svg>
+            </button>
+            <button
               v-if="showEdit"
               class="btn btn--icon-plain btn--icon-round btn--edit"
               type="button"
@@ -52,6 +82,19 @@
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M4 20h4l10-10-4-4L4 16v4Z" />
                 <path d="M13 6l4 4" />
+              </svg>
+            </button>
+            <button
+              v-if="showDelete"
+              class="btn btn--icon-plain btn--danger"
+              type="button"
+              aria-label="Удалить"
+              title="Удалить"
+              @click="onDelete"
+              :disabled="actionsDisabled"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
               </svg>
             </button>
             <button
@@ -92,11 +135,17 @@ const {
   startModalDrag,
   title,
   showSaveEdit,
+  showSaveDraft,
   showCreate,
+  showCreateDraft,
+  showDelete,
   showEdit,
   editDisabled,
   onSaveEdit,
+  onSaveDraft,
   onCreate,
+  onCreateDraft,
+  onDelete,
   onEdit,
   actionsDisabled,
 } = toRefs(ctx)

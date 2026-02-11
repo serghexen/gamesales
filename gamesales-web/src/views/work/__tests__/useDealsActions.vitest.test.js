@@ -11,6 +11,7 @@ function createDeps(overrides = {}) {
     auth: { state: { token: 'token', user: 'tester' } },
     apiPost: vi.fn().mockResolvedValue({}),
     apiPut: vi.fn().mockResolvedValue({}),
+    apiDelete: vi.fn().mockResolvedValue({}),
     mapApiError: vi.fn((msg) => String(msg || 'Ошибка')),
     toUtcDateTime: vi.fn((value) => (value ? `${value}T00:00:00Z` : null)),
     newDeal: {
@@ -48,7 +49,7 @@ function createDeps(overrides = {}) {
       game_link: '',
       purchase_at: '',
       notes: '',
-      flow_status_code: '',
+      flow_status_code: 'pending',
       is_refund: false,
     },
     newDealResponsible: ref('current_user'),
@@ -116,6 +117,21 @@ describe('useDealsActions', () => {
     expect(deps.dealError.value).toBe('Укажите источник')
   })
 
+  it('createDealDraft allows empty required sale fields and sends draft status', async () => {
+    const deps = createDeps()
+    deps.newDeal.customer_nickname = ''
+    deps.newDeal.source_id = ''
+    deps.newDeal.region_code = ''
+    deps.newDeal.price = 0
+    const { createDealDraft } = useDealsActions(deps)
+
+    await createDealDraft()
+
+    expect(deps.apiPost).toHaveBeenCalledTimes(1)
+    expect(deps.apiPost.mock.calls[0][1].flow_status_code).toBe('draft')
+    expect(deps.dealError.value).toBeNull()
+  })
+
   it('updateDeal validates required price for sale', async () => {
     const deps = createDeps()
     deps.editDeal.price = 0
@@ -139,6 +155,45 @@ describe('useDealsActions', () => {
     expect(deps.apiPut.mock.calls[0][1].password).toBe('edit-pass')
     expect(deps.apiPut.mock.calls[0][1].responsible_username).toBe('alice')
     expect(deps.apiPut.mock.calls[0][1].is_refund).toBe(false)
+  })
+
+  it('updateDealDraft allows empty required sale fields and sends draft status', async () => {
+    const deps = createDeps()
+    deps.editDeal.customer_nickname = ''
+    deps.editDeal.source_id = ''
+    deps.editDeal.region_code = ''
+    deps.editDeal.price = 0
+    const { updateDealDraft } = useDealsActions(deps)
+
+    await updateDealDraft()
+
+    expect(deps.apiPut).toHaveBeenCalledTimes(1)
+    expect(deps.apiPut.mock.calls[0][1].flow_status_code).toBe('draft')
+    expect(deps.dealError.value).toBeNull()
+  })
+
+  it('deleteDeal blocks non-draft deals on client', async () => {
+    const deps = createDeps()
+    const { deleteDeal } = useDealsActions(deps)
+
+    await deleteDeal()
+
+    expect(deps.apiDelete).not.toHaveBeenCalled()
+    expect(deps.dealError.value).toBe('Удалить можно только черновик')
+  })
+
+  it('deleteDeal archives draft deal after confirmation', async () => {
+    const deps = createDeps()
+    deps.editDeal.flow_status_code = 'draft'
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { deleteDeal } = useDealsActions(deps)
+
+    await deleteDeal()
+
+    expect(deps.apiDelete).toHaveBeenCalledTimes(1)
+    expect(deps.apiDelete).toHaveBeenCalledWith('/deals/1', { token: 'token' })
+    expect(deps.closeDealModal).toHaveBeenCalledTimes(1)
+    confirmSpy.mockRestore()
   })
 
   it('markDealCompleted blocks refund completion for non-admin roles', async () => {

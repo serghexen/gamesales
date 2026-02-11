@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS app.deal_flow_statuses (
 
 INSERT INTO app.deal_flow_statuses(code, name)
 VALUES
+  ('draft', 'Черновик'),
   ('pending', 'В ожидании'),
   ('completed', 'Завершен')
 ON CONFLICT (code) DO NOTHING;

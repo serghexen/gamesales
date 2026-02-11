@@ -116,6 +116,20 @@ def build_db_helpers(
         if not row:
             raise HTTPException(400, f"Unknown source_id: {source_id}")
 
+    # Разбирает фильтр ответственных из строки в список значений.
+    def parse_responsible_filter_values(raw_value: Optional[str]) -> list[str]:
+        if not raw_value:
+            return []
+        parts = [str(part or "").strip() for part in str(raw_value).split(",")]
+        return [part for part in parts if part]
+
+    # Разбирает фильтр статусов сделки из строки "a,b,c" в список кодов.
+    def parse_flow_status_filter_values(raw_value: Optional[str]) -> list[str]:
+        if not raw_value:
+            return []
+        parts = [str(part or "").strip() for part in str(raw_value).split(",")]
+        return [part for part in parts if part]
+
     def build_deals_filters(
         account_id: Optional[int],
         game_id: Optional[int],
@@ -182,8 +196,11 @@ def build_db_helpers(
             where.append("c.nickname ILIKE %s")
             params.append(f"%{customer_q}%")
         if responsible_q:
-            where.append("d.responsible_username ILIKE %s")
-            params.append(f"%{responsible_q}%")
+            responsible_values = parse_responsible_filter_values(responsible_q)
+            if responsible_values:
+                responsible_where = " OR ".join(["d.responsible_username ILIKE %s"] * len(responsible_values))
+                where.append(f"({responsible_where})")
+                params.extend([f"%{value}%" for value in responsible_values])
         if source_id:
             where.append("c.source_id = %s")
             params.append(source_id)
@@ -214,9 +231,16 @@ def build_db_helpers(
             where.append("(ds.code ILIKE %s OR ds.name ILIKE %s)")
             params.extend([like, like])
         if flow_status_q:
-            like = f"%{flow_status_q}%"
-            where.append("(fs.code ILIKE %s OR fs.name ILIKE %s)")
-            params.extend([like, like])
+            flow_values = parse_flow_status_filter_values(flow_status_q)
+            if len(flow_values) > 1:
+                # Для списка статусов фильтруем по точным кодам, чтобы корректно поддержать pending,draft.
+                flow_where = " OR ".join(["fs.code = %s"] * len(flow_values))
+                where.append(f"({flow_where})")
+                params.extend(flow_values)
+            else:
+                like = f"%{flow_status_q}%"
+                where.append("(fs.code ILIKE %s OR fs.name ILIKE %s)")
+                params.extend([like, like])
         if source_q:
             like = f"%{source_q}%"
             where.append("(src.code ILIKE %s OR src.name ILIKE %s)")

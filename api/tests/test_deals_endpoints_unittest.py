@@ -180,6 +180,7 @@ class DealsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 200)
             self.assertTrue(any("di.returned_at IS NULL" in sql for sql in sql_collector))
+            self.assertTrue(any("COALESCE(d.completed_at, di.purchase_at, d.created_at)::date = %s" in sql for sql in sql_collector))
 
     # Валидация create_deal: тип сделки должен быть sale/rental.
     def test_create_deal_invalid_type(self):
@@ -208,6 +209,43 @@ class DealsEndpointsTests(unittest.TestCase):
                     "/deals",
                     headers=self._auth_headers(role="manager"),
                     json={"deal_type_code": "sale", "customer_nickname": "cust", "price": 100},
+                )
+            self.assertEqual(res.status_code, 400)
+
+    # Черновик продажи можно сохранить без обязательных полей.
+    def test_create_deal_sale_draft_allows_empty_fields(self):
+        script = [
+            {"one": (1,)},  # flow_status lookup
+            {"one": (33,)},  # deal insert
+            {"one": (44,)},  # deal_item insert
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/deals",
+                    headers=self._auth_headers(role="manager"),
+                    json={"deal_type_code": "sale", "flow_status_code": "draft"},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"deal_id": 33})
+
+    # Черновик не разрешаем для шеринга.
+    def test_create_deal_rental_draft_is_forbidden(self):
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/deals",
+                    headers=self._auth_headers(role="manager"),
+                    json={"deal_type_code": "rental", "flow_status_code": "draft"},
                 )
             self.assertEqual(res.status_code, 400)
 
@@ -806,6 +844,128 @@ class DealsEndpointsTests(unittest.TestCase):
                     headers=self._auth_headers(role="manager"),
                     json={"flow_status_code": "pending", "is_refund": False},
                 )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
+
+    # Для продажи перевод из draft в pending без региона запрещаем.
+    def test_update_deal_sale_draft_to_pending_requires_region(self):
+        current_row = (
+            "sale",
+            "confirmed",
+            "draft",
+            None,
+            None,
+            0.0,
+            None,
+            "admin",
+            77,
+            None,
+            None,
+            None,
+            0.0,
+            0.0,
+            None,
+            None,
+            None,
+            0,
+            None,
+            None,
+            None,
+            None,
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+            {"one": (1,)},  # flow_status lookup
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="manager"),
+                    json={"flow_status_code": "pending"},
+                )
+            self.assertEqual(res.status_code, 400)
+
+    # Черновик в update разрешаем только для продажи.
+    def test_update_deal_rental_draft_is_forbidden(self):
+        current_row = (
+            "rental",
+            "confirmed",
+            "pending",
+            10,
+            5,
+            500.0,
+            "A-100",
+            "admin",
+            77,
+            7,
+            21,
+            2,
+            500.0,
+            100.0,
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+            None,
+            None,
+            1,
+            "ps5_p1",
+            "note",
+            None,
+            None,
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+            {"one": (1,)},  # flow_status lookup
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="manager"),
+                    json={"flow_status_code": "draft"},
+                )
+            self.assertEqual(res.status_code, 400)
+
+    # Удалять сделку можно только в статусе черновик.
+    def test_delete_deal_forbidden_for_non_draft(self):
+        script = [
+            {"one": ("pending",)},  # current flow_status
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.delete("/deals/77", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 400)
+
+    # Черновик удаляется мягко: меняем status_code на cancelled.
+    def test_delete_deal_draft_soft_delete_success(self):
+        script = [
+            {"one": ("draft",)},  # current flow_status
+            {"rowcount": 1},  # update deals status_code=cancelled
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.delete("/deals/77", headers=self._auth_headers(role="manager"))
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
 

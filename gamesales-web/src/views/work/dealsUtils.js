@@ -65,5 +65,6 @@ export function createDealFiltersState() {
 
 export function resolveDealFlowStatusFilter(statusQ, showCompleted) {
   if (statusQ) return statusQ
-  return showCompleted ? 'completed' : 'pending'
+  // В режиме "в ожидании" показываем и черновики, чтобы их можно было найти и доработать.
+  return showCompleted ? 'completed' : 'pending,draft'
 }

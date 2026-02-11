@@ -132,6 +132,7 @@ import {
 } from './work/telegramUtils'
 import { createNewAccountState, createEditAccountState, createAccountFiltersState, resolveAccountSort } from './work/accountUtils'
 import { createNewDealState, createEditDealState, createDealFiltersState, resolveDealFlowStatusFilter } from './work/dealsUtils'
+import { readDealFiltersSession, writeDealFiltersSession } from './work/dealsSessionFilters'
 import { useDeals } from './work/useDeals'
 import { useDealsActions } from './work/useDealsActions'
 import { useDealsFlow } from './work/useDealsFlow'
@@ -641,6 +642,44 @@ const editGame = reactive({
 })
 const dealFilters = reactive(createDealFiltersState())
 const dealShowCompleted = ref(false)
+
+// Восстанавливает фильтры сделок из sessionStorage для текущего пользователя.
+function restoreDealFiltersFromSession() {
+  const saved = readDealFiltersSession(auth.state.user)
+  if (!saved?.filters) return
+  dealFilters.search_q = String(saved.filters.search_q || '')
+  dealFilters.customer_q = String(saved.filters.customer_q || '')
+  dealFilters.responsible_q = String(saved.filters.responsible_q || '')
+  dealFilters.region_q = String(saved.filters.region_q || '')
+  dealFilters.status_q = String(saved.filters.status_q || '')
+  dealFilters.purchase_from = String(saved.filters.purchase_from || '')
+  dealFilters.purchase_to = String(saved.filters.purchase_to || '')
+  dealFilters.type_q = String(saved.filters.type_q || '')
+  dealShowCompleted.value = Boolean(saved.showCompleted)
+}
+
+// Применяем сохраненные фильтры при открытии экрана и смене пользователя в сессии.
+restoreDealFiltersFromSession()
+watch(() => auth.state.user, () => restoreDealFiltersFromSession())
+
+watch(
+  [
+    () => auth.state.user,
+    () => dealShowCompleted.value,
+    () => dealFilters.search_q,
+    () => dealFilters.customer_q,
+    () => dealFilters.responsible_q,
+    () => dealFilters.region_q,
+    () => dealFilters.status_q,
+    () => dealFilters.purchase_from,
+    () => dealFilters.purchase_to,
+    () => dealFilters.type_q,
+  ],
+  () => {
+    // Сохраняем фильтры в рамках текущей сессии браузера до logout.
+    writeDealFiltersSession(auth.state.user, dealFilters, dealShowCompleted.value)
+  },
+)
 const {
   analyticsFilters,
   analyticsTotals,
@@ -810,10 +849,11 @@ const {
   dealShowCompleted,
 })
 // Отдельно подключаем действия создания/обновления сделок.
-const { createDeal, updateDeal, markDealCompleted } = useDealsActions({
+const { createDeal, createDealDraft, updateDeal, updateDealDraft, deleteDeal, markDealCompleted } = useDealsActions({
   auth,
   apiPost,
   apiPut,
+  apiDelete,
   mapApiError,
   toUtcDateTime,
   newDeal,
@@ -1885,9 +1925,12 @@ const {
   dealEditMode,
   toggleDealEditMode,
   updateDeal,
+  updateDealDraft,
+  deleteDeal,
   dealLoading,
   dealBackgroundSync,
   createDeal,
+  createDealDraft,
   dealQuickAccountBusy,
   dealQuickGameBusy,
   getDealTypeName,

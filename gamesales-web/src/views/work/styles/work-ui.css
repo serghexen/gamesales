@@ -461,6 +461,16 @@
   background: rgba(59, 130, 246, 0.2);
 }
 
+.work-page .btn--icon-plain.btn--draft {
+  color: #22d3ee;
+  border-color: rgba(34, 211, 238, 0.52);
+  background: rgba(34, 211, 238, 0.12);
+}
+
+.work-page .btn--icon-plain.btn--draft:hover {
+  background: rgba(34, 211, 238, 0.22);
+}
+
 .work-page .ghost--danger {
   color: #ef4444;
   border-color: rgba(239, 68, 68, 0.45);

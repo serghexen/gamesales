@@ -24,7 +24,9 @@ describe('useWorkSectionContexts', () => {
       closeDealModal: () => {},
       dealModalTitle: ref('Title'),
       updateDeal: () => {},
+      updateDealDraft: () => {},
       createDeal: () => {},
+      createDealDraft: () => {},
       toggleDealEditMode: () => {},
     })
 

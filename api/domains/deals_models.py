@@ -39,7 +39,7 @@ class DealCreate(BaseModel):
     deal_type_code: str = Field(..., description="sale/rental")
     account_id: Optional[int] = None
     game_id: Optional[int] = None
-    customer_nickname: str
+    customer_nickname: Optional[str] = None
     order_number: Optional[str] = None
     responsible_username: Optional[str] = None
     source_id: Optional[int] = None
@@ -56,6 +56,7 @@ class DealCreate(BaseModel):
     end_at: Optional[datetime] = None
     slots_used: int = 1
     notes: Optional[str] = None
+    flow_status_code: Optional[str] = None
 
     @field_validator("purchase_at", "start_at", "end_at", mode="before")
     @classmethod

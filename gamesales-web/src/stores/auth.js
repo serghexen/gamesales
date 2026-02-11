@@ -6,6 +6,7 @@ const state = reactive({
   user: localStorage.getItem('auth_user') || null,
   role: localStorage.getItem('auth_role') || null,
 })
+const DEAL_FILTERS_SESSION_KEY_PREFIX = 'gamesales:deal-filters:'
 
 export function useAuth() {
   async function login({ username, password }) {
@@ -44,6 +45,17 @@ export function useAuth() {
   }
 
   function logout() {
+    // При logout чистим сессионные фильтры, чтобы новый вход начинался с чистого состояния.
+    try {
+      const keys = []
+      for (let i = 0; i < sessionStorage.length; i += 1) {
+        const key = sessionStorage.key(i)
+        if (key && key.startsWith(DEAL_FILTERS_SESSION_KEY_PREFIX)) keys.push(key)
+      }
+      for (const key of keys) sessionStorage.removeItem(key)
+    } catch {
+      // Если sessionStorage недоступен, пропускаем очистку без падения.
+    }
     state.token = null
     state.user = null
     state.role = null

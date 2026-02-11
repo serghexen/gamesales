@@ -1,8 +1,8 @@
 <template>
-  <table v-if="sortedDeals.length" class="table">
+  <table class="table" :class="{ 'table--completed': dealShowCompleted, 'table--pending': !dealShowCompleted }">
     <thead>
       <tr>
-        <th class="cell--tight">
+        <th class="cell--tight deal-col-type">
           <span class="th-title th-title--filter">
             Тип
             <span class="th-actions">
@@ -47,7 +47,7 @@
             <button class="ghost ghost--small" type="button" @click="resetDealFilter('type')">Сбросить</button>
           </div>
         </th>
-        <th>
+        <th class="deal-col-customer">
           <span class="th-title th-title--filter">
             Покупатель
             <span class="th-actions">
@@ -92,7 +92,7 @@
             <button class="ghost ghost--small" type="button" @click="resetDealFilter('customer')">Сбросить</button>
           </div>
         </th>
-        <th class="cell--tight">
+        <th class="cell--tight deal-col-region">
           <span class="th-title th-title--filter">
             Регион
             <span class="th-actions">
@@ -137,7 +137,7 @@
             <button class="ghost ghost--small" type="button" @click="resetDealFilter('region')">Сбросить</button>
           </div>
         </th>
-        <th>
+        <th class="deal-col-date">
           <span class="th-title th-title--filter">
             Дата/время
             <span class="th-actions">
@@ -202,7 +202,7 @@
             <button class="ghost ghost--small" type="button" @click="resetDealFilter('date')">Сбросить</button>
           </div>
         </th>
-        <th class="cell--tight">
+        <th class="cell--tight deal-col-status">
           <span class="th-title th-title--filter">
             Статус
             <span class="th-actions">
@@ -247,9 +247,9 @@
             <button class="ghost ghost--small" type="button" @click="resetDealFilter('status')">Сбросить</button>
           </div>
         </th>
-        <th class="cell--tight">
+        <th class="cell--tight deal-col-responsible">
           <span class="th-title th-title--filter">
-            Ответств.
+            {{ dealShowCompleted ? 'Ответств.' : 'Ответ.' }}
             <span class="th-actions">
               <button
                 class="filter-icon"
@@ -279,20 +279,20 @@
             </span>
           </span>
           <div v-if="activeDealFilter === 'responsible'" class="filter-pop filter-pop--center" @click.stop>
-            <label class="field">
+            <div class="field">
               <span class="label">Ответственный</span>
-              <select v-model="dealFilters.responsible_q" class="input input--select">
-                <option value="">— не выбрано —</option>
-                <option v-for="name in responsibleOptions" :key="`deal-responsible-${name}`" :value="name">
-                  {{ name }}
-                </option>
-              </select>
-            </label>
+              <div class="check-list check-list--compact">
+                <label v-for="name in responsibleOptions" :key="`deal-responsible-${name}`" class="check-item">
+                  <input v-model="responsibleFilterValues" type="checkbox" :value="name" />
+                  <span>{{ name }}</span>
+                </label>
+              </div>
+            </div>
             <button class="ghost ghost--small" type="button" @click="loadDeals(1); setActiveDealFilter('')">Применить</button>
             <button class="ghost ghost--small" type="button" @click="resetDealFilter('responsible')">Сбросить</button>
           </div>
         </th>
-        <th v-if="!dealShowCompleted" class="cell--tight">Действие</th>
+        <th v-if="!dealShowCompleted" class="cell--tight deal-col-action">Действие</th>
       </tr>
     </thead>
     <tbody>
@@ -303,26 +303,42 @@
         :class="{ 'row-active': editDeal.open && editDeal.deal_id === d.deal_id, 'row-refund': d.is_refund }"
         @click="startEditDeal(d)"
       >
-        <td class="cell--tight">{{ d.deal_type || '—' }}</td>
-        <td>{{ d.customer_nickname || '—' }}</td>
-        <td class="cell--tight">{{ d.region_code || '—' }}</td>
-        <td>{{ formatDateTimeMinutes(d.purchase_at || d.created_at) }}</td>
-        <td class="cell--tight">{{ d.flow_status || '—' }}</td>
-        <td class="cell--tight">{{ d.responsible_username || '—' }}</td>
-        <td v-if="!dealShowCompleted" class="cell--tight">
+        <td class="cell--tight deal-col-type">{{ d.deal_type || '—' }}</td>
+        <td class="deal-col-customer">{{ d.customer_nickname || '—' }}</td>
+        <td class="cell--tight deal-col-region">{{ d.region_code || '—' }}</td>
+        <td class="deal-col-date">
+          <template v-if="dealShowCompleted">
+            <div class="deal-date-lines">
+              <div><span class="muted">Создана:</span> {{ formatDateTimeMinutes(d.purchase_at || d.created_at) }}</div>
+              <div><span class="muted">Завершена:</span> {{ d.completed_at ? formatDateTimeMinutes(d.completed_at) : '—' }}</div>
+            </div>
+          </template>
+          <template v-else>
+            {{ formatDateTimeMinutes(d.purchase_at || d.created_at) }}
+          </template>
+        </td>
+        <td class="cell--tight deal-col-status">{{ d.flow_status || '—' }}</td>
+        <td class="cell--tight deal-col-responsible">{{ d.responsible_username || '—' }}</td>
+        <td v-if="!dealShowCompleted" class="cell--tight deal-col-action">
           <button class="mini-btn" type="button" @click.stop="markDealCompleted(d)" :disabled="dealSaving">
             <span v-if="dealSaving && dealCompletingId === d.deal_id" class="spinner spinner--small" aria-hidden="true"></span>
             {{ dealSaving && dealCompletingId === d.deal_id ? 'Завершаем...' : 'Завершить' }}
           </button>
         </td>
       </tr>
+      <tr v-if="!sortedDeals.length">
+        <td :colspan="emptyColspan" class="muted">Пока нет сделок.</td>
+      </tr>
     </tbody>
   </table>
-  <p v-else class="muted">Пока нет сделок.</p>
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+
+import { parseResponsibleFilterQuery, stringifyResponsibleFilterQuery } from '../dealsFilterUtils.js'
+
+const props = defineProps({
   sortedDeals: { type: Array, required: true },
   dealFilters: { type: Object, required: true },
   dealTypeOptions: { type: Array, required: true },
@@ -346,5 +362,13 @@ defineProps({
   markDealCompleted: { type: Function, required: true },
   dealSaving: { type: Boolean, required: true },
   dealCompletingId: { type: [Number, null], default: null },
+})
+
+const emptyColspan = computed(() => (props.dealShowCompleted ? 6 : 7))
+const responsibleFilterValues = computed({
+  get: () => parseResponsibleFilterQuery(props.dealFilters.responsible_q),
+  set: (values) => {
+    props.dealFilters.responsible_q = stringifyResponsibleFilterQuery(values)
+  },
 })
 </script>

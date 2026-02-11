@@ -48,6 +48,6 @@ describe('dealsUtils', () => {
   it('resolveDealFlowStatusFilter respects explicit filter and fallback', () => {
     expect(resolveDealFlowStatusFilter('canceled', false)).toBe('canceled')
     expect(resolveDealFlowStatusFilter('', true)).toBe('completed')
-    expect(resolveDealFlowStatusFilter('', false)).toBe('pending')
+    expect(resolveDealFlowStatusFilter('', false)).toBe('pending,draft')
   })
 })

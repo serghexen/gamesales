@@ -187,6 +187,11 @@ def mount_deals_routes(
         deal_type = payload.deal_type_code.strip().lower()
         if deal_type not in ("sale", "rental"):
             raise HTTPException(400, "deal_type_code must be sale or rental")
+        # Для создания поддерживаем draft только для продаж.
+        new_flow_status = (payload.flow_status_code or "pending").strip().lower()
+        if new_flow_status == "draft" and deal_type != "sale":
+            raise HTTPException(400, "flow_status_code draft is allowed only for sale deals")
+        sale_is_draft = deal_type == "sale" and new_flow_status == "draft"
         if deal_type == "rental":
             if not payload.slot_type_code:
                 raise HTTPException(400, "slot_type_code is required for rental")
@@ -194,12 +199,14 @@ def mount_deals_routes(
                 raise HTTPException(400, "account_id is required for rental")
             if not payload.game_id:
                 raise HTTPException(400, "game_id is required for rental")
-        if deal_type == "sale":
+        if deal_type == "sale" and not sale_is_draft:
+            if not (payload.customer_nickname or "").strip():
+                raise HTTPException(400, "customer_nickname is required for non-draft sale")
             if not payload.region_code:
                 raise HTTPException(400, "region_code is required for sale")
         if deal_type == "sale":
             payload.slots_used = 0
-            if not payload.purchase_at:
+            if not payload.purchase_at and not sale_is_draft:
                 payload.purchase_at = now_utc()
         validate_date_in_range(payload.purchase_at, "purchase_at")
         validate_date_in_range(payload.start_at, "start_at")
@@ -212,6 +219,10 @@ def mount_deals_routes(
             responsible_username = (payload.responsible_username or "").strip() or None
             if responsible_username == "current_user":
                 responsible_username = user.username
+            if payload.flow_status_code is not None:
+                row = q1(conn, "SELECT 1 FROM app.deal_flow_statuses WHERE code=%s", (new_flow_status,))
+                if not row:
+                    raise HTTPException(400, "Unknown flow_status_code")
             if deal_type == "rental":
                 ensure_account_exists(conn, payload.account_id)
                 ensure_game_active(conn, payload.game_id)
@@ -225,36 +236,39 @@ def mount_deals_routes(
                 if payload.account_id:
                     region_row = q1(conn, "SELECT region_id FROM app.accounts WHERE account_id=%s", (payload.account_id,))
                     region_id = int(region_row[0]) if region_row and region_row[0] is not None else None
-    
-            row = q1(conn, "SELECT customer_id, source_id FROM app.customers WHERE nickname=%s", (payload.customer_nickname,))
-            if row:
-                customer_id = int(row[0])
-                if payload.source_id and not row[1]:
-                    exec1(
+
+            customer_id = None
+            customer_nickname = (payload.customer_nickname or "").strip()
+            if customer_nickname:
+                row = q1(conn, "SELECT customer_id, source_id FROM app.customers WHERE nickname=%s", (customer_nickname,))
+                if row:
+                    customer_id = int(row[0])
+                    if payload.source_id and not row[1]:
+                        exec1(
+                            conn,
+                            "UPDATE app.customers SET source_id=%s WHERE customer_id=%s",
+                            (payload.source_id, customer_id),
+                        )
+                else:
+                    row = q1(
                         conn,
-                        "UPDATE app.customers SET source_id=%s WHERE customer_id=%s",
-                        (payload.source_id, customer_id),
+                        """
+                        INSERT INTO app.customers(nickname, source_id, customer_login, customer_password)
+                        VALUES (%s, %s, %s, %s)
+                        RETURNING customer_id
+                        """,
+                        (
+                            customer_nickname,
+                            payload.source_id,
+                            normalize_customer_field(payload.login),
+                            normalize_customer_field(payload.password),
+                        ),
                     )
-            else:
-                row = q1(
-                    conn,
-                    """
-                    INSERT INTO app.customers(nickname, source_id, customer_login, customer_password)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING customer_id
-                    """,
-                    (
-                        payload.customer_nickname,
-                        payload.source_id,
-                        normalize_customer_field(payload.login),
-                        normalize_customer_field(payload.password),
-                    ),
-                )
-                customer_id = int(row[0])
-            # Для уже существующего клиента обновляем логин/пароль, если они реально переданы.
-            update_customer_credentials(conn, customer_id, payload.login, payload.password)
+                    customer_id = int(row[0])
+                # Для уже существующего клиента обновляем логин/пароль, если они реально переданы.
+                update_customer_credentials(conn, customer_id, payload.login, payload.password)
             # Проверяем уникальность только когда номер заказа действительно заполнен.
-            if order_number:
+            if order_number and customer_id is not None:
                 customer_row = q1(conn, "SELECT source_id FROM app.customers WHERE customer_id=%s", (customer_id,))
                 customer_source_id = int(customer_row[0]) if customer_row and customer_row[0] is not None else None
                 validate_market_order_number_unique(conn, customer_source_id, order_number)
@@ -268,9 +282,9 @@ def mount_deals_routes(
                 INSERT INTO app.deals(
                   deal_type_code, status_code, flow_status_code, region_id, customer_id, currency, total_amount, order_number, responsible_username
                 )
-                VALUES (%s, 'confirmed', 'pending', %s, %s, 'RUB', %s, %s, %s)
+                VALUES (%s, 'confirmed', %s, %s, %s, 'RUB', %s, %s, %s)
                 RETURNING deal_id
-            """, (deal_type, region_id, customer_id, payload.price, order_number, responsible_username))
+            """, (deal_type, new_flow_status, region_id, customer_id, payload.price, order_number, responsible_username))
             deal_id = int(deal_row[0])
     
             row_item = q1(conn, """
@@ -362,7 +376,15 @@ def mount_deals_routes(
             deal_type = (payload.deal_type_code or current_type or "").strip().lower()
             if deal_type not in ("sale", "rental"):
                 raise HTTPException(400, "deal_type_code must be sale or rental")
-    
+            new_flow_status = payload.flow_status_code if payload.flow_status_code is not None else flow_status_code
+            if payload.flow_status_code is not None:
+                row = q1(conn, "SELECT 1 FROM app.deal_flow_statuses WHERE code=%s", (payload.flow_status_code,))
+                if not row:
+                    raise HTTPException(400, "Unknown flow_status_code")
+            # Черновик применяем только для продаж, чтобы не ломать правила шеринга.
+            if new_flow_status == "draft" and deal_type != "sale":
+                raise HTTPException(400, "flow_status_code draft is allowed only for sale deals")
+
             new_account_id = payload.account_id if payload.account_id is not None else account_id
             new_game_id = payload.game_id if payload.game_id is not None else game_id
             ensure_source_exists(conn, payload.source_id if payload.source_id is not None else None)
@@ -408,11 +430,6 @@ def mount_deals_routes(
                 customer_source_id = int(customer_row[0]) if customer_row and customer_row[0] is not None else None
                 validate_market_order_number_unique(conn, customer_source_id, new_order_number, exclude_deal_id=deal_id)
             new_slots_used = payload.slots_used if payload.slots_used is not None else slots_used
-            new_flow_status = payload.flow_status_code if payload.flow_status_code is not None else flow_status_code
-            if payload.flow_status_code is not None:
-                row = q1(conn, "SELECT 1 FROM app.deal_flow_statuses WHERE code=%s", (payload.flow_status_code,))
-                if not row:
-                    raise HTTPException(400, "Unknown flow_status_code")
             current_is_refund = returned_at is not None
             new_is_refund = current_is_refund if payload.is_refund is None else bool(payload.is_refund)
             is_refund_changed = new_is_refund != current_is_refund
@@ -439,8 +456,12 @@ def mount_deals_routes(
                 new_game_id = None
                 new_platform_id = None
                 new_slot_type_code = None
-                if region_id is None:
+                # Для черновика продажи допускаем пустой регион.
+                if new_flow_status != "draft" and region_id is None:
                     raise HTTPException(400, "region_code is required for sale")
+                # Для не-черновика продажи покупатель обязателен, иначе сделку нельзя провести.
+                if new_flow_status != "draft" and customer_id is None:
+                    raise HTTPException(400, "customer_nickname is required for non-draft sale")
             if deal_type == "rental":
                 new_slots_used = 1
                 new_returned_at = None
@@ -581,6 +602,25 @@ def mount_deals_routes(
                     pass
     
         return {"ok": True}
+
+    @app.delete("/deals/{deal_id}")
+    def delete_deal(deal_id: int, user=Depends(get_current_user)):
+        # Мягкое удаление: оставляем запись в БД, меняем только статус.
+        with psycopg.connect(DB_DSN) as conn:
+            row = q1(conn, "SELECT flow_status_code FROM app.deals WHERE deal_id=%s", (deal_id,))
+            if not row:
+                raise HTTPException(404, "Deal not found")
+            if row[0] != "draft":
+                raise HTTPException(400, "delete is allowed only for draft deals")
+            exec1(conn, "UPDATE app.deals SET status_code='cancelled' WHERE deal_id=%s", (deal_id,))
+            conn.commit()
+            if publish_deal_event:
+                try:
+                    publish_deal_event("deal_deleted", deal_id, user.username)
+                except Exception:
+                    # Ошибка нотификации не должна ломать удаление сделки.
+                    pass
+        return {"ok": True}
     
     @app.get("/deals", response_model=DealListOut)
     def list_deals(
@@ -647,6 +687,11 @@ def mount_deals_routes(
                 date_q,
                 price_q,
             )
+            # Удаленные (cancelled) сделки скрываем из рабочего списка.
+            if where_sql:
+                where_sql = f"{where_sql} AND d.status_code <> 'cancelled'"
+            else:
+                where_sql = "WHERE d.status_code <> 'cancelled'"
             # Возвратные сделки в списке видят только admin/owner.
             user_role = (getattr(user, "role", "") or "").strip().lower()
             user_name = (getattr(user, "username", "") or "").strip().lower()
@@ -656,6 +701,14 @@ def mount_deals_routes(
                     where_sql = f"{where_sql} AND di.returned_at IS NULL"
                 else:
                     where_sql = "WHERE di.returned_at IS NULL"
+                # Для не-привилегированных ролей старые завершенные сделки скрываем.
+                today = now_utc().date()
+                completed_today_clause = "(d.flow_status_code <> 'completed' OR COALESCE(d.completed_at, di.purchase_at, d.created_at)::date = %s)"
+                if where_sql:
+                    where_sql = f"{where_sql} AND {completed_today_clause}"
+                else:
+                    where_sql = f"WHERE {completed_today_clause}"
+                params.append(today)
 
             total_row = q1(conn, f"""
                 SELECT COUNT(*)

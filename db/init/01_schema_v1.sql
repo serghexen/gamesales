@@ -532,6 +532,7 @@ ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO app.deal_flow_statuses(code, name)
 VALUES
+  ('draft','Черновик'),
   ('pending','В ожидании'),
   ('completed','Завершен')
 ON CONFLICT (code) DO NOTHING;

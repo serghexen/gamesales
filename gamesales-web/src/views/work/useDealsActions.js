@@ -2,6 +2,7 @@ export function useDealsActions({
   auth,
   apiPost,
   apiPut,
+  apiDelete,
   mapApiError,
   toUtcDateTime,
   newDeal,
@@ -34,38 +35,63 @@ export function useDealsActions({
     return normalized || null
   }
 
+  // Определяет, нужно ли ослаблять проверки и сохранять сделку как черновик.
+  function isSaleDraftSave(dealTypeCode, saveAsDraft) {
+    return Boolean(saveAsDraft) && dealTypeCode === 'sale'
+  }
+
+  // Собирает payload для create/update в едином формате, чтобы не дублировать маппинг полей.
+  function buildDealPayload(deal, responsible, saveAsDraft = false) {
+    const dealTypeCode = deal.deal_type_code
+    const saleDraft = isSaleDraftSave(dealTypeCode, saveAsDraft)
+    return {
+      deal_type_code: dealTypeCode,
+      account_id: dealTypeCode === 'rental' ? deal.account_id : null,
+      game_id: dealTypeCode === 'rental' ? deal.game_id : null,
+      customer_nickname: deal.customer_nickname || null,
+      order_number: deal.order_number || null,
+      responsible_username: normalizeResponsible(responsible?.value),
+      source_id: deal.source_id || null,
+      region_code: deal.region_code || null,
+      slot_type_code: dealTypeCode === 'rental' ? (deal.slot_type_code || null) : null,
+      price: deal.price || 0,
+      purchase_cost: deal.purchase_cost || 0,
+      login: deal.login || null,
+      password: deal.password || null,
+      game_link: deal.game_link || null,
+      purchase_at: dealTypeCode === 'sale' ? null : toUtcDateTime(deal.purchase_at),
+      slots_used: dealTypeCode === 'rental' ? 1 : 0,
+      notes: deal.notes || null,
+      flow_status_code: saleDraft ? 'draft' : (deal.flow_status_code || null),
+      // Признак возврата отправляем только для продаж, для остальных типов не трогаем поле.
+      is_refund: dealTypeCode === 'sale' ? Boolean(deal.is_refund) : null,
+    }
+  }
+
+  // Проверяет обязательные поля. Для черновика продажи допускаем пустые поля.
+  function validateDealBeforeSave(deal, { saveAsDraft = false } = {}) {
+    const saleDraft = isSaleDraftSave(deal.deal_type_code, saveAsDraft)
+    if (!saleDraft && !deal.customer_nickname) return 'Укажите покупателя'
+    if (deal.deal_type_code === 'rental') {
+      if (!deal.account_id || !deal.game_id) return 'Для шеринга укажите аккаунт и игру'
+      if (!deal.slot_type_code) return 'Для шеринга выберите тип слота'
+    }
+    if (deal.deal_type_code === 'sale' && !saleDraft) {
+      if (!deal.region_code) return 'Укажите регион'
+      if (!deal.source_id) return 'Укажите источник'
+      if (!(Number(deal.price) > 0)) return 'Укажите сумму'
+    }
+    return null
+  }
+
   // Создает новую сделку после простых проверок формы.
-  async function createDeal() {
+  async function createDealInternal({ saveAsDraft = false } = {}) {
     dealError.value = null
     dealOk.value = null
-    if (!newDeal.customer_nickname) {
-      dealError.value = 'Укажите покупателя'
+    const validationError = validateDealBeforeSave(newDeal, { saveAsDraft })
+    if (validationError) {
+      dealError.value = validationError
       return
-    }
-    if (newDeal.deal_type_code === 'rental') {
-      if (!newDeal.account_id || !newDeal.game_id) {
-        dealError.value = 'Для шеринга укажите аккаунт и игру'
-        return
-      }
-      if (!newDeal.slot_type_code) {
-        dealError.value = 'Для шеринга выберите тип слота'
-        return
-      }
-    }
-    if (newDeal.deal_type_code === 'sale' && !newDeal.region_code) {
-      dealError.value = 'Укажите регион'
-      return
-    }
-    // Для продажи держим единый набор обязательных полей, чтобы форма не сохранялась с неполными данными.
-    if (newDeal.deal_type_code === 'sale') {
-      if (!newDeal.source_id) {
-        dealError.value = 'Укажите источник'
-        return
-      }
-      if (!(Number(newDeal.price) > 0)) {
-        dealError.value = 'Укажите сумму'
-        return
-      }
     }
     dealLoading.value = true
     dealSaving.value = true
@@ -73,29 +99,11 @@ export function useDealsActions({
     try {
       await apiPost(
         '/deals',
-        {
-          deal_type_code: newDeal.deal_type_code,
-          account_id: newDeal.deal_type_code === 'rental' ? newDeal.account_id : null,
-          game_id: newDeal.deal_type_code === 'rental' ? newDeal.game_id : null,
-          customer_nickname: newDeal.customer_nickname,
-          order_number: newDeal.order_number || null,
-          responsible_username: normalizeResponsible(newDealResponsible?.value),
-          source_id: newDeal.source_id || null,
-          region_code: newDeal.region_code || null,
-          slot_type_code: newDeal.deal_type_code === 'rental' ? (newDeal.slot_type_code || null) : null,
-          price: newDeal.price || 0,
-          purchase_cost: newDeal.purchase_cost || 0,
-          login: newDeal.login || null,
-          password: newDeal.password || null,
-          game_link: newDeal.game_link || null,
-          purchase_at: newDeal.deal_type_code === 'sale' ? null : toUtcDateTime(newDeal.purchase_at),
-          slots_used: newDeal.deal_type_code === 'rental' ? 1 : 0,
-          notes: newDeal.notes || null,
-        },
+        buildDealPayload(newDeal, newDealResponsible, saveAsDraft),
         { token: auth.state.token }
       )
       createdOk = true
-      dealOk.value = 'Сделка сохранена'
+      dealOk.value = saveAsDraft ? 'Черновик сохранен' : 'Сделка сохранена'
       newDeal.customer_nickname = ''
       newDeal.price = 0
       newDeal.purchase_cost = 0
@@ -134,44 +142,31 @@ export function useDealsActions({
     }
   }
 
+  async function createDeal() {
+    await createDealInternal({ saveAsDraft: false })
+  }
+
+  async function createDealDraft() {
+    await createDealInternal({ saveAsDraft: true })
+  }
+
   // Обновляет существующую сделку.
-  async function updateDeal() {
+  async function updateDealInternal({ saveAsDraft = false } = {}) {
     dealError.value = null
     dealOk.value = null
     if (!editDeal.deal_id) return
-    if (!editDeal.customer_nickname) {
-      dealError.value = 'Укажите покупателя'
+    const validationError = validateDealBeforeSave(editDeal, { saveAsDraft })
+    if (validationError) {
+      dealError.value = validationError
       return
     }
-    if (editDeal.deal_type_code === 'rental') {
-      if (!editDeal.account_id || !editDeal.game_id) {
-        dealError.value = 'Для шеринга укажите аккаунт и игру'
-        return
-      }
-      if (!editDeal.slot_type_code) {
-        dealError.value = 'Для шеринга выберите тип слота'
-        return
-      }
-    }
-    if (editDeal.deal_type_code === 'sale' && !editDeal.region_code) {
-      dealError.value = 'Укажите регион'
-      return
-    }
-    // Повторяем обязательные поля продажи и в режиме редактирования, чтобы правила были одинаковыми.
-    if (editDeal.deal_type_code === 'sale') {
-      if (!editDeal.source_id) {
-        dealError.value = 'Укажите источник'
-        return
-      }
-      if (!(Number(editDeal.price) > 0)) {
-        dealError.value = 'Укажите сумму'
-        return
-      }
-    }
+    const nextFlowStatus = isSaleDraftSave(editDeal.deal_type_code, saveAsDraft)
+      ? 'draft'
+      : (editDeal.flow_status_code || null)
     // Для возврата проверяем право проведения заранее, чтобы не ждать ответ сервера.
     const triesCompleteRefund = editDeal.deal_type_code === 'sale'
       && Boolean(editDeal.is_refund)
-      && editDeal.flow_status_code === 'completed'
+      && nextFlowStatus === 'completed'
       && !editDeal.completed_at
     if (triesCompleteRefund && !canCompleteRefund()) {
       const warningText = 'не достаточно прав для проведения возврата'
@@ -185,32 +180,11 @@ export function useDealsActions({
     try {
       await apiPut(
         `/deals/${editDeal.deal_id}`,
-        {
-          deal_type_code: editDeal.deal_type_code,
-          account_id: editDeal.deal_type_code === 'rental' ? editDeal.account_id : null,
-          game_id: editDeal.deal_type_code === 'rental' ? editDeal.game_id : null,
-          customer_nickname: editDeal.customer_nickname,
-          order_number: editDeal.order_number || null,
-          responsible_username: normalizeResponsible(editDealResponsible?.value),
-          source_id: editDeal.source_id || null,
-          region_code: editDeal.region_code || null,
-          slot_type_code: editDeal.deal_type_code === 'rental' ? (editDeal.slot_type_code || null) : null,
-          price: editDeal.price,
-          purchase_cost: editDeal.purchase_cost || 0,
-          login: editDeal.login || null,
-          password: editDeal.password || null,
-          game_link: editDeal.game_link || null,
-          purchase_at: editDeal.deal_type_code === 'sale' ? null : toUtcDateTime(editDeal.purchase_at),
-          slots_used: editDeal.deal_type_code === 'rental' ? 1 : 0,
-          notes: editDeal.notes || null,
-          flow_status_code: editDeal.flow_status_code || null,
-          // Признак возврата отправляем только для продаж, для остальных типов не трогаем поле.
-          is_refund: editDeal.deal_type_code === 'sale' ? Boolean(editDeal.is_refund) : null,
-        },
+        buildDealPayload(editDeal, editDealResponsible, saveAsDraft),
         { token: auth.state.token }
       )
       updatedOk = true
-      dealOk.value = 'Сделка обновлена'
+      dealOk.value = saveAsDraft ? 'Черновик обновлен' : 'Сделка обновлена'
     } catch (e) {
       dealError.value = mapApiError(e?.message)
     } finally {
@@ -223,6 +197,60 @@ export function useDealsActions({
 
     if (updatedOk) {
       // После сохранения закрываем форму как "безопасное" действие, без confirm-диалога.
+      if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = true
+      try {
+        closeDealModal()
+      } finally {
+        if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = false
+      }
+      dealLoading.value = false
+      dealSaving.value = false
+      dealBackgroundSync.value = true
+      try {
+        await Promise.allSettled([loadDeals(dealPage.value), loadAccountsAll()])
+      } finally {
+        dealBackgroundSync.value = false
+      }
+    }
+  }
+
+  async function updateDeal() {
+    await updateDealInternal({ saveAsDraft: false })
+  }
+
+  async function updateDealDraft() {
+    await updateDealInternal({ saveAsDraft: true })
+  }
+
+  // Мягко удаляет сделку: переводит ее в cancelled, не трогая историю в БД.
+  async function deleteDeal() {
+    dealError.value = null
+    dealOk.value = null
+    if (!editDeal.deal_id) return
+    // Дополнительно проверяем на клиенте, чтобы не отправлять лишний запрос.
+    if (editDeal.flow_status_code !== 'draft') {
+      dealError.value = 'Удалить можно только черновик'
+      return
+    }
+    if (!window.confirm('Удалить черновик?')) return
+
+    dealLoading.value = true
+    dealSaving.value = true
+    let deletedOk = false
+    try {
+      await apiDelete(`/deals/${editDeal.deal_id}`, { token: auth.state.token })
+      deletedOk = true
+      dealOk.value = 'Черновик удален'
+    } catch (e) {
+      dealError.value = mapApiError(e?.message)
+    } finally {
+      if (!deletedOk) {
+        dealLoading.value = false
+        dealSaving.value = false
+      }
+    }
+
+    if (deletedOk) {
       if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = true
       try {
         closeDealModal()
@@ -272,7 +300,10 @@ export function useDealsActions({
 
   return {
     createDeal,
+    createDealDraft,
     updateDeal,
+    updateDealDraft,
+    deleteDeal,
     markDealCompleted,
   }
 }

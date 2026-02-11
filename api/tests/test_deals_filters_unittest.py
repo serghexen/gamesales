@@ -77,6 +77,12 @@ class DealsFiltersTests(unittest.TestCase):
         self.assertIn("d.responsible_username ILIKE %s", where_sql)
         self.assertEqual(params, ["%ivan%"])
 
+    # Фильтр по ответственному должен поддерживать список через запятую.
+    def test_build_deals_filters_responsible_q_multiple_values(self):
+        where_sql, params = call_build_deals_filters(responsible_q="ivan, petr")
+        self.assertIn("(d.responsible_username ILIKE %s OR d.responsible_username ILIKE %s)", where_sql)
+        self.assertEqual(params, ["%ivan%", "%petr%"])
+
     # Фильтры диапазонов по дате и цене должны попасть в where и params.
     def test_build_deals_filters_ranges(self):
         where_sql, params = call_build_deals_filters(
@@ -96,6 +102,12 @@ class DealsFiltersTests(unittest.TestCase):
         where_sql, params = call_build_deals_filters(account_q="sony")
         self.assertIn("(a.login_name ILIKE %s OR dm.name ILIKE %s)", where_sql)
         self.assertEqual(params, ["%sony%", "%sony%"])
+
+    # Список flow-статусов через запятую должен превращаться в точный OR по кодам.
+    def test_build_deals_filters_flow_status_q_multiple_values(self):
+        where_sql, params = call_build_deals_filters(flow_status_q="pending,draft")
+        self.assertIn("(fs.code = %s OR fs.code = %s)", where_sql)
+        self.assertEqual(params, ["pending", "draft"])
 
 
 if __name__ == "__main__":
