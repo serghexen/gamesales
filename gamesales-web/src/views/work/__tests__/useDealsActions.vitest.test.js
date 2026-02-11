@@ -62,6 +62,7 @@ function createDeps(overrides = {}) {
     dealBackgroundSync: ref(false),
     suppressUnsavedConfirm: ref(false),
     showDealWarning: vi.fn(),
+    requestDealConfirm: vi.fn().mockResolvedValue(true),
     loadDeals: vi.fn().mockResolvedValue(undefined),
     loadAccountsAll: vi.fn().mockResolvedValue(undefined),
     closeDealModal: vi.fn(),
@@ -185,15 +186,14 @@ describe('useDealsActions', () => {
   it('deleteDeal archives draft deal after confirmation', async () => {
     const deps = createDeps()
     deps.editDeal.flow_status_code = 'draft'
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const { deleteDeal } = useDealsActions(deps)
 
     await deleteDeal()
 
+    expect(deps.requestDealConfirm).toHaveBeenCalledTimes(1)
     expect(deps.apiDelete).toHaveBeenCalledTimes(1)
     expect(deps.apiDelete).toHaveBeenCalledWith('/deals/1', { token: 'token' })
     expect(deps.closeDealModal).toHaveBeenCalledTimes(1)
-    confirmSpy.mockRestore()
   })
 
   it('markDealCompleted blocks refund completion for non-admin roles', async () => {

@@ -21,7 +21,7 @@ export function isSameNormalized(left, right) {
 export async function confirmDiscardIfNeeded(
   isDirty,
   {
-    message = 'Есть несохраненные изменения. Закрыть без сохранения?',
+    message = 'Закрыть без сохранения?',
     requestConfirm = null,
   } = {},
 ) {

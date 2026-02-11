@@ -21,6 +21,7 @@ export function useDealsActions({
   closeDealModal,
   suppressUnsavedConfirm,
   showDealWarning,
+  requestDealConfirm,
 }) {
   // Проверяет, может ли текущий пользователь проводить возврат (admin/owner).
   function canCompleteRefund() {
@@ -231,7 +232,15 @@ export function useDealsActions({
       dealError.value = 'Удалить можно только черновик'
       return
     }
-    if (!window.confirm('Удалить черновик?')) return
+    const isConfirmed = typeof requestDealConfirm === 'function'
+      ? await requestDealConfirm({
+        title: 'Предупреждение',
+        message: 'Удалить черновик?',
+        confirmText: 'Удалить',
+        cancelText: 'Отмена',
+      })
+      : window.confirm('Удалить черновик?')
+    if (!isConfirmed) return
 
     dealLoading.value = true
     dealSaving.value = true

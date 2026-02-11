@@ -67,7 +67,7 @@
             <p class="muted unsaved-confirm__text">{{ unsavedConfirm.message }}</p>
             <div class="toolbar-actions unsaved-confirm__actions">
               <button class="ghost" type="button" @click="answerUnsavedConfirm(false)">Остаться</button>
-              <button class="btn btn--danger" type="button" @click="answerUnsavedConfirm(true)">Закрыть без сохранения</button>
+              <button class="btn btn--danger" type="button" @click="answerUnsavedConfirm(true)">Закрыть</button>
             </div>
           </div>
         </div>
@@ -84,6 +84,23 @@
             <p class="muted unsaved-confirm__text deal-warning__text">{{ dealWarning.message }}</p>
             <div class="toolbar-actions unsaved-confirm__actions deal-warning__actions">
               <button class="btn btn--danger deal-warning__btn" type="button" @click="closeDealWarning">Ок</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </teleport>
+
+    <teleport to="body">
+      <div v-if="dealConfirm.open" class="work-page work-modal-root modal-backdrop unsaved-confirm" @click.self="answerDealConfirm(false)">
+        <div class="modal modal--auto unsaved-confirm__modal">
+          <div class="panel__head panel__head--tight unsaved-confirm__head">
+            <h3 class="unsaved-confirm__title">{{ dealConfirm.title }}</h3>
+          </div>
+          <div class="modal__body">
+            <p class="muted unsaved-confirm__text">{{ dealConfirm.message }}</p>
+            <div class="toolbar-actions unsaved-confirm__actions">
+              <button class="ghost" type="button" @click="answerDealConfirm(false)">{{ dealConfirm.cancelText }}</button>
+              <button class="btn btn--danger" type="button" @click="answerDealConfirm(true)">{{ dealConfirm.confirmText }}</button>
             </div>
           </div>
         </div>
@@ -210,12 +227,20 @@ const dealWarning = reactive({
   title: 'Предупреждение',
   message: '',
 })
+const dealConfirm = reactive({
+  open: false,
+  title: 'Подтверждение',
+  message: '',
+  confirmText: 'Ок',
+  cancelText: 'Отмена',
+  resolver: null,
+})
 
 function requestUnsavedConfirm(message) {
   // Показывает кастомное модальное подтверждение вместо системного confirm.
   return new Promise((resolve) => {
     unsavedConfirm.open = true
-    unsavedConfirm.message = message || 'Есть несохраненные изменения. Закрыть без сохранения?'
+    unsavedConfirm.message = message || 'Закрыть без сохранения?'
     unsavedConfirm.resolver = resolve
   })
 }
@@ -239,6 +264,34 @@ function closeDealWarning() {
   dealWarning.open = false
   dealWarning.title = 'Предупреждение'
   dealWarning.message = ''
+}
+
+function requestDealConfirm({
+  title = 'Подтверждение',
+  message = 'Подтвердите действие',
+  confirmText = 'Ок',
+  cancelText = 'Отмена',
+} = {}) {
+  // Все подтверждения для сделок показываем в едином фирменном стиле.
+  return new Promise((resolve) => {
+    dealConfirm.open = true
+    dealConfirm.title = title
+    dealConfirm.message = message
+    dealConfirm.confirmText = confirmText
+    dealConfirm.cancelText = cancelText
+    dealConfirm.resolver = resolve
+  })
+}
+
+function answerDealConfirm(accepted) {
+  const resolve = dealConfirm.resolver
+  dealConfirm.open = false
+  dealConfirm.title = 'Подтверждение'
+  dealConfirm.message = ''
+  dealConfirm.confirmText = 'Ок'
+  dealConfirm.cancelText = 'Отмена'
+  dealConfirm.resolver = null
+  if (typeof resolve === 'function') resolve(Boolean(accepted))
 }
 
 // Основное состояние экрана: списки, флаги загрузки, ошибки, успехи.
@@ -530,6 +583,7 @@ function closeAllModals() {
   suppressUnsavedConfirm.value = true
   try {
     if (unsavedConfirm.open) answerUnsavedConfirm(false)
+    if (dealConfirm.open) answerDealConfirm(false)
     closePwdModal()
     closeAccountImport()
     closeGameImport()
@@ -872,6 +926,7 @@ const { createDeal, createDealDraft, updateDeal, updateDealDraft, deleteDeal, ma
   closeDealModal,
   suppressUnsavedConfirm,
   showDealWarning,
+  requestDealConfirm,
 })
 const usersSort = ref({ key: 'created_at', dir: 'desc' })
 const domainsSortAsc = ref(true)

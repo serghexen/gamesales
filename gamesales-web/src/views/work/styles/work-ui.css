@@ -877,8 +877,8 @@
 }
 
 .work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__modal {
-  width: min(460px, calc(100vw - 24px));
-  max-width: 460px;
+  width: min(350px, calc(100vw - 24px));
+  max-width: 350px;
   min-height: 0;
   max-height: none;
   height: auto;
@@ -916,7 +916,6 @@
 
 .work-page .unsaved-confirm__actions {
   display: flex;
-  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 14px;
@@ -926,7 +925,7 @@
 .work-page .unsaved-confirm__modal .btn,
 .work-page .unsaved-confirm__modal .ghost {
   min-height: 36px;
-  padding: 0 14px;
+  padding: 0 50px;
   font-size: 13px;
   border-radius: 10px;
 }
