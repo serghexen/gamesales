@@ -41,6 +41,25 @@ def mount_deals_routes(
         normalized = (value or "").strip()
         return normalized or None
 
+    # Находит owner и возвращает отображаемое имя для поля "Ответственный".
+    def resolve_owner_responsible_name(conn) -> str:
+        row = q1(
+            conn,
+            """
+            SELECT name, username
+            FROM app.users
+            WHERE lower(role_code)='owner'
+            ORDER BY user_id ASC
+            LIMIT 1
+            """,
+        )
+        owner_name = str(row[0]).strip() if row and row[0] is not None else ""
+        owner_username = str(row[1]).strip() if row and len(row) > 1 and row[1] is not None else ""
+        resolved_name = owner_name or owner_username
+        if not resolved_name:
+            raise HTTPException(400, "owner user not found")
+        return resolved_name
+
     # Обновляем дополнительные поля клиента только когда пришли непустые значения.
     def update_customer_credentials(conn, customer_id: Optional[int], login: Optional[str], password: Optional[str]):
         if not customer_id:
@@ -387,6 +406,12 @@ def mount_deals_routes(
     
             current_type, status_code, flow_status_code, region_id, customer_id, total_amount, order_number, responsible_username, deal_item_id, \
                 account_id, game_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link, returned_at = row
+            user_role = (getattr(user, "role", "") or "").strip().lower()
+            user_name = (getattr(user, "username", "") or "").strip().lower()
+            can_edit_completed = user_role in {"admin", "owner"} or user_name in {"admin", "owner"}
+            # Завершенные сделки редактируют только admin/owner; для возврата есть отдельный endpoint.
+            if str(flow_status_code or "").strip().lower() == "completed" and not can_edit_completed:
+                raise HTTPException(403, "editing completed deal is allowed only for admin/owner")
     
             deal_type = (payload.deal_type_code or current_type or "").strip().lower()
             if deal_type not in ("sale", "rental"):
@@ -454,7 +479,6 @@ def mount_deals_routes(
             if payload.is_refund and deal_type != "sale":
                 raise HTTPException(400, "is_refund is allowed only for sale deals")
             # Проведение возврата в completed разрешено только владельцу или администратору.
-            user_role = (getattr(user, "role", "") or "").strip().lower()
             is_completing_now = flow_status_code != "completed" and new_flow_status == "completed"
             if is_completing_now and new_is_refund and user_role not in {"admin", "owner"}:
                 raise HTTPException(403, "не достаточно прав для проведения возврата")
@@ -465,6 +489,9 @@ def mount_deals_routes(
                     new_returned_at = returned_at or now_utc()
                 else:
                     new_returned_at = None
+            if deal_type == "sale" and new_is_refund:
+                # Для возвратной продажи всегда назначаем owner ответственным.
+                new_responsible_username = resolve_owner_responsible_name(conn)
             if deal_type == "sale":
                 new_slots_used = 0
                 new_account_id = None
@@ -618,6 +645,63 @@ def mount_deals_routes(
     
         return {"ok": True}
 
+    @app.post("/deals/{deal_id}/return")
+    def return_completed_sale_to_pending(deal_id: int, user=Depends(get_current_user)):
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT set_config('app.user', %s, true)", (user.username,))
+            # Берем текущее состояние сделки, чтобы безопасно выполнить возврат только для нужного кейса.
+            row = q1(
+                conn,
+                """
+                SELECT d.deal_type_code, d.flow_status_code, di.returned_at
+                FROM app.deals d
+                JOIN app.deal_items di ON di.deal_id = d.deal_id
+                WHERE d.deal_id=%s
+                ORDER BY di.deal_item_id ASC
+                LIMIT 1
+                """,
+                (deal_id,),
+            )
+            if not row:
+                raise HTTPException(404, "Deal not found")
+            deal_type_code, flow_status_code, returned_at = row
+            if str(deal_type_code or "").strip().lower() != "sale":
+                raise HTTPException(400, "return is allowed only for sale deals")
+            if str(flow_status_code or "").strip().lower() != "completed":
+                raise HTTPException(400, "return is allowed only for completed deals")
+            if returned_at is not None:
+                raise HTTPException(400, "deal is already marked as refund")
+
+            owner_responsible = resolve_owner_responsible_name(conn)
+            returned_at_value = now_utc()
+            # Переводим сделку обратно в pending, очищаем дату завершения и назначаем owner ответственным.
+            exec1(
+                conn,
+                """
+                UPDATE app.deals
+                SET flow_status_code='pending',
+                    responsible_username=%s,
+                    completed_at=NULL
+                WHERE deal_id=%s
+                """,
+                (owner_responsible, deal_id),
+            )
+            # Признак возврата храним в returned_at: ставим timestamp для всех позиций сделки.
+            exec1(
+                conn,
+                "UPDATE app.deal_items SET returned_at=%s WHERE deal_id=%s",
+                (returned_at_value, deal_id),
+            )
+            conn.commit()
+            if publish_deal_event:
+                try:
+                    publish_deal_event("deal_updated", deal_id, user.username)
+                except Exception:
+                    # Ошибка нотификации не должна ломать успешный возврат.
+                    pass
+        return {"ok": True}
+
     @app.delete("/deals/{deal_id}")
     def delete_deal(deal_id: int, user=Depends(get_current_user)):
         # Мягкое удаление: оставляем запись в БД, меняем только статус.
@@ -753,7 +837,16 @@ def mount_deals_routes(
                   d.flow_status_code,
                   fs.name as flow_status_name,
                   d.order_number,
-                  d.responsible_username,
+                  COALESCE(
+                    (
+                      SELECT NULLIF(btrim(u.name), '')
+                      FROM app.users u
+                      WHERE lower(u.username) = lower(d.responsible_username)
+                      ORDER BY u.user_id ASC
+                      LIMIT 1
+                    ),
+                    d.responsible_username
+                  ) as responsible_username,
                   COALESCE(rd.code, ra.code) as region_code,
                   di.account_id,
                   a.login_name,

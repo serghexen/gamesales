@@ -223,4 +223,14 @@ describe('useDealsActions', () => {
     expect(deps.dealError.value).toBeNull()
     expect(deps.showDealWarning).toHaveBeenCalledWith('не достаточно прав для проведения возврата')
   })
+
+  it('markDealReturned calls return endpoint for completed sale', async () => {
+    const deps = createDeps()
+    const { markDealReturned } = useDealsActions(deps)
+
+    await markDealReturned({ deal_id: 15, deal_type_code: 'sale', is_refund: false })
+
+    expect(deps.apiPost).toHaveBeenCalledWith('/deals/15/return', {}, { token: 'token' })
+    expect(deps.loadDeals).toHaveBeenCalledWith(1)
+  })
 })

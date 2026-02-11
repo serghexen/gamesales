@@ -102,6 +102,7 @@ export function useWorkSectionContexts({
   editDeal,
   startEditDeal,
   markDealCompleted,
+  markDealReturned,
   dealSaving,
   dealCompletingId,
   dealBackgroundSync,
@@ -118,6 +119,7 @@ export function useWorkSectionContexts({
   closeDealModal,
   dealModalTitle,
   dealEditMode,
+  canEditCompletedDeal,
   toggleDealEditMode,
   updateDeal,
   updateDealDraft,
@@ -220,6 +222,11 @@ export function useWorkSectionContexts({
   regionsSort,
   openEditRegion,
 }) {
+  const allowCompletedDealEdit = computed(() => {
+    // Нормализуем флаг, чтобы контекст корректно работал даже без явной передачи значения.
+    return Boolean(canEditCompletedDeal?.value ?? canEditCompletedDeal)
+  })
+
   // Контекст модалки игры.
   const gameEditorModalCtx = proxyRefs({
     editGame,
@@ -337,6 +344,7 @@ export function useWorkSectionContexts({
     startEditDeal,
     formatDateTimeMinutes,
     markDealCompleted,
+    markDealReturned,
     dealSaving,
     dealCompletingId,
     dealBackgroundSync,
@@ -365,9 +373,10 @@ export function useWorkSectionContexts({
     showCreateDraft: computed(() => !editDeal.open && newDeal.deal_type_code === 'sale'),
     // Кнопку удаления показываем только для черновика, чтобы не удалять рабочие сделки.
     showDelete: computed(() => editDeal.open && editDeal.flow_status_code === 'draft'),
-    showEdit: computed(() => editDeal.open),
+    // Для завершенных сделок даем режим редактирования только admin/owner.
+    showEdit: computed(() => editDeal.open && (editDeal.flow_status_code !== 'completed' || allowCompletedDealEdit.value)),
     // Кнопка редактирования теперь работает как переключатель режимов view/edit.
-    editDisabled: computed(() => dealLoading.value),
+    editDisabled: computed(() => dealLoading.value || (editDeal.flow_status_code === 'completed' && !allowCompletedDealEdit.value)),
     onSaveEdit: updateDeal,
     onSaveDraft: updateDealDraft,
     onCreate: createDeal,

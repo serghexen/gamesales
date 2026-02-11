@@ -306,6 +306,30 @@ export function useDealsActions({
     }
   }
 
+  // Возвращает завершенную продажу в "pending", включает признак возврата и передает владельцу.
+  async function markDealReturned(deal) {
+    if (!deal?.deal_id) return
+    dealError.value = null
+    dealOk.value = null
+    // Дублируем клиентскую проверку, чтобы не отправлять лишний запрос.
+    if (deal.deal_type_code !== 'sale' || deal.is_refund) return
+    if (dealCompletingId) dealCompletingId.value = deal.deal_id
+    dealSaving.value = true
+    try {
+      await apiPost(
+        `/deals/${deal.deal_id}/return`,
+        {},
+        { token: auth.state.token }
+      )
+      await loadDeals(dealPage.value)
+    } catch (e) {
+      dealError.value = mapApiError(e?.message)
+    } finally {
+      dealSaving.value = false
+      if (dealCompletingId) dealCompletingId.value = null
+    }
+  }
+
   return {
     createDeal,
     createDealDraft,
@@ -313,5 +337,6 @@ export function useDealsActions({
     updateDealDraft,
     deleteDeal,
     markDealCompleted,
+    markDealReturned,
   }
 }

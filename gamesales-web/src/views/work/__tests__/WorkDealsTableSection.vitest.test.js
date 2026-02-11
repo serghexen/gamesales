@@ -34,6 +34,7 @@ function buildProps(overrides = {}) {
     formatDateTimeMinutes: (value) => String(value || ''),
     dealShowCompleted: false,
     markDealCompleted: () => {},
+    markDealReturned: () => {},
     dealSaving: false,
     dealCompletingId: null,
     ...overrides,
@@ -65,6 +66,34 @@ describe('WorkDealsTableSection', () => {
     expect(text).toContain('Создана:')
     expect(text).toContain('Завершена:')
     expect(text).toContain('2026-02-11 11:00')
+  })
+
+  it('shows return action for completed non-refund sale', async () => {
+    const markDealReturned = vi.fn()
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        dealShowCompleted: true,
+        markDealReturned,
+        sortedDeals: [
+          {
+            deal_id: 1,
+            deal_type: 'Продажа',
+            deal_type_code: 'sale',
+            customer_nickname: 'Покупатель',
+            region_code: 'RU',
+            purchase_at: '2026-02-11 10:00',
+            created_at: '2026-02-11 09:00',
+            completed_at: '2026-02-11 11:00',
+            flow_status: 'Завершен',
+            responsible_username: 'manager',
+            is_refund: false,
+          },
+        ],
+      }),
+    })
+
+    await wrapper.find('button.mini-btn--danger').trigger('click')
+    expect(markDealReturned).toHaveBeenCalledTimes(1)
   })
 
   it('supports multi-select for type filter', async () => {

@@ -66,6 +66,7 @@
         :format-date-time-minutes="ctx.formatDateTimeMinutes"
         :deal-show-completed="ctx.dealShowCompleted"
         :mark-deal-completed="ctx.markDealCompleted"
+        :mark-deal-returned="ctx.markDealReturned"
         :deal-saving="ctx.dealSaving"
         :deal-completing-id="ctx.dealCompletingId"
       />

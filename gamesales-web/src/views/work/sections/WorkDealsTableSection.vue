@@ -284,7 +284,7 @@
             </div>
           </div>
         </th>
-        <th v-if="!dealShowCompleted" class="cell--tight deal-col-action">Действие</th>
+        <th class="cell--tight deal-col-action">Действие</th>
       </tr>
     </thead>
     <tbody>
@@ -311,11 +311,28 @@
         </td>
         <td class="cell--tight deal-col-status">{{ d.flow_status || '—' }}</td>
         <td class="cell--tight deal-col-responsible">{{ d.responsible_username || '—' }}</td>
-        <td v-if="!dealShowCompleted" class="cell--tight deal-col-action">
-          <button class="mini-btn" type="button" @click.stop="markDealCompleted(d)" :disabled="dealSaving">
+        <td class="cell--tight deal-col-action">
+          <button
+            v-if="!dealShowCompleted"
+            class="mini-btn"
+            type="button"
+            @click.stop="markDealCompleted(d)"
+            :disabled="dealSaving"
+          >
             <span v-if="dealSaving && dealCompletingId === d.deal_id" class="spinner spinner--small" aria-hidden="true"></span>
             {{ dealSaving && dealCompletingId === d.deal_id ? 'Завершаем...' : 'Завершить' }}
           </button>
+          <button
+            v-else-if="d.deal_type_code === 'sale' && !d.is_refund"
+            class="mini-btn mini-btn--danger"
+            type="button"
+            @click.stop="markDealReturned(d)"
+            :disabled="dealSaving"
+          >
+            <span v-if="dealSaving && dealCompletingId === d.deal_id" class="spinner spinner--small" aria-hidden="true"></span>
+            {{ dealSaving && dealCompletingId === d.deal_id ? 'Возвращаем...' : 'Возврат' }}
+          </button>
+          <span v-else class="muted">—</span>
         </td>
       </tr>
       <tr v-if="!sortedDeals.length">
@@ -357,11 +374,12 @@ const props = defineProps({
   formatDateTimeMinutes: { type: Function, required: true },
   dealShowCompleted: { type: Boolean, required: true },
   markDealCompleted: { type: Function, required: true },
+  markDealReturned: { type: Function, required: true },
   dealSaving: { type: Boolean, required: true },
   dealCompletingId: { type: [Number, null], default: null },
 })
 
-const emptyColspan = computed(() => (props.dealShowCompleted ? 6 : 7))
+const emptyColspan = computed(() => 7)
 const responsibleFilterValues = computed({
   get: () => parseResponsibleFilterQuery(props.dealFilters.responsible_q),
   set: (values) => {

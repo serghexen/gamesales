@@ -35,6 +35,8 @@ export function useDealModalFlow({
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
   currentResponsibleName,
+  canEditCompletedDeal,
+  showDealWarning,
 }) {
   let initialEditDealSnapshot = null
   let initialCreateDealSnapshot = null
@@ -334,6 +336,16 @@ export function useDealModalFlow({
   }
 
   function toggleDealEditMode() {
+    const allowCompletedEdit = typeof canEditCompletedDeal === 'object' && canEditCompletedDeal
+      ? Boolean(canEditCompletedDeal.value)
+      : Boolean(canEditCompletedDeal)
+    // Завершенные сделки оставляем только в режиме просмотра для обычных ролей.
+    if (dealEditMode.value === 'view' && editDeal.flow_status_code === 'completed' && !allowCompletedEdit) {
+      if (typeof showDealWarning === 'function') {
+        showDealWarning('Редактирование завершенных сделок доступно только администратору и владельцу')
+      }
+      return
+    }
     // Второй клик по кнопке "редактировать" возвращает в просмотр и сбрасывает несохраненные правки.
     if (dealEditMode.value === 'edit') {
       dealInitLock.value = true

@@ -402,6 +402,13 @@ const canViewPrivilegedResponsible = computed(() => {
   return role === 'admin' || role === 'owner' || me === 'admin' || me === 'owner'
 })
 
+const canEditCompletedDeals = computed(() => {
+  // Завершенные сделки редактируют только администратор и владелец.
+  const role = String(auth.state.role || '').trim().toLowerCase()
+  const me = String(auth.state.user || '').trim().toLowerCase()
+  return role === 'admin' || role === 'owner' || me === 'admin' || me === 'owner'
+})
+
 const currentUserResponsibleName = computed(() => {
   const me = String(auth.state.user || '').trim().toLowerCase()
   if (!me) return ''
@@ -903,7 +910,7 @@ const {
   dealShowCompleted,
 })
 // Отдельно подключаем действия создания/обновления сделок.
-const { createDeal, createDealDraft, updateDeal, updateDealDraft, deleteDeal, markDealCompleted } = useDealsActions({
+const { createDeal, createDealDraft, updateDeal, updateDealDraft, deleteDeal, markDealCompleted, markDealReturned } = useDealsActions({
   auth,
   apiPost,
   apiPut,
@@ -1261,6 +1268,8 @@ const {
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
   currentResponsibleName: currentUserResponsibleName,
+  canEditCompletedDeal: canEditCompletedDeals,
+  showDealWarning,
 })
 
 closeDealModalDeferred.set(closeDealModalFromFlow)
@@ -1963,6 +1972,7 @@ const {
   editDeal,
   startEditDeal,
   markDealCompleted,
+  markDealReturned,
   dealSaving,
   dealCompletingId,
   dealTotal,
@@ -1978,6 +1988,7 @@ const {
   closeDealModal,
   dealModalTitle,
   dealEditMode,
+  canEditCompletedDeal: canEditCompletedDeals,
   toggleDealEditMode,
   updateDeal,
   updateDealDraft,

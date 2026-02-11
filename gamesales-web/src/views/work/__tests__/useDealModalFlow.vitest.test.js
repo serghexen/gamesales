@@ -83,6 +83,8 @@ function createDeps() {
     suppressUnsavedConfirm: ref(false),
     requestUnsavedConfirm: vi.fn().mockResolvedValue(true),
     currentResponsibleName: 'Тестер',
+    canEditCompletedDeal: ref(true),
+    showDealWarning: vi.fn(),
   }
 }
 
@@ -157,5 +159,17 @@ describe('useDealModalFlow', () => {
     api.openCreateSaleModal()
 
     expect(deps.newDealResponsible.value).toBe('Тестер')
+  })
+
+  it('blocks edit mode for completed deal when user has no privileges', () => {
+    const deps = createDeps()
+    deps.canEditCompletedDeal.value = false
+    const api = useDealModalFlow(deps)
+    deps.editDeal.flow_status_code = 'completed'
+
+    api.toggleDealEditMode()
+
+    expect(deps.dealEditMode.value).toBe('view')
+    expect(deps.showDealWarning).toHaveBeenCalledWith('Редактирование завершенных сделок доступно только администратору и владельцу')
   })
 })

@@ -35,13 +35,13 @@
 .work-page .table th.deal-col-customer,
 .work-page .table td.deal-col-customer {
   width: 20%;
-  min-width: 180px;
+  min-width: 170px;
 }
 
 .work-page .table th.deal-col-date,
 .work-page .table td.deal-col-date {
-  width: 29%;
-  min-width: 250px;
+  width: 15%;
+  min-width: 180px;
 }
 
 .work-page .table th.deal-col-status,
@@ -52,72 +52,26 @@
 
 .work-page .table th.deal-col-responsible,
 .work-page .table td.deal-col-responsible {
-  width: 14%;
-  min-width: 130px;
+  width: 12%;
+  min-width: 122px;
 }
 
 .work-page .table th.deal-col-type,
 .work-page .table td.deal-col-type {
+  width: 9%;
   min-width: 100px;
 }
 
 .work-page .table th.deal-col-region,
 .work-page .table td.deal-col-region {
-  min-width: 90px;
+  width: 10%;
+  min-width: 120px;
 }
 
 .work-page .table th.deal-col-action,
 .work-page .table td.deal-col-action {
-  width: 14%;
-  min-width: 130px;
-}
-
-.work-page .table.table--pending th.deal-col-type,
-.work-page .table.table--pending td.deal-col-type {
-  width: 9%;
-}
-
-.work-page .table.table--pending th.deal-col-customer,
-.work-page .table.table--pending td.deal-col-customer {
-  width: 13%;
-  min-width: 120px;
-}
-
-.work-page .table.table--pending th.deal-col-region,
-.work-page .table.table--pending td.deal-col-region {
-  width: 8%;
-  min-width: 120px;
-}
-
-.work-page .table.table--pending th.deal-col-date,
-.work-page .table.table--pending td.deal-col-date {
-  width: 15%;
-  min-width: 180px;
-}
-
-.work-page .table.table--pending th.deal-col-status,
-.work-page .table.table--pending td.deal-col-status {
-  width: 11%;
-}
-
-.work-page .table.table--pending th.deal-col-responsible,
-.work-page .table.table--pending td.deal-col-responsible {
   width: 12%;
   min-width: 122px;
-}
-
-.work-page .table.table--pending th.deal-col-responsible .th-title--filter {
-  padding-right: 10px;
-}
-
-.work-page .table.table--pending th.deal-col-action,
-.work-page .table.table--pending td.deal-col-action {
-  width: 12%;
-  min-width: 122px;
-}
-
-.work-page .table.table--pending th.deal-col-action {
-  padding-left: 8px;
 }
 
 .work-page .table th.deal-col-responsible,

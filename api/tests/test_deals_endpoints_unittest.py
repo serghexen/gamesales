@@ -755,7 +755,7 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 403)
             self.assertIn("не достаточно прав для проведения возврата", res.text)
 
-    # Признак возврата можно менять только у сделок в ожидании.
+    # Для completed сделки менеджеру запрещаем любое редактирование.
     def test_update_deal_refund_flag_can_be_changed_only_for_pending(self):
         current_row = (
             "sale",
@@ -794,13 +794,61 @@ class DealsEndpointsTests(unittest.TestCase):
             with self._client() as client:
                 res = client.put(
                     "/deals/77",
-                    headers=self._auth_headers(role="manager"),
+                    headers=self._auth_headers(role="manager", username="manager1"),
                     json={"is_refund": True},
                 )
-            self.assertEqual(res.status_code, 400)
+            self.assertEqual(res.status_code, 403)
 
-    # Если признак возврата не изменился, сделку можно вернуть из completed в pending.
-    def test_update_deal_completed_to_pending_with_same_refund_flag_is_allowed(self):
+    # При установке признака возврата у продажи ответственный должен переключаться на owner.
+    def test_update_deal_sale_refund_assigns_owner_responsible(self):
+        current_row = (
+            "sale",
+            "confirmed",
+            "pending",
+            10,
+            5,
+            500.0,
+            "A-100",
+            "manager-name",
+            77,
+            None,
+            None,
+            None,
+            500.0,
+            100.0,
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+            None,
+            None,
+            0,
+            None,
+            "note",
+            None,
+            None,
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+            {"one": ("Owner Name", "owner_user")},  # owner name + username
+            {"rowcount": 1},  # update deals
+            {"rowcount": 1},  # update deal_items
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="manager", username="manager1"),
+                    json={"is_refund": True},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
+
+    # Для completed сделки менеджеру запрещаем перевод через общий update.
+    def test_update_deal_completed_to_pending_forbidden_for_manager(self):
         current_row = (
             "sale",
             "confirmed",
@@ -828,9 +876,6 @@ class DealsEndpointsTests(unittest.TestCase):
         script = [
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
-            {"one": (1,)},  # flow_status lookup
-            {"rowcount": 1},  # update deals
-            {"rowcount": 1},  # update deal_items
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
@@ -841,11 +886,10 @@ class DealsEndpointsTests(unittest.TestCase):
             with self._client() as client:
                 res = client.put(
                     "/deals/77",
-                    headers=self._auth_headers(role="manager"),
+                    headers=self._auth_headers(role="manager", username="manager1"),
                     json={"flow_status_code": "pending", "is_refund": False},
                 )
-            self.assertEqual(res.status_code, 200)
-            self.assertEqual(res.json(), {"ok": True})
+            self.assertEqual(res.status_code, 403)
 
     # Для продажи перевод из draft в pending без региона запрещаем.
     def test_update_deal_sale_draft_to_pending_requires_region(self):
@@ -935,6 +979,58 @@ class DealsEndpointsTests(unittest.TestCase):
                     headers=self._auth_headers(role="manager"),
                     json={"flow_status_code": "draft"},
                 )
+            self.assertEqual(res.status_code, 400)
+
+    # Возврат из completed в pending должен быть доступен любой роли.
+    def test_return_completed_sale_to_pending_success(self):
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": ("sale", "completed", None)},  # deal state
+            {"one": ("Owner Name", "owner_user")},  # owner name + username
+            {"rowcount": 1},  # update deals
+            {"rowcount": 1},  # update deal_items
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post("/deals/77/return", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
+
+    # Повторный возврат не разрешаем, если признак уже выставлен.
+    def test_return_completed_sale_to_pending_forbidden_for_already_refund(self):
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": ("sale", "completed", datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc))},  # deal state
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post("/deals/77/return", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 400)
+
+    # Возврат разрешаем только для завершенных сделок.
+    def test_return_completed_sale_to_pending_requires_completed(self):
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": ("sale", "pending", None)},  # deal state
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post("/deals/77/return", headers=self._auth_headers(role="manager"))
             self.assertEqual(res.status_code, 400)
 
     # Удалять сделку можно только в статусе черновик.
