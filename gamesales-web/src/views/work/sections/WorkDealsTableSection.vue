@@ -301,8 +301,8 @@
         <td class="deal-col-date">
           <template v-if="dealShowCompleted">
             <div class="deal-date-lines">
-              <div><span class="muted">Создана:</span> {{ formatDateTimeMinutes(d.purchase_at || d.created_at) }}</div>
-              <div><span class="muted">Завершена:</span> {{ d.completed_at ? formatDateTimeMinutes(d.completed_at) : '—' }}</div>
+              <div><span class="muted">Соз.:</span> {{ formatDateTimeMinutes(d.purchase_at || d.created_at) }}</div>
+              <div><span class="muted">Зав.:</span> {{ d.completed_at ? formatDateTimeMinutes(d.completed_at) : '—' }}</div>
             </div>
           </template>
           <template v-else>

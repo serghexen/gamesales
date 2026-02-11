@@ -799,6 +799,104 @@ class DealsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 403)
 
+    # Для completed сделки admin/owner могут менять признак возврата.
+    def test_update_deal_refund_flag_can_be_changed_in_completed_for_admin(self):
+        current_row = (
+            "sale",
+            "confirmed",
+            "completed",
+            10,
+            5,
+            500.0,
+            "A-100",
+            "manager-name",
+            77,
+            None,
+            None,
+            None,
+            500.0,
+            100.0,
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+            None,
+            None,
+            0,
+            None,
+            "note",
+            None,
+            None,
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+            {"one": ("Owner Name", "owner_user")},  # owner name + username
+            {"rowcount": 1},  # update deals
+            {"rowcount": 1},  # update deal_items
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="admin", username="admin"),
+                    json={"is_refund": True},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
+
+    # Для completed сделки admin/owner могут вручную править даты создания и завершения.
+    def test_update_deal_completed_allows_manual_system_dates_for_admin(self):
+        current_row = (
+            "sale",
+            "confirmed",
+            "completed",
+            10,
+            5,
+            500.0,
+            "A-100",
+            "manager-name",
+            77,
+            None,
+            None,
+            None,
+            500.0,
+            100.0,
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+            None,
+            None,
+            0,
+            None,
+            "note",
+            None,
+            None,
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+            {"rowcount": 1},  # update deals
+            {"rowcount": 1},  # update deal_items
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="admin", username="admin"),
+                    json={
+                        "created_at": "2026-02-01T10:30:00Z",
+                        "completed_at": "2026-02-01T11:30:00Z",
+                    },
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
+
     # При установке признака возврата у продажи ответственный должен переключаться на owner.
     def test_update_deal_sale_refund_assigns_owner_responsible(self):
         current_row = (

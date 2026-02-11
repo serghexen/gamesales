@@ -81,6 +81,8 @@ class DealUpdate(BaseModel):
     purchase_cost: Optional[float] = None
     game_link: Optional[str] = None
     purchase_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
     slots_used: Optional[int] = None
@@ -88,7 +90,7 @@ class DealUpdate(BaseModel):
     flow_status_code: Optional[str] = None
     is_refund: Optional[bool] = None
 
-    @field_validator("purchase_at", "start_at", "end_at", mode="before")
+    @field_validator("purchase_at", "created_at", "completed_at", "start_at", "end_at", mode="before")
     @classmethod
     def normalize_dt(cls, v):
         return _normalize_datetime(v)

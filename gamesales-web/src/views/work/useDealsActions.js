@@ -41,11 +41,21 @@ export function useDealsActions({
     return Boolean(saveAsDraft) && dealTypeCode === 'sale'
   }
 
+  // Нормализует дату/время из формы в ISO, чтобы API всегда получал единый формат.
+  function normalizeOptionalDateTime(value) {
+    const raw = String(value || '').trim()
+    if (!raw) return null
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return `${raw}T00:00:00Z`
+    const parsed = new Date(raw)
+    if (Number.isNaN(parsed.getTime())) return null
+    return parsed.toISOString()
+  }
+
   // Собирает payload для create/update в едином формате, чтобы не дублировать маппинг полей.
   function buildDealPayload(deal, responsible, saveAsDraft = false) {
     const dealTypeCode = deal.deal_type_code
     const saleDraft = isSaleDraftSave(dealTypeCode, saveAsDraft)
-    return {
+    const payload = {
       deal_type_code: dealTypeCode,
       account_id: dealTypeCode === 'rental' ? deal.account_id : null,
       game_id: dealTypeCode === 'rental' ? deal.game_id : null,
@@ -67,6 +77,12 @@ export function useDealsActions({
       // Признак возврата отправляем только для продаж, для остальных типов не трогаем поле.
       is_refund: dealTypeCode === 'sale' ? Boolean(deal.is_refund) : null,
     }
+    // Системные даты передаем только при редактировании существующей сделки.
+    if (deal?.deal_id) {
+      payload.created_at = normalizeOptionalDateTime(deal.created_at)
+      payload.completed_at = normalizeOptionalDateTime(deal.completed_at)
+    }
+    return payload
   }
 
   // Проверяет обязательные поля. Для черновика продажи допускаем пустые поля.

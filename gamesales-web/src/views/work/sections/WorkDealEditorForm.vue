@@ -171,11 +171,29 @@
                         <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-status-row">
                           <label class="field">
                             <span class="label">Дата создания</span>
-                            <input class="input" :value="formatDateTimeMinutes(editDeal.created_at)" readonly />
+                            <input
+                              v-if="dealEditMode !== 'view' && canEditSystemDates"
+                              v-model="editDeal.created_at"
+                              class="input"
+                              type="datetime-local"
+                            />
+                            <input
+                              v-else
+                              class="input"
+                              :value="formatDateTimeMinutes(editDeal.created_at)"
+                              readonly
+                            />
                           </label>
                           <label class="field">
                             <span class="label">Дата завершения</span>
                             <input
+                              v-if="dealEditMode !== 'view' && canEditSystemDates"
+                              v-model="editDeal.completed_at"
+                              class="input"
+                              type="datetime-local"
+                            />
+                            <input
+                              v-else
                               class="input"
                               :value="editDeal.completed_at ? formatDateTimeMinutes(editDeal.completed_at) : '—'"
                               readonly
@@ -205,11 +223,11 @@
                             :value="editDeal.is_refund ? 'Да' : 'Нет'"
                             readonly
                           />
-                          <label v-else class="check-item" :title="editDeal.flow_status_code !== 'pending' ? 'Признак можно менять только в статусе В ожидании' : ''">
+                          <label v-else class="check-item" :title="refundEditBlockedReason">
                             <input
                               v-model="editDeal.is_refund"
                               type="checkbox"
-                              :disabled="editDeal.flow_status_code !== 'pending'"
+                              :disabled="!canEditRefundFlag"
                             />
                             <span>Произвести возврат</span>
                           </label>
@@ -861,7 +879,7 @@
 </template>
 
 <script setup>
-import { reactive, toRefs } from 'vue'
+import { computed, reactive, toRefs } from 'vue'
 
 // Большая форма сделки (режим редактирования и создания) вынесена из WorkView.
 const props = defineProps({
@@ -872,6 +890,7 @@ const ctx = reactive(props.ctx)
 const {
   editDeal,
   dealEditMode,
+  allowCompletedDealEdit,
   dealAccountsForGameLoading,
   isDealSlotTypeUnsupported,
   dealAccountsForEdit,
@@ -948,4 +967,22 @@ const {
   newDealCommentOpen,
   getCompactNotesRows,
 } = toRefs(ctx)
+
+const canEditRefundFlag = computed(() => {
+  // Признак возврата можно менять в ожидании всем, а в завершенных только admin/owner.
+  const status = String(editDeal.value?.flow_status_code || '').toLowerCase()
+  if (status === 'pending') return true
+  return status === 'completed' && Boolean(allowCompletedDealEdit?.value)
+})
+
+const canEditSystemDates = computed(() => {
+  // Даты создания/завершения даем редактировать только admin/owner у завершенной сделки.
+  const status = String(editDeal.value?.flow_status_code || '').toLowerCase()
+  return status === 'completed' && Boolean(allowCompletedDealEdit?.value)
+})
+
+const refundEditBlockedReason = computed(() => {
+  // Подсказываем причину блокировки, чтобы было понятно почему чекбокс недоступен.
+  return canEditRefundFlag.value ? '' : 'Признак можно менять только в статусе В ожидании (или в Завершено для admin/owner)'
+})
 </script>

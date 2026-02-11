@@ -360,6 +360,10 @@ def mount_deals_routes(
     def update_deal(deal_id: int, payload: DealUpdate, user=Depends(get_current_user)):
         if payload.purchase_at is not None:
             validate_date_in_range(payload.purchase_at, "purchase_at")
+        if payload.created_at is not None:
+            validate_date_in_range(payload.created_at, "created_at")
+        if payload.completed_at is not None:
+            validate_date_in_range(payload.completed_at, "completed_at")
         if payload.start_at is not None:
             validate_date_in_range(payload.start_at, "start_at")
         if payload.end_at is not None:
@@ -411,6 +415,10 @@ def mount_deals_routes(
             can_edit_completed = user_role in {"admin", "owner"} or user_name in {"admin", "owner"}
             # Завершенные сделки редактируют только admin/owner; для возврата есть отдельный endpoint.
             if str(flow_status_code or "").strip().lower() == "completed" and not can_edit_completed:
+                raise HTTPException(403, "editing completed deal is allowed only for admin/owner")
+            # Ручные правки системных дат разрешаем только для admin/owner у завершенной сделки.
+            has_manual_system_dates = payload.created_at is not None or payload.completed_at is not None
+            if has_manual_system_dates and (str(flow_status_code or "").strip().lower() != "completed" or not can_edit_completed):
                 raise HTTPException(403, "editing completed deal is allowed only for admin/owner")
     
             deal_type = (payload.deal_type_code or current_type or "").strip().lower()
@@ -473,8 +481,9 @@ def mount_deals_routes(
             current_is_refund = returned_at is not None
             new_is_refund = current_is_refund if payload.is_refund is None else bool(payload.is_refund)
             is_refund_changed = new_is_refund != current_is_refund
-            # Признак возврата можно менять только в pending, но неизменное значение пропускаем.
-            if is_refund_changed and flow_status_code != "pending":
+            # Признак возврата можно менять в pending для всех, а в completed только для admin/owner.
+            allow_refund_change = flow_status_code == "pending" or (flow_status_code == "completed" and can_edit_completed)
+            if is_refund_changed and not allow_refund_change:
                 raise HTTPException(400, "is_refund can be changed only for pending deals")
             if payload.is_refund and deal_type != "sale":
                 raise HTTPException(400, "is_refund is allowed only for sale deals")
@@ -538,7 +547,11 @@ def mount_deals_routes(
             completed_at_value = None
             if completed_at_changed:
                 completed_at_value = now_utc() if new_flow_status == "completed" else None
-    
+            created_at_override = payload.created_at is not None
+            created_at_override_value = payload.created_at if created_at_override else None
+            completed_at_override = payload.completed_at is not None
+            completed_at_override_value = payload.completed_at if completed_at_override else None
+
             exec1(
                 conn,
                 """
@@ -550,7 +563,12 @@ def mount_deals_routes(
                     region_id=%s,
                     order_number=%s,
                     responsible_username=%s,
-                    completed_at=CASE WHEN %s THEN %s ELSE completed_at END
+                    created_at=CASE WHEN %s THEN %s ELSE created_at END,
+                    completed_at=CASE
+                        WHEN %s THEN %s
+                        WHEN %s THEN %s
+                        ELSE completed_at
+                    END
                 WHERE deal_id=%s
                 """,
                 (
@@ -561,6 +579,10 @@ def mount_deals_routes(
                     region_id,
                     new_order_number,
                     new_responsible_username,
+                    created_at_override,
+                    created_at_override_value,
+                    completed_at_override,
+                    completed_at_override_value,
                     completed_at_changed,
                     completed_at_value,
                     deal_id,

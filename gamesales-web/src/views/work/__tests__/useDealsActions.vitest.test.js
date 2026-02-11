@@ -158,6 +158,19 @@ describe('useDealsActions', () => {
     expect(deps.apiPut.mock.calls[0][1].is_refund).toBe(false)
   })
 
+  it('updateDeal sends manual created/completed dates for existing deal', async () => {
+    const deps = createDeps()
+    deps.editDeal.created_at = '2026-02-09T10:00'
+    deps.editDeal.completed_at = '2026-02-09T11:30'
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.apiPut).toHaveBeenCalledTimes(1)
+    expect(deps.apiPut.mock.calls[0][1].created_at).toContain('2026-02-09T')
+    expect(deps.apiPut.mock.calls[0][1].completed_at).toContain('2026-02-09T')
+  })
+
   it('updateDealDraft allows empty required sale fields and sends draft status', async () => {
     const deps = createDeps()
     deps.editDeal.customer_nickname = ''

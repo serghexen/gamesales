@@ -63,8 +63,8 @@ describe('WorkDealsTableSection', () => {
     })
 
     const text = wrapper.text()
-    expect(text).toContain('Создана:')
-    expect(text).toContain('Завершена:')
+    expect(text).toContain('Соз.:')
+    expect(text).toContain('Зав.:')
     expect(text).toContain('2026-02-11 11:00')
   })
 

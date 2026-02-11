@@ -398,6 +398,7 @@ export function useWorkSectionContexts({
   const dealEditorFormCtx = proxyRefs({
     editDeal,
     dealEditMode,
+    allowCompletedDealEdit,
     getDealTypeName,
     dealAccountsForGameLoading,
     isDealSlotTypeUnsupported,

@@ -416,20 +416,11 @@ const currentUserResponsibleName = computed(() => {
   return String(row?.name || '').trim()
 })
 
-const topBarRoleName = computed(() => {
-  // Показывает роль рядом с кнопкой профиля в человекочитаемом виде.
-  const roleCode = String(auth.state.role || '').trim().toLowerCase()
-  if (!roleCode) return ''
-  const roleRow = roles.value.find((role) => String(role?.code || '').trim().toLowerCase() === roleCode)
-  const roleName = String(roleRow?.name || '').trim()
-  if (roleName) return roleName
-  const fallbackNames = {
-    admin: 'Администратор',
-    owner: 'Владелец',
-    manager: 'Менеджер',
-    operator: 'Оператор',
-  }
-  return String(fallbackNames[roleCode] || roleCode).trim()
+const topBarUserName = computed(() => {
+  // В шапке показываем имя пользователя, а не роль.
+  const byName = String(currentUserResponsibleName.value || '').trim()
+  if (byName) return byName
+  return String(auth.state.user || '').trim()
 })
 
 const defaultDealsResponsibleFilter = computed(() => {
@@ -1355,7 +1346,7 @@ const {
 
 // Контекст верхней панели: вкладки, пользователь и кнопка выхода.
 const topBarCtx = asCtx({
-  userRoleName: topBarRoleName,
+  userRoleName: topBarUserName,
   activeTab,
   routeQuery: computed(() => route.query || {}),
   isAdmin,

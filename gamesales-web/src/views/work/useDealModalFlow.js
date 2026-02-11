@@ -41,6 +41,15 @@ export function useDealModalFlow({
   let initialEditDealSnapshot = null
   let initialCreateDealSnapshot = null
 
+  // Приводит дату к формату datetime-local, чтобы поле в форме было редактируемым.
+  function toDateTimeLocalValue(value) {
+    if (!value) return ''
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return ''
+    const pad = (n) => String(n).padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  }
+
   // Возвращает имя ответственного по умолчанию из текущей сессии.
   function getDefaultResponsibleName() {
     const raw = typeof currentResponsibleName === 'object' && currentResponsibleName
@@ -75,9 +84,9 @@ export function useDealModalFlow({
   function applyDealToEditState(deal) {
     if (!deal) return
     editDeal.deal_id = deal.deal_id
-    editDeal.created_at = deal.created_at || ''
+    editDeal.created_at = toDateTimeLocalValue(deal.created_at)
     // Берем дату завершения из API, чтобы показать ее рядом со статусом.
-    editDeal.completed_at = deal.completed_at || ''
+    editDeal.completed_at = toDateTimeLocalValue(deal.completed_at)
     editDeal.deal_type_code = deal.deal_type_code || (deal.deal_type === 'Шеринг' ? 'rental' : 'sale')
     editDeal.account_id = deal.account_id
     editDeal.game_id = deal.game_id
@@ -302,8 +311,8 @@ export function useDealModalFlow({
     dealAccountsForGameEdit.value = []
     // Сохраняем исходные данные в том же формате, что и форма, чтобы корректно сравнивать "грязные" изменения.
     initialEditDealSnapshot = {
-      created_at: deal.created_at || '',
-      completed_at: deal.completed_at || '',
+      created_at: toDateTimeLocalValue(deal.created_at),
+      completed_at: toDateTimeLocalValue(deal.completed_at),
       deal_type_code: deal.deal_type_code || (deal.deal_type === 'Шеринг' ? 'rental' : 'sale'),
       account_id: deal.account_id,
       game_id: deal.game_id,

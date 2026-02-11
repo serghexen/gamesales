@@ -137,7 +137,7 @@ describe('useDealModalFlow', () => {
     expect(deps.editDeal.price).toBe(100)
     expect(deps.editDeal.login).toBe('deal-login')
     expect(deps.editDeal.password).toBe('deal-pass')
-    expect(deps.editDeal.created_at).toBe('2026-02-09T10:00:00Z')
+    expect(deps.editDeal.created_at).toMatch(/^2026-02-09T\d{2}:\d{2}$/)
     expect(deps.editDeal.is_refund).toBe(true)
   })
 
