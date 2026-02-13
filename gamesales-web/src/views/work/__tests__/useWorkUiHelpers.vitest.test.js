@@ -4,51 +4,51 @@ import { ref } from 'vue'
 import { useWorkUiHelpers } from '../useWorkUiHelpers.js'
 
 function createHarness() {
-  const gamesPageSize = ref(20)
-  const gamesPageInput = ref(1)
+  const productsPageSize = ref(20)
+  const productsPageInput = ref(1)
   const accountSort = ref('login_asc')
-  const gamesSort = ref({ key: 'title', dir: 'asc' })
+  const productsSort = ref({ key: 'title', dir: 'asc' })
   const dealSort = ref({ key: 'created_at', dir: 'desc' })
   const domainsSortAsc = ref(true)
 
   const api = useWorkUiHelpers({
-    gamesPageSize,
-    gamesPageInput,
+    productsPageSize,
+    productsPageInput,
     accountSort,
-    gamesSort,
+    productsSort,
     dealSort,
     domainsSortAsc,
   })
 
   return {
     api,
-    gamesPageSize,
-    gamesPageInput,
+    productsPageSize,
+    productsPageInput,
     accountSort,
-    gamesSort,
+    productsSort,
     dealSort,
     domainsSortAsc,
   }
 }
 
 describe('useWorkUiHelpers', () => {
-  it('updates games page fields from events', () => {
+  it('updates products page fields from events', () => {
     const h = createHarness()
-    h.api.setGamesPageSizeFromEvent({ target: { value: '50' } })
-    h.api.setGamesPageInputFromEvent({ target: { value: '3' } })
-    expect(h.gamesPageSize.value).toBe(50)
-    expect(h.gamesPageInput.value).toBe(3)
+    h.api.setProductsPageSizeFromEvent({ target: { value: '50' } })
+    h.api.setProductsPageInputFromEvent({ target: { value: '3' } })
+    expect(h.productsPageSize.value).toBe(50)
+    expect(h.productsPageInput.value).toBe(3)
 
-    h.api.setGamesPageSizeFromEvent({ target: { value: '0' } })
-    h.api.setGamesPageInputFromEvent({ target: { value: 'bad' } })
-    expect(h.gamesPageSize.value).toBe(50)
-    expect(h.gamesPageInput.value).toBe(3)
+    h.api.setProductsPageSizeFromEvent({ target: { value: '0' } })
+    h.api.setProductsPageInputFromEvent({ target: { value: 'bad' } })
+    expect(h.productsPageSize.value).toBe(50)
+    expect(h.productsPageInput.value).toBe(3)
   })
 
-  it('builds sort classes for account/games/deals and keyed sort refs', () => {
+  it('builds sort classes for account/products/deals and keyed sort refs', () => {
     const h = createHarness()
     expect(h.api.getAccountSortClass('login')).toMatchObject({ 'sort-icon--asc': true, 'sort-icon--active': true })
-    expect(h.api.getGamesSortClass('title')).toMatchObject({ 'sort-icon--asc': true, 'sort-icon--active': true })
+    expect(h.api.getProductsSortClass('title')).toMatchObject({ 'sort-icon--asc': true, 'sort-icon--active': true })
     expect(h.api.getDealSortClass('created_at')).toMatchObject({ 'sort-icon--desc': true, 'sort-icon--active': true })
     expect(h.api.getDomainsSortClass()).toMatchObject({ 'sort-icon--asc': true, 'sort-icon--active': true })
     expect(h.api.getKeyedSortClass(ref({ key: 'code', dir: 'desc' }), 'code')).toMatchObject({ 'sort-icon--desc': true, 'sort-icon--active': true })

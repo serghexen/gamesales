@@ -12,7 +12,7 @@ describe('accountUtils', () => {
     const state = createNewAccountState()
     expect(state.login_name).toBe('')
     expect(state.domain_code).toBe('')
-    expect(state.game_ids).toEqual([])
+    expect(state.product_ids).toEqual([])
   })
 
   it('createEditAccountState contains edit metadata defaults', () => {
@@ -27,7 +27,7 @@ describe('accountUtils', () => {
     expect(createAccountFiltersState()).toEqual({
       search_q: '',
       login_q: '',
-      game_q: '',
+      product_q: '',
       region_q: '',
       status_q: '',
       date_from: '',

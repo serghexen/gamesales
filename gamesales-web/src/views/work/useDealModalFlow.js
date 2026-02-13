@@ -14,18 +14,18 @@ export function useDealModalFlow({
   newDealResponsible,
   editDealResponsible,
   newDealCommentOpen,
-  newDealGameSearch,
-  editDealGameSearch,
-  quickNewGame,
-  quickEditGame,
-  quickNewGameError,
-  quickEditGameError,
+  newDealProductSearch,
+  editDealProductSearch,
+  quickNewProduct,
+  quickEditProduct,
+  quickNewProductError,
+  quickEditProductError,
   quickNewAccount,
   quickEditAccount,
   quickNewAccountError,
   quickEditAccountError,
-  dealAccountsForGameNew,
-  dealAccountsForGameEdit,
+  dealAccountsForProductNew,
+  dealAccountsForProductEdit,
   dealAccountAssignmentsNew,
   dealAccountAssignmentsEdit,
   dealSlotAvailabilityNew,
@@ -63,7 +63,7 @@ export function useDealModalFlow({
     initialCreateDealSnapshot = {
       deal_type_code: newDeal.deal_type_code,
       account_id: newDeal.account_id,
-      game_id: newDeal.game_id,
+      product_id: newDeal.product_id,
       customer_nickname: newDeal.customer_nickname,
       order_number: newDeal.order_number,
       source_id: newDeal.source_id,
@@ -73,7 +73,7 @@ export function useDealModalFlow({
       purchase_cost: newDeal.purchase_cost,
       login: newDeal.login,
       password: newDeal.password,
-      game_link: newDeal.game_link,
+      product_link: newDeal.product_link,
       purchase_at: newDeal.purchase_at,
       slots_used: newDeal.slots_used,
       notes: newDeal.notes,
@@ -89,7 +89,7 @@ export function useDealModalFlow({
     editDeal.completed_at = toDateTimeLocalValue(deal.completed_at)
     editDeal.deal_type_code = deal.deal_type_code || (deal.deal_type === 'Шеринг' ? 'rental' : 'sale')
     editDeal.account_id = deal.account_id
-    editDeal.game_id = deal.game_id
+    editDeal.product_id = deal.product_id || ''
     editDeal.customer_nickname = deal.customer_nickname || ''
     editDeal.order_number = deal.order_number || ''
     editDeal.source_id = deal.source_id || ''
@@ -99,7 +99,7 @@ export function useDealModalFlow({
     editDeal.purchase_cost = Number(deal.purchase_cost || 0)
     editDeal.login = deal.login || ''
     editDeal.password = deal.password || ''
-    editDeal.game_link = deal.game_link || ''
+    editDeal.product_link = deal.product_link || ''
     editDeal.purchase_at = deal.purchase_at ? String(deal.purchase_at).slice(0, 10) : ''
     editDeal.slots_used = deal.slots_used || (deal.deal_type_code === 'rental' ? 1 : 0)
     editDeal.notes = deal.notes || ''
@@ -117,7 +117,7 @@ export function useDealModalFlow({
     editDeal.completed_at = ''
     editDeal.deal_type_code = 'sale'
     editDeal.account_id = ''
-    editDeal.game_id = ''
+    editDeal.product_id = ''
     editDeal.customer_nickname = ''
     editDeal.order_number = ''
     editDeal.source_id = ''
@@ -127,7 +127,7 @@ export function useDealModalFlow({
     editDeal.purchase_cost = 0
     editDeal.login = ''
     editDeal.password = ''
-    editDeal.game_link = ''
+    editDeal.product_link = ''
     editDeal.purchase_at = ''
     editDeal.slots_used = 1
     editDeal.notes = ''
@@ -150,16 +150,16 @@ export function useDealModalFlow({
     newDealCommentOpen.value = false
     // Для новых сделок сразу подставляем ответственного из текущей сессии.
     newDealResponsible.value = getDefaultResponsibleName()
-    newDealGameSearch.value = ''
-    editDealGameSearch.value = ''
-    quickNewGame.title = ''
-    quickNewGame.platform_codes = []
-    quickNewGameError.value = ''
+    newDealProductSearch.value = ''
+    editDealProductSearch.value = ''
+    quickNewProduct.title = ''
+    quickNewProduct.platform_codes = []
+    quickNewProductError.value = ''
     quickNewAccount.login_name = ''
     quickNewAccount.domain_code = ''
     quickNewAccount.platform_codes = []
     quickNewAccountError.value = ''
-    dealAccountsForGameNew.value = []
+    dealAccountsForProductNew.value = []
     dealSlotAvailabilityNew.value = {}
     syncCreateDealSnapshot()
   }
@@ -183,7 +183,7 @@ export function useDealModalFlow({
     const createBaseline = initialCreateDealSnapshot || {
       deal_type_code: 'sale',
       account_id: '',
-      game_id: '',
+      product_id: '',
       customer_nickname: '',
       order_number: '',
       source_id: '',
@@ -193,7 +193,7 @@ export function useDealModalFlow({
       purchase_cost: 0,
       login: '',
       password: '',
-      game_link: '',
+      product_link: '',
       purchase_at: '',
       slots_used: 1,
       notes: '',
@@ -202,7 +202,7 @@ export function useDealModalFlow({
     const createCurrent = {
       deal_type_code: newDeal.deal_type_code,
       account_id: newDeal.account_id,
-      game_id: newDeal.game_id,
+      product_id: newDeal.product_id,
       customer_nickname: newDeal.customer_nickname,
       order_number: newDeal.order_number,
       source_id: newDeal.source_id,
@@ -212,7 +212,7 @@ export function useDealModalFlow({
       purchase_cost: newDeal.purchase_cost,
       login: newDeal.login,
       password: newDeal.password,
-      game_link: newDeal.game_link,
+      product_link: newDeal.product_link,
       purchase_at: newDeal.purchase_at,
       slots_used: newDeal.slots_used,
       notes: newDeal.notes,
@@ -221,7 +221,7 @@ export function useDealModalFlow({
     const editCurrent = {
       deal_type_code: editDeal.deal_type_code,
       account_id: editDeal.account_id,
-      game_id: editDeal.game_id,
+      product_id: editDeal.product_id,
       customer_nickname: editDeal.customer_nickname,
       order_number: editDeal.order_number,
       source_id: editDeal.source_id,
@@ -231,7 +231,7 @@ export function useDealModalFlow({
       purchase_cost: editDeal.purchase_cost,
       login: editDeal.login,
       password: editDeal.password,
-      game_link: editDeal.game_link,
+      product_link: editDeal.product_link,
       purchase_at: editDeal.purchase_at,
       slots_used: editDeal.slots_used,
       notes: editDeal.notes,
@@ -249,7 +249,7 @@ export function useDealModalFlow({
     dealOk.value = null
     newDeal.deal_type_code = 'sale'
     newDeal.account_id = ''
-    newDeal.game_id = ''
+    newDeal.product_id = ''
     newDeal.customer_nickname = ''
     // Очищаем номер заказа, чтобы старое значение не переносилось в новую сделку.
     newDeal.order_number = ''
@@ -260,21 +260,21 @@ export function useDealModalFlow({
     newDeal.purchase_cost = 0
     newDeal.login = ''
     newDeal.password = ''
-    newDeal.game_link = ''
+    newDeal.product_link = ''
     newDeal.purchase_at = ''
     newDeal.slots_used = 1
     newDeal.notes = ''
     // После закрытия возвращаем дефолт для следующего открытия формы.
     newDealResponsible.value = getDefaultResponsibleName()
     newDealCommentOpen.value = false
-    newDealGameSearch.value = ''
-    editDealGameSearch.value = ''
-    quickNewGame.title = ''
-    quickNewGame.platform_codes = []
-    quickNewGameError.value = ''
-    quickEditGame.title = ''
-    quickEditGame.platform_codes = []
-    quickEditGameError.value = ''
+    newDealProductSearch.value = ''
+    editDealProductSearch.value = ''
+    quickNewProduct.title = ''
+    quickNewProduct.platform_codes = []
+    quickNewProductError.value = ''
+    quickEditProduct.title = ''
+    quickEditProduct.platform_codes = []
+    quickEditProductError.value = ''
     quickNewAccount.login_name = ''
     quickNewAccount.domain_code = ''
     quickNewAccount.platform_codes = []
@@ -283,8 +283,8 @@ export function useDealModalFlow({
     quickEditAccount.domain_code = ''
     quickEditAccount.platform_codes = []
     quickEditAccountError.value = ''
-    dealAccountsForGameNew.value = []
-    dealAccountsForGameEdit.value = []
+    dealAccountsForProductNew.value = []
+    dealAccountsForProductEdit.value = []
     dealAccountAssignmentsNew.value = []
     dealAccountAssignmentsEdit.value = []
     dealSlotAvailabilityNew.value = {}
@@ -300,22 +300,22 @@ export function useDealModalFlow({
     editDeal.open = true
     dealInitLock.value = true
     dealEditMode.value = 'view'
-    editDealGameSearch.value = ''
-    quickEditGame.title = ''
-    quickEditGame.platform_codes = []
-    quickEditGameError.value = ''
+    editDealProductSearch.value = ''
+    quickEditProduct.title = ''
+    quickEditProduct.platform_codes = []
+    quickEditProductError.value = ''
     quickEditAccount.login_name = ''
     quickEditAccount.domain_code = ''
     quickEditAccount.platform_codes = []
     quickEditAccountError.value = ''
-    dealAccountsForGameEdit.value = []
+    dealAccountsForProductEdit.value = []
     // Сохраняем исходные данные в том же формате, что и форма, чтобы корректно сравнивать "грязные" изменения.
     initialEditDealSnapshot = {
       created_at: toDateTimeLocalValue(deal.created_at),
       completed_at: toDateTimeLocalValue(deal.completed_at),
       deal_type_code: deal.deal_type_code || (deal.deal_type === 'Шеринг' ? 'rental' : 'sale'),
       account_id: deal.account_id,
-      game_id: deal.game_id,
+      product_id: deal.product_id || '',
       customer_nickname: deal.customer_nickname || '',
       order_number: deal.order_number || '',
       source_id: deal.source_id || '',
@@ -325,7 +325,7 @@ export function useDealModalFlow({
       purchase_cost: Number(deal.purchase_cost || 0),
       login: deal.login || '',
       password: deal.password || '',
-      game_link: deal.game_link || '',
+      product_link: deal.product_link || '',
       purchase_at: deal.purchase_at ? String(deal.purchase_at).slice(0, 10) : '',
       slots_used: deal.slots_used || (deal.deal_type_code === 'rental' ? 1 : 0),
       notes: deal.notes || '',
@@ -339,7 +339,7 @@ export function useDealModalFlow({
     nextTick(() => {
       setTimeout(() => {
         dealInitLock.value = false
-        if (editDeal.game_id) loadDealSlotAvailability('edit')
+        if (editDeal.product_id) loadDealSlotAvailability('edit')
       }, 0)
     })
   }
@@ -363,7 +363,7 @@ export function useDealModalFlow({
       nextTick(() => {
         setTimeout(() => {
           dealInitLock.value = false
-          if (editDeal.game_id) loadDealSlotAvailability('edit')
+          if (editDeal.product_id) loadDealSlotAvailability('edit')
         }, 0)
       })
       return

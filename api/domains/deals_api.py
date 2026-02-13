@@ -20,7 +20,6 @@ def mount_deals_routes(
     validate_date_in_range,
     validate_date_range,
     ensure_account_exists,
-    ensure_game_active,
     ensure_source_exists,
     ensure_account_allows_slot_type,
     get_platform_id,
@@ -28,7 +27,6 @@ def mount_deals_routes(
     get_account_slot_free,
     ensure_customer,
     get_slot_type,
-    ensure_game_exists,
     account_has_ps4,
     release_slot_assignment,
     build_deals_filters,
@@ -131,10 +129,43 @@ def mount_deals_routes(
         if conflict_row:
             raise HTTPException(409, "order_number must be unique for market source")
 
+    # Валидирует product_id и тип товара для операций со сделками.
+    def validate_deal_product_id(
+        conn,
+        *,
+        product_id: Optional[int],
+        for_rental: bool,
+        must_be_active: bool,
+    ) -> Optional[int]:
+        if product_id is None:
+            return None
+        # Параметр оставлен для совместимости сигнатуры в текущем этапе миграции.
+        _ = must_be_active
+        row = q1(
+            conn,
+            """
+            SELECT type_code, is_archived
+            FROM app.products
+            WHERE product_id=%s
+            """,
+            (product_id,),
+        )
+        if not row:
+            raise HTTPException(400, f"Unknown product_id: {product_id}")
+        type_code = str(row[0] or "").strip().lower()
+        is_archived = bool(row[1]) if row[1] is not None else False
+        if is_archived:
+            raise HTTPException(400, f"Product is archived: {product_id}")
+        if for_rental and type_code != "game":
+            raise HTTPException(400, "rental supports only products with type game")
+        return None
+
     @app.post("/rentals")
     def create_rental(payload: RentalCreate, user=Depends(get_current_user)):
         if not payload.slot_type_code:
             raise HTTPException(400, "slot_type_code is required for rental")
+        if not payload.product_id:
+            raise HTTPException(400, "product_id is required for rental")
         validate_date_in_range(payload.purchase_at, "purchase_at")
         validate_date_in_range(payload.start_at, "start_at")
         validate_date_in_range(payload.end_at, "end_at")
@@ -144,12 +175,18 @@ def mount_deals_routes(
         end_at = payload.end_at
     
         with psycopg.connect(DB_DSN) as conn:
+            # Валидируем product_id для rental в product-first режиме.
+            validate_deal_product_id(
+                conn,
+                product_id=payload.product_id,
+                for_rental=True,
+                must_be_active=True,
+            )
             # Получаем region_id и заодно проверяем существование аккаунта — один запрос вместо двух
             account_row = q1(conn, "SELECT region_id FROM app.accounts WHERE account_id=%s", (payload.account_id,))
             if not account_row:
                 raise HTTPException(400, f"Unknown account_id: {payload.account_id}")
             region_id = int(account_row[0]) if account_row[0] is not None else None
-            ensure_game_active(conn, payload.game_id)
             ensure_source_exists(conn, payload.source_id)
             slot_type = ensure_account_allows_slot_type(conn, payload.account_id, payload.slot_type_code)
             platform_id = get_platform_id(conn, slot_type[1])
@@ -186,15 +223,19 @@ def mount_deals_routes(
             """, (region_id, customer_id, payload.price, user.username))
             deal_id = int(deal_row[0])
     
+            # Для новых строк аренды сохраняем только product_id.
             row_item = q1(conn, """
                 INSERT INTO app.deal_items(
-                  deal_id, account_id, game_id, platform_id,
+                  deal_id, account_id, product_id, platform_id,
                   qty, price, purchase_cost, start_at, end_at, slots_used, slot_type_code, purchase_at, notes, game_link
                 )
-                VALUES (%s, %s, %s, %s, 1, %s, 0, %s, %s, 1, %s, %s, %s, %s)
+                VALUES (
+                  %s, %s, %s, %s,
+                  1, %s, 0, %s, %s, 1, %s, %s, %s, %s
+                )
                 RETURNING deal_item_id
             """, (
-                deal_id, payload.account_id, payload.game_id, platform_id,
+                deal_id, payload.account_id, payload.product_id, platform_id,
                 payload.price, start_at, end_at, payload.slot_type_code, payload.purchase_at, None, None
             ))
             deal_item_id = int(row_item[0])
@@ -202,16 +243,24 @@ def mount_deals_routes(
                 conn,
                 """
                 INSERT INTO app.account_slot_assignments(
-                  account_id, slot_type_code, customer_id, game_id, deal_id, deal_item_id, assigned_by
+                  account_id, slot_type_code, customer_id, product_id, deal_id, deal_item_id, assigned_by
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (
+                  %s, %s, %s, %s, %s, %s, %s
+                )
                 """,
-                (payload.account_id, payload.slot_type_code, customer_id, payload.game_id, deal_id, deal_item_id, user.username),
+                (
+                    payload.account_id,
+                    payload.slot_type_code,
+                    customer_id,
+                    payload.product_id,
+                    deal_id,
+                    deal_item_id,
+                    user.username,
+                ),
             )
             conn.commit()
-    
-            conn.commit()
-    
+
             # return updated slots
             occ2, free2 = slots_summary(conn, payload.account_id, platform_id)
             return {"deal_id": deal_id, "account_id": payload.account_id, "occupied_slots": occ2, "free_slots": free2}
@@ -231,8 +280,8 @@ def mount_deals_routes(
                 raise HTTPException(400, "slot_type_code is required for rental")
             if not payload.account_id:
                 raise HTTPException(400, "account_id is required for rental")
-            if not payload.game_id:
-                raise HTTPException(400, "game_id is required for rental")
+            if not payload.product_id:
+                raise HTTPException(400, "product_id is required for rental")
         if deal_type == "sale" and not sale_is_draft:
             if not (payload.customer_nickname or "").strip():
                 raise HTTPException(400, "customer_nickname is required for non-draft sale")
@@ -257,9 +306,17 @@ def mount_deals_routes(
                 row = q1(conn, "SELECT 1 FROM app.deal_flow_statuses WHERE code=%s", (new_flow_status,))
                 if not row:
                     raise HTTPException(400, "Unknown flow_status_code")
+            # Для rental работаем только по product_id.
+            if payload.product_id is not None:
+                # Проверяем product_id заранее, чтобы вернуть понятную 4xx ошибку вместо SQL-ошибки.
+                validate_deal_product_id(
+                    conn,
+                    product_id=payload.product_id,
+                    for_rental=(deal_type == "rental"),
+                    must_be_active=(deal_type == "rental"),
+                )
             if deal_type == "rental":
                 ensure_account_exists(conn, payload.account_id)
-                ensure_game_active(conn, payload.game_id)
             ensure_source_exists(conn, payload.source_id)
             platform_id = None
             if deal_type == "rental":
@@ -321,29 +378,61 @@ def mount_deals_routes(
             """, (deal_type, new_flow_status, region_id, customer_id, payload.price, order_number, responsible_username))
             deal_id = int(deal_row[0])
     
-            row_item = q1(conn, """
-                INSERT INTO app.deal_items(
-                  deal_id, account_id, game_id, platform_id,
-                  qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link
-                )
-                VALUES (%s, %s, %s, %s, 1, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING deal_item_id
-            """, (
-                deal_id, payload.account_id, payload.game_id, platform_id,
-                payload.price, payload.purchase_cost, payload.purchase_at, payload.start_at, payload.end_at,
-                (0 if deal_type == "sale" else 1), payload.slot_type_code, payload.notes, payload.game_link
-            ))
+            # Для новых сделок (sale/rental) храним только product_id.
+            product_link = payload.product_link
+            if deal_type == "rental":
+                row_item = q1(conn, """
+                    INSERT INTO app.deal_items(
+                      deal_id, account_id, product_id, platform_id,
+                      qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link
+                    )
+                    VALUES (
+                      %s, %s, %s, %s,
+                      1, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s
+                    )
+                    RETURNING deal_item_id
+                """, (
+                    deal_id, payload.account_id, payload.product_id, platform_id,
+                    payload.price, payload.purchase_cost, payload.purchase_at, payload.start_at, payload.end_at,
+                    1, payload.slot_type_code, payload.notes, product_link
+                ))
+            else:
+                row_item = q1(conn, """
+                    INSERT INTO app.deal_items(
+                      deal_id, account_id, product_id, platform_id,
+                      qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link
+                    )
+                    VALUES (
+                      %s, %s, %s, %s,
+                      1, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s
+                    )
+                    RETURNING deal_item_id
+                """, (
+                    deal_id, payload.account_id, payload.product_id, platform_id,
+                    payload.price, payload.purchase_cost, payload.purchase_at, payload.start_at, payload.end_at,
+                    0, payload.slot_type_code, payload.notes, product_link
+                ))
             deal_item_id = int(row_item[0])
             if deal_type == "rental":
                 exec1(
-                    conn,
-                    """
-                    INSERT INTO app.account_slot_assignments(
-                      account_id, slot_type_code, customer_id, game_id, deal_id, deal_item_id, assigned_by
+                conn,
+                """
+                INSERT INTO app.account_slot_assignments(
+                      account_id, slot_type_code, customer_id, product_id, deal_id, deal_item_id, assigned_by
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (
+                      %s, %s, %s, %s, %s, %s, %s
+                    )
                     """,
-                    (payload.account_id, payload.slot_type_code, customer_id, payload.game_id, deal_id, deal_item_id, user.username),
+                    (
+                        payload.account_id,
+                        payload.slot_type_code,
+                        customer_id,
+                        payload.product_id,
+                        deal_id,
+                        deal_item_id,
+                        user.username,
+                    ),
                 )
             conn.commit()
             # После фиксации публикуем событие, чтобы клиенты могли обновить список сделок в реальном времени.
@@ -385,7 +474,6 @@ def mount_deals_routes(
                   d.responsible_username,
                   di.deal_item_id,
                   di.account_id,
-                  di.game_id,
                   di.platform_id,
                   di.price,
                   di.purchase_cost,
@@ -409,7 +497,7 @@ def mount_deals_routes(
                 raise HTTPException(404, "Deal not found")
     
             current_type, status_code, flow_status_code, region_id, customer_id, total_amount, order_number, responsible_username, deal_item_id, \
-                account_id, game_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link, returned_at = row
+                account_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link, returned_at = row
             user_role = (getattr(user, "role", "") or "").strip().lower()
             user_name = (getattr(user, "username", "") or "").strip().lower()
             can_edit_completed = user_role in {"admin", "owner"} or user_name in {"admin", "owner"}
@@ -434,8 +522,15 @@ def mount_deals_routes(
                 raise HTTPException(400, "flow_status_code draft is allowed only for sale deals")
 
             new_account_id = payload.account_id if payload.account_id is not None else account_id
-            new_game_id = payload.game_id if payload.game_id is not None else game_id
             ensure_source_exists(conn, payload.source_id if payload.source_id is not None else None)
+            if payload.product_id is not None and deal_type != "rental":
+                # Для продажи валидируем только product_id.
+                validate_deal_product_id(
+                    conn,
+                    product_id=payload.product_id,
+                    for_rental=False,
+                    must_be_active=False,
+                )
             if payload.region_code is not None:
                 region_id = get_region_id(conn, payload.region_code)
     
@@ -463,7 +558,11 @@ def mount_deals_routes(
             new_start_at = payload.start_at if payload.start_at is not None else start_at
             new_end_at = payload.end_at if payload.end_at is not None else end_at
             new_notes = payload.notes if payload.notes is not None else notes
-            new_game_link = payload.game_link if payload.game_link is not None else game_link
+            new_product_link = (
+                payload.product_link
+                if payload.product_link is not None
+                else game_link
+            )
             new_order_number = order_number if payload.order_number is None else ((payload.order_number or "").strip() or None)
             if payload.responsible_username is None:
                 new_responsible_username = responsible_username
@@ -504,7 +603,6 @@ def mount_deals_routes(
             if deal_type == "sale":
                 new_slots_used = 0
                 new_account_id = None
-                new_game_id = None
                 new_platform_id = None
                 new_slot_type_code = None
                 # Для черновика продажи допускаем пустой регион.
@@ -520,12 +618,19 @@ def mount_deals_routes(
     
             # check slots for rental
             if deal_type == "rental":
+                # Для rental валидируем продукт в product-first режиме.
+                if payload.product_id is None:
+                    raise HTTPException(400, "product_id is required for rental")
+                validate_deal_product_id(
+                    conn,
+                    product_id=payload.product_id,
+                    for_rental=True,
+                    must_be_active=False,
+                )
                 if not new_account_id:
                     raise HTTPException(400, "account_id is required for rental")
-                if not new_game_id:
-                    raise HTTPException(400, "game_id is required for rental")
                 ensure_account_exists(conn, new_account_id)
-                ensure_game_exists(conn, new_game_id)
+                # Проверяем поддержку PS4 по product-first привязкам аккаунта.
                 if slot_type_platform == "ps4" and not account_has_ps4(conn, new_account_id):
                     raise HTTPException(400, "Account does not support PS4 slot type")
                 free = get_account_slot_free(conn, new_account_id, new_slot_type_code)
@@ -589,59 +694,100 @@ def mount_deals_routes(
                 ),
             )
     
-            exec1(
-                conn,
-                """
-                UPDATE app.deal_items
-                SET account_id=%s,
-                    game_id=%s,
-                    platform_id=%s,
-                    price=%s,
-                    purchase_cost=%s,
-                    purchase_at=%s,
-                    start_at=%s,
-                    end_at=%s,
-                    returned_at=%s,
-                    slots_used=%s,
-                    slot_type_code=%s,
-                    notes=%s,
-                    game_link=%s
-                WHERE deal_item_id=%s
-                """,
-                (
-                    new_account_id,
-                    new_game_id,
-                    new_platform_id,
-                    new_price,
-                    new_purchase_cost,
-                    new_purchase_at,
-                    new_start_at,
-                    new_end_at,
-                    new_returned_at,
-                    new_slots_used,
-                    new_slot_type_code,
-                    new_notes,
-                    new_game_link,
-                    deal_item_id,
-                ),
-            )
+            # Для rental обновляем строку в product-first режиме через product_id.
+            if deal_type == "rental":
+                exec1(
+                    conn,
+                    """
+                    UPDATE app.deal_items
+                    SET account_id=%s,
+                        product_id=%s,
+                        platform_id=%s,
+                        price=%s,
+                        purchase_cost=%s,
+                        purchase_at=%s,
+                        start_at=%s,
+                        end_at=%s,
+                        returned_at=%s,
+                        slots_used=%s,
+                        slot_type_code=%s,
+                        notes=%s,
+                        game_link=%s
+                    WHERE deal_item_id=%s
+                    """,
+                    (
+                        new_account_id,
+                        payload.product_id,
+                        new_platform_id,
+                        new_price,
+                        new_purchase_cost,
+                        new_purchase_at,
+                        new_start_at,
+                        new_end_at,
+                        new_returned_at,
+                        new_slots_used,
+                        new_slot_type_code,
+                        new_notes,
+                        new_product_link,
+                        deal_item_id,
+                    ),
+                )
+            else:
+                exec1(
+                    conn,
+                    """
+                    UPDATE app.deal_items
+                    SET account_id=%s,
+                        product_id=COALESCE(%s, product_id),
+                        platform_id=%s,
+                        price=%s,
+                        purchase_cost=%s,
+                        purchase_at=%s,
+                        start_at=%s,
+                        end_at=%s,
+                        returned_at=%s,
+                        slots_used=%s,
+                        slot_type_code=%s,
+                        notes=%s,
+                        game_link=%s
+                    WHERE deal_item_id=%s
+                    """,
+                    (
+                        new_account_id,
+                        payload.product_id,
+                        new_platform_id,
+                        new_price,
+                        new_purchase_cost,
+                        new_purchase_at,
+                        new_start_at,
+                        new_end_at,
+                        new_returned_at,
+                        new_slots_used,
+                        new_slot_type_code,
+                        new_notes,
+                        new_product_link,
+                        deal_item_id,
+                    ),
+                )
             if deal_type == "rental":
                 row_assign = q1(
                     conn,
                     """
-                    SELECT assignment_id, account_id, slot_type_code, customer_id, game_id
+                    SELECT assignment_id, account_id, slot_type_code, customer_id, product_id
                     FROM app.account_slot_assignments
                     WHERE deal_item_id=%s AND released_at IS NULL
                     """,
                     (deal_item_id,),
                 )
                 current_assign = row_assign[0] if row_assign else None
+                # Сравниваем назначение только по product_id.
+                assigned_product_id = int(row_assign[4]) if row_assign and row_assign[4] is not None else None
                 need_new_assign = (
                     (not row_assign)
                     or int(row_assign[1]) != int(new_account_id)
                     or row_assign[2] != new_slot_type_code
                     or (customer_id is not None and row_assign[3] != customer_id)
-                    or (new_game_id is not None and row_assign[4] != new_game_id)
+                    or (assigned_product_id != int(payload.product_id))
                 )
                 if need_new_assign and current_assign:
                     release_slot_assignment(conn, deal_item_id, user.username)
@@ -650,11 +796,21 @@ def mount_deals_routes(
                         conn,
                         """
                         INSERT INTO app.account_slot_assignments(
-                          account_id, slot_type_code, customer_id, game_id, deal_id, deal_item_id, assigned_by
+                          account_id, slot_type_code, customer_id, product_id, deal_id, deal_item_id, assigned_by
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        VALUES (
+                          %s, %s, %s, %s, %s, %s, %s
+                        )
                         """,
-                        (new_account_id, new_slot_type_code, customer_id, new_game_id, deal_id, deal_item_id, user.username),
+                        (
+                            new_account_id,
+                            new_slot_type_code,
+                            customer_id,
+                            payload.product_id,
+                            deal_id,
+                            deal_item_id,
+                            user.username,
+                        ),
                     )
             conn.commit()
             # После успешного update отправляем событие об изменении сделки.
@@ -746,7 +902,6 @@ def mount_deals_routes(
     @app.get("/deals", response_model=DealListOut)
     def list_deals(
         account_id: Optional[int] = None,
-        game_id: Optional[int] = None,
         platform_code: Optional[str] = None,
         q: Optional[str] = None,
         deal_type_code: Optional[str] = None,
@@ -762,7 +917,7 @@ def mount_deals_routes(
         notes_q: Optional[str] = None,
         account_q: Optional[str] = None,
         region_q: Optional[str] = None,
-        game_q: Optional[str] = None,
+        product_q: Optional[str] = None,
         platform_q: Optional[str] = None,
         type_q: Optional[str] = None,
         status_q: Optional[str] = None,
@@ -783,7 +938,6 @@ def mount_deals_routes(
         with psycopg.connect(DB_DSN) as conn:
             where_sql, params = build_deals_filters(
                 account_id,
-                game_id,
                 platform_code,
                 q,
                 deal_type_code,
@@ -799,7 +953,7 @@ def mount_deals_routes(
                 notes_q,
                 account_q,
                 region_q,
-                game_q,
+                product_q,
                 platform_q,
                 type_q,
                 status_q,
@@ -839,7 +993,7 @@ def mount_deals_routes(
                 LEFT JOIN app.domains dm ON dm.domain_id = a.domain_id
                 LEFT JOIN app.regions ra ON ra.region_id = a.region_id
                 LEFT JOIN app.regions rd ON rd.region_id = d.region_id
-                LEFT JOIN app.game_titles g ON g.game_id = di.game_id
+                LEFT JOIN app.products pr ON pr.product_id = di.product_id
                 LEFT JOIN app.platforms p ON p.platform_id = di.platform_id
                 LEFT JOIN app.customers c ON c.customer_id = d.customer_id
                 LEFT JOIN app.sources src ON src.source_id = c.source_id
@@ -873,9 +1027,9 @@ def mount_deals_routes(
                   di.account_id,
                   a.login_name,
                   dm.name as domain_name,
-                  di.game_id,
-                  g.title,
-                  g.short_title,
+                  di.product_id,
+                  pr.title as product_title,
+                  pr.short_title as product_short_title,
                   p.code as platform_code,
                   c.nickname,
                   c.customer_login,
@@ -889,7 +1043,7 @@ def mount_deals_routes(
                   di.slots_used,
                   di.slot_type_code,
                   di.notes,
-                  di.game_link,
+                  di.game_link as product_link,
                   (di.returned_at IS NOT NULL) as is_refund
                 FROM app.deal_items di
                 JOIN app.deals d ON d.deal_id = di.deal_id
@@ -900,7 +1054,7 @@ def mount_deals_routes(
                 LEFT JOIN app.domains dm ON dm.domain_id = a.domain_id
                 LEFT JOIN app.regions ra ON ra.region_id = a.region_id
                 LEFT JOIN app.regions rd ON rd.region_id = d.region_id
-                LEFT JOIN app.game_titles g ON g.game_id = di.game_id
+                LEFT JOIN app.products pr ON pr.product_id = di.product_id
                 LEFT JOIN app.platforms p ON p.platform_id = di.platform_id
                 LEFT JOIN app.customers c ON c.customer_id = d.customer_id
                 LEFT JOIN app.sources src ON src.source_id = c.source_id
@@ -912,8 +1066,25 @@ def mount_deals_routes(
         items = []
         for r in rows:
             login_full = f"{r[10]}@{r[11]}" if r[10] and r[11] else None
-            # Поддерживаем оба формата: новый (с login/password) и старый (без них) для тестовых фикстур.
-            has_customer_credentials = len(r) >= 29
+            # Разбираем единый product-first формат строки из SQL списка сделок.
+            product_id = r[12]
+            product_title = r[13]
+            product_short_title = r[14]
+            platform_code = r[15]
+            customer_nickname = r[16]
+            login = r[17]
+            password = r[18]
+            source_id = r[19]
+            price_value = r[20]
+            purchase_cost_value = r[21]
+            purchase_at = r[22]
+            created_at = r[23]
+            completed_at = r[24]
+            slots_used = r[25]
+            slot_type_code = r[26]
+            notes = r[27]
+            product_link = r[28]
+            is_refund = bool(r[29])
             items.append(
                 DealListItem(
                     deal_id=r[0],
@@ -927,24 +1098,24 @@ def mount_deals_routes(
                     region_code=r[8],
                     account_id=r[9],
                     account_login=login_full,
-                    game_id=r[12],
-                    game_title=r[13],
-                    game_short_title=r[14],
-                    platform_code=r[15],
-                    customer_nickname=r[16],
-                    login=r[17] if has_customer_credentials else None,
-                    password=r[18] if has_customer_credentials else None,
-                    source_id=r[19] if has_customer_credentials else r[17],
-                    price=float((r[20] if has_customer_credentials else r[18]) or 0),
-                    purchase_cost=float((r[21] if has_customer_credentials else r[19]) or 0),
-                    purchase_at=r[22] if has_customer_credentials else r[20],
-                    created_at=r[23] if has_customer_credentials else r[21],
-                    completed_at=r[24] if has_customer_credentials else r[22],
-                    slots_used=r[25] if has_customer_credentials else r[23],
-                    slot_type_code=r[26] if has_customer_credentials else r[24],
-                    notes=r[27] if has_customer_credentials else r[25],
-                    game_link=r[28] if has_customer_credentials else r[26],
-                    is_refund=bool(r[29]) if has_customer_credentials and len(r) >= 30 else False,
+                    product_id=product_id,
+                    product_title=product_title,
+                    product_short_title=product_short_title,
+                    platform_code=platform_code,
+                    customer_nickname=customer_nickname,
+                    login=login,
+                    password=password,
+                    source_id=source_id,
+                    price=float(price_value or 0),
+                    purchase_cost=float(purchase_cost_value or 0),
+                    purchase_at=purchase_at,
+                    created_at=created_at,
+                    completed_at=completed_at,
+                    slots_used=slots_used,
+                    slot_type_code=slot_type_code,
+                    notes=notes,
+                    product_link=product_link,
+                    is_refund=is_refund,
                 )
             )
     

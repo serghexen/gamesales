@@ -8,35 +8,36 @@ export function useImportFlow({
   apiPostForm,
   apiGetFile,
   mapApiError,
-  GAME_IMPORT_JOB_KEY,
+  PRODUCT_IMPORT_JOB_KEY,
+  LEGACY_PRODUCT_IMPORT_JOB_FALLBACK_KEY,
   ACCOUNT_IMPORT_JOB_KEY,
   SLOT_VALIDATE_JOB_KEY,
   SLOT_IMPORT_JOB_KEY,
   closeAllModals,
   resetModalPos,
-  showGameImport,
+  showProductImport,
   showAccountImport,
   showSlotImport,
-  gameImportFile,
+  productImportFile,
   accountImportFile,
   slotImportFile,
   slotImportLimit,
-  gameImportValidated,
+  productImportValidated,
   accountImportValidated,
   slotImportValidated,
-  gameImportErrors,
+  productImportErrors,
   accountImportErrors,
   slotImportErrors,
-  gameImportWarnings,
+  productImportWarnings,
   accountImportWarnings,
   slotImportWarnings,
-  gameImportTotal,
+  productImportTotal,
   accountImportTotal,
   slotImportTotal,
-  gameImportLoading,
+  productImportLoading,
   accountImportLoading,
   slotImportLoading,
-  gameImportMessage,
+  productImportMessage,
   accountImportMessage,
   slotImportMessage,
   slotImportError,
@@ -44,53 +45,67 @@ export function useImportFlow({
   slotImportProgress,
   slotImportJobId,
   slotImportStats,
-  gameImportAction,
+  productImportAction,
   accountImportAction,
-  gameImportStats,
+  productImportStats,
   accountImportStats,
-  gameImportProgress,
+  productImportProgress,
   accountImportProgress,
-  gameImportJobId,
+  productImportJobId,
   accountImportJobId,
   importDetailsRef,
   accountImportDetailsRef,
-  loadGames,
-  loadGamesAll,
+  loadProducts,
+  loadProductsAll,
   loadAccounts,
   loadAccountsAll,
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
 }) {
   // Таймеры опроса фоновых задач импорта.
-  let gameImportStatusTimer = null
+  let productImportStatusTimer = null
   let accountImportStatusTimer = null
   let slotImportStatusTimer = null
 
-  // Открывает окно импорта игр и сбрасывает прошлое состояние.
-  function openGameImport() {
+  // Читает job_id из нового ключа и при необходимости из legacy-ключа.
+  const getStoredJobId = (primaryKey, fallbackKey = '') => {
+    const primary = localStorage.getItem(primaryKey)
+    if (primary) return primary
+    if (!fallbackKey) return ''
+    return localStorage.getItem(fallbackKey) || ''
+  }
+
+  // Удаляет job_id сразу из нового и legacy-ключа.
+  const clearStoredJobId = (primaryKey, fallbackKey = '') => {
+    localStorage.removeItem(primaryKey)
+    if (fallbackKey) localStorage.removeItem(fallbackKey)
+  }
+
+  // Открывает окно импорта товаров и сбрасывает прошлое состояние.
+  function openProductImport() {
     closeAllModals()
     resetModalPos()
-    showGameImport.value = true
-    gameImportFile.value = null
-    gameImportValidated.value = false
-    gameImportErrors.value = []
-    gameImportWarnings.value = []
-    gameImportTotal.value = 0
-    gameImportLoading.value = false
-    gameImportMessage.value = ''
-    gameImportAction.value = ''
-    gameImportStats.value = null
-    gameImportProgress.current = 0
-    gameImportProgress.total = 0
-    gameImportProgress.phase = ''
-    gameImportJobId.value = ''
-    stopGameImportStatusPolling()
-    const stored = localStorage.getItem(GAME_IMPORT_JOB_KEY)
+    showProductImport.value = true
+    productImportFile.value = null
+    productImportValidated.value = false
+    productImportErrors.value = []
+    productImportWarnings.value = []
+    productImportTotal.value = 0
+    productImportLoading.value = false
+    productImportMessage.value = ''
+    productImportAction.value = ''
+    productImportStats.value = null
+    productImportProgress.current = 0
+    productImportProgress.total = 0
+    productImportProgress.phase = ''
+    productImportJobId.value = ''
+    stopProductImportStatusPolling()
+    const stored = getStoredJobId(PRODUCT_IMPORT_JOB_KEY, LEGACY_PRODUCT_IMPORT_JOB_FALLBACK_KEY)
     if (stored) {
-      gameImportJobId.value = stored
-      gameImportAction.value = 'upload'
-      gameImportLoading.value = true
-      startGameImportStatusPolling()
+      productImportJobId.value = stored
+      productImportAction.value = 'upload'
+      productImportLoading.value = true
+      startProductImportStatusPolling()
     }
   }
 
@@ -186,27 +201,27 @@ export function useImportFlow({
     return true
   }
 
-  // Закрывает импорт игр и очищает временные данные.
-  async function closeGameImport() {
+  // Закрывает импорт товаров и очищает временные данные.
+  async function closeProductImport() {
     const guardEnabled = !suppressUnsavedConfirm?.value
-    const isDirty = Boolean(gameImportFile.value || gameImportValidated.value || gameImportErrors.value.length || gameImportWarnings.value.length || gameImportJobId.value || gameImportMessage.value)
+    const isDirty = Boolean(productImportFile.value || productImportValidated.value || productImportErrors.value.length || productImportWarnings.value.length || productImportJobId.value || productImportMessage.value)
     if (guardEnabled && !(await confirmDiscardIfNeeded(isDirty, { requestConfirm: requestUnsavedConfirm }))) return false
 
-    showGameImport.value = false
-    gameImportFile.value = null
-    gameImportValidated.value = false
-    gameImportErrors.value = []
-    gameImportWarnings.value = []
-    gameImportTotal.value = 0
-    gameImportLoading.value = false
-    gameImportMessage.value = ''
-    gameImportAction.value = ''
-    gameImportStats.value = null
-    gameImportProgress.current = 0
-    gameImportProgress.total = 0
-    gameImportProgress.phase = ''
-    gameImportJobId.value = ''
-    stopGameImportStatusPolling()
+    showProductImport.value = false
+    productImportFile.value = null
+    productImportValidated.value = false
+    productImportErrors.value = []
+    productImportWarnings.value = []
+    productImportTotal.value = 0
+    productImportLoading.value = false
+    productImportMessage.value = ''
+    productImportAction.value = ''
+    productImportStats.value = null
+    productImportProgress.current = 0
+    productImportProgress.total = 0
+    productImportProgress.phase = ''
+    productImportJobId.value = ''
+    stopProductImportStatusPolling()
     return true
   }
 
@@ -234,26 +249,26 @@ export function useImportFlow({
     return true
   }
 
-  // Один шаг опроса статуса импорта игр.
-  async function pollGameImportStatusOnce() {
-    if (!gameImportJobId.value) return
+  // Один шаг опроса статуса импорта товаров.
+  async function pollProductImportStatusOnce() {
+    if (!productImportJobId.value) return
     try {
-      const status = await apiGet(`/games/import/status?job_id=${encodeURIComponent(gameImportJobId.value)}`, { token: auth.state.token })
+      const status = await apiGet(`/products/import/status?job_id=${encodeURIComponent(productImportJobId.value)}`, { token: auth.state.token })
       if (!status) return
-      gameImportProgress.current = Number(status.current || 0)
-      gameImportProgress.total = Number(status.total || 0)
-      gameImportProgress.phase = status.phase || ''
+      productImportProgress.current = Number(status.current || 0)
+      productImportProgress.total = Number(status.total || 0)
+      productImportProgress.phase = status.phase || ''
       if (status.done && status.result) {
-        applyGameImportResult(status.result)
+        applyProductImportResult(status.result)
         return
       }
       if (status.done) {
-        gameImportMessage.value = 'Импорт завершен'
-        gameImportLoading.value = false
-        gameImportAction.value = ''
-        gameImportJobId.value = ''
-        localStorage.removeItem(GAME_IMPORT_JOB_KEY)
-        stopGameImportStatusPolling()
+        productImportMessage.value = 'Импорт завершен'
+        productImportLoading.value = false
+        productImportAction.value = ''
+        productImportJobId.value = ''
+        clearStoredJobId(PRODUCT_IMPORT_JOB_KEY, LEGACY_PRODUCT_IMPORT_JOB_FALLBACK_KEY)
+        stopProductImportStatusPolling()
       }
     } catch {
       // ignore polling errors
@@ -285,29 +300,29 @@ export function useImportFlow({
     }
   }
 
-  function startGameImportStatusPolling() {
-    stopGameImportStatusPolling()
-    pollGameImportStatusOnce()
-    gameImportStatusTimer = setInterval(async () => {
+  function startProductImportStatusPolling() {
+    stopProductImportStatusPolling()
+    pollProductImportStatusOnce()
+    productImportStatusTimer = setInterval(async () => {
       try {
-        if (!gameImportJobId.value) return
-        const status = await apiGet(`/games/import/status?job_id=${encodeURIComponent(gameImportJobId.value)}`, { token: auth.state.token })
+        if (!productImportJobId.value) return
+        const status = await apiGet(`/products/import/status?job_id=${encodeURIComponent(productImportJobId.value)}`, { token: auth.state.token })
         if (!status) return
-        gameImportProgress.current = Number(status.current || 0)
-        gameImportProgress.total = Number(status.total || 0)
-        gameImportProgress.phase = status.phase || ''
+        productImportProgress.current = Number(status.current || 0)
+        productImportProgress.total = Number(status.total || 0)
+        productImportProgress.phase = status.phase || ''
         if (status.done && status.result) {
-          applyGameImportResult(status.result)
+          applyProductImportResult(status.result)
         }
         if (status.done && !status.result) {
-          gameImportMessage.value = 'Импорт завершен'
-          gameImportLoading.value = false
-          gameImportAction.value = ''
-          gameImportJobId.value = ''
-          localStorage.removeItem(GAME_IMPORT_JOB_KEY)
-          stopGameImportStatusPolling()
+          productImportMessage.value = 'Импорт завершен'
+          productImportLoading.value = false
+          productImportAction.value = ''
+          productImportJobId.value = ''
+          clearStoredJobId(PRODUCT_IMPORT_JOB_KEY, LEGACY_PRODUCT_IMPORT_JOB_FALLBACK_KEY)
+          stopProductImportStatusPolling()
         }
-        if (status.done && !gameImportLoading.value) stopGameImportStatusPolling()
+        if (status.done && !productImportLoading.value) stopProductImportStatusPolling()
       } catch {
         // ignore polling errors
       }
@@ -405,10 +420,10 @@ export function useImportFlow({
     }, 600)
   }
 
-  function stopGameImportStatusPolling() {
-    if (!gameImportStatusTimer) return
-    clearInterval(gameImportStatusTimer)
-    gameImportStatusTimer = null
+  function stopProductImportStatusPolling() {
+    if (!productImportStatusTimer) return
+    clearInterval(productImportStatusTimer)
+    productImportStatusTimer = null
   }
 
   function stopAccountImportStatusPolling() {
@@ -433,40 +448,40 @@ export function useImportFlow({
     accountImportDetailsRef.value.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  async function applyGameImportResult(res) {
+  async function applyProductImportResult(res) {
     if (!res) return
     if (res?.cancelled) {
-      gameImportMessage.value = 'Импорт отменен'
-      gameImportErrors.value = []
-      gameImportWarnings.value = []
-      gameImportStats.value = null
-      gameImportLoading.value = false
-      gameImportAction.value = ''
-      gameImportJobId.value = ''
-      localStorage.removeItem(GAME_IMPORT_JOB_KEY)
-      stopGameImportStatusPolling()
+      productImportMessage.value = 'Импорт отменен'
+      productImportErrors.value = []
+      productImportWarnings.value = []
+      productImportStats.value = null
+      productImportLoading.value = false
+      productImportAction.value = ''
+      productImportJobId.value = ''
+      clearStoredJobId(PRODUCT_IMPORT_JOB_KEY, LEGACY_PRODUCT_IMPORT_JOB_FALLBACK_KEY)
+      stopProductImportStatusPolling()
       return
     }
     const created = res?.created || 0
     const updated = res?.updated || 0
     const skipped = res?.skipped || 0
     const failed = res?.failed || 0
-    gameImportErrors.value = res?.errors || []
-    gameImportWarnings.value = res?.warnings || []
+    productImportErrors.value = res?.errors || []
+    productImportWarnings.value = res?.warnings || []
     if (res?.ok) {
-      gameImportMessage.value = `Загружено. Создано: ${created}, обновлено: ${updated}, пропущено: ${skipped}`
+      productImportMessage.value = `Загружено. Создано: ${created}, обновлено: ${updated}, пропущено: ${skipped}`
     } else {
       const until = res?.success_until_row ? `до строки ${res.success_until_row}` : 'до строки —'
-      gameImportMessage.value = `Загрузка с ошибками, успешно ${until}. Ошибок: ${failed}`
+      productImportMessage.value = `Загрузка с ошибками, успешно ${until}. Ошибок: ${failed}`
     }
-    gameImportStats.value = { created, updated, skipped, failed, total: res?.total || 0 }
-    gameImportLoading.value = false
-    gameImportAction.value = ''
-    gameImportJobId.value = ''
-    localStorage.removeItem(GAME_IMPORT_JOB_KEY)
-    stopGameImportStatusPolling()
-    await loadGames()
-    await loadGamesAll()
+    productImportStats.value = { created, updated, skipped, failed, total: res?.total || 0 }
+    productImportLoading.value = false
+    productImportAction.value = ''
+    productImportJobId.value = ''
+    clearStoredJobId(PRODUCT_IMPORT_JOB_KEY, LEGACY_PRODUCT_IMPORT_JOB_FALLBACK_KEY)
+    stopProductImportStatusPolling()
+    await loadProducts()
+    await loadProductsAll()
   }
 
   async function applyAccountImportResult(res) {
@@ -549,21 +564,21 @@ export function useImportFlow({
     stopSlotImportStatusPolling()
   }
 
-  function onGameImportFile(event) {
+  function onProductImportFileInternal(event) {
     const file = event?.target?.files?.[0]
-    gameImportFile.value = file || null
-    gameImportValidated.value = false
-    gameImportErrors.value = []
-    gameImportWarnings.value = []
-    gameImportTotal.value = 0
-    gameImportMessage.value = ''
-    gameImportAction.value = ''
-    gameImportStats.value = null
-    gameImportProgress.current = 0
-    gameImportProgress.total = 0
-    gameImportProgress.phase = ''
-    gameImportJobId.value = ''
-    stopGameImportStatusPolling()
+    productImportFile.value = file || null
+    productImportValidated.value = false
+    productImportErrors.value = []
+    productImportWarnings.value = []
+    productImportTotal.value = 0
+    productImportMessage.value = ''
+    productImportAction.value = ''
+    productImportStats.value = null
+    productImportProgress.current = 0
+    productImportProgress.total = 0
+    productImportProgress.phase = ''
+    productImportJobId.value = ''
+    stopProductImportStatusPolling()
   }
 
   function onAccountImportFile(event) {
@@ -604,17 +619,17 @@ export function useImportFlow({
     localStorage.removeItem(SLOT_IMPORT_JOB_KEY)
   }
 
-  async function downloadGameTemplate() {
+  async function downloadProductTemplateInternal() {
     try {
-      const blob = await apiGetFile('/games/import/template', { token: auth.state.token })
+      const blob = await apiGetFile('/products/import/template', { token: auth.state.token })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'games_import_template.xlsx'
+      a.download = 'products_import_template.xlsx'
       a.click()
       URL.revokeObjectURL(url)
     } catch (e) {
-      gameImportMessage.value = mapApiError(e?.message)
+      productImportMessage.value = mapApiError(e?.message)
     }
   }
 
@@ -632,10 +647,10 @@ export function useImportFlow({
     }
   }
 
-  async function downloadGameImportReport() {
+  async function downloadProductImportReportInternal() {
     try {
-      const payload = { errors: gameImportErrors.value || [], warnings: gameImportWarnings.value || [] }
-      const res = await fetch(`${API_BASE}/games/import/report`, {
+      const payload = { errors: productImportErrors.value || [], warnings: productImportWarnings.value || [] }
+      const res = await fetch(`${API_BASE}/products/import/report`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -650,46 +665,46 @@ export function useImportFlow({
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'games_import_report.xlsx'
+      a.download = 'products_import_report.xlsx'
       a.click()
       URL.revokeObjectURL(url)
     } catch (e) {
-      gameImportMessage.value = mapApiError(e?.message)
+      productImportMessage.value = mapApiError(e?.message)
     }
   }
 
-  async function validateGameImport() {
-    if (!gameImportFile.value) return
+  async function validateProductImport() {
+    if (!productImportFile.value) return
     const form = new FormData()
-    form.append('file', gameImportFile.value)
-    gameImportValidated.value = false
-    gameImportAction.value = 'validate'
-    gameImportLoading.value = true
-    gameImportProgress.current = 0
-    gameImportProgress.total = gameImportTotal.value || 0
-    gameImportProgress.phase = ''
+    form.append('file', productImportFile.value)
+    productImportValidated.value = false
+    productImportAction.value = 'validate'
+    productImportLoading.value = true
+    productImportProgress.current = 0
+    productImportProgress.total = productImportTotal.value || 0
+    productImportProgress.phase = ''
     try {
-      const res = await apiPostForm('/games/import/validate', form, { token: auth.state.token })
-      gameImportErrors.value = res?.errors || []
-      gameImportWarnings.value = res?.warnings || []
-      gameImportTotal.value = res?.total || 0
-      gameImportValidated.value = Boolean(res?.ok)
+      const res = await apiPostForm('/products/import/validate', form, { token: auth.state.token })
+      productImportErrors.value = res?.errors || []
+      productImportWarnings.value = res?.warnings || []
+      productImportTotal.value = res?.total || 0
+      productImportValidated.value = Boolean(res?.ok)
       if (res?.ok) {
-        gameImportMessage.value = gameImportWarnings.value.length
-          ? `Файл корректный. Некоторые строки будут пропущены: ${gameImportWarnings.value.length}.`
-          : `Файл корректный. Строк: ${gameImportTotal.value}. Можно загружать.`
+        productImportMessage.value = productImportWarnings.value.length
+          ? `Файл корректный. Некоторые строки будут пропущены: ${productImportWarnings.value.length}.`
+          : `Файл корректный. Строк: ${productImportTotal.value}. Можно загружать.`
       } else {
-        gameImportMessage.value = 'Файл не корректен. Исправьте ошибки ниже.'
+        productImportMessage.value = 'Файл не корректен. Исправьте ошибки ниже.'
       }
     } catch (e) {
-      gameImportValidated.value = false
-      gameImportErrors.value = []
-      gameImportWarnings.value = []
-      gameImportMessage.value = mapApiError(e?.message)
+      productImportValidated.value = false
+      productImportErrors.value = []
+      productImportWarnings.value = []
+      productImportMessage.value = mapApiError(e?.message)
     } finally {
-      gameImportLoading.value = false
-      gameImportAction.value = ''
-      stopGameImportStatusPolling()
+      productImportLoading.value = false
+      productImportAction.value = ''
+      stopProductImportStatusPolling()
     }
   }
 
@@ -905,30 +920,31 @@ export function useImportFlow({
     }
   }
 
-  async function uploadGameImport() {
-    if (!gameImportFile.value || !gameImportValidated.value) return
+  async function uploadProductImport() {
+    if (!productImportFile.value || !productImportValidated.value) return
     const form = new FormData()
-    form.append('file', gameImportFile.value)
-    gameImportAction.value = 'upload'
-    gameImportLoading.value = true
-    gameImportProgress.current = 0
-    gameImportProgress.total = gameImportTotal.value || 0
-    gameImportProgress.phase = ''
+    form.append('file', productImportFile.value)
+    productImportAction.value = 'upload'
+    productImportLoading.value = true
+    productImportProgress.current = 0
+    productImportProgress.total = productImportTotal.value || 0
+    productImportProgress.phase = ''
     try {
-      const res = await apiPostForm('/games/import', form, { token: auth.state.token })
+      const res = await apiPostForm('/products/import', form, { token: auth.state.token })
       if (res?.job_id) {
-        gameImportJobId.value = res.job_id
-        localStorage.setItem(GAME_IMPORT_JOB_KEY, res.job_id)
-        startGameImportStatusPolling()
+        productImportJobId.value = res.job_id
+        clearStoredJobId(PRODUCT_IMPORT_JOB_KEY, LEGACY_PRODUCT_IMPORT_JOB_FALLBACK_KEY)
+        localStorage.setItem(PRODUCT_IMPORT_JOB_KEY, res.job_id)
+        startProductImportStatusPolling()
       } else {
-        gameImportMessage.value = 'Не удалось запустить импорт'
-        gameImportLoading.value = false
-        gameImportAction.value = ''
+        productImportMessage.value = 'Не удалось запустить импорт'
+        productImportLoading.value = false
+        productImportAction.value = ''
       }
     } catch (e) {
-      gameImportMessage.value = mapApiError(e?.message)
-      gameImportLoading.value = false
-      gameImportAction.value = ''
+      productImportMessage.value = mapApiError(e?.message)
+      productImportLoading.value = false
+      productImportAction.value = ''
     }
   }
 
@@ -959,17 +975,17 @@ export function useImportFlow({
     }
   }
 
-  async function cancelGameImport() {
-    if (!gameImportJobId.value) return
-    gameImportAction.value = 'cancel'
-    gameImportLoading.value = true
+  async function cancelProductImport() {
+    if (!productImportJobId.value) return
+    productImportAction.value = 'cancel'
+    productImportLoading.value = true
     try {
-      await apiPost(`/games/import/cancel?job_id=${encodeURIComponent(gameImportJobId.value)}`, {}, { token: auth.state.token })
-      startGameImportStatusPolling()
+      await apiPost(`/products/import/cancel?job_id=${encodeURIComponent(productImportJobId.value)}`, {}, { token: auth.state.token })
+      startProductImportStatusPolling()
     } catch (e) {
-      gameImportMessage.value = mapApiError(e?.message)
-      gameImportLoading.value = false
-      gameImportAction.value = ''
+      productImportMessage.value = mapApiError(e?.message)
+      productImportLoading.value = false
+      productImportAction.value = ''
     }
   }
 
@@ -987,41 +1003,48 @@ export function useImportFlow({
     }
   }
 
-  function downloadGamesExport() {
-    gameImportMessage.value = 'Выгрузка будет добавлена позже'
-    showGameImport.value = true
+  function downloadProductsExport() {
+    productImportMessage.value = 'Выгрузка будет добавлена позже'
+    showProductImport.value = true
   }
 
+  const onProductImportFile = onProductImportFileInternal
+  const downloadProductTemplate = downloadProductTemplateInternal
+  const downloadProductImportReport = downloadProductImportReportInternal
+  // Совместимость для старого контракта lifecycle-хука.
+  const stopGameImportStatusPolling = stopProductImportStatusPolling
+
   return {
-    openGameImport,
+    openProductImport,
     openAccountImport,
     openSlotImport,
-    closeSlotImport,
-    closeGameImport,
+    closeProductImport,
     closeAccountImport,
+    closeSlotImport,
+    stopProductImportStatusPolling,
     stopGameImportStatusPolling,
     stopAccountImportStatusPolling,
     stopSlotImportStatusPolling,
     scrollToImportDetails,
     scrollToAccountImportDetails,
-    onGameImportFile,
+    onProductImportFile,
     onAccountImportFile,
     onSlotImportFile,
-    downloadGameTemplate,
+    downloadProductTemplate,
     downloadAccountTemplate,
-    downloadGameImportReport,
-    validateGameImport,
+    downloadProductImportReport,
     downloadAccountImportReport,
+    validateProductImport,
     validateAccountImport,
-    cleanSlotImport,
     validateSlotImport,
-    uploadSlotImport,
-    downloadSlotImportReport,
-    cancelSlotImport,
-    uploadGameImport,
+    uploadProductImport,
     uploadAccountImport,
-    cancelGameImport,
+    uploadSlotImport,
+    cancelProductImport,
     cancelAccountImport,
-    downloadGamesExport,
+    cancelSlotImport,
+    downloadProductsExport,
+    cleanSlotImport,
+    downloadSlotImportReport,
   }
 }

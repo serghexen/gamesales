@@ -1,23 +1,23 @@
 export function useWorkUiHelpers({
-  gamesPageSize,
-  gamesPageInput,
+  productsPageSize,
+  productsPageInput,
   accountSort,
-  gamesSort,
+  productsSort,
   dealSort,
   domainsSortAsc,
 }) {
   // Берем размер страницы из select и сохраняем только валидное число.
-  function setGamesPageSizeFromEvent(event) {
+  function setProductsPageSizeFromEvent(event) {
     const value = Number(event?.target?.value)
     if (!Number.isFinite(value) || value <= 0) return
-    gamesPageSize.value = value
+    productsPageSize.value = value
   }
 
   // Обновляем поле "номер страницы" из input.
-  function setGamesPageInputFromEvent(event) {
+  function setProductsPageInputFromEvent(event) {
     const value = Number(event?.target?.value)
     if (!Number.isFinite(value)) return
-    gamesPageInput.value = value
+    productsPageInput.value = value
   }
 
   // Общие css-классы для индикаторов сортировки.
@@ -30,7 +30,7 @@ export function useWorkUiHelpers({
   const getAccountSortState = (key) => {
     const map = {
       login: ['login_asc', 'login_desc'],
-      games: ['games_asc', 'games_desc'],
+      products: ['products_asc', 'products_desc'],
     }
     const pair = map[key]
     if (!pair) return ''
@@ -41,7 +41,7 @@ export function useWorkUiHelpers({
   }
 
   const getAccountSortClass = (key) => getSortButtonClass(getAccountSortState(key))
-  const getGamesSortClass = (key) => getSortButtonClass(gamesSort.value.key === key ? gamesSort.value.dir : '')
+  const getProductsSortClass = (key) => getSortButtonClass(productsSort.value.key === key ? productsSort.value.dir : '')
   const getDealSortClass = (key) => getSortButtonClass(dealSort.value.key === key ? dealSort.value.dir : '')
   const getDomainsSortClass = () => getSortButtonClass(domainsSortAsc.value ? 'asc' : 'desc')
 
@@ -69,10 +69,10 @@ export function useWorkUiHelpers({
   }
 
   return {
-    setGamesPageSizeFromEvent,
-    setGamesPageInputFromEvent,
+    setProductsPageSizeFromEvent,
+    setProductsPageInputFromEvent,
+    getProductsSortClass,
     getAccountSortClass,
-    getGamesSortClass,
     getDealSortClass,
     getDomainsSortClass,
     getKeyedSortClass,

@@ -1,10 +1,12 @@
+import { PRODUCT_TYPE_PRIMARY } from './domainUtils'
+
 export function useDealsFlow({
   auth,
   apiGet,
   apiPost,
   apiPut,
   mapApiError,
-  isSlotTypeSupportedForGame,
+  isSlotTypeSupportedForProduct,
   slotTypes,
   accountsAll,
   editDeal,
@@ -23,38 +25,49 @@ export function useDealsFlow({
   dealSlotAvailabilityEdit,
   dealSlotAvailabilityLoadingNew,
   dealSlotAvailabilityLoadingEdit,
-  dealAccountsForGameNew,
-  dealAccountsForGameEdit,
-  dealAccountsForGameLoading,
+  dealAccountsForProductNew,
+  dealAccountsForProductEdit,
+  dealAccountsForProductLoading,
   accountSlotReleaseLoading,
   dealSlotAutoAssign,
   dealError,
-  quickNewGame,
-  quickEditGame,
-  quickNewGameLoading,
-  quickEditGameLoading,
-  quickNewGameError,
-  quickEditGameError,
+  quickNewProduct,
+  quickEditProduct,
+  quickNewProductLoading,
+  quickEditProductLoading,
+  quickNewProductError,
+  quickEditProductError,
   quickNewAccount,
   quickEditAccount,
   quickNewAccountLoading,
   quickEditAccountLoading,
   quickNewAccountError,
   quickEditAccountError,
-  newDealGameSearch,
-  editDealGameSearch,
-  loadGamesAll,
+  newDealProductSearch,
+  editDealProductSearch,
+  loadProductsAll,
   loadAccountsAll,
 }) {
-  // Быстрое создание игры прямо из формы сделки.
-  async function createQuickGame(target) {
+  // Используем единый product-first загрузчик справочника.
+  const reloadProductsAll = loadProductsAll
+
+  // Возвращает выбранный товар в форме сделки.
+  function resolveSelectedDealRefs(target) {
     const isEdit = target === 'edit'
-    const state = isEdit ? quickEditGame : quickNewGame
-    const loading = isEdit ? quickEditGameLoading : quickNewGameLoading
-    const error = isEdit ? quickEditGameError : quickNewGameError
+    const deal = isEdit ? editDeal : newDeal
+    const directProductId = Number(deal?.product_id || 0) || null
+    return { productId: directProductId }
+  }
+
+  // Быстрое создание товара типа "игра" прямо из формы сделки.
+  async function createQuickProduct(target) {
+    const isEdit = target === 'edit'
+    const state = isEdit ? quickEditProduct : quickNewProduct
+    const loading = isEdit ? quickEditProductLoading : quickNewProductLoading
+    const error = isEdit ? quickEditProductError : quickNewProductError
     error.value = ''
     if (!state.title) {
-      error.value = 'Укажите название игры'
+      error.value = 'Укажите название товара'
       return
     }
     if (!state.platform_codes.length) {
@@ -64,8 +77,9 @@ export function useDealsFlow({
     loading.value = true
     try {
       const created = await apiPost(
-        '/games',
+        '/products',
         {
+          type_code: PRODUCT_TYPE_PRIMARY,
           title: state.title,
           platform_codes: state.platform_codes,
           short_title: null,
@@ -78,14 +92,14 @@ export function useDealsFlow({
         },
         { token: auth.state.token }
       )
-      await loadGamesAll()
-      if (created?.game_id) {
+      await reloadProductsAll()
+      if (created?.product_id) {
         if (isEdit) {
-          editDeal.game_id = created.game_id
-          editDealGameSearch.value = ''
+          editDeal.product_id = created.product_id
+          editDealProductSearch.value = ''
         } else {
-          newDeal.game_id = created.game_id
-          newDealGameSearch.value = ''
+          newDeal.product_id = created.product_id
+          newDealProductSearch.value = ''
         }
       }
       state.title = ''
@@ -97,20 +111,22 @@ export function useDealsFlow({
     }
   }
 
-  // Загружает подходящие аккаунты для выбранной игры и типа слота.
-  async function loadDealAccountsForGame(target) {
+  // Загружает подходящие аккаунты для выбранного товара и типа слота.
+  async function loadDealAccountsForProduct(target) {
     const isEdit = target === 'edit'
-    const gameId = isEdit ? editDeal.game_id : newDeal.game_id
+    const refs = resolveSelectedDealRefs(target)
+    const productId = refs.productId
     const slotTypeCode = isEdit ? editDeal.slot_type_code : newDeal.slot_type_code
-    if (!gameId || !slotTypeCode || !isSlotTypeSupportedForGame(slotTypeCode, gameId)) {
-      if (isEdit) dealAccountsForGameEdit.value = []
-      else dealAccountsForGameNew.value = []
+    const slotSupported = productId ? isSlotTypeSupportedForProduct(slotTypeCode, productId) : true
+    if (!productId || !slotTypeCode || !slotSupported) {
+      if (isEdit) dealAccountsForProductEdit.value = []
+      else dealAccountsForProductNew.value = []
       return
     }
-    dealAccountsForGameLoading.value = true
+    dealAccountsForProductLoading.value = true
     try {
       const params = new URLSearchParams()
-      params.set('game_id', String(gameId))
+      params.set('product_id', String(productId))
       if (slotTypeCode) params.set('slot_type_code', slotTypeCode)
       const data = await apiGet(`/accounts/for-deal?${params.toString()}`, { token: auth.state.token })
       if (isEdit) {
@@ -120,15 +136,15 @@ export function useDealsFlow({
           const fallback = (accountsAll.value || []).find((a) => a.account_id === currentId)
           if (fallback) list = [fallback, ...list]
         }
-        dealAccountsForGameEdit.value = list
+        dealAccountsForProductEdit.value = list
       } else {
-        dealAccountsForGameNew.value = data || []
+        dealAccountsForProductNew.value = data || []
       }
     } catch {
-      if (isEdit) dealAccountsForGameEdit.value = []
-      else dealAccountsForGameNew.value = []
+      if (isEdit) dealAccountsForProductEdit.value = []
+      else dealAccountsForProductNew.value = []
     } finally {
-      dealAccountsForGameLoading.value = false
+      dealAccountsForProductLoading.value = false
     }
   }
 
@@ -174,11 +190,12 @@ export function useDealsFlow({
     }
   }
 
-  // Загружает назначения слотов по выбранной игре.
-  async function loadDealGameAssignments(target) {
+  // Загружает назначения слотов по выбранному товару.
+  async function loadDealProductAssignments(target) {
     const isEdit = target === 'edit'
-    const gameId = isEdit ? editDeal.game_id : newDeal.game_id
-    if (!gameId) {
+    const refs = resolveSelectedDealRefs(target)
+    const productId = refs.productId
+    if (!productId) {
       if (isEdit) dealGameAssignmentsEdit.value = []
       else dealGameAssignmentsNew.value = []
       return
@@ -186,7 +203,8 @@ export function useDealsFlow({
     const loading = isEdit ? dealGameAssignmentsLoadingEdit : dealGameAssignmentsLoadingNew
     loading.value = true
     try {
-      const data = await apiGet(`/games/${gameId}/slot-assignments`, { token: auth.state.token })
+      // Загружаем назначения только по product-маршруту.
+      const data = await apiGet(`/products/${productId}/slot-assignments`, { token: auth.state.token })
       if (isEdit) dealGameAssignmentsEdit.value = data || []
       else dealGameAssignmentsNew.value = data || []
     } catch {
@@ -197,11 +215,12 @@ export function useDealsFlow({
     }
   }
 
-  // Загружает доступность слотов для выбранной игры.
+  // Загружает доступность слотов для выбранного товара.
   async function loadDealSlotAvailability(target) {
     const isEdit = target === 'edit'
-    const gameId = isEdit ? editDeal.game_id : newDeal.game_id
-    if (!gameId) {
+    const refs = resolveSelectedDealRefs(target)
+    const productId = refs.productId
+    if (!productId) {
       if (isEdit) dealSlotAvailabilityEdit.value = {}
       else dealSlotAvailabilityNew.value = {}
       return
@@ -213,7 +232,8 @@ export function useDealsFlow({
       let availabilityMap = {}
       let availabilityLoaded = false
       try {
-        const data = await apiGet(`/accounts/for-deal/availability?game_id=${encodeURIComponent(gameId)}`, { token: auth.state.token })
+        const qs = `product_id=${encodeURIComponent(productId)}`
+        const data = await apiGet(`/accounts/for-deal/availability?${qs}`, { token: auth.state.token })
         availabilityMap = Object.fromEntries((data || []).map((i) => [i.slot_type_code, { hasFree: Boolean(i.has_free) }]))
         availabilityLoaded = true
       } catch {
@@ -222,13 +242,13 @@ export function useDealsFlow({
       if (!availabilityLoaded) {
         const results = await Promise.all(
           list.map(async (t) => {
-            const supported = isSlotTypeSupportedForGame(t.code, gameId)
+            const supported = isSlotTypeSupportedForProduct(t.code, productId)
             if (!supported) {
               return [t.code, { hasFree: false }]
             }
             try {
               const params = new URLSearchParams()
-              params.set('game_id', String(gameId))
+              params.set('product_id', String(productId))
               params.set('slot_type_code', t.code)
               const data = await apiGet(`/accounts/for-deal?${params.toString()}`, { token: auth.state.token })
               return [t.code, { hasFree: Array.isArray(data) && data.length > 0 }]
@@ -242,7 +262,7 @@ export function useDealsFlow({
       if (availabilityLoaded) {
         const normalized = {}
         for (const t of list) {
-          const supported = isSlotTypeSupportedForGame(t.code, gameId)
+          const supported = isSlotTypeSupportedForProduct(t.code, productId)
           normalized[t.code] = supported ? (availabilityMap[t.code] || { hasFree: false }) : { hasFree: false }
         }
         availabilityMap = normalized
@@ -268,16 +288,16 @@ export function useDealsFlow({
         editDeal.slot_type_code = slotTypeCode || ''
         await loadAccountSlotStatus('edit')
         await loadDealAccountAssignments('edit')
-        await loadDealAccountsForGame('edit')
-        await loadDealGameAssignments('edit')
+        await loadDealAccountsForProduct('edit')
+        await loadDealProductAssignments('edit')
         await loadDealSlotAvailability('edit')
       } else {
         newDeal.account_id = accountId || ''
         newDeal.slot_type_code = slotTypeCode || ''
         await loadAccountSlotStatus('new')
         await loadDealAccountAssignments('new')
-        await loadDealAccountsForGame('new')
-        await loadDealGameAssignments('new')
+        await loadDealAccountsForProduct('new')
+        await loadDealProductAssignments('new')
         await loadDealSlotAvailability('new')
       }
     } catch (e) {
@@ -320,19 +340,21 @@ export function useDealsFlow({
         { token: auth.state.token }
       )
       await loadAccountsAll()
-      const selectedGameId = isEdit ? editDeal.game_id : newDeal.game_id
-      if (created?.account_id && selectedGameId) {
+      const selectedRefs = resolveSelectedDealRefs(target)
+      const selectedProductId = selectedRefs.productId
+      if (created?.account_id && selectedProductId) {
         try {
-          const existing = await apiGet(`/accounts/${created.account_id}/games`, { token: auth.state.token })
-          const ids = new Set((existing || []).map((g) => g.game_id))
-          ids.add(selectedGameId)
+          // Работаем только с product-привязками аккаунта.
+          const existingProducts = await apiGet(`/accounts/${created.account_id}/products`, { token: auth.state.token })
+          const ids = new Set((existingProducts || []).map((p) => Number(p?.product_id || 0)).filter(Boolean))
+          ids.add(selectedProductId)
           await apiPut(
-            `/accounts/${created.account_id}/games`,
-            { game_ids: Array.from(ids) },
+            `/accounts/${created.account_id}/products`,
+            { product_ids: Array.from(ids) },
             { token: auth.state.token }
           )
         } catch {
-          // ignore game attachment errors
+          // Ошибка привязки не должна мешать созданию аккаунта.
         }
       }
       if (created?.account_id) {
@@ -343,7 +365,7 @@ export function useDealsFlow({
         }
       }
       if (created?.account_id) {
-        const targetList = isEdit ? dealAccountsForGameEdit : dealAccountsForGameNew
+        const targetList = isEdit ? dealAccountsForProductEdit : dealAccountsForProductNew
         const exists = (targetList.value || []).some((a) => a.account_id === created.account_id)
         if (!exists) {
           const fallback = (accountsAll.value || []).find((a) => a.account_id === created.account_id) || created
@@ -357,10 +379,10 @@ export function useDealsFlow({
       }
       if (isEdit) {
         await loadDealSlotAvailability('edit')
-        await loadDealAccountsForGame('edit')
+        await loadDealAccountsForProduct('edit')
       } else {
         await loadDealSlotAvailability('new')
-        await loadDealAccountsForGame('new')
+        await loadDealAccountsForProduct('new')
       }
       state.login_name = ''
       state.domain_code = ''
@@ -372,27 +394,27 @@ export function useDealsFlow({
     }
   }
 
-  function clearNewDealGame() {
-    newDeal.game_id = ''
-    newDealGameSearch.value = ''
-    dealAccountsForGameNew.value = []
+  function clearNewDealProduct() {
+    newDeal.product_id = ''
+    newDealProductSearch.value = ''
+    dealAccountsForProductNew.value = []
   }
 
-  function clearEditDealGame() {
-    editDeal.game_id = ''
-    editDealGameSearch.value = ''
-    dealAccountsForGameEdit.value = []
+  function clearEditDealProduct() {
+    editDeal.product_id = ''
+    editDealProductSearch.value = ''
+    dealAccountsForProductEdit.value = []
   }
 
   return {
-    createQuickGame,
+    createQuickProduct,
     createQuickAccount,
-    clearNewDealGame,
-    clearEditDealGame,
-    loadDealAccountsForGame,
+    clearNewDealProduct,
+    clearEditDealProduct,
+    loadDealAccountsForProduct,
     loadAccountSlotStatus,
     loadDealAccountAssignments,
-    loadDealGameAssignments,
+    loadDealProductAssignments,
     loadDealSlotAvailability,
     releaseSlotFromDeal,
   }

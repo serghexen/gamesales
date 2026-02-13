@@ -37,9 +37,12 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
     max_logo_bytes = 5 * 1024 * 1024
     allowed_logo_mime = {"image/jpeg", "image/png", "image/webp"}
 
-    game_import_headers = ["Игра", "Платформа"]
+    game_import_headers = ["Товар", "Платформа"]
     game_import_header_map = {
+        "Товар": "title",
+        "товар": "title",
         "Игра": "title",
+        "игра": "title",
         "Платформа": "platform_codes",
         "title": "title",
         "platform_codes": "platform_codes",
@@ -53,6 +56,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         "Пароль": "password",
         "пароль": "password",
         "Password": "password",
+        "Товар": "game",
+        "товар": "game",
         "Игра": "game",
         "игра": "game",
         "Game": "game",
@@ -60,6 +65,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
     slot_import_header_map = {
         "Аккаунт": "account",
         "аккаунт": "account",
+        "Товар": "game",
+        "товар": "game",
         "Игра": "game",
         "игра": "game",
         "Статус": "status",
@@ -109,6 +116,25 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 parts.append(val)
         return normalize_platform_codes(parts)
 
+    # Проверяет, что игровой товар существует в каталоге, и возвращает product_id.
+    def resolve_game_product_id_by_title(conn, game_title: str):
+        if not game_title:
+            return None
+        row = q1(
+            conn,
+            """
+            SELECT p.product_id
+            FROM app.products p
+            WHERE lower(p.title) = lower(%s)
+              AND lower(p.type_code) = 'game'
+              AND p.is_archived IS NOT TRUE
+            ORDER BY p.product_id
+            LIMIT 1
+            """,
+            (game_title,),
+        )
+        return int(row[0]) if row and row[0] is not None else None
+
     def detect_logo_mime_from_bytes(data: bytes) -> str:
         if not data:
             return ""
@@ -153,7 +179,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
             platform_raw = row.get("platform_codes") or ""
             platform_codes = parse_import_platforms(platform_raw)
             if not title:
-                errors.append({"row": report_row, "field": "Игра", "value": title, "message": "Название обязательно"})
+                errors.append({"row": report_row, "field": "Товар", "value": title, "message": "Название обязательно"})
             if not platform_codes:
                 warnings.append({"row": report_row, "field": "Платформа", "value": str(platform_raw).strip(), "message": "Платформы не указаны — строка будет пропущена"})
             for code in platform_codes:
@@ -275,11 +301,10 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
             if not account_val or not login or not domain:
                 warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Нужно значение в формате login@domain — строка будет пропущена"})
             if not game_title:
-                warnings.append({"row": report_row, "field": "Игра", "value": game_title, "message": "Игра не указана — строка будет пропущена"})
+                warnings.append({"row": report_row, "field": "Товар", "value": game_title, "message": "Товар не указан — строка будет пропущена"})
             else:
-                row_game = q1(conn, "SELECT game_id FROM app.game_titles WHERE lower(title)=lower(%s)", (game_title,))
-                if not row_game:
-                    warnings.append({"row": report_row, "field": "Игра", "value": game_title, "message": "Не найдена в списке игр — строка будет пропущена"})
+                if resolve_game_product_id_by_title(conn, game_title) is None:
+                    warnings.append({"row": report_row, "field": "Товар", "value": game_title, "message": "Не найден в списке товаров — строка будет пропущена"})
             if progress_cb:
                 progress_cb(idx - 1)
         return errors, warnings
@@ -431,11 +456,10 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                     warnings.append({"row": report_row, "field": "Слот", "value": slot_val, "message": "Слот не найден в БД"})
 
             if game_title:
-                row_game = q1(conn, "SELECT 1 FROM app.game_titles WHERE lower(title) = lower(%s)", (game_title,))
-                if not row_game:
-                    warnings.append({"row": report_row, "field": "Игра", "value": game_title, "message": "Игра не найдена"})
+                if resolve_game_product_id_by_title(conn, game_title) is None:
+                    warnings.append({"row": report_row, "field": "Товар", "value": game_title, "message": "Товар не найден"})
             else:
-                warnings.append({"row": report_row, "field": "Игра", "value": game_title, "message": "Игра не указана"})
+                warnings.append({"row": report_row, "field": "Товар", "value": game_title, "message": "Товар не указан"})
 
             if not customer:
                 warnings.append({"row": report_row, "field": "Пользователь", "value": customer, "message": "Пользователь не указан"})

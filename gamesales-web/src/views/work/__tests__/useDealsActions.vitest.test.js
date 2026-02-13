@@ -17,7 +17,7 @@ function createDeps(overrides = {}) {
     newDeal: {
       deal_type_code: 'sale',
       account_id: '',
-      game_id: '',
+      product_id: 55,
       customer_nickname: 'buyer',
       order_number: 'ORD-1',
       source_id: 10,
@@ -27,7 +27,7 @@ function createDeps(overrides = {}) {
       purchase_cost: 50,
       login: 'deal-login',
       password: 'deal-pass',
-      game_link: '',
+      product_link: '',
       purchase_at: '',
       notes: '',
       is_refund: false,
@@ -36,7 +36,7 @@ function createDeps(overrides = {}) {
       deal_id: 1,
       deal_type_code: 'sale',
       account_id: '',
-      game_id: '',
+      product_id: 56,
       customer_nickname: 'buyer',
       order_number: 'ORD-2',
       source_id: 10,
@@ -46,7 +46,7 @@ function createDeps(overrides = {}) {
       purchase_cost: 50,
       login: 'edit-login',
       password: 'edit-pass',
-      game_link: '',
+      product_link: '',
       purchase_at: '',
       notes: '',
       flow_status_code: 'pending',
@@ -84,6 +84,7 @@ describe('useDealsActions', () => {
     expect(deps.apiPost.mock.calls[0][1].login).toBe('deal-login')
     expect(deps.apiPost.mock.calls[0][1].password).toBe('deal-pass')
     expect(deps.apiPost.mock.calls[0][1].responsible_username).toBe('tester')
+    expect(deps.apiPost.mock.calls[0][1].product_id).toBe(55)
     expect(deps.closeDealModal).toHaveBeenCalledTimes(1)
     expect(deps.dealLoading.value).toBe(false)
     expect(deps.dealSaving.value).toBe(false)

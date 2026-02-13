@@ -5,7 +5,7 @@ import { useWorkFilters } from '../useWorkFilters.js'
 
 function createHarness() {
   const loadAccounts = vi.fn()
-  const loadGames = vi.fn()
+  const loadProducts = vi.fn()
   const loadDeals = vi.fn()
 
   const accountSort = ref('login_asc')
@@ -13,10 +13,10 @@ function createHarness() {
   const accountsPageInput = ref(1)
   const accountsTotalPages = ref(5)
 
-  const gamesSort = ref({ key: 'title', dir: 'asc' })
-  const gamesPage = ref(2)
-  const gamesPageInput = ref(1)
-  const gamesTotalPages = ref(4)
+  const productsSort = ref({ key: 'title', dir: 'asc' })
+  const productsPage = ref(2)
+  const productsPageInput = ref(1)
+  const productsTotalPages = ref(4)
 
   const usersSort = ref({ key: 'created_at', dir: 'desc' })
   const domainsSortAsc = ref(true)
@@ -39,11 +39,13 @@ function createHarness() {
   const activeGameFilter = ref('')
   const gameFilters = reactive({
     q: 'old',
+    type_code: 'game',
     platform_code: 'ps5',
     region_code: 'RU',
   })
   const gameFilterDraft = reactive({
     title: '',
+    type: '',
     platform: '',
     region: '',
   })
@@ -52,7 +54,7 @@ function createHarness() {
   const accountFilters = reactive({
     search_q: 's',
     login_q: 'login',
-    game_q: 'game',
+    product_q: 'game',
     region_q: 'RU',
     status_q: 'active',
     date_from: '',
@@ -60,7 +62,7 @@ function createHarness() {
   })
   const accountFilterDraft = reactive({
     login: '',
-    game: '',
+    product: '',
     region: '',
     status: '',
     date_from: '',
@@ -73,11 +75,11 @@ function createHarness() {
     accountsPageInput,
     accountsTotalPages,
     loadAccounts,
-    gamesSort,
-    gamesPage,
-    gamesPageInput,
-    gamesTotalPages,
-    loadGames,
+    productsSort,
+    productsPage,
+    productsPageInput,
+    productsTotalPages,
+    loadProducts,
     usersSort,
     domainsSortAsc,
     sourcesSort,
@@ -86,9 +88,9 @@ function createHarness() {
     activeDealFilter,
     dealFilters,
     loadDeals,
-    activeGameFilter,
-    gameFilters,
-    gameFilterDraft,
+    activeProductFilter: activeGameFilter,
+    productFilters: gameFilters,
+    productFilterDraft: gameFilterDraft,
     activeAccountFilter,
     accountFilters,
     accountFilterDraft,
@@ -97,16 +99,16 @@ function createHarness() {
   return {
     api,
     loadAccounts,
-    loadGames,
+    loadProducts,
     loadDeals,
     accountSort,
     accountsPage,
     accountsPageInput,
     accountsTotalPages,
-    gamesSort,
-    gamesPage,
-    gamesPageInput,
-    gamesTotalPages,
+    productsSort,
+    productsPage,
+    productsPageInput,
+    productsTotalPages,
     activeDealFilter,
     dealFilters,
     activeGameFilter,
@@ -127,14 +129,14 @@ describe('useWorkFilters', () => {
     expect(h.loadAccounts).toHaveBeenCalledTimes(1)
   })
 
-  it('setGamesPage clamps range and reloads only when page changed', () => {
+  it('setProductsPage clamps range and reloads only when page changed', () => {
     const h = createHarness()
-    h.api.setGamesPage(999)
-    expect(h.gamesPage.value).toBe(4)
-    expect(h.loadGames).toHaveBeenCalledTimes(1)
+    h.api.setProductsPage(999)
+    expect(h.productsPage.value).toBe(4)
+    expect(h.loadProducts).toHaveBeenCalledTimes(1)
 
-    h.api.setGamesPage(4)
-    expect(h.loadGames).toHaveBeenCalledTimes(1)
+    h.api.setProductsPage(4)
+    expect(h.loadProducts).toHaveBeenCalledTimes(1)
   })
 
   it('validateDealRange detects invalid period', () => {
@@ -162,18 +164,33 @@ describe('useWorkFilters', () => {
     expect(h.loadDeals).toHaveBeenCalledWith(1)
   })
 
-  it('openGameFilter copies values to draft and applyGameFilter trims input', () => {
+  it('openProductFilter copies values to draft and applyProductFilter trims input', () => {
     const h = createHarness()
-    h.api.openGameFilter('title')
+    h.api.openProductFilter('title')
     expect(h.gameFilterDraft.title).toBe('old')
+    expect(h.gameFilterDraft.type).toBe('game')
     expect(h.activeGameFilter.value).toBe('title')
 
     h.gameFilterDraft.title = '  New title  '
-    h.api.applyGameFilter('title')
+    h.api.applyProductFilter('title')
     expect(h.gameFilters.q).toBe('New title')
-    expect(h.gamesPage.value).toBe(1)
+    expect(h.productsPage.value).toBe(1)
     expect(h.activeGameFilter.value).toBe('')
-    expect(h.loadGames).toHaveBeenCalledTimes(1)
+    expect(h.loadProducts).toHaveBeenCalledTimes(1)
+  })
+
+  it('apply/reset game type filter updates type_code and reloads list', () => {
+    const h = createHarness()
+    h.api.openProductFilter('type')
+    h.gameFilterDraft.type = 'subscription'
+    h.api.applyProductFilter('type')
+    expect(h.gameFilters.type_code).toBe('subscription')
+    expect(h.loadProducts).toHaveBeenCalledTimes(1)
+
+    h.api.resetProductFilter('type')
+    expect(h.gameFilters.type_code).toBe('')
+    expect(h.gameFilterDraft.type).toBe('')
+    expect(h.loadProducts).toHaveBeenCalledTimes(2)
   })
 
   it('applyAccountFilter date blocks reload on invalid range', () => {
@@ -203,7 +220,7 @@ describe('useWorkFilters', () => {
   it('resetAccountFilter all clears draft and applied filters', () => {
     const h = createHarness()
     h.accountFilterDraft.login = 'x'
-    h.accountFilterDraft.game = 'y'
+    h.accountFilterDraft.product = 'y'
     h.accountFilterDraft.region = 'z'
     h.accountFilterDraft.status = 'blocked'
     h.accountFilterDraft.date_from = '2026-01-01'
@@ -212,7 +229,7 @@ describe('useWorkFilters', () => {
     h.api.resetAccountFilter('all')
     expect(h.accountFilters.search_q).toBe('')
     expect(h.accountFilters.login_q).toBe('')
-    expect(h.accountFilters.game_q).toBe('')
+    expect(h.accountFilters.product_q).toBe('')
     expect(h.accountFilters.region_q).toBe('')
     expect(h.accountFilters.status_q).toBe('')
     expect(h.accountFilters.date_from).toBe('')

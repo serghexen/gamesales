@@ -27,7 +27,7 @@ def mount_accounts_import_routes(
         wb = Workbook()
         ws = wb.active
         ws.title = "Accounts"
-        ws.append(["Аккаунт", "Пароль", "Игра"])
+        ws.append(["Аккаунт", "Пароль", "Товар"])
         buf = BytesIO()
         wb.save(buf)
         buf.seek(0)

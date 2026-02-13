@@ -11,8 +11,6 @@ class DbHelpers:
     get_domain_id: Callable
     get_platform_id_optional: Callable
     ensure_account_exists: Callable
-    ensure_game_exists: Callable
-    ensure_game_active: Callable
     ensure_customer: Callable
     ensure_source_exists: Callable
     build_deals_filters: Callable
@@ -79,20 +77,6 @@ def build_db_helpers(
         if not row:
             raise HTTPException(400, f"Unknown account_id: {account_id}")
 
-    def ensure_game_exists(conn, game_id: Optional[int]):
-        if not game_id:
-            return
-        row = q1(conn, "SELECT 1 FROM app.game_titles WHERE game_id=%s", (game_id,))
-        if not row:
-            raise HTTPException(400, f"Unknown game_id: {game_id}")
-
-    def ensure_game_active(conn, game_id: Optional[int]):
-        if not game_id:
-            return
-        row = q1(conn, "SELECT 1 FROM app.game_titles WHERE game_id=%s AND is_archived IS NOT TRUE", (game_id,))
-        if not row:
-            raise HTTPException(400, f"Unknown game_id: {game_id}")
-
     def ensure_customer(conn, nickname: Optional[str], source_id: Optional[int]) -> Optional[int]:
         if not nickname:
             return None
@@ -133,7 +117,6 @@ def build_db_helpers(
 
     def build_deals_filters(
         account_id: Optional[int],
-        game_id: Optional[int],
         platform_code: Optional[str],
         q: Optional[str],
         deal_type_code: Optional[str],
@@ -149,7 +132,7 @@ def build_db_helpers(
         notes_q: Optional[str],
         account_q: Optional[str],
         region_q: Optional[str],
-        game_q: Optional[str],
+        product_q: Optional[str],
         platform_q: Optional[str],
         type_q: Optional[str],
         status_q: Optional[str],
@@ -163,9 +146,6 @@ def build_db_helpers(
         if account_id:
             where.append("di.account_id = %s")
             params.append(account_id)
-        if game_id:
-            where.append("di.game_id = %s")
-            params.append(game_id)
         if platform_code:
             where.append("p.code = %s")
             params.append(platform_code)
@@ -223,9 +203,10 @@ def build_db_helpers(
                 like = f"%{region_q}%"
                 where.append("COALESCE(rd.code, ra.code) ILIKE %s")
                 params.append(like)
-        if game_q:
-            where.append("g.title ILIKE %s")
-            params.append(f"%{game_q}%")
+        if product_q:
+            # Фильтруем по названию товара в product-first режиме.
+            where.append("pr.title ILIKE %s")
+            params.append(f"%{product_q}%")
         if platform_q:
             like = f"%{platform_q}%"
             where.append("(p.code ILIKE %s OR p.name ILIKE %s)")
@@ -362,17 +343,18 @@ def build_db_helpers(
             uniq.append(val)
         return uniq
 
-    def get_game_platform_codes(conn, game_id: int) -> list[str]:
+    # Возвращает платформы товара через нейтральную связку product_platforms.
+    def get_game_platform_codes(conn, product_id: int) -> list[str]:
         rows = qall(
             conn,
             """
             SELECT p.code
-            FROM app.game_platforms gp
-            JOIN app.platforms p ON p.platform_id = gp.platform_id
-            WHERE gp.game_id=%s
+            FROM app.product_platforms pp
+            JOIN app.platforms p ON p.platform_id = pp.platform_id
+            WHERE pp.product_id=%s
             ORDER BY p.code
             """,
-            (game_id,),
+            (product_id,),
         )
         return [r[0] for r in rows]
 
@@ -382,8 +364,8 @@ def build_db_helpers(
             """
             SELECT DISTINCT p.code
             FROM app.account_assets aa
-            JOIN app.game_platforms gp ON gp.game_id = aa.game_id
-            JOIN app.platforms p ON p.platform_id = gp.platform_id
+            JOIN app.product_platforms pp ON pp.product_id = aa.product_id
+            JOIN app.platforms p ON p.platform_id = pp.platform_id
             WHERE aa.account_id=%s AND aa.asset_type_code='game'
             ORDER BY p.code
             """,
@@ -397,8 +379,8 @@ def build_db_helpers(
             """
             SELECT 1
             FROM app.account_assets aa
-            JOIN app.game_platforms gp ON gp.game_id = aa.game_id
-            JOIN app.platforms p ON p.platform_id = gp.platform_id
+            JOIN app.product_platforms pp ON pp.product_id = aa.product_id
+            JOIN app.platforms p ON p.platform_id = pp.platform_id
             WHERE aa.account_id=%s AND aa.asset_type_code='game' AND p.code='ps4'
             LIMIT 1
             """,
@@ -453,8 +435,6 @@ def build_db_helpers(
         get_domain_id=get_domain_id,
         get_platform_id_optional=get_platform_id_optional,
         ensure_account_exists=ensure_account_exists,
-        ensure_game_exists=ensure_game_exists,
-        ensure_game_active=ensure_game_active,
         ensure_customer=ensure_customer,
         ensure_source_exists=ensure_source_exists,
         build_deals_filters=build_deals_filters,

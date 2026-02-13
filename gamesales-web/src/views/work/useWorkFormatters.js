@@ -4,8 +4,11 @@ export function useWorkFormatters({
   domains,
   sources,
   dealFlowStatusOptions,
-  maxGameTitleLength,
+  maxProductTitleLength,
 }) {
+  // Лимит нужен для показа короткого названия в таблице сделок.
+  const maxTitleLength = Number(maxProductTitleLength ?? 0)
+
   // Подпись аккаунта по id для таблиц и форм.
   const getAccountLabelById = (accountId) => {
     if (!accountId) return '—'
@@ -47,29 +50,29 @@ export function useWorkFormatters({
     return status?.name || code
   }
 
-  // Короткий заголовок игры в таблице сделок.
-  const getDealGameTitleDisplay = (deal) => {
+  // Короткий заголовок товара в таблице сделок.
+  const getDealProductTitleDisplay = (deal) => {
     if (!deal) return '—'
-    const title = String(deal.game_title || '')
-    const shortTitle = String(deal.game_short_title || '')
-    if (title.length > maxGameTitleLength && shortTitle) {
+    const title = String(deal.product_title || '')
+    const shortTitle = String(deal.product_short_title || '')
+    if (title.length > maxTitleLength && shortTitle) {
       return shortTitle
     }
     return title || '—'
   }
 
-  // Полный заголовок игры (для tooltip, если текст обрезан).
-  const getDealGameTitleTooltip = (deal) => {
+  // Полный заголовок товара (для tooltip, если текст обрезан).
+  const getDealProductTitleTooltip = (deal) => {
     if (!deal) return ''
-    const title = String(deal.game_title || '')
-    const shortTitle = String(deal.game_short_title || '')
-    if (title.length > maxGameTitleLength && shortTitle) {
+    const title = String(deal.product_title || '')
+    const shortTitle = String(deal.product_short_title || '')
+    if (title.length > maxTitleLength && shortTitle) {
       return title
     }
     return ''
   }
 
-  const formatGamePlatforms = (codes) => {
+  const formatProductPlatforms = (codes) => {
     const list = Array.isArray(codes) ? codes : []
     if (!list.length) return '—'
     return list.join(', ')
@@ -105,9 +108,9 @@ export function useWorkFormatters({
     getAccountStatusLabel,
     getSourceLabelById,
     getFlowStatusLabel,
-    getDealGameTitleDisplay,
-    getDealGameTitleTooltip,
-    formatGamePlatforms,
+    getDealProductTitleDisplay,
+    getDealProductTitleTooltip,
+    formatProductPlatforms,
     formatSecret,
     formatDateOnly,
     formatDateTimeMinutes,

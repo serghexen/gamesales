@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
-import { useGameLogoCache } from '../useGameLogoCache.js'
+import { useProductLogoCache } from '../useProductLogoCache.js'
 
 function createMemoryStorage() {
   const data = new Map()
@@ -11,10 +11,13 @@ function createMemoryStorage() {
     setItem(key, value) {
       data.set(key, value)
     },
+    removeItem(key) {
+      data.delete(key)
+    },
   }
 }
 
-describe('useGameLogoCache', () => {
+describe('useProductLogoCache', () => {
   afterEach(() => {
     vi.restoreAllMocks()
   })
@@ -22,7 +25,7 @@ describe('useGameLogoCache', () => {
   it('writes and reads fresh cache entry', () => {
     vi.spyOn(Date, 'now').mockReturnValue(1000)
     const storage = createMemoryStorage()
-    const cache = useGameLogoCache({
+    const cache = useProductLogoCache({
       cacheKey: 'logo-cache',
       ttlMs: 5000,
       storage,
@@ -39,7 +42,7 @@ describe('useGameLogoCache', () => {
   it('drops expired entry and returns null', () => {
     const nowSpy = vi.spyOn(Date, 'now')
     const storage = createMemoryStorage()
-    const cache = useGameLogoCache({
+    const cache = useProductLogoCache({
       cacheKey: 'logo-cache',
       ttlMs: 1000,
       storage,
@@ -55,7 +58,7 @@ describe('useGameLogoCache', () => {
   it('clears specific game entry', () => {
     vi.spyOn(Date, 'now').mockReturnValue(1000)
     const storage = createMemoryStorage()
-    const cache = useGameLogoCache({
+    const cache = useProductLogoCache({
       cacheKey: 'logo-cache',
       ttlMs: 1000,
       storage,
@@ -75,7 +78,7 @@ describe('useGameLogoCache', () => {
         throw new Error('no access')
       },
     }
-    const cache = useGameLogoCache({
+    const cache = useProductLogoCache({
       cacheKey: 'logo-cache',
       ttlMs: 1000,
       storage: badStorage,
@@ -85,4 +88,22 @@ describe('useGameLogoCache', () => {
     expect(() => cache.writeLogoCache(1, { data_b64: 'x', mime: 'image/png' })).not.toThrow()
     expect(() => cache.clearLogoCache(1)).not.toThrow()
   })
+
+  it('reads legacy cache and migrates it to the new key', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000)
+    const storage = createMemoryStorage()
+    storage.setItem('legacy-logo-cache', JSON.stringify({ 7: { data_b64: 'abc', mime: 'image/png', ts: 1000 } }))
+
+    const cache = useProductLogoCache({
+      cacheKey: 'logo-cache',
+      fallbackCacheKey: 'legacy-logo-cache',
+      ttlMs: 5000,
+      storage,
+    })
+
+    expect(cache.readLogoCache(7)).toEqual({ data_b64: 'abc', mime: 'image/png', ts: 1000 })
+    expect(storage.getItem('logo-cache')).toContain('"7"')
+    expect(storage.getItem('legacy-logo-cache')).toBeNull()
+  })
+
 })

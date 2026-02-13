@@ -15,9 +15,9 @@
       :ctx="props.ctx.accountsSectionCtx"
     />
 
-    <WorkGamesSection
-      v-if="activeTab === 'games'"
-      :ctx="props.ctx.gamesSectionCtx"
+    <WorkProductsSection
+      v-if="activeTab === 'products'"
+      :ctx="props.ctx.productsSectionCtx"
     />
 
     <WorkTelegramSection
@@ -52,7 +52,7 @@ import { computed, unref } from 'vue'
 import WorkDashboardPanel from './WorkDashboardPanel.vue'
 import WorkProfileSection from './WorkProfileSection.vue'
 import WorkAccountsSection from './WorkAccountsSection.vue'
-import WorkGamesSection from './WorkGamesSection.vue'
+import WorkProductsSection from './WorkProductsSection.vue'
 import WorkTelegramSection from './WorkTelegramSection.vue'
 import WorkDealsArea from './WorkDealsArea.vue'
 import WorkCatalogsSection from './WorkCatalogsSection.vue'

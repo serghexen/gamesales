@@ -251,8 +251,8 @@ from domains.accounts_models import (
     AccountSecretsBatchIn,
     AccountSecretsBatchItem,
     SlotAvailabilityOut,
-    AccountGamesIn,
-    GameAccountOut,
+    AccountProductsIn,
+    ProductAccountOut,
     SlotTypeOut,
     AccountSlotAssignmentOut,
 )
@@ -269,8 +269,8 @@ from domains.deals_ws import build_deals_events, mount_deals_ws_routes
 from domains.telegram_api import mount_telegram_routes
 from domains.imports_models import ImportReportIn
 from domains.analytics_api import mount_analytics_routes
-from domains.games_api import mount_games_routes
-from domains.games_import_api import mount_games_import_routes
+from domains.products_api import mount_products_routes
+from domains.products_import_api import mount_products_import_routes
 from domains.accounts_import_api import mount_accounts_import_routes
 from domains.catalogs_api import mount_catalogs_routes
 from domains.auth_api import mount_auth_routes
@@ -284,43 +284,55 @@ from domains.auth_service import build_auth_service
 from domains.db_helpers import build_db_helpers
 from domains.games_lookup_service import build_games_lookup_service
 
-class GameCreate(BaseModel):
+class ProductCreate(BaseModel):
+    type_code: str
     title: str
     short_title: Optional[str] = None
+    region_code: Optional[str] = None
+    platform_codes: Optional[List[str]] = None
     link: Optional[str] = None
     logo_url: Optional[str] = None
     text_lang: Optional[str] = None
     audio_lang: Optional[str] = None
     vr_support: Optional[str] = None
-    platform_codes: Optional[List[str]] = None
-    region_code: Optional[str] = None
+    provider: Optional[str] = None
+    billing_period: Optional[str] = None
+    subscription_notes: Optional[str] = None
 
-class GameUpdate(BaseModel):
+class ProductUpdate(BaseModel):
+    type_code: Optional[str] = None
     title: Optional[str] = None
     short_title: Optional[str] = None
+    region_code: Optional[str] = None
+    platform_codes: Optional[List[str]] = None
     link: Optional[str] = None
     logo_url: Optional[str] = None
     text_lang: Optional[str] = None
     audio_lang: Optional[str] = None
     vr_support: Optional[str] = None
-    platform_codes: Optional[List[str]] = None
-    region_code: Optional[str] = None
+    provider: Optional[str] = None
+    billing_period: Optional[str] = None
+    subscription_notes: Optional[str] = None
 
-class GameOut(BaseModel):
-    game_id: int
+class ProductOut(BaseModel):
+    product_id: int
+    type_code: str
     title: str
     short_title: Optional[str] = None
+    region_code: Optional[str] = None
     link: Optional[str] = None
     logo_url: Optional[str] = None
     text_lang: Optional[str] = None
     audio_lang: Optional[str] = None
     vr_support: Optional[str] = None
-    platform_codes: List[str]
-    region_code: Optional[str]
+    platform_codes: List[str] = Field(default_factory=list)
+    provider: Optional[str] = None
+    billing_period: Optional[str] = None
+    subscription_notes: Optional[str] = None
 
-class GameListOut(BaseModel):
+class ProductListOut(BaseModel):
     total: int
-    items: List[GameOut]
+    items: List[ProductOut]
 
 class PlatformOut(BaseModel):
     code: str
@@ -439,8 +451,6 @@ get_region_id = db_helpers.get_region_id
 get_domain_id = db_helpers.get_domain_id
 get_platform_id_optional = db_helpers.get_platform_id_optional
 ensure_account_exists = db_helpers.ensure_account_exists
-ensure_game_exists = db_helpers.ensure_game_exists
-ensure_game_active = db_helpers.ensure_game_active
 ensure_customer = db_helpers.ensure_customer
 ensure_source_exists = db_helpers.ensure_source_exists
 build_deals_filters = db_helpers.build_deals_filters
@@ -554,7 +564,6 @@ games_lookup_service = build_games_lookup_service(
 )
 
 find_game_title_platform_conflicts = games_lookup_service.find_game_title_platform_conflicts
-find_game_id_by_title_platforms = games_lookup_service.find_game_id_by_title_platforms
 
 import_parsers = build_import_parsers(
     q1=lambda conn, sql, params=None: q1(conn, sql, params),
@@ -603,8 +612,15 @@ create_access_token = auth_service.create_access_token
 get_current_user = auth_service.get_current_user
 require_role = auth_service.require_role
 
-def b64_encode(value: str) -> str:
-    return base64.b64encode(value.encode("utf-8")).decode("utf-8")
+def b64_encode(value: str | bytes | memoryview) -> str:
+    # Кодирует строку или байтовый blob в base64 для отдачи в API.
+    if isinstance(value, memoryview):
+        raw = value.tobytes()
+    elif isinstance(value, bytes):
+        raw = value
+    else:
+        raw = value.encode("utf-8")
+    return base64.b64encode(raw).decode("utf-8")
 
 # ----------------------------
 # Endpoints
@@ -696,17 +712,15 @@ mount_accounts_routes(
     get_domain_id=get_domain_id,
     get_platform_info=get_platform_info,
     ensure_account_exists=ensure_account_exists,
-    ensure_game_exists=ensure_game_exists,
     validate_date_not_future=validate_date_not_future,
     get_account_platform_slots=get_account_platform_slots,
     get_account_slot_status=get_account_slot_status,
     b64_encode=b64_encode,
     require_role=require_role,
     get_current_user=get_current_user,
-    GameOut=GameOut,
 )
 
-mount_games_routes(
+mount_products_routes(
     app,
     DB_DSN=DB_DSN,
     psycopg=pooled_psycopg,
@@ -718,15 +732,14 @@ mount_games_routes(
     get_platform_id=get_platform_id,
     get_region_id=get_region_id,
     get_game_platform_codes=get_game_platform_codes,
-    ensure_game_exists=ensure_game_exists,
-    encode_b64=encode_b64,
     get_current_user=get_current_user,
     require_role=require_role,
-    GameListOut=GameListOut,
-    GameOut=GameOut,
+    encode_b64=b64_encode,
+    ProductCreate=ProductCreate,
+    ProductUpdate=ProductUpdate,
+    ProductOut=ProductOut,
+    ProductListOut=ProductListOut,
     SlotTypeOut=SlotTypeOut,
-    GameCreate=GameCreate,
-    GameUpdate=GameUpdate,
     UserOut=UserOut,
 )
 
@@ -738,7 +751,6 @@ import_jobs = build_import_jobs(
     read_games_from_excel=read_games_from_excel,
     validate_game_import_rows=validate_game_import_rows,
     parse_import_platforms=parse_import_platforms,
-    find_game_id_by_title_platforms=find_game_id_by_title_platforms,
     get_platform_id=get_platform_id,
     read_accounts_from_excel=read_accounts_from_excel,
     validate_account_import_rows=validate_account_import_rows,
@@ -764,7 +776,7 @@ run_accounts_import_job = import_jobs.run_accounts_import_job
 run_slots_validate_job = import_jobs.run_slots_validate_job
 run_slots_import_job = import_jobs.run_slots_import_job
 
-mount_games_import_routes(
+mount_products_import_routes(
     app,
     DB_DSN=DB_DSN,
     psycopg=pooled_psycopg,
@@ -819,7 +831,6 @@ mount_deals_routes(
     validate_date_in_range=validate_date_in_range,
     validate_date_range=validate_date_range,
     ensure_account_exists=ensure_account_exists,
-    ensure_game_active=ensure_game_active,
     ensure_source_exists=ensure_source_exists,
     ensure_account_allows_slot_type=ensure_account_allows_slot_type,
     get_platform_id=get_platform_id,
@@ -827,7 +838,6 @@ mount_deals_routes(
     get_account_slot_free=get_account_slot_free,
     ensure_customer=ensure_customer,
     get_slot_type=get_slot_type,
-    ensure_game_exists=ensure_game_exists,
     account_has_ps4=account_has_ps4,
     release_slot_assignment=release_slot_assignment,
     build_deals_filters=build_deals_filters,

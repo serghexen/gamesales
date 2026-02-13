@@ -76,8 +76,9 @@ export function useCatalogs({
     try {
       const data = await apiGet('/slot-types', { token: auth.state.token })
       slotTypes.value = data || []
-      if (newDeal.game_id) loadDealSlotAvailability('new')
-      if (editDeal.open && editDeal.game_id) loadDealSlotAvailability('edit')
+      // После унификации используем только product_id как связь сделки с товаром.
+      if (newDeal.product_id) loadDealSlotAvailability('new')
+      if (editDeal.open && editDeal.product_id) loadDealSlotAvailability('edit')
     } catch {
       slotTypes.value = []
     }

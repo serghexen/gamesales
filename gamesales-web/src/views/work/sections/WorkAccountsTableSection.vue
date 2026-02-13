@@ -44,15 +44,15 @@
         </th>
         <th>
           <span class="th-title th-title--filter">
-            Игры
+            Товары
             <span class="th-actions">
               <button
                 class="filter-icon"
-                :class="{ 'filter-icon--active': Boolean(accountFilters.game_q) }"
+                :class="{ 'filter-icon--active': Boolean(accountFilters.product_q) }"
                 type="button"
-                aria-label="Фильтр по играм"
-                title="Фильтр по играм"
-                @click.stop="openAccountFilter('game')"
+                aria-label="Фильтр по товарам"
+                title="Фильтр по товарам"
+                @click.stop="openAccountFilter('product')"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M4 6h16M7 12h10M10 18h4" />
@@ -61,10 +61,10 @@
               <button
                 class="filter-icon filter-icon--sort"
                 type="button"
-                aria-label="Сортировка по играм"
-                title="Сортировка по играм"
-                @click.stop="toggleAccountSort('games')"
-                :class="getAccountSortClass('games')"
+                aria-label="Сортировка по товарам"
+                title="Сортировка по товарам"
+                @click.stop="toggleAccountSort('products')"
+                :class="getAccountSortClass('products')"
               >
                 <svg viewBox="0 0 24 24">
                   <path class="sort-icon__up" d="M7 10l5-5 5 5" />
@@ -73,13 +73,13 @@
               </button>
             </span>
           </span>
-          <div v-if="activeAccountFilter === 'game'" class="filter-pop filter-pop--center" @click.stop>
+          <div v-if="activeAccountFilter === 'product'" class="filter-pop filter-pop--center" @click.stop>
             <label class="field">
-              <span class="label">Игра</span>
-              <input v-model.trim="accountFilterDraft.game" class="input" placeholder="название игры" />
+              <span class="label">Товар</span>
+              <input v-model.trim="accountFilterDraft.product" class="input" placeholder="название товара" />
             </label>
-            <button class="ghost ghost--small" type="button" @click="applyAccountFilter('game')">Применить</button>
-            <button class="ghost ghost--small" type="button" @click="resetAccountFilter('game')">Сбросить</button>
+            <button class="ghost ghost--small" type="button" @click="applyAccountFilter('product')">Применить</button>
+            <button class="ghost ghost--small" type="button" @click="resetAccountFilter('product')">Сбросить</button>
           </div>
         </th>
         <th>Слоты</th>
@@ -89,7 +89,7 @@
     <tbody>
       <tr v-for="a in sortedAccounts" :key="a.account_id" class="clickable-row" @click="startEditAccount(a)">
         <td class="cell--account">{{ a.login_full || '—' }}</td>
-        <td>{{ formatAccountGamesLine(a) }}</td>
+        <td>{{ formatAccountProductsLine(a) }}</td>
         <td class="cell--slots">
           <span v-if="!getAccountSlotStatusList(a).length" class="slot-line">—</span>
           <span v-for="s in getAccountSlotStatusList(a)" :key="s.slot_type_code" class="slot-line">
@@ -115,7 +115,7 @@ defineProps({
   applyAccountFilter: { type: Function, required: true },
   resetAccountFilter: { type: Function, required: true },
   startEditAccount: { type: Function, required: true },
-  formatAccountGamesLine: { type: Function, required: true },
+  formatAccountProductsLine: { type: Function, required: true },
   getAccountSlotStatusList: { type: Function, required: true },
   formatAccountSlotStatusLine: { type: Function, required: true },
   formatSecret: { type: Function, required: true },

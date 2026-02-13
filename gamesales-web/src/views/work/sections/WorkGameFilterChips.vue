@@ -1,9 +1,9 @@
 <template>
-  <div v-if="activeGameChips.length" class="chip-row">
-    <button class="chip chip--reset" type="button" @click="resetGameFilter('all')">
+  <div v-if="activeProductChips.length" class="chip-row">
+    <button class="chip chip--reset" type="button" @click="resetProductFilter('all')">
       Сбросить все
     </button>
-    <span v-for="chip in activeGameChips" :key="chip.key" class="chip">
+    <span v-for="chip in activeProductChips" :key="chip.key" class="chip">
       <span class="chip__label">{{ chip.label }}:</span>
       <span class="chip__value">{{ chip.value }}</span>
       <button
@@ -11,7 +11,7 @@
         type="button"
         aria-label="Сбросить фильтр"
         title="Сбросить фильтр"
-        @click="resetGameFilter(chip.key)"
+        @click="resetProductFilter(chip.key)"
       >
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M6 6l12 12M18 6l-12 12" />
@@ -23,7 +23,7 @@
 
 <script setup>
 defineProps({
-  activeGameChips: { type: Array, required: true },
-  resetGameFilter: { type: Function, required: true },
+  activeProductChips: { type: Array, required: true },
+  resetProductFilter: { type: Function, required: true },
 })
 </script>

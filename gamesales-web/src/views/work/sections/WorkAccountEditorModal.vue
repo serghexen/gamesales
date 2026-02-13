@@ -97,7 +97,7 @@
                         <p class="muted">Загрузка…</p>
                       </div>
                     </div>
-                    <div v-if="accountModalMode === 'edit' && accountGamesLoading" class="loader-wrap">
+                    <div v-if="accountModalMode === 'edit' && accountProductsLoading" class="loader-wrap">
                       <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
                         <div class="wheel"></div>
                         <div class="hamster">
@@ -197,16 +197,16 @@
                         />
                       </label>
                       <div class="field field--full">
-                        <span class="label">Игры (необязательно)</span>
+                        <span class="label">Товары (необязательно)</span>
                         <div v-if="accountEditMode === 'view'" class="pill-list">
-                          <span v-for="t in accountGameTitles" :key="t" class="pill">{{ t }}</span>
-                          <span v-if="!accountGameTitles.length" class="muted">Пока нет игр.</span>
+                          <span v-for="t in accountProductTitles" :key="t" class="pill">{{ t }}</span>
+                          <span v-if="!accountProductTitles.length" class="muted">Пока нет товаров.</span>
                         </div>
                         <div v-else>
-                          <input v-model.trim="editAccountGameSearchModel" class="input" placeholder="поиск" />
+                          <input v-model.trim="editAccountProductSearchModel" class="input" placeholder="поиск" />
                           <div class="check-list">
-                            <label v-for="g in filteredEditAccountGames" :key="g.game_id" class="check-item">
-                              <input type="checkbox" :value="g.game_id" v-model="editAccount.game_ids" />
+                            <label v-for="g in filteredEditAccountProducts" :key="g.product_id" class="check-item">
+                              <input type="checkbox" :value="g.product_id" v-model="editAccount.product_ids" />
                               <span>{{ g.title }}</span>
                             </label>
                           </div>
@@ -239,7 +239,7 @@
                           <thead>
                             <tr>
                               <th>Слот</th>
-                              <th>Игра</th>
+                              <th>Товар</th>
                               <th>Покупатель</th>
                               <th>Статус</th>
                               <th>Назначено</th>
@@ -251,7 +251,7 @@
                           <tbody>
                             <tr v-for="s in sortedAccountSlotAssignments" :key="s.assignment_id">
                               <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
-                              <td>{{ s.game_title || '—' }}</td>
+                              <td>{{ s.product_title || '—' }}</td>
                               <td>{{ s.customer_nickname || '—' }}</td>
                               <td>{{ getSlotAssignmentStatus(s) }}</td>
                               <td>{{ formatDateTimeMinutes(s.assigned_at) }}</td>
@@ -300,17 +300,17 @@
                           <thead>
                             <tr>
                               <th>Покупатель</th>
-                              <th>Игра</th>
+                              <th>Товар</th>
                               <th>Тип</th>
                               <th>Статус</th>
                               <th>Дата покупки</th>
                             </tr>
                           </thead>
                           <tbody>
-                            <tr v-for="d in accountDeals" :key="`${d.deal_id}-${d.game_id}`">
+                            <tr v-for="d in accountDeals" :key="`${d.deal_id}-${d.product_id}`">
                               <td>{{ d.customer_nickname || '—' }}</td>
                               <td>
-                                <span :title="getDealGameTitleTooltip(d)">{{ getDealGameTitleDisplay(d) }}</span>
+                                <span :title="getDealProductTitleTooltip(d)">{{ getDealProductTitleDisplay(d) }}</span>
                               </td>
                               <td>{{ d.deal_type || '—' }}</td>
                               <td>{{ d.flow_status || '—' }}</td>
@@ -377,11 +377,11 @@
                         />
                       </label>
                       <div class="field field--full">
-                        <span class="label">Игры (необязательно)</span>
-                        <input v-model.trim="accountGameSearchModel" class="input" placeholder="поиск" />
+                        <span class="label">Товары (необязательно)</span>
+                        <input v-model.trim="accountProductSearchModel" class="input" placeholder="поиск" />
                         <div class="check-list">
-                          <label v-for="g in filteredAccountGames" :key="g.game_id" class="check-item">
-                            <input type="checkbox" :value="g.game_id" v-model="newAccount.game_ids" />
+                          <label v-for="g in filteredAccountProducts" :key="g.product_id" class="check-item">
+                            <input type="checkbox" :value="g.product_id" v-model="newAccount.product_ids" />
                             <span>{{ g.title }}</span>
                           </label>
                         </div>
@@ -411,16 +411,16 @@ const props = defineProps([
   'accountsLoading',
   'createAccount',
   'deleteAccount',
-  'accountGamesLoading',
+  'accountProductsLoading',
   'getDomainLabel',
   'domains',
   'getRegionLabel',
   'regions',
   'getAccountStatusLabel',
   'maxDate',
-  'accountGameTitles',
-  'editAccountGameSearch',
-  'filteredEditAccountGames',
+  'accountProductTitles',
+  'editAccountProductSearch',
+  'filteredEditAccountProducts',
   'accountSlotAssignmentsError',
   'accountSlotAssignmentsLoading',
   'accountSlotAssignments',
@@ -433,25 +433,25 @@ const props = defineProps([
   'accountDealsError',
   'accountDealsLoading',
   'accountDeals',
-  'getDealGameTitleTooltip',
-  'getDealGameTitleDisplay',
+  'getDealProductTitleTooltip',
+  'getDealProductTitleDisplay',
   'formatDate',
   'accountsError',
   'accountsOk',
   'newAccount',
-  'accountGameSearch',
-  'filteredAccountGames',
-  'setEditAccountGameSearch',
-  'setAccountGameSearch',
+  'accountProductSearch',
+  'filteredAccountProducts',
+  'setEditAccountProductSearch',
+  'setAccountProductSearch',
 ])
 
-const editAccountGameSearchModel = computed({
-  get: () => props.editAccountGameSearch,
-  set: (value) => props.setEditAccountGameSearch(value),
+const editAccountProductSearchModel = computed({
+  get: () => props.editAccountProductSearch,
+  set: (value) => props.setEditAccountProductSearch(value),
 })
 
-const accountGameSearchModel = computed({
-  get: () => props.accountGameSearch,
-  set: (value) => props.setAccountGameSearch(value),
+const accountProductSearchModel = computed({
+  get: () => props.accountProductSearch,
+  set: (value) => props.setAccountProductSearch(value),
 })
 </script>

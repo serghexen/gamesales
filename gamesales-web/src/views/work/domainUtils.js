@@ -1,17 +1,20 @@
-export const TAB_KEYS = ['deals', 'accounts', 'games', 'telegram', 'analytics', 'catalogs', 'users', 'profile', 'dashboard']
+export const TAB_KEYS = ['deals', 'accounts', 'products', 'telegram', 'analytics', 'catalogs', 'users', 'profile', 'dashboard']
 
 export const TELEGRAM_DIALOGS_POLL_MS = 5000
 export const TELEGRAM_MESSAGES_POLL_MS = 1000
 export const TELEGRAM_DIALOGS_POLL_ERROR_MS = 15000
 export const TELEGRAM_MESSAGES_POLL_ERROR_MS = 3000
 
-export const GAME_IMPORT_JOB_KEY = 'gamesales_game_import_job_v1'
+export const PRODUCT_IMPORT_JOB_KEY = 'gamesales_product_import_job_v1'
+export const LEGACY_PRODUCT_IMPORT_JOB_FALLBACK_KEY = 'gamesales_game_import_job_v1'
 export const ACCOUNT_IMPORT_JOB_KEY = 'gamesales_account_import_job_v1'
 export const SLOT_VALIDATE_JOB_KEY = 'gamesales_slot_validate_job_v1'
 export const SLOT_IMPORT_JOB_KEY = 'gamesales_slot_import_job_v1'
 
-export const GAME_LOGO_CACHE_KEY = 'gamesales_game_logo_cache_v1'
-export const GAME_LOGO_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+export const PRODUCT_LOGO_CACHE_KEY = 'gamesales_product_logo_cache_v1'
+export const LEGACY_PRODUCT_LOGO_CACHE_FALLBACK_KEY = 'gamesales_game_logo_cache_v1'
+export const PRODUCT_LOGO_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+export const PRODUCT_TYPE_PRIMARY = 'game'
 
 export const dealTypeOptions = [
   { code: 'sale', name: 'Продажа' },
@@ -35,7 +38,7 @@ export const dealFlowStatusOptions = [
 
 export const minDate = '2020-01-01'
 export const maxPrice = 999999
-export const maxGameTitleLength = 10
+export const maxProductTitleLength = 10
 
 export const getMaxDate = () => new Date().toISOString().slice(0, 10)
 
@@ -93,9 +96,9 @@ export const mapApiError = (message) => {
   if (text.includes('не достаточно прав для проведения возврата')) return 'не достаточно прав для проведения возврата'
   if (text.includes('region_code is required for sale')) return 'Укажите регион'
   if (text.includes('account_id is required for rental')) return 'Для шеринга укажите аккаунт'
-  if (text.includes('game_id is required for rental')) return 'Для шеринга укажите игру'
+  if (text.includes('product_id is required for rental')) return 'Для шеринга укажите товар'
   if (text.includes('login_name and domain_code are required')) return 'Укажите логин и домен'
-  if (text.includes('title is required')) return 'Укажите название игры'
+  if (text.includes('title is required')) return 'Укажите название товара'
   if (text.includes('account_date must be between')) return 'Дата аккаунта должна быть между 2020-01-01 и сегодня'
   if (text.includes('purchase_at must be between')) return 'Дата покупки должна быть между 2020-01-01 и сегодня'
   if (text.includes('start_at must be between')) return 'Дата начала должна быть между 2020-01-01 и сегодня'
@@ -107,7 +110,7 @@ export const mapApiError = (message) => {
   if (text.includes('Unknown domain')) return 'Неизвестный домен'
   if (text.includes('User not found')) return 'Покупатель не найден'
   if (text.includes('Account not found')) return 'Аккаунт не найден'
-  if (text.includes('Game not found')) return 'Игра не найдена'
+  if (text.includes('Product not found')) return 'Товар не найден'
   if (text.includes('Source not found')) return 'Источник не найден'
   if (text.includes('Domain not found')) return 'Домен не найден'
   if (text.includes('Region not found')) return 'Регион не найден'
@@ -115,9 +118,9 @@ export const mapApiError = (message) => {
   if (text.includes('query.payload: Field required') || text.includes('body.payload: Field required')) {
     return 'Некорректный формат запроса. Обновите страницу и попробуйте снова'
   }
-  if (text.includes('Game already exists for platforms:')) {
-    const list = text.split('Game already exists for platforms:')[1]?.trim()
-    return `Игра с таким названием уже есть на платформах: ${list || ''}`.trim()
+  if (text.includes('Product already exists for platforms:')) {
+    const list = text.split('Product already exists for platforms:')[1]?.trim()
+    return `Товар с таким названием уже есть на платформах: ${list || ''}`.trim()
   }
   return text
 }

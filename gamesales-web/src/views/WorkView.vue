@@ -22,9 +22,9 @@
         />
 
 
-        <WorkGamesSection
-          v-if="activeTab === 'games'"
-          :ctx="gamesSectionCtx"
+        <WorkProductsSection
+          v-if="activeTab === 'products'"
+          :ctx="productsSectionCtx"
         />
 
 
@@ -120,17 +120,20 @@ import {
   TELEGRAM_MESSAGES_POLL_MS,
   TELEGRAM_DIALOGS_POLL_ERROR_MS,
   TELEGRAM_MESSAGES_POLL_ERROR_MS,
-  GAME_IMPORT_JOB_KEY,
+  PRODUCT_IMPORT_JOB_KEY,
+  LEGACY_PRODUCT_IMPORT_JOB_FALLBACK_KEY,
   ACCOUNT_IMPORT_JOB_KEY,
   SLOT_VALIDATE_JOB_KEY,
   SLOT_IMPORT_JOB_KEY,
-  GAME_LOGO_CACHE_KEY,
-  GAME_LOGO_CACHE_TTL_MS,
+  PRODUCT_LOGO_CACHE_KEY,
+  LEGACY_PRODUCT_LOGO_CACHE_FALLBACK_KEY,
+  PRODUCT_LOGO_CACHE_TTL_MS,
+  PRODUCT_TYPE_PRIMARY,
   dealTypeOptions,
   dealFlowStatusOptions,
   minDate,
   maxPrice,
-  maxGameTitleLength,
+  maxProductTitleLength,
   getMaxDate,
   clampPrice,
   formatPrice,
@@ -157,8 +160,8 @@ import { useTelegram } from './work/useTelegram'
 import { useImportFlow } from './work/useImportFlow'
 import { useCatalogs } from './work/useCatalogs'
 import { useAccountsFlow } from './work/useAccountsFlow'
-import { useGamesFlow } from './work/useGamesFlow'
-import { useGamesViewState } from './work/useGamesViewState'
+import { useProductsFlow } from './work/useProductsFlow'
+import { useProductsViewState } from './work/useProductsViewState'
 import { useAccountsViewState } from './work/useAccountsViewState'
 import { useAccountsDerivedState } from './work/useAccountsDerivedState'
 import { useCatalogsViewState } from './work/useCatalogsViewState'
@@ -177,7 +180,7 @@ import { useDealModalFlow } from './work/useDealModalFlow'
 import { useUserProfileFlow } from './work/useUserProfileFlow'
 import { useWorkActions } from './work/useWorkActions'
 import { useWorkUiHelpers } from './work/useWorkUiHelpers'
-import { useGameLogoCache } from './work/useGameLogoCache'
+import { useProductLogoCache } from './work/useProductLogoCache'
 import { createDeferredCall } from './work/deferredCall'
 import { useWorkSectionContexts } from './work/useWorkSectionContexts'
 import WorkDashboardHero from './work/sections/WorkDashboardHero.vue'
@@ -186,7 +189,7 @@ import WorkAnalyticsSection from './work/sections/WorkAnalyticsSection.vue'
 import WorkProfileSection from './work/sections/WorkProfileSection.vue'
 import WorkUsersSection from './work/sections/WorkUsersSection.vue'
 import WorkAccountsSection from './work/sections/WorkAccountsSection.vue'
-import WorkGamesSection from './work/sections/WorkGamesSection.vue'
+import WorkProductsSection from './work/sections/WorkProductsSection.vue'
 import WorkDealsArea from './work/sections/WorkDealsArea.vue'
 import WorkCatalogsSection from './work/sections/WorkCatalogsSection.vue'
 import WorkTelegramSection from './work/sections/WorkTelegramSection.vue'
@@ -210,12 +213,12 @@ const createBooleanFlag = (initial = false) => {
 const closeDealModalDeferred = createDeferredCall('closeDealModal')
 const loadAccountsAllDeferred = createDeferredCall('loadAccountsAll')
 const loadAccountSlotAssignmentsDeferred = createDeferredCall('loadAccountSlotAssignments')
-const loadGameSlotAssignmentsDeferred = createDeferredCall('loadGameSlotAssignments')
+const loadProductSlotAssignmentsDeferred = createDeferredCall('loadProductSlotAssignments')
 
 const closeDealModal = () => closeDealModalDeferred.call()
 const loadAccountsAll = (...args) => loadAccountsAllDeferred.call(...args)
 const loadAccountSlotAssignments = (...args) => loadAccountSlotAssignmentsDeferred.call(...args)
-const loadGameSlotAssignments = (...args) => loadGameSlotAssignmentsDeferred.call(...args)
+const loadProductSlotAssignments = (...args) => loadProductSlotAssignmentsDeferred.call(...args)
 const suppressUnsavedConfirm = ref(false)
 const unsavedConfirm = reactive({
   open: false,
@@ -318,7 +321,7 @@ const accountSlotAssignmentsLoading = ref(false)
 const accountSlotAssignmentsError = ref(null)
 const accountSlotReleaseLoading = ref(false)
 const dealSaving = createBooleanFlag(false)
-const gameSaving = createBooleanFlag(false)
+const productSaving = createBooleanFlag(false)
 const catalogSaving = createBooleanFlag(false)
 const tgMessagesList = ref(null)
 const users = ref([])
@@ -335,22 +338,22 @@ const userError = ref(null)
 const userOk = ref(null)
 const userLoading = ref(false)
 const showUserForm = ref(false)
-const gameError = ref(null)
-const gameOk = ref(null)
-const gameLoading = ref(false)
-const gameAccounts = ref([])
-const gameAccountsLoading = ref(false)
-const gameAccountsError = ref(null)
-const gameSlotAssignments = ref([])
-const gameSlotAssignmentsLoading = ref(false)
-const gameSlotAssignmentsError = ref(null)
+const productError = ref(null)
+const productOk = ref(null)
+const productLoading = ref(false)
+const productAccounts = ref([])
+const productAccountsLoading = ref(false)
+const productAccountsError = ref(null)
+const productSlotAssignments = ref([])
+const productSlotAssignmentsLoading = ref(false)
+const productSlotAssignmentsError = ref(null)
 const dealGameAssignmentsNew = ref([])
 const dealGameAssignmentsEdit = ref([])
 const dealGameAssignmentsLoadingNew = ref(false)
 const dealGameAssignmentsLoadingEdit = ref(false)
-const gameAccountsSort = ref({ key: 'free_slots', dir: 'desc' })
-const gameAccountsPage = ref(1)
-const gameAccountsPageSize = 15
+const productAccountsSort = ref({ key: 'free_slots', dir: 'desc' })
+const productAccountsPage = ref(1)
+const productAccountsPageSize = 15
 const dealError = ref(null)
 const dealOk = ref(null)
 const dealLoading = ref(false)
@@ -363,15 +366,15 @@ const pwdLoading = ref(false)
 const showPwdForm = ref(false)
 const accountEditMode = ref('view')
 const dealEditMode = ref('view')
-const gameEditMode = ref('view')
+const productEditMode = ref('view')
 const setAccountEditMode = (mode) => {
   accountEditMode.value = mode
 }
-const setEditAccountGameSearch = (value) => {
-  editAccountGameSearch.value = value
+const setEditAccountProductSearch = (value) => {
+  editAccountProductSearch.value = value
 }
-const setAccountGameSearch = (value) => {
-  accountGameSearch.value = value
+const setAccountProductSearch = (value) => {
+  accountProductSearch.value = value
 }
 const setSlotImportLimit = (value) => {
   slotImportLimit.value = value
@@ -459,7 +462,7 @@ const domainsLoadedOnce = ref(false)
 const sourcesLoadedOnce = ref(false)
 const slotTypesLoadedOnce = ref(false)
 const accountsAllLoadedOnce = ref(false)
-const gamesAllLoadedOnce = ref(false)
+const productsAllLoadedOnce = ref(false)
 
 const {
   getAccountLabelById,
@@ -468,9 +471,9 @@ const {
   getAccountStatusLabel,
   getSourceLabelById,
   getFlowStatusLabel,
-  getDealGameTitleDisplay,
-  getDealGameTitleTooltip,
-  formatGamePlatforms,
+  getDealProductTitleDisplay,
+  getDealProductTitleTooltip,
+  formatProductPlatforms,
   formatSecret,
   formatDateOnly,
   formatDateTimeMinutes,
@@ -480,13 +483,13 @@ const {
   domains,
   sources,
   dealFlowStatusOptions,
-  maxGameTitleLength,
+  maxProductTitleLength,
 })
 
-const accountGameTitles = computed(() => {
-  // Собирает список названий игр для выбранного аккаунта.
-  const gameMap = new Map((gamesAll.value || []).map((g) => [g.game_id, g.title]))
-  return (editAccount.game_ids || []).map((id) => gameMap.get(id)).filter(Boolean)
+const accountProductTitles = computed(() => {
+  // Собирает список названий товаров для выбранного аккаунта.
+  const productMap = new Map((productsAll.value || []).map((g) => [g.product_id, g.title]))
+  return (editAccount.product_ids || []).map((id) => productMap.get(id)).filter(Boolean)
 })
 
 const activeDealChips = computed(() => {
@@ -515,19 +518,25 @@ const activeDealChips = computed(() => {
   return chips
 })
 
-const activeGameChips = computed(() => {
-  // Формирует "чипы" активных фильтров по играм.
+const activeProductChips = computed(() => {
+  // Формирует "чипы" активных фильтров по товарам.
   const chips = []
-  if (gameFilters.q) {
-    chips.push({ key: 'title', label: 'Игра', value: gameFilters.q })
+  if (productFilters.q) {
+    chips.push({ key: 'title', label: 'Товар', value: productFilters.q })
   }
-  if (gameFilters.platform_code) {
-    const platform = platforms.value.find((p) => p.code === gameFilters.platform_code)
-    chips.push({ key: 'platform', label: 'Платформа', value: platform?.name ? `${platform.name} (${platform.code})` : gameFilters.platform_code })
+  if (productFilters.type_code) {
+    const typeLabel = productFilters.type_code === PRODUCT_TYPE_PRIMARY
+      ? 'Игра'
+      : (productFilters.type_code === 'subscription' ? 'Подписка' : productFilters.type_code)
+    chips.push({ key: 'type', label: 'Тип', value: typeLabel })
   }
-  if (gameFilters.region_code) {
-    const region = regions.value.find((r) => r.code === gameFilters.region_code)
-    chips.push({ key: 'region', label: 'Регион', value: region?.name ? `${region.name} (${region.code})` : gameFilters.region_code })
+  if (productFilters.platform_code) {
+    const platform = platforms.value.find((p) => p.code === productFilters.platform_code)
+    chips.push({ key: 'platform', label: 'Платформа', value: platform?.name ? `${platform.name} (${platform.code})` : productFilters.platform_code })
+  }
+  if (productFilters.region_code) {
+    const region = regions.value.find((r) => r.code === productFilters.region_code)
+    chips.push({ key: 'region', label: 'Регион', value: region?.name ? `${region.name} (${region.code})` : productFilters.region_code })
   }
   return chips
 })
@@ -537,7 +546,7 @@ const activeAccountChips = computed(() => {
   const chips = []
   if (accountFilters.search_q) chips.push({ key: 'search', label: 'Поиск', value: accountFilters.search_q })
   if (accountFilters.login_q) chips.push({ key: 'login', label: 'Логин', value: accountFilters.login_q })
-  if (accountFilters.game_q) chips.push({ key: 'game', label: 'Игра', value: accountFilters.game_q })
+  if (accountFilters.product_q) chips.push({ key: 'product', label: 'Товар', value: accountFilters.product_q })
   if (accountFilters.region_q) chips.push({ key: 'region', label: 'Регион', value: accountFilters.region_q })
   if (accountFilters.status_q) chips.push({ key: 'status', label: 'Статус', value: accountFilters.status_q })
   if (accountFilters.date_from || accountFilters.date_to) {
@@ -584,9 +593,9 @@ function closeAllModals() {
     if (dealConfirm.open) answerDealConfirm(false)
     closePwdModal()
     closeAccountImport()
-    closeGameImport()
+    closeProductImport()
     closeSlotImport()
-    closeGameModal()
+    closeProductModal()
     closeDealModal()
     closeDomainModal()
     closeSourceModal()
@@ -613,13 +622,25 @@ const pwdForm = reactive({
 
 const activeTab = ref('deals')
 
+const normalizeWorkTab = (tab) => {
+  // Нормализует вкладку из URL и отбрасывает невалидные значения.
+  const raw = String(tab || '').trim().toLowerCase()
+  return TAB_KEYS.includes(raw) ? raw : 'deals'
+}
+
+const toRouteTab = (tab) => {
+  // Для URL сохраняем нормализованный ключ вкладки.
+  return tab
+}
+
 const setActiveTab = (tab) => {
   // Переключает вкладку и синхронизирует ее с query-параметром.
-  const next = TAB_KEYS.includes(tab) ? tab : 'deals'
+  const next = normalizeWorkTab(tab)
   activeTab.value = next
-  const current = String(route.query.tab || '')
-  if (current !== next) {
-    router.replace({ name: 'work', query: { ...route.query, tab: next } })
+  const currentRouteTab = String(route.query.tab || '')
+  const nextRouteTab = toRouteTab(next)
+  if (currentRouteTab !== nextRouteTab) {
+    router.replace({ name: 'work', query: { ...route.query, tab: nextRouteTab } })
   }
 }
 
@@ -654,7 +675,8 @@ watch(
   { immediate: true },
 )
 
-const newGame = reactive({
+const newProductState = reactive({
+  type_code: PRODUCT_TYPE_PRIMARY,
   title: '',
   short_title: '',
   link: '',
@@ -664,6 +686,9 @@ const newGame = reactive({
   vr_support: '',
   platform_codes: [],
   region_code: '',
+  provider: '',
+  billing_period: '',
+  subscription_notes: '',
 })
 
 const newDeal = reactive(createNewDealState())
@@ -673,13 +698,14 @@ const newDealCommentOpen = ref(false)
 const editDeal = reactive(createEditDealState())
 const editDealResponsible = ref('')
 
-const games = ref([])
-const gamesAll = ref([])
-const gamesTotal = ref(0)
-const gamesLoading = ref(false)
-const editGame = reactive({
+const products = ref([])
+const productsAll = ref([])
+const productsTotal = ref(0)
+const productsLoading = ref(false)
+const editProductState = reactive({
   open: false,
-  game_id: null,
+  product_id: null,
+  type_code: PRODUCT_TYPE_PRIMARY,
   title: '',
   short_title: '',
   link: '',
@@ -691,6 +717,9 @@ const editGame = reactive({
   vr_support: '',
   platform_codes: [],
   region_code: '',
+  provider: '',
+  billing_period: '',
+  subscription_notes: '',
 })
 const dealFilters = reactive(createDealFiltersState())
 const dealShowCompleted = ref(false)
@@ -786,64 +815,66 @@ const newAccount = reactive(createNewAccountState())
 
 const accountModalMode = ref('edit')
 const showAccountFilters = ref(false)
-const accountGameSearch = ref('')
-const editAccountGameSearch = ref('')
-const accountGamesLoading = ref(false)
+const accountProductSearch = ref('')
+const editAccountProductSearch = ref('')
+const accountProductsLoading = ref(false)
 const activeAccountFilter = ref('')
 const accountFilterDraft = reactive({
   login: '',
-  game: '',
+  product: '',
   region: '',
   status: '',
   date_from: '',
   date_to: '',
 })
 const editAccount = reactive(createEditAccountState())
-const showGameForm = ref(false)
-const showGameFilters = ref(false)
+const showProductForm = ref(false)
+const showProductFilters = ref(false)
 const showChatsTab = ref(false)
 const showDealForm = ref(false)
 const activeDealFilter = ref('')
-const activeGameFilter = ref('')
-const gameFilterDraft = reactive({
+const activeProductFilter = ref('')
+const productFilterDraft = reactive({
   title: '',
+  type: '',
   platform: '',
   region: '',
 })
-const gameFilters = reactive({
+const productFilters = reactive({
   q: '',
+  type_code: '',
   platform_code: '',
   region_code: '',
 })
 useFilterPopouts({
   activeDealFilter,
-  activeGameFilter,
+  activeProductFilter,
   activeAccountFilter,
 })
 const telegram = reactive(createTelegramState())
-const showGameImport = ref(false)
+const showProductImport = ref(false)
 const showAccountImport = ref(false)
 const showSlotImport = ref(false)
-const gameImportFile = ref(null)
+const productImportFile = ref(null)
 const accountImportFile = ref(null)
 const slotImportFile = ref(null)
 const slotImportLimit = ref(10)
-const gameImportValidated = ref(false)
+const productImportValidated = ref(false)
 const accountImportValidated = ref(false)
 const slotImportValidated = ref(false)
-const gameImportErrors = ref([])
+const productImportErrors = ref([])
 const accountImportErrors = ref([])
 const slotImportErrors = ref([])
-const gameImportWarnings = ref([])
+const productImportWarnings = ref([])
 const accountImportWarnings = ref([])
 const slotImportWarnings = ref([])
-const gameImportTotal = ref(0)
+const productImportTotal = ref(0)
 const accountImportTotal = ref(0)
 const slotImportTotal = ref(0)
-const gameImportLoading = ref(false)
+const productImportLoading = ref(false)
 const accountImportLoading = ref(false)
 const slotImportLoading = ref(false)
-const gameImportMessage = ref('')
+const productImportMessage = ref('')
 const accountImportMessage = ref('')
 const slotImportMessage = ref('')
 const slotImportError = ref('')
@@ -851,23 +882,24 @@ const slotImportAction = ref('')
 const slotImportProgress = reactive({ current: 0, total: 0, phase: '' })
 const slotImportJobId = ref('')
 const slotImportStats = ref(null)
-const gameImportAction = ref('')
+const productImportAction = ref('')
 const accountImportAction = ref('')
-const gameImportStats = ref(null)
+const productImportStats = ref(null)
 const accountImportStats = ref(null)
-const gameImportProgress = reactive({ current: 0, total: 0, phase: '' })
+const productImportProgress = reactive({ current: 0, total: 0, phase: '' })
 const accountImportProgress = reactive({ current: 0, total: 0, phase: '' })
-const gameImportJobId = ref('')
+const productImportJobId = ref('')
 const accountImportJobId = ref('')
 const importDetailsRef = ref(null)
 const accountImportDetailsRef = ref(null)
-const gameLogoLoading = ref(false)
-const gameLogoCache = new Map()
-const gameLogoUploading = ref(false)
-const gameLogoProgress = ref(0)
-const { readLogoCache, writeLogoCache, clearLogoCache } = useGameLogoCache({
-  cacheKey: GAME_LOGO_CACHE_KEY,
-  ttlMs: GAME_LOGO_CACHE_TTL_MS,
+const productLogoLoading = ref(false)
+const productLogoCache = new Map()
+const productLogoUploading = ref(false)
+const productLogoProgress = ref(0)
+const { readLogoCache, writeLogoCache, clearLogoCache } = useProductLogoCache({
+  cacheKey: PRODUCT_LOGO_CACHE_KEY,
+  fallbackCacheKey: LEGACY_PRODUCT_LOGO_CACHE_FALLBACK_KEY,
+  ttlMs: PRODUCT_LOGO_CACHE_TTL_MS,
 })
 const showDomainForm = ref(false)
 const showSourceForm = ref(false)
@@ -875,7 +907,7 @@ const showPlatformForm = ref(false)
 const showRegionForm = ref(false)
 const accountFilters = reactive(createAccountFiltersState())
 const accountSort = ref('login_asc')
-const gamesSort = ref({ key: 'title', dir: 'asc' })
+const productsSort = ref({ key: 'title', dir: 'asc' })
 const {
   dealListError,
   dealListLoading,
@@ -931,21 +963,21 @@ const domainsSortAsc = ref(true)
 const sourcesSort = ref({ key: 'code', dir: 'asc' })
 const platformsSort = ref({ key: 'code', dir: 'asc' })
 const regionsSort = ref({ key: 'code', dir: 'asc' })
-const gamesPage = ref(1)
-const gamesPageInput = ref(1)
-const gamesPageSize = ref(20)
+const productsPage = ref(1)
+const productsPageInput = ref(1)
+const productsPageSize = ref(20)
 
-const newDealGameSearch = ref('')
-const editDealGameSearch = ref('')
-const dealAccountsForGameNew = ref([])
-const dealAccountsForGameEdit = ref([])
-const dealAccountsForGameLoading = ref(false)
-const quickNewGame = reactive({ title: '', platform_codes: [] })
-const quickEditGame = reactive({ title: '', platform_codes: [] })
-const quickNewGameLoading = ref(false)
-const quickEditGameLoading = ref(false)
-const quickNewGameError = ref('')
-const quickEditGameError = ref('')
+const newDealProductSearch = ref('')
+const editDealProductSearch = ref('')
+const dealAccountsForProductNew = ref([])
+const dealAccountsForProductEdit = ref([])
+const dealAccountsForProductLoading = ref(false)
+const quickNewProduct = reactive({ title: '', platform_codes: [] })
+const quickEditProduct = reactive({ title: '', platform_codes: [] })
+const quickNewProductLoading = ref(false)
+const quickEditProductLoading = ref(false)
+const quickNewProductError = ref('')
+const quickEditProductError = ref('')
 const quickNewAccount = reactive({ login_name: '', domain_code: '', platform_codes: [] })
 const quickEditAccount = reactive({ login_name: '', domain_code: '', platform_codes: [] })
 const quickNewAccountLoading = ref(false)
@@ -953,39 +985,39 @@ const quickEditAccountLoading = ref(false)
 const quickNewAccountError = ref('')
 const quickEditAccountError = ref('')
 const dealQuickAccountBusy = computed(() => quickNewAccountLoading.value || quickEditAccountLoading.value)
-const dealQuickGameBusy = computed(() => quickNewGameLoading.value || quickEditGameLoading.value)
+const dealQuickProductBusy = computed(() => quickNewProductLoading.value || quickEditProductLoading.value)
 const {
-  filteredNewDealGames,
-  filteredEditDealGames,
-  newDealGameNoMatches,
-  editDealGameNoMatches,
+  filteredNewDealProducts,
+  filteredEditDealProducts,
+  newDealProductNoMatches,
+  editDealProductNoMatches,
   dealAccountsForNew,
   dealAccountsForEdit,
-  dealGameAssignmentsForSelectedSlotNew,
-  dealGameAssignmentsForSelectedSlotEdit,
-  hasAnyGameAssignmentsNew,
-  hasAnyGameAssignmentsEdit,
+  dealProductAssignmentsForSelectedSlotNew,
+  dealProductAssignmentsForSelectedSlotEdit,
+  hasAnyProductAssignmentsNew,
+  hasAnyProductAssignmentsEdit,
 } = useDealsViewState({
-  gamesAll,
+  productsAll,
   newDeal,
   editDeal,
-  newDealGameSearch,
-  editDealGameSearch,
-  dealAccountsForGameNew,
-  dealAccountsForGameEdit,
+  newDealProductSearch,
+  editDealProductSearch,
+  dealAccountsForProductNew,
+  dealAccountsForProductEdit,
   dealGameAssignmentsNew,
   dealGameAssignmentsEdit,
 })
 
 const {
   sortedAccounts,
-  filteredAccountGames,
-  filteredEditAccountGames,
+  filteredAccountProducts,
+  filteredEditAccountProducts,
 } = useAccountsDerivedState({
   accounts,
-  gamesAll,
-  accountGameSearch,
-  editAccountGameSearch,
+  productsAll,
+  accountProductSearch,
+  editAccountProductSearch,
 })
 
 const getDealTypeName = (code) => dealTypeOptions.find((t) => t.code === code)?.name || code || '—'
@@ -997,38 +1029,38 @@ const {
   getSortedSlotStatus,
   sortedAccountSlotAssignments,
   getAccountSlotStatusList,
-  getGameLabelById,
-  isSlotTypeSupportedForGame,
+  getProductLabelById,
+  isSlotTypeSupportedForProduct,
   getDealSlotTypeOptions,
   getDealSlotTypeLabel,
   isDealSlotTypeUnsupported,
   hasFreeDealSlots,
 } = useSlotHelpers({
   slotTypes,
-  gamesAll,
+  productsAll,
   newDeal,
   editDeal,
-  dealAccountsForGameNew,
-  dealAccountsForGameEdit,
+  dealAccountsForProductNew,
+  dealAccountsForProductEdit,
   dealSlotAvailabilityNew,
   dealSlotAvailabilityEdit,
-  hasAnyGameAssignmentsNew,
-  hasAnyGameAssignmentsEdit,
+  hasAnyProductAssignmentsNew,
+  hasAnyProductAssignmentsEdit,
   accountSlotAssignments,
   accountSlotAssignmentsSort,
 })
 
-const formatAccountGamesLine = (account) => {
-  const list = Array.isArray(account?.game_titles) ? account.game_titles : []
+const formatAccountProductsLine = (account) => {
+  const list = Array.isArray(account?.product_titles) ? account.product_titles : []
   if (!list.length) return '—'
   return list.join(', ')
 }
 
 const {
-  setGamesPageSizeFromEvent,
-  setGamesPageInputFromEvent,
+  setProductsPageSizeFromEvent,
+  setProductsPageInputFromEvent,
   getAccountSortClass,
-  getGamesSortClass,
+  getProductsSortClass,
   getDealSortClass,
   getDomainsSortClass,
   getKeyedSortClass,
@@ -1036,27 +1068,30 @@ const {
   getNotesRows,
   getCompactNotesRows,
 } = useWorkUiHelpers({
-  gamesPageSize,
-  gamesPageInput,
+  productsPageSize,
+  productsPageInput,
   accountSort,
-  gamesSort,
+  productsSort,
   dealSort,
   domainsSortAsc,
 })
 
+const editProduct = editProductState
+const newProduct = newProductState
+
 const {
-  openGameAccounts,
-  openCreateGameModal,
-  closeGameModal,
-  onGameLogoSelected,
-  removeGameLogo,
+  openProductAccounts,
+  openCreateProductModal,
+  closeProductModal,
+  onProductLogoSelected,
+  removeProductLogo,
   goToAccount,
-  loadGames,
-  loadGamesAll,
-  createGame,
-  updateGame,
-  deleteGame,
-} = useGamesFlow({
+  loadProducts,
+  loadProductsAll,
+  createProduct,
+  updateProduct,
+  archiveProduct,
+} = useProductsFlow({
   auth,
   apiGet,
   apiPost,
@@ -1067,39 +1102,39 @@ const {
   closeAllModals,
   resetModalPos,
   setActiveTab,
-  showGameForm,
-  gameEditMode,
-  editGame,
-  newGame,
-  gameError,
-  gameOk,
-  gamesLoading,
-  gameLoading,
-  gameSaving,
-  games,
-  gamesAll,
-  gamesTotal,
-  gamesSort,
-  gamesPage,
-  gamesPageSize,
-  gameFilters,
-  gameFilterDraft,
+  showProductForm,
+  productEditMode,
+  editProduct,
+  newProduct,
+  productError,
+  productOk,
+  productsLoading,
+  productLoading,
+  productSaving,
+  products,
+  productsAll,
+  productsTotal,
+  productsSort,
+  productsPage,
+  productsPageSize,
+  productFilters,
+  productFilterDraft,
   accountFilters,
-  gameAccounts,
-  gameAccountsLoading,
-  gameAccountsError,
-  gameAccountsPage,
-  gameSlotAssignments,
-  gameSlotAssignmentsError,
-  gameSlotAssignmentsLoading,
-  gameLogoLoading,
-  gameLogoUploading,
-  gameLogoProgress,
-  gameLogoCache,
+  productAccounts,
+  productAccountsLoading,
+  productAccountsError,
+  productAccountsPage,
+  productSlotAssignments,
+  productSlotAssignmentsError,
+  productSlotAssignmentsLoading,
+  productLogoLoading,
+  productLogoUploading,
+  productLogoProgress,
+  productLogoCache,
   readLogoCache,
   writeLogoCache,
   clearLogoCache,
-  loadGameSlotAssignments,
+  loadProductSlotAssignments,
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
 })
@@ -1128,9 +1163,9 @@ const {
   accountEditMode,
   editAccount,
   newAccount,
-  accountGameSearch,
-  editAccountGameSearch,
-  accountGamesLoading,
+  accountProductSearch,
+  editAccountProductSearch,
+  accountProductsLoading,
   accountDeals,
   accountDealsError,
   accountDealsLoading,
@@ -1158,14 +1193,14 @@ loadAccountsAllDeferred.set(loadAccountsAllFromAccountsFlow)
 
 // Логика формы сделки: быстрые создания, загрузки связей, слоты.
 const {
-  createQuickGame,
+  createQuickProduct,
   createQuickAccount,
-  clearNewDealGame,
-  clearEditDealGame,
-  loadDealAccountsForGame,
+  clearNewDealProduct,
+  clearEditDealProduct,
+  loadDealAccountsForProduct,
   loadAccountSlotStatus,
   loadDealAccountAssignments,
-  loadDealGameAssignments,
+  loadDealProductAssignments,
   loadDealSlotAvailability,
   releaseSlotFromDeal,
 } = useDealsFlow({
@@ -1174,7 +1209,7 @@ const {
   apiPost,
   apiPut,
   mapApiError,
-  isSlotTypeSupportedForGame,
+  isSlotTypeSupportedForProduct,
   slotTypes,
   accountsAll,
   showDealForm,
@@ -1194,27 +1229,27 @@ const {
   dealSlotAvailabilityEdit,
   dealSlotAvailabilityLoadingNew,
   dealSlotAvailabilityLoadingEdit,
-  dealAccountsForGameNew,
-  dealAccountsForGameEdit,
-  dealAccountsForGameLoading,
+  dealAccountsForProductNew,
+  dealAccountsForProductEdit,
+  dealAccountsForProductLoading,
   accountSlotReleaseLoading,
   dealSlotAutoAssign,
   dealError,
-  quickNewGame,
-  quickEditGame,
-  quickNewGameLoading,
-  quickEditGameLoading,
-  quickNewGameError,
-  quickEditGameError,
+  quickNewProduct,
+  quickEditProduct,
+  quickNewProductLoading,
+  quickEditProductLoading,
+  quickNewProductError,
+  quickEditProductError,
   quickNewAccount,
   quickEditAccount,
   quickNewAccountLoading,
   quickEditAccountLoading,
   quickNewAccountError,
   quickEditAccountError,
-  newDealGameSearch,
-  editDealGameSearch,
-  loadGamesAll,
+  newDealProductSearch,
+  editDealProductSearch,
+  loadProductsAll,
   loadAccountsAll,
 })
 
@@ -1238,18 +1273,18 @@ const {
   newDealResponsible,
   editDealResponsible,
   newDealCommentOpen,
-  newDealGameSearch,
-  editDealGameSearch,
-  quickNewGame,
-  quickEditGame,
-  quickNewGameError,
-  quickEditGameError,
+  newDealProductSearch,
+  editDealProductSearch,
+  quickNewProduct,
+  quickEditProduct,
+  quickNewProductError,
+  quickEditProductError,
   quickNewAccount,
   quickEditAccount,
   quickNewAccountError,
   quickEditAccountError,
-  dealAccountsForGameNew,
-  dealAccountsForGameEdit,
+  dealAccountsForProductNew,
+  dealAccountsForProductEdit,
   dealAccountAssignmentsNew,
   dealAccountAssignmentsEdit,
   dealSlotAvailabilityNew,
@@ -1381,24 +1416,24 @@ const profileSectionCtx = asCtx({
 
 // Импорт/валидация/отмена для игр, аккаунтов и слотов.
 const {
-  openGameImport,
+  openProductImport,
   openAccountImport,
   openSlotImport,
   closeSlotImport,
-  closeGameImport,
+  closeProductImport,
   closeAccountImport,
-  stopGameImportStatusPolling,
+  stopProductImportStatusPolling,
   stopAccountImportStatusPolling,
   stopSlotImportStatusPolling,
   scrollToImportDetails,
   scrollToAccountImportDetails,
-  onGameImportFile,
+  onProductImportFile,
   onAccountImportFile,
   onSlotImportFile,
-  downloadGameTemplate,
+  downloadProductTemplate,
   downloadAccountTemplate,
-  downloadGameImportReport,
-  validateGameImport,
+  downloadProductImportReport,
+  validateProductImport,
   downloadAccountImportReport,
   validateAccountImport,
   cleanSlotImport,
@@ -1406,9 +1441,9 @@ const {
   uploadSlotImport,
   downloadSlotImportReport,
   cancelSlotImport,
-  uploadGameImport,
+  uploadProductImport,
   uploadAccountImport,
-  cancelGameImport,
+  cancelProductImport,
   cancelAccountImport,
 } = useImportFlow({
   auth,
@@ -1418,35 +1453,36 @@ const {
   apiPostForm,
   apiGetFile,
   mapApiError,
-  GAME_IMPORT_JOB_KEY,
+  PRODUCT_IMPORT_JOB_KEY,
+  LEGACY_PRODUCT_IMPORT_JOB_FALLBACK_KEY,
   ACCOUNT_IMPORT_JOB_KEY,
   SLOT_VALIDATE_JOB_KEY,
   SLOT_IMPORT_JOB_KEY,
   closeAllModals,
   resetModalPos,
-  showGameImport,
+  showProductImport,
   showAccountImport,
   showSlotImport,
-  gameImportFile,
+  productImportFile,
   accountImportFile,
   slotImportFile,
   slotImportLimit,
-  gameImportValidated,
+  productImportValidated,
   accountImportValidated,
   slotImportValidated,
-  gameImportErrors,
+  productImportErrors,
   accountImportErrors,
   slotImportErrors,
-  gameImportWarnings,
+  productImportWarnings,
   accountImportWarnings,
   slotImportWarnings,
-  gameImportTotal,
+  productImportTotal,
   accountImportTotal,
   slotImportTotal,
-  gameImportLoading,
+  productImportLoading,
   accountImportLoading,
   slotImportLoading,
-  gameImportMessage,
+  productImportMessage,
   accountImportMessage,
   slotImportMessage,
   slotImportError,
@@ -1454,18 +1490,18 @@ const {
   slotImportProgress,
   slotImportJobId,
   slotImportStats,
-  gameImportAction,
+  productImportAction,
   accountImportAction,
-  gameImportStats,
+  productImportStats,
   accountImportStats,
-  gameImportProgress,
+  productImportProgress,
   accountImportProgress,
-  gameImportJobId,
+  productImportJobId,
   accountImportJobId,
   importDetailsRef,
   accountImportDetailsRef,
-  loadGames,
-  loadGamesAll,
+  loadProducts,
+  loadProductsAll,
   loadAccounts,
   loadAccountsAll,
   suppressUnsavedConfirm,
@@ -1544,22 +1580,22 @@ const {
 })
 
 const {
-  gamesTotalPages,
-  sortedGames,
-  pagedGames,
-  gameAccountsTotalPages,
-  pagedGameAccounts,
-} = useGamesViewState({
-  games,
-  gamesTotal,
-  gamesPage,
-  gamesPageInput,
-  gamesPageSize,
-  loadGames,
-  gameAccounts,
-  gameAccountsSort,
-  gameAccountsPage,
-  gameAccountsPageSize,
+  productsTotalPages,
+  sortedProducts,
+  pagedProducts,
+  productAccountsTotalPages,
+  pagedProductAccounts,
+} = useProductsViewState({
+  products,
+  productsTotal,
+  productsPage,
+  productsPageInput,
+  productsPageSize,
+  loadProducts,
+  productAccounts,
+  productAccountsSort,
+  productAccountsPage,
+  productAccountsPageSize,
 })
 
 // Пагинация и отображение аккаунтов.
@@ -1594,16 +1630,16 @@ const {
 // Общие фильтры, сортировки и переходы между страницами.
 const {
   toggleAccountSort,
-  toggleGamesSort,
+  toggleProductsSort,
   toggleUsersSort,
   toggleDomainsSort,
   toggleSourcesSort,
   togglePlatformsSort,
   toggleRegionsSort,
-  setGamesPage,
-  jumpGamesPage,
-  prevGamesPage,
-  nextGamesPage,
+  setProductsPage,
+  jumpProductsPage,
+  prevProductsPage,
+  nextProductsPage,
   setAccountsPage,
   jumpAccountsPage,
   prevAccountsPage,
@@ -1611,9 +1647,9 @@ const {
   resetDealFilter,
   validateDealRange,
   dealFilterErrors,
-  resetGameFilter,
-  openGameFilter,
-  applyGameFilter,
+  resetProductFilter,
+  openProductFilter,
+  applyProductFilter,
   resetAccountFilter,
   openAccountFilter,
   applyAccountFilter,
@@ -1623,11 +1659,11 @@ const {
   accountsPageInput,
   accountsTotalPages,
   loadAccounts,
-  gamesSort,
-  gamesPage,
-  gamesPageInput,
-  gamesTotalPages,
-  loadGames,
+  productsSort,
+  productsPage,
+  productsPageInput,
+  productsTotalPages,
+  loadProducts,
   usersSort,
   domainsSortAsc,
   sourcesSort,
@@ -1636,9 +1672,9 @@ const {
   activeDealFilter,
   dealFilters,
   loadDeals,
-  activeGameFilter,
-  gameFilters,
-  gameFilterDraft,
+  activeProductFilter,
+  productFilters,
+  productFilterDraft,
   activeAccountFilter,
   accountFilters,
   accountFilterDraft,
@@ -1646,20 +1682,20 @@ const {
 
 // UI-действия экрана: поиск, открытие модалок, подгрузки деталей.
 const {
-  openAccountFromGame,
+  openAccountFromProduct,
   applyDealSearch,
   applyAccountSearch,
-  applyGameSearch,
-  syncNewDealGameSearch,
-  syncEditDealGameSearch,
-  onNewDealGameSearch,
-  onEditDealGameSearch,
+  applyProductSearch,
+  syncNewDealProductSearch,
+  syncEditDealProductSearch,
+  onNewDealProductSearch,
+  onEditDealProductSearch,
   loadAccountSlotAssignments: loadAccountSlotAssignmentsFromActions,
-  loadGameSlotAssignments: loadGameSlotAssignmentsFromActions,
+  loadProductSlotAssignments: loadProductSlotAssignmentsFromActions,
   releaseSlotAssignment,
-  sortGameAccounts,
-  nextGameAccountsPage,
-  prevGameAccountsPage,
+  sortProductAccounts,
+  nextProductAccountsPage,
+  prevProductAccountsPage,
 } = useWorkActions({
   auth,
   apiGet,
@@ -1667,46 +1703,46 @@ const {
   mapApiError,
   loadDeals,
   loadAccounts,
-  loadGames,
+  loadProducts,
   accountsPage,
   accountsPageInput,
-  gamesPage,
-  gamesPageInput,
+  productsPage,
+  productsPageInput,
   newDeal,
   editDeal,
-  newDealGameSearch,
-  editDealGameSearch,
-  quickNewGame,
-  quickEditGame,
-  quickNewGameError,
-  quickEditGameError,
+  newDealProductSearch,
+  editDealProductSearch,
+  quickNewProduct,
+  quickEditProduct,
+  quickNewProductError,
+  quickEditProductError,
   accountSlotAssignments,
   accountSlotAssignmentsLoading,
   accountSlotAssignmentsError,
-  gameSlotAssignments,
-  gameSlotAssignmentsLoading,
-  gameSlotAssignmentsError,
+  productSlotAssignments,
+  productSlotAssignmentsLoading,
+  productSlotAssignmentsError,
   accountSlotReleaseLoading,
   editAccount,
   showDealForm,
   dealError,
   loadAccountSlotStatus,
   loadDealAccountAssignments,
-  loadDealAccountsForGame,
-  loadDealGameAssignments,
-  gameAccountsSort,
-  gameAccountsPage,
-  gameAccountsTotalPages,
-  closeGameModal,
+  loadDealAccountsForProduct,
+  loadDealProductAssignments,
+  productAccountsSort,
+  productAccountsPage,
+  productAccountsTotalPages,
+  closeProductModal,
   goToAccount,
 })
 
 loadAccountSlotAssignmentsDeferred.set(loadAccountSlotAssignmentsFromActions)
-loadGameSlotAssignmentsDeferred.set(loadGameSlotAssignmentsFromActions)
+loadProductSlotAssignmentsDeferred.set(loadProductSlotAssignmentsFromActions)
 
-const gameLogoSrc = computed(() => {
-  if (!editGame.logo_b64 || !editGame.logo_mime) return ''
-  return `data:${editGame.logo_mime};base64,${editGame.logo_b64}`
+const productLogoSrc = computed(() => {
+  if (!editProductState.logo_b64 || !editProductState.logo_mime) return ''
+  return `data:${editProductState.logo_mime};base64,${editProductState.logo_b64}`
 })
 
 // Контекст вкладки аккаунтов: фильтры, таблица, пагинация и модалки.
@@ -1751,7 +1787,7 @@ const accountsSectionCtx = asCtx({
   getAccountSortClass,
   applyAccountFilter,
   startEditAccount,
-  formatAccountGamesLine,
+  formatAccountProductsLine,
   getAccountSlotStatusList,
   formatAccountSlotStatusLine,
   formatSecret,
@@ -1773,17 +1809,17 @@ const accountsSectionCtx = asCtx({
   updateAccount,
   createAccount,
   deleteAccount,
-  accountGamesLoading,
+  accountProductsLoading,
   getDomainLabel,
   domains,
   getRegionLabel,
   regions,
   getAccountStatusLabel,
   maxDate,
-  accountGameTitles,
-  editAccountGameSearch,
-  setEditAccountGameSearch,
-  filteredEditAccountGames,
+  accountProductTitles,
+  editAccountProductSearch,
+  setEditAccountProductSearch,
+  filteredEditAccountProducts,
   accountSlotAssignmentsError,
   accountSlotAssignmentsLoading,
   accountSlotAssignments,
@@ -1796,15 +1832,15 @@ const accountsSectionCtx = asCtx({
   accountDealsError,
   accountDealsLoading,
   accountDeals,
-  getDealGameTitleTooltip,
-  getDealGameTitleDisplay,
+  getDealProductTitleTooltip,
+  getDealProductTitleDisplay,
   formatDate: formatDateTimeMinutes,
   accountsError,
   accountsOk,
   newAccount,
-  accountGameSearch,
-  setAccountGameSearch,
-  filteredAccountGames,
+  accountProductSearch,
+  setAccountProductSearch,
+  filteredAccountProducts,
   showSlotImport,
   closeSlotImport,
   slotImportLoading,
@@ -1858,51 +1894,51 @@ const telegramSectionCtx = asCtx({
 })
 
 const {
-  gameEditorModalCtx,
+  productEditorModalCtx,
   dealsSectionCtx,
   dealEditorModalShellCtx,
   dealEditorModalBodyCtx,
   dealEditorFormCtx,
   catalogsSectionCtx,
 } = useWorkSectionContexts({
-  editGame,
-  showGameForm,
-  closeGameModal,
+  editProduct,
+  showProductForm,
+  closeProductModal,
   modalRef,
   modalStyle,
   startModalDrag,
-  gameEditMode,
-  updateGame,
-  gameLoading,
-  createGame,
-  deleteGame,
-  gameLogoSrc,
-  gameLogoLoading,
-  onGameLogoSelected,
-  gameLogoUploading,
-  gameLogoProgress,
-  removeGameLogo,
+  productEditMode,
+  updateProduct,
+  productLoading,
+  createProduct,
+  archiveProduct,
+  productLogoSrc,
+  productLogoLoading,
+  onProductLogoSelected,
+  productLogoUploading,
+  productLogoProgress,
+  removeProductLogo,
   platforms,
   getRegionLabel,
   regions,
-  gameAccountsError,
-  gameAccountsLoading,
-  pagedGameAccounts,
-  sortGameAccounts,
-  openAccountFromGame,
-  gameAccountsTotalPages,
-  gameAccountsPage,
-  prevGameAccountsPage,
-  nextGameAccountsPage,
-  gameSlotAssignmentsError,
-  gameSlotAssignmentsLoading,
-  gameSlotAssignments,
+  productAccountsError,
+  productAccountsLoading,
+  pagedProductAccounts,
+  sortProductAccounts,
+  openAccountFromProduct,
+  productAccountsTotalPages,
+  productAccountsPage,
+  prevProductAccountsPage,
+  nextProductAccountsPage,
+  productSlotAssignmentsError,
+  productSlotAssignmentsLoading,
+  productSlotAssignments,
   getSlotTypeLabel,
   getSlotAssignmentStatus,
   formatDateTimeMinutes,
-  gameError,
-  gameOk,
-  newGame,
+  productError,
+  productOk,
+  newProduct,
   showDomainForm,
   editDomain,
   closeDomainModal,
@@ -1989,9 +2025,9 @@ const {
   createDeal,
   createDealDraft,
   dealQuickAccountBusy,
-  dealQuickGameBusy,
+  dealQuickProductBusy,
   getDealTypeName,
-  dealAccountsForGameLoading,
+  dealAccountsForProductLoading,
   isDealSlotTypeUnsupported,
   dealAccountsForEdit,
   dealSlotAvailabilityLoadingEdit,
@@ -1999,9 +2035,9 @@ const {
   getDealSlotTypeLabel,
   getAccountLabelById,
   hasFreeDealSlots,
-  hasAnyGameAssignmentsEdit,
+  hasAnyProductAssignmentsEdit,
   dealGameAssignmentsLoadingEdit,
-  dealGameAssignmentsForSelectedSlotEdit,
+  dealProductAssignmentsForSelectedSlotEdit,
   accountSlotReleaseLoading,
   releaseSlotFromDeal,
   quickEditAccount,
@@ -2019,17 +2055,17 @@ const {
   maxPrice,
   clampPrice,
   getFlowStatusLabel,
-  editDealGameSearch,
-  onEditDealGameSearch,
-  filteredEditDealGames,
-  syncEditDealGameSearch,
-  getGameLabelById,
-  editDealGameNoMatches,
-  clearEditDealGame,
-  quickEditGame,
-  quickEditGameLoading,
-  createQuickGame,
-  quickEditGameError,
+  editDealProductSearch,
+  onEditDealProductSearch,
+  filteredEditDealProducts,
+  syncEditDealProductSearch,
+  getProductLabelById,
+  editDealProductNoMatches,
+  clearEditDealProduct,
+  quickEditProduct,
+  quickEditProductLoading,
+  createQuickProduct,
+  quickEditProductError,
   getNotesRows,
   dealError,
   dealOk,
@@ -2037,20 +2073,20 @@ const {
   responsibleUserOptions,
   newDealResponsible,
   editDealResponsible,
-  newDealGameSearch,
-  onNewDealGameSearch,
-  filteredNewDealGames,
-  newDealGameNoMatches,
-  syncNewDealGameSearch,
-  clearNewDealGame,
-  quickNewGame,
-  quickNewGameLoading,
-  quickNewGameError,
+  newDealProductSearch,
+  onNewDealProductSearch,
+  filteredNewDealProducts,
+  newDealProductNoMatches,
+  syncNewDealProductSearch,
+  clearNewDealProduct,
+  quickNewProduct,
+  quickNewProductLoading,
+  quickNewProductError,
   dealSlotAvailabilityLoadingNew,
   dealAccountsForNew,
-  hasAnyGameAssignmentsNew,
+  hasAnyProductAssignmentsNew,
   dealGameAssignmentsLoadingNew,
-  dealGameAssignmentsForSelectedSlotNew,
+  dealProductAssignmentsForSelectedSlotNew,
   quickNewAccount,
   quickNewAccountLoading,
   quickNewAccountError,
@@ -2087,61 +2123,61 @@ const {
   openEditRegion,
 })
 
-// Контекст вкладки игр: фильтры, таблица, пагинация, импорт и модалка.
-const gamesSectionCtx = asCtx({
-  gameFilters,
-  applyGameSearch,
-  openCreateGameModal,
-  openGameImport,
-  loadGames,
-  gamesLoading,
-  activeGameChips,
-  resetGameFilter,
-  showGameImport,
-  closeGameImport,
+// Контекст вкладки товаров: фильтры, таблица, пагинация, импорт и модалка.
+const productsSectionCtx = asCtx({
+  productFilters,
+  applyProductSearch,
+  openCreateProductModal,
+  loadProducts,
+  productsLoading,
+  activeProductChips,
+  resetProductFilter,
+  openProductImport,
+  closeProductImport,
+  showProductImport,
+  downloadProductTemplate,
+  validateProductImport,
+  uploadProductImport,
+  cancelProductImport,
+  scrollToImportDetails,
+  onProductImportFile,
+  importDetailsRef,
+  downloadProductImportReport,
   modalRef,
   modalStyle,
   startModalDrag,
-  gameImportLoading,
-  downloadGameTemplate,
-  validateGameImport,
-  gameImportFile,
-  gameImportAction,
-  uploadGameImport,
-  gameImportValidated,
-  gameImportJobId,
-  cancelGameImport,
-  scrollToImportDetails,
-  gameImportProgress,
-  onGameImportFile,
-  importDetailsRef,
-  gameImportMessage,
-  gameImportErrors,
-  gameImportWarnings,
-  downloadGameImportReport,
-  gameImportStats,
-  sortedGames,
-  pagedGames,
-  activeGameFilter,
-  gameFilterDraft,
-  openGameFilter,
-  toggleGamesSort,
-  getGamesSortClass,
-  applyGameFilter,
-  formatGamePlatforms,
-  openGameAccounts,
-  gamesTotal,
-  gamesPageSize,
-  setGamesPageSizeFromEvent,
-  gamesPage,
-  setGamesPage,
-  prevGamesPage,
-  gamesPageInput,
-  setGamesPageInputFromEvent,
-  gamesTotalPages,
-  jumpGamesPage,
-  nextGamesPage,
-  gameEditorModalCtx,
+  productImportLoading,
+  productImportFile,
+  productImportAction,
+  productImportValidated,
+  productImportJobId,
+  productImportProgress,
+  productImportMessage,
+  productImportErrors,
+  productImportWarnings,
+  productImportStats,
+  sortedProducts,
+  pagedProducts,
+  activeProductFilter,
+  productFilterDraft,
+  openProductFilter,
+  toggleProductsSort,
+  getProductsSortClass,
+  applyProductFilter,
+  formatProductPlatforms,
+  openProductAccounts,
+  productsTotal,
+  productsPageSize,
+  setProductsPageSizeFromEvent,
+  productsPage,
+  setProductsPage,
+  prevProductsPage,
+  productsPageInput,
+  setProductsPageInputFromEvent,
+  productsTotalPages,
+  jumpProductsPage,
+  nextProductsPage,
+  productEditorModalCtx,
 })
 
 // Контекст вкладки сделок: список + модалка редактирования сделки.
@@ -2201,7 +2237,7 @@ useWorkLifecycle({
   route,
   isAdmin,
   loadUsers,
-  stopGameImportStatusPolling,
+  stopGameImportStatusPolling: stopProductImportStatusPolling,
   stopAccountImportStatusPolling,
   stopSlotImportStatusPolling,
   stopTelegramPolling,
@@ -2218,13 +2254,13 @@ useActiveTabWatcher({
   defaultDealsResponsibleFilter,
   mustPrefillDealsResponsible,
   showUserForm,
-  showGameForm,
-  showGameFilters,
+  showProductForm,
+  showProductFilters,
   showDealForm,
   showAccountFilters,
-  activeGameFilter,
+  activeProductFilter,
   activeAccountFilter,
-  editGame,
+  editProduct,
   pwdOk,
   showPwdForm,
   catalogsLoadedOnce,
@@ -2232,17 +2268,17 @@ useActiveTabWatcher({
   sourcesLoadedOnce,
   slotTypesLoadedOnce,
   accountsAllLoadedOnce,
-  gamesAllLoadedOnce,
+  productsAllLoadedOnce,
   dealsBootstrapped,
   platforms,
   regions,
   domains,
   sources,
   slotTypes,
-  games,
-  gamesAll,
+  products,
+  productsAll,
   accountsAll,
-  gamesPage,
+  productsPage,
   accountsPage,
   checkApi,
   loadUsers,
@@ -2250,8 +2286,8 @@ useActiveTabWatcher({
   loadDomains,
   loadSources,
   loadSlotTypes,
-  loadGames,
-  loadGamesAll,
+  loadProducts,
+  loadProductsAll,
   loadAccounts,
   loadAccountsAll,
   loadDeals,
@@ -2264,6 +2300,7 @@ useActiveTabWatcher({
 useWorkLifecycleWatchers({
   route,
   TAB_KEYS,
+  normalizeWorkTab,
   activeTab,
   telegram,
   startTelegramPolling,
@@ -2287,8 +2324,8 @@ useDealsWatchers({
   dealAccountAssignmentsEdit,
   dealSlotAvailabilityNew,
   dealSlotAvailabilityEdit,
-  loadDealAccountsForGame,
-  loadDealGameAssignments,
+  loadDealAccountsForProduct,
+  loadDealProductAssignments,
   loadAccountSlotStatus,
   loadDealAccountAssignments,
   loadDealSlotAvailability,

@@ -2,7 +2,7 @@
                     <div v-if="editDeal.open" class="form deal-form" :class="{ 'deal-form--sale': editDeal.deal_type_code === 'sale' }">
                       <div class="deal-form__col deal-form__col--left">
                         <label
-                          v-if="editDeal.deal_type_code === 'rental' && (dealEditMode === 'view' || dealAccountsForGameLoading || !editDeal.game_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length)"
+                          v-if="editDeal.deal_type_code === 'rental' && (dealEditMode === 'view' || dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length)"
                           class="field"
                         >
                           <span class="label">Тип слота</span>
@@ -16,9 +16,9 @@
                             v-else
                             v-model="editDeal.slot_type_code"
                             class="input input--select"
-                            :disabled="!editDeal.game_id || dealSlotAvailabilityLoadingEdit"
+                            :disabled="!editDeal.product_id || dealSlotAvailabilityLoadingEdit"
                           >
-                            <option value="">{{ !editDeal.game_id ? 'Сначала выберите игру' : (dealSlotAvailabilityLoadingEdit ? '(формируется список)' : '— не выбрано —') }}</option>
+                            <option value="">{{ !editDeal.product_id ? 'Сначала выберите товар' : (dealSlotAvailabilityLoadingEdit ? '(формируется список)' : '— не выбрано —') }}</option>
                             <option
                               v-for="st in getDealSlotTypeOptions('edit')"
                               :key="st.code"
@@ -31,7 +31,7 @@
                         </label>
                         <label v-if="editDeal.deal_type_code === 'rental'" class="field">
                           <span
-                            v-if="dealEditMode === 'view' || dealAccountsForGameLoading || !editDeal.game_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length || editDeal.account_id"
+                            v-if="dealEditMode === 'view' || dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length || editDeal.account_id"
                             class="label"
                           >
                             Аккаунт
@@ -43,26 +43,26 @@
                             readonly
                           />
                           <select
-                            v-else-if="dealAccountsForGameLoading || !editDeal.game_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length || editDeal.account_id"
+                            v-else-if="dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length || editDeal.account_id"
                             v-model.number="editDeal.account_id"
                             class="input input--select"
-                            :disabled="!editDeal.game_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForGameLoading"
+                            :disabled="!editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForProductLoading"
                           >
                             <option value="">
-                              {{ !editDeal.game_id ? 'Сначала выберите игру' : (!editDeal.slot_type_code ? 'Сначала выберите слот' : (dealAccountsForGameLoading ? '(формируется список)' : '— не выбрано —')) }}
+                              {{ !editDeal.product_id ? 'Сначала выберите товар' : (!editDeal.slot_type_code ? 'Сначала выберите слот' : (dealAccountsForProductLoading ? '(формируется список)' : '— не выбрано —')) }}
                             </option>
                             <option v-for="a in dealAccountsForEdit" :key="a.account_id" :value="a.account_id">
                               {{ a.login_full || a.account_id }}
                             </option>
                           </select>
                           <div
-                            v-if="dealEditMode !== 'view' && !dealAccountsForGameLoading && editDeal.game_id && editDeal.slot_type_code && !editDeal.account_id && !isDealSlotTypeUnsupported('edit') && !hasFreeDealSlots('edit')"
+                            v-if="dealEditMode !== 'view' && !dealAccountsForProductLoading && editDeal.product_id && editDeal.slot_type_code && !editDeal.account_id && !isDealSlotTypeUnsupported('edit') && !hasFreeDealSlots('edit')"
                             class="quick-create"
                           >
                             <div class="quick-create__title">
-                              {{ hasAnyGameAssignmentsEdit ? 'Нет свободных слотов — можно снять занятый' : 'Нет аккаунтов с игрой' }}
+                              {{ hasAnyProductAssignmentsEdit ? 'Нет свободных слотов — можно снять занятый' : 'Нет аккаунтов с товаром' }}
                             </div>
-                            <div v-if="hasAnyGameAssignmentsEdit && dealGameAssignmentsLoadingEdit" class="loader-wrap loader-wrap--compact">
+                            <div v-if="hasAnyProductAssignmentsEdit && dealGameAssignmentsLoadingEdit" class="loader-wrap loader-wrap--compact">
                               <div class="newtons-cradle" aria-label="Loading" role="img">
                                 <div class="newtons-cradle__dot"></div>
                                 <div class="newtons-cradle__dot"></div>
@@ -70,7 +70,7 @@
                                 <div class="newtons-cradle__dot"></div>
                               </div>
                             </div>
-                            <div v-else-if="hasAnyGameAssignmentsEdit && dealGameAssignmentsForSelectedSlotEdit.length" class="quick-create__table-scroll">
+                            <div v-else-if="hasAnyProductAssignmentsEdit && dealProductAssignmentsForSelectedSlotEdit.length" class="quick-create__table-scroll">
                               <table class="table table--compact table--dense">
                                 <thead>
                                   <tr>
@@ -81,7 +81,7 @@
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  <tr v-for="s in dealGameAssignmentsForSelectedSlotEdit" :key="s.assignment_id">
+                                  <tr v-for="s in dealProductAssignmentsForSelectedSlotEdit" :key="s.assignment_id">
                                     <td>{{ getAccountLabelById(s.account_id) }}</td>
                                     <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
                                     <td>{{ s.customer_nickname || '—' }}</td>
@@ -100,7 +100,7 @@
                                 </tbody>
                               </table>
                             </div>
-                            <p v-else-if="hasAnyGameAssignmentsEdit" class="muted">Нет активных слотов по игре.</p>
+                            <p v-else-if="hasAnyProductAssignmentsEdit" class="muted">Нет активных слотов по товару.</p>
                             <div class="quick-create__title">Быстро создать аккаунт</div>
                             <input v-model.trim="quickEditAccount.login_name" class="input input--compact" placeholder="Логин" />
                             <select v-model="quickEditAccount.domain_code" class="input input--select input--compact">
@@ -152,7 +152,7 @@
                             <thead>
                               <tr>
                                 <th>Слот</th>
-                                <th>Игра</th>
+                                <th>Товар</th>
                                 <th>Покупатель</th>
                                 <th>Назначено</th>
                               </tr>
@@ -160,7 +160,7 @@
                             <tbody>
                               <tr v-for="s in dealAccountAssignmentsEdit.filter((s) => !s.released_at)" :key="s.assignment_id">
                                 <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
-                                <td>{{ s.game_title || '—' }}</td>
+                                <td>{{ s.product_title || '—' }}</td>
                                 <td>{{ s.customer_nickname || '—' }}</td>
                                 <td>{{ formatDateTimeMinutes(s.assigned_at) }}</td>
                               </tr>
@@ -357,9 +357,9 @@
                           />
                         </label>
                         <label v-if="editDeal.deal_type_code === 'sale'" class="field">
-                          <span class="label">Ссылка на игру</span>
+                          <span class="label">Ссылка на товар</span>
                           <input
-                            v-model.trim="editDeal.game_link"
+                            v-model.trim="editDeal.product_link"
                             class="input"
                             placeholder="https://..."
                             :readonly="dealEditMode === 'view'"
@@ -405,57 +405,57 @@
                       <div v-if="editDeal.deal_type_code !== 'sale'" class="deal-form__col deal-form__col--right">
                         <label
                           v-if="editDeal.deal_type_code === 'rental'"
-                          class="field field--game"
-                          :class="{ 'field--game-selected': Boolean(editDeal.game_id) && !editDealGameSearch }"
+                          class="field field--product"
+                          :class="{ 'field--product-selected': Boolean(editDeal.product_id) && !editDealProductSearch }"
                         >
-                          <span class="label">Игра</span>
+                          <span class="label">Товар</span>
                           <input
                             v-if="dealEditMode === 'view'"
                             class="input"
-                            :value="getGameLabelById(editDeal.game_id)"
+                            :value="getProductLabelById(editDeal.product_id)"
                             readonly
                           />
-                          <div v-else-if="!editDeal.game_id" class="input input--compact input--search input--search-row">
+                          <div v-else-if="!editDeal.product_id" class="input input--compact input--search input--search-row">
                             <input
-                              v-model.trim="editDealGameSearch"
+                              v-model.trim="editDealProductSearch"
                               class="input--search-field"
-                              placeholder="поиск игры"
-                              @input="onEditDealGameSearch"
+                              placeholder="поиск товара"
+                              @input="onEditDealProductSearch"
                             />
                           </div>
                           <div
                             v-if="dealEditMode !== 'view'"
                             class="input--select-wrap"
-                            :class="{ 'input--select-wrap--selected': Boolean(editDeal.game_id) && !editDealGameSearch }"
+                            :class="{ 'input--select-wrap--selected': Boolean(editDeal.product_id) && !editDealProductSearch }"
                           >
                             <input
-                              v-if="editDeal.game_id && !editDealGameSearch"
+                              v-if="editDeal.product_id && !editDealProductSearch"
                               class="input"
-                              :value="getGameLabelById(editDeal.game_id)"
+                              :value="getProductLabelById(editDeal.product_id)"
                               readonly
                             />
                             <select
-                              v-else-if="!editDealGameNoMatches"
-                              v-model.number="editDeal.game_id"
+                              v-else-if="!editDealProductNoMatches"
+                              v-model.number="editDeal.product_id"
                               :class="[
                                 'input input--select input--list',
-                                { 'input--list--compact': editDealGameNoMatches || (editDeal.game_id && !editDealGameSearch) }
+                                { 'input--list--compact': editDealProductNoMatches || (editDeal.product_id && !editDealProductSearch) }
                               ]"
-                              :size="editDealGameNoMatches ? 1 : 8"
-                              @change="syncEditDealGameSearch"
+                              :size="editDealProductNoMatches ? 1 : 8"
+                              @change="syncEditDealProductSearch"
                             >
                               <option value="">— не выбрано —</option>
-                              <option v-for="g in filteredEditDealGames" :key="g.game_id" :value="g.game_id">
+                              <option v-for="g in filteredEditDealProducts" :key="g.product_id" :value="g.product_id">
                                 {{ g.title }}
                               </option>
                             </select>
                             <button
-                              v-if="editDeal.game_id"
+                              v-if="editDeal.product_id"
                               class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
                               type="button"
-                              aria-label="Очистить игру"
-                              title="Очистить игру"
-                              @click="clearEditDealGame"
+                              aria-label="Очистить товар"
+                              title="Очистить товар"
+                              @click="clearEditDealProduct"
                             >
                               <svg viewBox="0 0 24 24" aria-hidden="true">
                                 <path d="M6 6l12 12M18 6l-12 12" />
@@ -463,14 +463,14 @@
                             </button>
                           </div>
                           <div
-                            v-if="dealEditMode !== 'view' && editDealGameNoMatches"
-                            class="quick-create quick-create--game-empty"
+                            v-if="dealEditMode !== 'view' && editDealProductNoMatches"
+                            class="quick-create quick-create--product-empty"
                           >
-                            <div class="quick-create__title">Быстро создать игру</div>
-                            <input v-model.trim="quickEditGame.title" class="input input--compact" placeholder="Название игры" />
+                            <div class="quick-create__title">Быстро создать товар</div>
+                            <input v-model.trim="quickEditProduct.title" class="input input--compact" placeholder="Название товара" />
                             <div class="check-list check-list--compact">
                               <label v-for="p in platforms" :key="`qe-${p.code}`" class="check-item">
-                                <input type="checkbox" :value="p.code" v-model="quickEditGame.platform_codes" />
+                                <input type="checkbox" :value="p.code" v-model="quickEditProduct.platform_codes" />
                                 <span>{{ p.name }} ({{ p.code }})</span>
                               </label>
                             </div>
@@ -478,13 +478,13 @@
                               <button
                                 class="ghost ghost--small"
                                 type="button"
-                                :disabled="quickEditGameLoading"
-                                @click="createQuickGame('edit')"
+                                :disabled="quickEditProductLoading"
+                                @click="createQuickProduct('edit')"
                               >
-                                <span v-if="quickEditGameLoading" class="spinner spinner--small"></span>
+                                <span v-if="quickEditProductLoading" class="spinner spinner--small"></span>
                                 Создать
                               </button>
-                              <span v-if="quickEditGameError" class="bad">{{ quickEditGameError }}</span>
+                              <span v-if="quickEditProductError" class="bad">{{ quickEditProductError }}</span>
                             </div>
                           </div>
                         </label>
@@ -557,47 +557,47 @@
                         </div>
                         <label
                           v-if="newDeal.deal_type_code === 'rental'"
-                          class="field field--game"
-                          :class="{ 'field--game-selected': Boolean(newDeal.game_id) && !newDealGameSearch }"
+                          class="field field--product"
+                          :class="{ 'field--product-selected': Boolean(newDeal.product_id) && !newDealProductSearch }"
                         >
-                          <span class="label">Игра</span>
-                          <div v-if="!newDeal.game_id" class="input input--compact input--search input--search-row">
+                          <span class="label">Товар</span>
+                          <div v-if="!newDeal.product_id" class="input input--compact input--search input--search-row">
                             <input
-                              v-model.trim="newDealGameSearch"
+                              v-model.trim="newDealProductSearch"
                               class="input--search-field"
-                              placeholder="поиск игры"
-                              @input="onNewDealGameSearch"
+                              placeholder="поиск товара"
+                              @input="onNewDealProductSearch"
                             />
                           </div>
-                          <div class="input--select-wrap" :class="{ 'input--select-wrap--selected': Boolean(newDeal.game_id) && !newDealGameSearch }">
+                          <div class="input--select-wrap" :class="{ 'input--select-wrap--selected': Boolean(newDeal.product_id) && !newDealProductSearch }">
                             <input
-                              v-if="newDeal.game_id && !newDealGameSearch"
+                              v-if="newDeal.product_id && !newDealProductSearch"
                               class="input"
-                              :value="getGameLabelById(newDeal.game_id)"
+                              :value="getProductLabelById(newDeal.product_id)"
                               readonly
                             />
                             <select
-                              v-else-if="!newDealGameNoMatches"
-                              v-model.number="newDeal.game_id"
+                              v-else-if="!newDealProductNoMatches"
+                              v-model.number="newDeal.product_id"
                               :class="[
-                                'input input--select input--list input--list--game-short',
-                                { 'input--list--compact': newDealGameNoMatches || (newDeal.game_id && !newDealGameSearch) }
+                                'input input--select input--list input--list--product-short',
+                                { 'input--list--compact': newDealProductNoMatches || (newDeal.product_id && !newDealProductSearch) }
                               ]"
-                              :size="newDealGameNoMatches ? 1 : 3"
-                              @change="syncNewDealGameSearch"
+                              :size="newDealProductNoMatches ? 1 : 3"
+                              @change="syncNewDealProductSearch"
                             >
                               <option value="">— не выбрано —</option>
-                              <option v-for="g in filteredNewDealGames" :key="g.game_id" :value="g.game_id">
+                              <option v-for="g in filteredNewDealProducts" :key="g.product_id" :value="g.product_id">
                                 {{ g.title }}
                               </option>
                             </select>
                             <button
-                              v-if="newDeal.game_id"
+                              v-if="newDeal.product_id"
                               class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
                               type="button"
-                              aria-label="Очистить игру"
-                              title="Очистить игру"
-                              @click="clearNewDealGame"
+                              aria-label="Очистить товар"
+                              title="Очистить товар"
+                              @click="clearNewDealProduct"
                             >
                               <svg viewBox="0 0 24 24" aria-hidden="true">
                                 <path d="M6 6l12 12M18 6l-12 12" />
@@ -605,14 +605,14 @@
                             </button>
                           </div>
                           <div
-                            v-if="newDealGameNoMatches"
-                            class="quick-create quick-create--game-empty"
+                            v-if="newDealProductNoMatches"
+                            class="quick-create quick-create--product-empty"
                           >
-                            <div class="quick-create__title">Быстро создать игру</div>
-                            <input v-model.trim="quickNewGame.title" class="input input--compact" placeholder="Название игры" />
+                            <div class="quick-create__title">Быстро создать товар</div>
+                            <input v-model.trim="quickNewProduct.title" class="input input--compact" placeholder="Название товара" />
                             <div class="check-list check-list--compact">
                               <label v-for="p in platforms" :key="`qn-${p.code}`" class="check-item">
-                                <input type="checkbox" :value="p.code" v-model="quickNewGame.platform_codes" />
+                                <input type="checkbox" :value="p.code" v-model="quickNewProduct.platform_codes" />
                                 <span>{{ p.name }} ({{ p.code }})</span>
                               </label>
                             </div>
@@ -620,13 +620,13 @@
                               <button
                                 class="ghost ghost--small"
                                 type="button"
-                                :disabled="quickNewGameLoading"
-                                @click="createQuickGame('new')"
+                                :disabled="quickNewProductLoading"
+                                @click="createQuickProduct('new')"
                               >
-                                <span v-if="quickNewGameLoading" class="spinner spinner--small"></span>
+                                <span v-if="quickNewProductLoading" class="spinner spinner--small"></span>
                                 Создать
                               </button>
-                              <span v-if="quickNewGameError" class="bad">{{ quickNewGameError }}</span>
+                              <span v-if="quickNewProductError" class="bad">{{ quickNewProductError }}</span>
                             </div>
                           </div>
                         </label>
@@ -636,9 +636,9 @@
                             <select
                               v-model="newDeal.slot_type_code"
                               class="input input--select"
-                              :disabled="!newDeal.game_id || dealSlotAvailabilityLoadingNew"
+                              :disabled="!newDeal.product_id || dealSlotAvailabilityLoadingNew"
                             >
-                              <option value="">{{ !newDeal.game_id ? 'Сначала выберите игру' : (dealSlotAvailabilityLoadingNew ? '(формируется список)' : '— не выбрано —') }}</option>
+                              <option value="">{{ !newDeal.product_id ? 'Сначала выберите товар' : (dealSlotAvailabilityLoadingNew ? '(формируется список)' : '— не выбрано —') }}</option>
                               <option
                                 v-for="st in getDealSlotTypeOptions('new')"
                                 :key="st.code"
@@ -665,32 +665,32 @@
                         </div>
                         <label v-if="newDeal.deal_type_code === 'rental'" class="field">
                           <span
-                            v-if="dealAccountsForGameLoading || !newDeal.game_id || !newDeal.slot_type_code || isDealSlotTypeUnsupported('new') || dealAccountsForNew.length || newDeal.account_id"
+                            v-if="dealAccountsForProductLoading || !newDeal.product_id || !newDeal.slot_type_code || isDealSlotTypeUnsupported('new') || dealAccountsForNew.length || newDeal.account_id"
                             class="label"
                           >
                             Аккаунт
                           </span>
                           <select
-                            v-if="dealAccountsForGameLoading || !newDeal.game_id || !newDeal.slot_type_code || isDealSlotTypeUnsupported('new') || dealAccountsForNew.length || newDeal.account_id"
+                            v-if="dealAccountsForProductLoading || !newDeal.product_id || !newDeal.slot_type_code || isDealSlotTypeUnsupported('new') || dealAccountsForNew.length || newDeal.account_id"
                             v-model.number="newDeal.account_id"
                             class="input input--select"
-                            :disabled="!newDeal.game_id || !newDeal.slot_type_code || isDealSlotTypeUnsupported('new') || dealAccountsForGameLoading"
+                            :disabled="!newDeal.product_id || !newDeal.slot_type_code || isDealSlotTypeUnsupported('new') || dealAccountsForProductLoading"
                           >
                             <option value="">
-                              {{ !newDeal.game_id ? 'Сначала выберите игру' : (!newDeal.slot_type_code ? 'Сначала выберите слот' : (dealAccountsForGameLoading ? '(формируется список)' : '— не выбрано —')) }}
+                              {{ !newDeal.product_id ? 'Сначала выберите товар' : (!newDeal.slot_type_code ? 'Сначала выберите слот' : (dealAccountsForProductLoading ? '(формируется список)' : '— не выбрано —')) }}
                             </option>
                             <option v-for="a in dealAccountsForNew" :key="a.account_id" :value="a.account_id">
                               {{ a.login_full || a.account_id }}
                             </option>
                           </select>
                           <div
-                            v-if="!dealAccountsForGameLoading && newDeal.game_id && newDeal.slot_type_code && !newDeal.account_id && !isDealSlotTypeUnsupported('new') && !hasFreeDealSlots('new')"
+                            v-if="!dealAccountsForProductLoading && newDeal.product_id && newDeal.slot_type_code && !newDeal.account_id && !isDealSlotTypeUnsupported('new') && !hasFreeDealSlots('new')"
                             class="quick-create"
                           >
                             <div class="quick-create__title">
-                              {{ hasAnyGameAssignmentsNew ? 'Нет свободных слотов — можно снять занятый' : 'Нет аккаунтов с игрой' }}
+                              {{ hasAnyProductAssignmentsNew ? 'Нет свободных слотов — можно снять занятый' : 'Нет аккаунтов с товаром' }}
                             </div>
-                            <div v-if="hasAnyGameAssignmentsNew && dealGameAssignmentsLoadingNew" class="loader-wrap loader-wrap--compact">
+                            <div v-if="hasAnyProductAssignmentsNew && dealGameAssignmentsLoadingNew" class="loader-wrap loader-wrap--compact">
                               <div class="newtons-cradle" aria-label="Loading" role="img">
                                 <div class="newtons-cradle__dot"></div>
                                 <div class="newtons-cradle__dot"></div>
@@ -698,7 +698,7 @@
                                 <div class="newtons-cradle__dot"></div>
                               </div>
                             </div>
-                            <div v-else-if="hasAnyGameAssignmentsNew && dealGameAssignmentsForSelectedSlotNew.length" class="quick-create__table-scroll">
+                            <div v-else-if="hasAnyProductAssignmentsNew && dealProductAssignmentsForSelectedSlotNew.length" class="quick-create__table-scroll">
                               <table class="table table--compact table--dense">
                                 <thead>
                                   <tr>
@@ -709,7 +709,7 @@
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  <tr v-for="s in dealGameAssignmentsForSelectedSlotNew" :key="s.assignment_id">
+                                  <tr v-for="s in dealProductAssignmentsForSelectedSlotNew" :key="s.assignment_id">
                                     <td>{{ getAccountLabelById(s.account_id) }}</td>
                                     <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
                                     <td>{{ s.customer_nickname || '—' }}</td>
@@ -728,7 +728,7 @@
                                 </tbody>
                               </table>
                             </div>
-                            <p v-else-if="hasAnyGameAssignmentsNew" class="muted">Нет активных слотов по игре.</p>
+                            <p v-else-if="hasAnyProductAssignmentsNew" class="muted">Нет активных слотов по товару.</p>
                             <div class="quick-create__title">Быстро создать аккаунт</div>
                             <input v-model.trim="quickNewAccount.login_name" class="input input--compact" placeholder="Логин" />
                             <select v-model="quickNewAccount.domain_code" class="input input--select input--compact">
@@ -780,7 +780,7 @@
                             <thead>
                               <tr>
                                 <th>Слот</th>
-                                <th>Игра</th>
+                                <th>Товар</th>
                                 <th>Покупатель</th>
                                 <th>Назначено</th>
                               </tr>
@@ -788,7 +788,7 @@
                             <tbody>
                               <tr v-for="s in dealAccountAssignmentsNew.filter((s) => !s.released_at)" :key="s.assignment_id">
                                 <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
-                                <td>{{ s.game_title || '—' }}</td>
+                                <td>{{ s.product_title || '—' }}</td>
                                 <td>{{ s.customer_nickname || '—' }}</td>
                                 <td>{{ formatDateTimeMinutes(s.assigned_at) }}</td>
                               </tr>
@@ -855,8 +855,8 @@
                           </label>
                         </div>
                         <label v-if="newDeal.deal_type_code === 'sale'" class="field">
-                          <span class="label">Ссылка на игру</span>
-                          <input v-model.trim="newDeal.game_link" class="input" placeholder="https://..." />
+                          <span class="label">Ссылка на товар</span>
+                          <input v-model.trim="newDeal.product_link" class="input" placeholder="https://..." />
                         </label>
                         <div v-if="newDeal.deal_type_code === 'sale'" class="field field--comment-collapsible">
                           <button class="comment-toggle" type="button" @click="newDealCommentOpen = !newDealCommentOpen">
@@ -891,7 +891,7 @@ const {
   editDeal,
   dealEditMode,
   allowCompletedDealEdit,
-  dealAccountsForGameLoading,
+  dealAccountsForProductLoading,
   isDealSlotTypeUnsupported,
   dealAccountsForEdit,
   getSlotTypeLabel,
@@ -900,9 +900,9 @@ const {
   getDealSlotTypeLabel,
   getAccountLabelById,
   hasFreeDealSlots,
-  hasAnyGameAssignmentsEdit,
+  hasAnyProductAssignmentsEdit,
   dealGameAssignmentsLoadingEdit,
-  dealGameAssignmentsForSelectedSlotEdit,
+  dealProductAssignmentsForSelectedSlotEdit,
   accountSlotReleaseLoading,
   releaseSlotFromDeal,
   quickEditAccount,
@@ -926,17 +926,17 @@ const {
   clampPrice,
   getFlowStatusLabel,
   dealFlowStatusOptions,
-  editDealGameSearch,
-  onEditDealGameSearch,
-  filteredEditDealGames,
-  syncEditDealGameSearch,
-  getGameLabelById,
-  editDealGameNoMatches,
-  clearEditDealGame,
-  quickEditGame,
-  quickEditGameLoading,
-  createQuickGame,
-  quickEditGameError,
+  editDealProductSearch,
+  onEditDealProductSearch,
+  filteredEditDealProducts,
+  syncEditDealProductSearch,
+  getProductLabelById,
+  editDealProductNoMatches,
+  clearEditDealProduct,
+  quickEditProduct,
+  quickEditProductLoading,
+  createQuickProduct,
+  quickEditProductError,
   getNotesRows,
   dealError,
   dealOk,
@@ -944,20 +944,20 @@ const {
   responsibleUserOptions,
   newDealResponsible,
   editDealResponsible,
-  newDealGameSearch,
-  onNewDealGameSearch,
-  filteredNewDealGames,
-  newDealGameNoMatches,
-  syncNewDealGameSearch,
-  clearNewDealGame,
-  quickNewGame,
-  quickNewGameLoading,
-  quickNewGameError,
+  newDealProductSearch,
+  onNewDealProductSearch,
+  filteredNewDealProducts,
+  newDealProductNoMatches,
+  syncNewDealProductSearch,
+  clearNewDealProduct,
+  quickNewProduct,
+  quickNewProductLoading,
+  quickNewProductError,
   dealSlotAvailabilityLoadingNew,
   dealAccountsForNew,
-  hasAnyGameAssignmentsNew,
+  hasAnyProductAssignmentsNew,
   dealGameAssignmentsLoadingNew,
-  dealGameAssignmentsForSelectedSlotNew,
+  dealProductAssignmentsForSelectedSlotNew,
   quickNewAccount,
   quickNewAccountLoading,
   quickNewAccountError,

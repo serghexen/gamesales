@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def _normalize_date(value):
@@ -66,7 +66,7 @@ class AccountOut(BaseModel):
     login_full: Optional[str]
     platform_slots: List[AccountPlatformSlots]
     slot_status: List[AccountSlotStatusOut] = []
-    game_titles: Optional[List[str]] = None
+    product_titles: Optional[List[str]] = None
     platform_codes: Optional[List[str]] = None
     account_date: Optional[date] = None
     notes: Optional[str] = None
@@ -102,16 +102,26 @@ class SlotAvailabilityOut(BaseModel):
     has_free: bool
 
 
-class AccountGamesIn(BaseModel):
-    game_ids: List[int]
+class AccountProductsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    product_ids: Optional[List[int]] = None
 
 
-class GameAccountOut(BaseModel):
+class ProductAccountOut(BaseModel):
     account_id: int
     login_full: Optional[str]
     platform_code: str
     free_slots: int
     occupied_slots: int
+
+
+class AccountProductOut(BaseModel):
+    product_id: int
+    type_code: str
+    title: str
+    short_title: Optional[str] = None
+    region_code: Optional[str] = None
+    platform_codes: List[str] = Field(default_factory=list)
 
 
 class SlotTypeOut(BaseModel):
@@ -129,8 +139,8 @@ class AccountSlotAssignmentOut(BaseModel):
     slot_type_code: str
     customer_id: Optional[int]
     customer_nickname: Optional[str]
-    game_id: Optional[int]
-    game_title: Optional[str]
+    product_id: Optional[int] = None
+    product_title: Optional[str] = None
     deal_id: Optional[int]
     deal_item_id: Optional[int]
     assigned_at: datetime

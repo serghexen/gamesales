@@ -9,7 +9,7 @@ export function createNewAccountState() {
     account_password: '',
     reserve_text: '',
     auth_code: '',
-    game_ids: [],
+    product_ids: [],
   }
 }
 
@@ -34,7 +34,7 @@ export function createEditAccountState() {
     has_account: false,
     has_email: false,
     has_auth: false,
-    game_ids: [],
+    product_ids: [],
   }
 }
 
@@ -42,7 +42,7 @@ export function createAccountFiltersState() {
   return {
     search_q: '',
     login_q: '',
-    game_q: '',
+    product_q: '',
     region_q: '',
     status_q: '',
     date_from: '',
@@ -53,8 +53,8 @@ export function createAccountFiltersState() {
 const ACCOUNT_SORT_MAP = {
   login_asc: { key: 'login', dir: 'asc' },
   login_desc: { key: 'login', dir: 'desc' },
-  games_asc: { key: 'games', dir: 'asc' },
-  games_desc: { key: 'games', dir: 'desc' },
+  products_asc: { key: 'products', dir: 'asc' },
+  products_desc: { key: 'products', dir: 'desc' },
   region_asc: { key: 'region', dir: 'asc' },
   region_desc: { key: 'region', dir: 'desc' },
   status_asc: { key: 'status', dir: 'asc' },
@@ -64,5 +64,6 @@ const ACCOUNT_SORT_MAP = {
 }
 
 export function resolveAccountSort(sortCode) {
+  // Возвращает конфиг сортировки по коду, с безопасным fallback.
   return ACCOUNT_SORT_MAP[sortCode] || ACCOUNT_SORT_MAP.login_asc
 }

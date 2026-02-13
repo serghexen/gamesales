@@ -120,6 +120,7 @@ def load_region_ids(conn) -> dict[str, int]:
 
 
 def upsert_games(conn, games: list[dict], platform_id: int, region_ids: dict[str, int]):
+    # Обновляем каталог в product-first режиме.
     with conn.cursor() as cur:
         for game in games:
             title = game["title"]
@@ -128,43 +129,63 @@ def upsert_games(conn, games: list[dict], platform_id: int, region_ids: dict[str
             region_id = region_ids.get(region_code) if region_code else None
 
             cur.execute(
-                "SELECT game_id, short_title, region_id FROM app.game_titles WHERE title = %s",
+                """
+                SELECT p.product_id, p.short_title, p.region_id
+                FROM app.products p
+                WHERE lower(p.title) = lower(%s)
+                  AND lower(p.type_code) = 'game'
+                  AND p.is_archived IS NOT TRUE
+                ORDER BY p.product_id
+                LIMIT 1
+                """,
                 (title,),
             )
             row = cur.fetchone()
             if row:
-                game_id = row[0]
+                product_id = row[0]
                 existing_short_title = row[1]
                 existing_region_id = row[2]
+                cur.execute(
+                    "UPDATE app.products SET title = %s WHERE product_id = %s",
+                    (title, product_id),
+                )
                 if short_title and not existing_short_title:
                     cur.execute(
-                        "UPDATE app.game_titles SET short_title = %s WHERE game_id = %s",
-                        (short_title, game_id),
+                        "UPDATE app.products SET short_title = %s WHERE product_id = %s",
+                        (short_title, product_id),
                     )
                 if region_id and not existing_region_id:
                     cur.execute(
-                        "UPDATE app.game_titles SET region_id = %s WHERE game_id = %s",
-                        (region_id, game_id),
+                        "UPDATE app.products SET region_id = %s WHERE product_id = %s",
+                        (region_id, product_id),
                     )
             else:
                 cur.execute(
                     """
-                    INSERT INTO app.game_titles (title, short_title, region_id)
-                    VALUES (%s, %s, %s)
-                    RETURNING game_id
+                    INSERT INTO app.products (type_code, title, short_title, region_id)
+                    VALUES ('game', %s, %s, %s)
+                    RETURNING product_id
                     """,
                     (title, short_title, region_id),
                 )
-                game_id = cur.fetchone()[0]
+                product_id = cur.fetchone()[0]
+                cur.execute(
+                    """
+                    INSERT INTO app.game_products (product_id)
+                    VALUES (%s)
+                    ON CONFLICT (product_id) DO NOTHING
+                    """,
+                    (product_id,),
+                )
 
-            # Always ensure the PS5 platform link exists even if the game already exists.
+            # Платформенную связь сохраняем в product_platforms.
             cur.execute(
                 """
-                INSERT INTO app.game_platforms (game_id, platform_id)
+                INSERT INTO app.product_platforms (product_id, platform_id)
                 VALUES (%s, %s)
                 ON CONFLICT DO NOTHING
                 """,
-                (game_id, platform_id),
+                (product_id, platform_id),
             )
 
 

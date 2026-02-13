@@ -26,7 +26,6 @@ def build_import_jobs(
     read_games_from_excel,
     validate_game_import_rows,
     parse_import_platforms,
-    find_game_id_by_title_platforms,
     get_platform_id,
     read_accounts_from_excel,
     validate_account_import_rows,
@@ -46,6 +45,89 @@ def build_import_jobs(
     set_import_progress,
     MIN_DATE,
 ):
+    # Ищет game-товар по названию и точному набору платформ.
+    def find_game_product_by_title_platforms(conn, title: str, platform_codes: list[str]):
+        if not title or not platform_codes:
+            return None
+        normalized_codes = sorted({str(code or "").strip().lower() for code in platform_codes if str(code or "").strip()})
+        if not normalized_codes:
+            return None
+        # Сначала ищем точное совпадение по продукту и набору платформ.
+        row = q1(
+            conn,
+            """
+            SELECT p.product_id
+            FROM app.products p
+            JOIN app.product_platforms pp ON pp.product_id = p.product_id
+            JOIN app.platforms pl ON pl.platform_id = pp.platform_id
+            WHERE lower(p.title) = lower(%s)
+              AND lower(p.type_code) = 'game'
+              AND p.is_archived IS NOT TRUE
+            GROUP BY p.product_id
+            HAVING count(DISTINCT lower(pl.code)) = %s
+               AND bool_and(lower(pl.code) = ANY(%s))
+            ORDER BY p.product_id
+            LIMIT 1
+            """,
+            (title, len(normalized_codes), normalized_codes),
+        )
+        if not row:
+            # Если платформы еще не заполнены, избегаем дублей: берем единственный game-product по title.
+            # Этот fallback безопасен только при единственном совпадении.
+            row = q1(
+                conn,
+                """
+                SELECT p.product_id
+                FROM app.products p
+                WHERE lower(p.title) = lower(%s)
+                  AND lower(p.type_code) = 'game'
+                  AND p.is_archived IS NOT TRUE
+                ORDER BY p.product_id
+                LIMIT 2
+                """,
+                (title,),
+            )
+            if not row:
+                return None
+            row2 = q1(
+                conn,
+                """
+                SELECT p.product_id
+                FROM app.products p
+                WHERE lower(p.title) = lower(%s)
+                  AND lower(p.type_code) = 'game'
+                  AND p.is_archived IS NOT TRUE
+                ORDER BY p.product_id
+                OFFSET 1
+                LIMIT 1
+                """,
+                (title,),
+            )
+            if row2:
+                return None
+        return int(row[0])
+
+    # Резолвит игровой товар по названию для импорта только через product_id.
+    def find_game_link_by_title(conn, title: str):
+        if not title:
+            return None
+        row = q1(
+            conn,
+            """
+            SELECT p.product_id
+            FROM app.products p
+            WHERE lower(p.title) = lower(%s)
+              AND lower(p.type_code) = 'game'
+              AND p.is_archived IS NOT TRUE
+            ORDER BY p.product_id
+            LIMIT 1
+            """,
+            (title,),
+        )
+        if not row:
+            return None
+        return int(row[0])
+
     def get_or_create_domain_id(conn, domain_name: str) -> int:
         row = q1(conn, "SELECT domain_id FROM app.domains WHERE name=%s", (domain_name,))
         if row:
@@ -116,13 +198,13 @@ def build_import_jobs(
                 last_success_row = None
                 row_errors = []
                 upload_done = 0
-                existing_game_by_row = {}
+                existing_product_by_row = {}
                 for idx, item in enumerate(rows, start=2):
                     title = (item.get("title") or "").strip()
                     platform_codes = parse_import_platforms(item.get("platform_codes") or "")
-                    existing_game_id = find_game_id_by_title_platforms(conn, title, platform_codes)
-                    if existing_game_id:
-                        existing_game_by_row[idx] = existing_game_id
+                    existing_product = find_game_product_by_title_platforms(conn, title, platform_codes)
+                    if existing_product:
+                        existing_product_by_row[idx] = existing_product
 
                 for idx, item in enumerate(rows, start=2):
                     if is_import_cancelled(job_id):
@@ -143,24 +225,36 @@ def build_import_jobs(
                             upload_done += 1
                             set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
                             continue
-                        existing_game_id = existing_game_by_row.get(idx) or find_game_id_by_title_platforms(conn, title, platform_codes)
-                        if existing_game_id:
-                            game_id = existing_game_id
+                        existing_product = existing_product_by_row.get(idx) or find_game_product_by_title_platforms(conn, title, platform_codes)
+                        if existing_product:
+                            product_id = int(existing_product)
                             updated += 1
                         else:
+                            # Создаем товар в product-first режиме.
                             row = q1(
                                 conn,
-                                "INSERT INTO app.game_titles(title) VALUES (%s) RETURNING game_id",
+                                """
+                                INSERT INTO app.products(type_code, title)
+                                VALUES ('game', %s)
+                                RETURNING product_id
+                                """,
                                 (title,),
                             )
-                            game_id = int(row[0])
+                            product_id = int(row[0])
+                            exec1(
+                                conn,
+                                "INSERT INTO app.game_products(product_id) VALUES (%s) ON CONFLICT (product_id) DO NOTHING",
+                                (product_id,),
+                            )
                             created += 1
+                        # Синхронизируем title товара, чтобы импорт был идемпотентным.
+                        exec1(conn, "UPDATE app.products SET title=%s WHERE product_id=%s", (title, product_id))
                         if platform_codes:
                             platform_ids = [get_platform_id(conn, code) for code in platform_codes]
                             with conn.cursor() as cur:
                                 cur.executemany(
-                                    "INSERT INTO app.game_platforms(game_id, platform_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-                                    [(game_id, pid) for pid in platform_ids],
+                                    "INSERT INTO app.product_platforms(product_id, platform_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                                    [(product_id, pid) for pid in platform_ids],
                                 )
                         conn.commit()
                         upload_done += 1
@@ -239,13 +333,14 @@ def build_import_jobs(
                             upload_done += 1
                             set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
                             continue
-                        game_row = q1(conn, "SELECT game_id FROM app.game_titles WHERE lower(title)=lower(%s)", (game_title,))
-                        if not game_row:
+                        # Резолвим товар по названию: для новых записей в импорте используем product_id как основной ключ.
+                        game_link = find_game_link_by_title(conn, game_title)
+                        if game_link is None:
                             skipped += 1
                             upload_done += 1
                             set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
                             continue
-                        game_id = int(game_row[0])
+                        product_id = game_link
                         domain_id = get_or_create_domain_id(conn, domain)
                         account_row = q1(
                             conn,
@@ -283,15 +378,29 @@ def build_import_jobs(
                                 """,
                                 (account_id, "account_password", b64_encode(password)),
                             )
-                        exec1(
+                        # Не дублируем ассет: для новых импортов проверяем только product_id.
+                        existing_asset = q1(
                             conn,
                             """
-                            INSERT INTO app.account_assets(account_id, game_id, asset_type_code)
-                            VALUES (%s, %s, 'game')
-                            ON CONFLICT (account_id, game_id, asset_type_code) DO NOTHING
+                            SELECT 1
+                            FROM app.account_assets
+                            WHERE account_id=%s
+                              AND asset_type_code='game'
+                              AND product_id=%s
+                            LIMIT 1
                             """,
-                            (account_id, game_id),
+                            (account_id, product_id),
                         )
+                        if not existing_asset:
+                            # Для новых импортов пишем только product_id.
+                            exec1(
+                                conn,
+                                """
+                                INSERT INTO app.account_assets(account_id, product_id, asset_type_code)
+                                VALUES (%s, %s, 'game')
+                                """,
+                                (account_id, product_id),
+                            )
                         conn.commit()
                         upload_done += 1
                         last_success_row = idx
@@ -445,12 +554,13 @@ def build_import_jobs(
                         continue
                     account_id = int(account_row[0])
 
-                    game_row = q1(conn, "SELECT game_id FROM app.game_titles WHERE lower(title)=lower(%s)", (game_title,))
-                    if not game_row:
+                    # Резолвим товар по названию и дальше работаем только через product_id.
+                    game_link = find_game_link_by_title(conn, game_title)
+                    if game_link is None:
                         skipped += 1
                         prepared.append({"skip": True})
                         continue
-                    game_id = int(game_row[0])
+                    product_id = game_link
 
                     slot_key = normalize_slot_file_value(slot_val)
                     slot_mapping = SLOT_FILE_TO_TYPE.get(slot_key)
@@ -468,7 +578,7 @@ def build_import_jobs(
                         "skip": False,
                         "row_idx": idx,
                         "account_id": account_id,
-                        "game_id": game_id,
+                        "product_id": product_id,
                         "slot_type_code": slot_type_code,
                         "slot_instance": slot_instance,
                         "customer": customer,
@@ -481,7 +591,7 @@ def build_import_jobs(
                 for item in prepared:
                     if item.get("skip"):
                         continue
-                    key = (item["account_id"], item["game_id"], item["slot_type_code"], item.get("slot_instance"))
+                    key = (item["account_id"], item["product_id"], item["slot_type_code"], item.get("slot_instance"))
                     groups.setdefault(key, []).append(item)
 
                 for key in groups:
@@ -499,7 +609,7 @@ def build_import_jobs(
                             return
                         try:
                             account_id = item["account_id"]
-                            game_id = item["game_id"]
+                            product_id = item["product_id"]
                             slot_type_code = item["slot_type_code"]
                             assigned_at = item["assigned_at"]
                             completed_at = item["completed_at"]
@@ -527,13 +637,13 @@ def build_import_jobs(
 
                             row_item = q1(conn, """
                                 INSERT INTO app.deal_items(
-                                  deal_id, account_id, game_id, platform_id,
+                                  deal_id, account_id, product_id, platform_id,
                                   qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link
                                 )
                                 VALUES (%s, %s, %s, %s, 1, 0, 0, 0, %s, %s, NULL, 1, %s, NULL, NULL)
                                 RETURNING deal_item_id
                             """, (
-                                deal_id, account_id, game_id, platform_id,
+                                deal_id, account_id, product_id, platform_id,
                                 completed_at, completed_at, slot_type_code
                             ))
                             deal_item_id = int(row_item[0])
@@ -542,12 +652,12 @@ def build_import_jobs(
                                 conn,
                                 """
                                 INSERT INTO app.account_slot_assignments(
-                                  account_id, slot_type_code, customer_id, game_id, deal_id, deal_item_id, assigned_at, assigned_by
+                                  account_id, slot_type_code, customer_id, product_id, deal_id, deal_item_id, assigned_at, assigned_by
                                 )
                                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                                 RETURNING assignment_id
                                 """,
-                                (account_id, slot_type_code, customer_id, game_id, deal_id, deal_item_id, assigned_at, owner),
+                                (account_id, slot_type_code, customer_id, product_id, deal_id, deal_item_id, assigned_at, owner),
                             )
                             assignment_id = int(assignment_row[0])
 

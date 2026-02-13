@@ -105,7 +105,13 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
       params.set('page', String(page))
       params.set('page_size', String(dealPageSize.value))
       const res = await apiGet(`/deals?${params.toString()}`, { token: auth.state.token })
-      dealItems.value = res?.items || []
+      // Нормализуем ответ в product-first поля для единого контракта UI.
+      dealItems.value = (res?.items || []).map((item) => ({
+        ...item,
+        product_title: item?.product_title || '',
+        product_short_title: item?.product_short_title || '',
+        product_link: item?.product_link || '',
+      }))
       dealTotal.value = res?.total || 0
       dealPage.value = page
     } catch (e) {

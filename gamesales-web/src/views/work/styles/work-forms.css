@@ -346,7 +346,7 @@
   padding: 8px;
 }
 
-.work-page .deal-form .quick-create--game-empty {
+.work-page .deal-form .quick-create--product-empty {
   margin-top: 6px;
 }
 
@@ -361,26 +361,26 @@
   font-size: 9px;
 }
 
-.work-page .field--game {
+.work-page .field--product {
   justify-self: stretch;
   width: 100%;
   max-width: 100%;
 }
 
-.work-page .field--game-selected {
+.work-page .field--product-selected {
   width: 100%;
 }
 
-.work-page .field--game .input--select-wrap--selected {
+.work-page .field--product .input--select-wrap--selected {
   width: 100%;
   max-width: 100%;
 }
 
-.work-page .deal-form__col--right .field--game,
-.work-page .deal-form__col--right .field--game .input,
-.work-page .deal-form__col--right .field--game .input--search,
-.work-page .deal-form__col--right .field--game .input--select-wrap,
-.work-page .deal-form__col--right .field--game .quick-create--game-empty {
+.work-page .deal-form__col--right .field--product,
+.work-page .deal-form__col--right .field--product .input,
+.work-page .deal-form__col--right .field--product .input--search,
+.work-page .deal-form__col--right .field--product .input--select-wrap,
+.work-page .deal-form__col--right .field--product .quick-create--product-empty {
   width: 100%;
   max-width: 100%;
   justify-self: stretch;

@@ -10,7 +10,7 @@ describe('useWorkSectionContexts', () => {
     const dealEditMode = ref('view')
     const dealLoading = ref(false)
     const dealQuickAccountBusy = ref(false)
-    const dealQuickGameBusy = ref(false)
+    const dealQuickProductBusy = ref(false)
     const responsibleUserOptions = ref(['manager1'])
     const canEditCompletedDeal = ref(true)
 
@@ -20,7 +20,7 @@ describe('useWorkSectionContexts', () => {
       dealEditMode,
       dealLoading,
       dealQuickAccountBusy,
-      dealQuickGameBusy,
+      dealQuickProductBusy,
       canEditCompletedDeal,
       responsibleUserOptions,
       closeDealModal: () => {},
@@ -47,8 +47,8 @@ describe('useWorkSectionContexts', () => {
     expect(ctx.dealEditorModalBodyCtx.quickBusyLabel).toBe('Создаем аккаунт…')
 
     dealQuickAccountBusy.value = false
-    dealQuickGameBusy.value = true
-    expect(ctx.dealEditorModalBodyCtx.quickBusyLabel).toBe('Создаем игру…')
+    dealQuickProductBusy.value = true
+    expect(ctx.dealEditorModalBodyCtx.quickBusyLabel).toBe('Создаем товар…')
     expect(ctx.dealEditorFormCtx.responsibleUserOptions).toEqual(['manager1'])
     expect(ctx.dealEditorFormCtx.allowCompletedDealEdit).toBe(true)
   })

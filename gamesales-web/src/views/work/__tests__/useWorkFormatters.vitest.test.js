@@ -13,7 +13,7 @@ function createHarness() {
     domains: ref([{ name: 'gmail.com' }]),
     sources: ref([{ source_id: 10, code: 'tg', name: 'Telegram' }]),
     dealFlowStatusOptions: [{ code: 'pending', name: 'В ожидании' }],
-    maxGameTitleLength: 10,
+    maxProductTitleLength: 10,
   })
 }
 
@@ -32,21 +32,21 @@ describe('useWorkFormatters', () => {
     expect(f.getFlowStatusLabel('other')).toBe('other')
   })
 
-  it('builds display and tooltip for deal game title', () => {
+  it('builds display and tooltip for deal product title', () => {
     const f = createHarness()
-    const dealLong = { game_title: 'Very Long Game Title', game_short_title: 'VLGT' }
-    const dealShort = { game_title: 'Short', game_short_title: 'S' }
+    const dealLong = { product_title: 'Very Long Game Title', product_short_title: 'VLGT' }
+    const dealShort = { product_title: 'Short', product_short_title: 'S' }
 
-    expect(f.getDealGameTitleDisplay(dealLong)).toBe('VLGT')
-    expect(f.getDealGameTitleTooltip(dealLong)).toBe('Very Long Game Title')
-    expect(f.getDealGameTitleDisplay(dealShort)).toBe('Short')
-    expect(f.getDealGameTitleTooltip(dealShort)).toBe('')
+    expect(f.getDealProductTitleDisplay(dealLong)).toBe('VLGT')
+    expect(f.getDealProductTitleTooltip(dealLong)).toBe('Very Long Game Title')
+    expect(f.getDealProductTitleDisplay(dealShort)).toBe('Short')
+    expect(f.getDealProductTitleTooltip(dealShort)).toBe('')
   })
 
   it('formats utility values', () => {
     const f = createHarness()
-    expect(f.formatGamePlatforms(['ps4', 'ps5'])).toBe('ps4, ps5')
-    expect(f.formatGamePlatforms([])).toBe('—')
+    expect(f.formatProductPlatforms(['ps4', 'ps5'])).toBe('ps4, ps5')
+    expect(f.formatProductPlatforms([])).toBe('—')
     expect(f.formatSecret('abc')).toBe('abc')
     expect(f.formatSecret('')).toBe('—')
     expect(f.getAccountStatusLabel('active')).toBe('active')

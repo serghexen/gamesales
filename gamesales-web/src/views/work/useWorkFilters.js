@@ -6,11 +6,11 @@ export function useWorkFilters({
   accountsPageInput,
   accountsTotalPages,
   loadAccounts,
-  gamesSort,
-  gamesPage,
-  gamesPageInput,
-  gamesTotalPages,
-  loadGames,
+  productsSort,
+  productsPage,
+  productsPageInput,
+  productsTotalPages,
+  loadProducts,
   usersSort,
   domainsSortAsc,
   sourcesSort,
@@ -19,13 +19,17 @@ export function useWorkFilters({
   activeDealFilter,
   dealFilters,
   loadDeals,
-  activeGameFilter,
-  gameFilters,
-  gameFilterDraft,
+  activeProductFilter,
+  productFilters,
+  productFilterDraft,
   activeAccountFilter,
   accountFilters,
   accountFilterDraft,
 }) {
+  const activeProductFilterRef = activeProductFilter
+  const productFiltersState = productFilters
+  const productFilterDraftState = productFilterDraft
+
   // Ошибки валидации фильтров (например, диапазон дат).
   const dealFilterErrors = reactive({
     date: '',
@@ -39,7 +43,7 @@ export function useWorkFilters({
   function toggleAccountSort(key) {
     const map = {
       login: ['login_asc', 'login_desc'],
-      games: ['games_asc', 'games_desc'],
+      products: ['products_asc', 'products_desc'],
       region: ['region_asc', 'region_desc'],
       status: ['status_asc', 'status_desc'],
       date: ['date_asc', 'date_desc'],
@@ -51,16 +55,16 @@ export function useWorkFilters({
     loadAccounts()
   }
 
-  // Переключает сортировку списка игр.
-  function toggleGamesSort(key) {
-    const current = gamesSort.value
+  // Переключает сортировку списка товаров.
+  function toggleProductsSort(key) {
+    const current = productsSort.value
     if (current.key === key) {
       current.dir = current.dir === 'asc' ? 'desc' : 'asc'
     } else {
-      gamesSort.value = { key, dir: 'asc' }
+      productsSort.value = { key, dir: 'asc' }
     }
-    gamesPage.value = 1
-    loadGames()
+    productsPage.value = 1
+    loadProducts()
   }
 
   function toggleUsersSort(key) {
@@ -103,24 +107,24 @@ export function useWorkFilters({
     }
   }
 
-  // Переход по страницам игр.
-  function setGamesPage(page) {
-    const target = Math.min(Math.max(1, Number(page) || 1), gamesTotalPages.value)
-    if (target === gamesPage.value) return
-    gamesPage.value = target
-    loadGames()
+  // Переход по страницам товаров.
+  function setProductsPage(page) {
+    const target = Math.min(Math.max(1, Number(page) || 1), productsTotalPages.value)
+    if (target === productsPage.value) return
+    productsPage.value = target
+    loadProducts()
   }
 
-  function jumpGamesPage() {
-    setGamesPage(gamesPageInput.value)
+  function jumpProductsPage() {
+    setProductsPage(productsPageInput.value)
   }
 
-  function prevGamesPage() {
-    setGamesPage(gamesPage.value - 1)
+  function prevProductsPage() {
+    setProductsPage(productsPage.value - 1)
   }
 
-  function nextGamesPage() {
-    setGamesPage(gamesPage.value + 1)
+  function nextProductsPage() {
+    setProductsPage(productsPage.value + 1)
   }
 
   // Переход по страницам аккаунтов.
@@ -190,50 +194,58 @@ export function useWorkFilters({
     loadDeals(1)
   }
 
-  // Сбрасывает фильтр игр и перезагружает список.
-  const resetGameFilter = (kind) => {
+  // Сбрасывает фильтр товаров и перезагружает список.
+  const resetProductFilter = (kind) => {
     if (kind === 'title') {
-      gameFilters.q = ''
-      gameFilterDraft.title = ''
+      productFiltersState.q = ''
+      productFilterDraftState.title = ''
+    } else if (kind === 'type') {
+      productFiltersState.type_code = ''
+      productFilterDraftState.type = ''
     } else if (kind === 'platform') {
-      gameFilters.platform_code = ''
-      gameFilterDraft.platform = ''
+      productFiltersState.platform_code = ''
+      productFilterDraftState.platform = ''
     } else if (kind === 'region') {
-      gameFilters.region_code = ''
-      gameFilterDraft.region = ''
+      productFiltersState.region_code = ''
+      productFilterDraftState.region = ''
     } else if (kind === 'all') {
-      gameFilters.q = ''
-      gameFilters.platform_code = ''
-      gameFilters.region_code = ''
-      gameFilterDraft.title = ''
-      gameFilterDraft.platform = ''
-      gameFilterDraft.region = ''
+      productFiltersState.q = ''
+      productFiltersState.type_code = ''
+      productFiltersState.platform_code = ''
+      productFiltersState.region_code = ''
+      productFilterDraftState.title = ''
+      productFilterDraftState.type = ''
+      productFilterDraftState.platform = ''
+      productFilterDraftState.region = ''
     }
-    gamesPage.value = 1
-    activeGameFilter.value = ''
-    loadGames()
+    productsPage.value = 1
+    activeProductFilterRef.value = ''
+    loadProducts()
   }
 
-  // Открывает выпадающий фильтр по играм и копирует текущие значения в черновик.
-  const openGameFilter = (kind) => {
-    gameFilterDraft.title = gameFilters.q || ''
-    gameFilterDraft.platform = gameFilters.platform_code || ''
-    gameFilterDraft.region = gameFilters.region_code || ''
-    activeGameFilter.value = activeGameFilter.value === kind ? '' : kind
+  // Открывает выпадающий фильтр по товарам и копирует текущие значения в черновик.
+  const openProductFilter = (kind) => {
+    productFilterDraftState.title = productFiltersState.q || ''
+    productFilterDraftState.type = productFiltersState.type_code || ''
+    productFilterDraftState.platform = productFiltersState.platform_code || ''
+    productFilterDraftState.region = productFiltersState.region_code || ''
+    activeProductFilterRef.value = activeProductFilterRef.value === kind ? '' : kind
   }
 
-  // Применяет выбранный фильтр по играм.
-  const applyGameFilter = (kind) => {
+  // Применяет выбранный фильтр по товарам.
+  const applyProductFilter = (kind) => {
     if (kind === 'title') {
-      gameFilters.q = gameFilterDraft.title.trim()
+      productFiltersState.q = productFilterDraftState.title.trim()
+    } else if (kind === 'type') {
+      productFiltersState.type_code = productFilterDraftState.type.trim()
     } else if (kind === 'platform') {
-      gameFilters.platform_code = gameFilterDraft.platform.trim()
+      productFiltersState.platform_code = productFilterDraftState.platform.trim()
     } else if (kind === 'region') {
-      gameFilters.region_code = gameFilterDraft.region.trim()
+      productFiltersState.region_code = productFilterDraftState.region.trim()
     }
-    gamesPage.value = 1
-    activeGameFilter.value = ''
-    loadGames()
+    productsPage.value = 1
+    activeProductFilterRef.value = ''
+    loadProducts()
   }
 
   const validateAccountDateRange = () => {
@@ -253,9 +265,9 @@ export function useWorkFilters({
     } else if (kind === 'login') {
       accountFilters.login_q = ''
       accountFilterDraft.login = ''
-    } else if (kind === 'game') {
-      accountFilters.game_q = ''
-      accountFilterDraft.game = ''
+    } else if (kind === 'product') {
+      accountFilters.product_q = ''
+      accountFilterDraft.product = ''
     } else if (kind === 'region') {
       accountFilters.region_q = ''
       accountFilterDraft.region = ''
@@ -271,13 +283,13 @@ export function useWorkFilters({
     } else if (kind === 'all') {
       accountFilters.search_q = ''
       accountFilters.login_q = ''
-      accountFilters.game_q = ''
+      accountFilters.product_q = ''
       accountFilters.region_q = ''
       accountFilters.status_q = ''
       accountFilters.date_from = ''
       accountFilters.date_to = ''
       accountFilterDraft.login = ''
-      accountFilterDraft.game = ''
+      accountFilterDraft.product = ''
       accountFilterDraft.region = ''
       accountFilterDraft.status = ''
       accountFilterDraft.date_from = ''
@@ -291,7 +303,7 @@ export function useWorkFilters({
 
   const openAccountFilter = (kind) => {
     accountFilterDraft.login = accountFilters.login_q || ''
-    accountFilterDraft.game = accountFilters.game_q || ''
+    accountFilterDraft.product = accountFilters.product_q || ''
     accountFilterDraft.region = accountFilters.region_q || ''
     accountFilterDraft.status = accountFilters.status_q || ''
     accountFilterDraft.date_from = accountFilters.date_from || ''
@@ -302,8 +314,8 @@ export function useWorkFilters({
   const applyAccountFilter = (kind) => {
     if (kind === 'login') {
       accountFilters.login_q = accountFilterDraft.login.trim()
-    } else if (kind === 'game') {
-      accountFilters.game_q = accountFilterDraft.game.trim()
+    } else if (kind === 'product') {
+      accountFilters.product_q = accountFilterDraft.product.trim()
     } else if (kind === 'region') {
       accountFilters.region_q = accountFilterDraft.region.trim()
     } else if (kind === 'status') {
@@ -320,16 +332,16 @@ export function useWorkFilters({
 
   return {
     toggleAccountSort,
-    toggleGamesSort,
+    toggleProductsSort,
     toggleUsersSort,
     toggleDomainsSort,
     toggleSourcesSort,
     togglePlatformsSort,
     toggleRegionsSort,
-    setGamesPage,
-    jumpGamesPage,
-    prevGamesPage,
-    nextGamesPage,
+    setProductsPage,
+    jumpProductsPage,
+    prevProductsPage,
+    nextProductsPage,
     setAccountsPage,
     jumpAccountsPage,
     prevAccountsPage,
@@ -337,9 +349,9 @@ export function useWorkFilters({
     resetDealFilter,
     validateDealRange,
     dealFilterErrors,
-    resetGameFilter,
-    openGameFilter,
-    applyGameFilter,
+    resetProductFilter,
+    openProductFilter,
+    applyProductFilter,
     resetAccountFilter,
     openAccountFilter,
     applyAccountFilter,

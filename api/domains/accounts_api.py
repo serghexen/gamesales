@@ -17,8 +17,9 @@ from .accounts_models import (
     AccountSecretsBatchIn,
     AccountSecretsBatchItem,
     SlotAvailabilityOut,
-    AccountGamesIn,
-    GameAccountOut,
+    AccountProductsIn,
+    ProductAccountOut,
+    AccountProductOut,
     AccountSlotAssignmentOut,
 )
 
@@ -35,20 +36,70 @@ def mount_accounts_routes(
     get_domain_id,
     get_platform_info,
     ensure_account_exists,
-    ensure_game_exists,
     validate_date_not_future,
     get_account_platform_slots,
     get_account_slot_status,
     b64_encode,
     require_role,
     get_current_user,
-    GameOut,
 ):
+    # Валидирует product для слотов: только активный товар типа game.
+    def ensure_slot_game_product(conn, product_id: Optional[int]) -> None:
+        if product_id is None:
+            raise HTTPException(400, "product_id is required")
+        row = q1(
+            conn,
+            """
+            SELECT type_code, is_archived
+            FROM app.products
+            WHERE product_id=%s
+            """,
+            (product_id,),
+        )
+        if not row:
+            raise HTTPException(400, f"Unknown product_id: {product_id}")
+        type_code = str(row[0] or "").strip().lower()
+        is_archived = bool(row[1]) if row[1] is not None else False
+        if is_archived:
+            raise HTTPException(400, f"Product is archived: {product_id}")
+        if type_code != "game":
+            raise HTTPException(400, "slot availability supports only products with type game")
+
+    # Валидирует список product_ids для привязки к аккаунту.
+    def resolve_asset_links(conn, payload: AccountProductsIn) -> List[int]:
+        product_ids = list({int(p) for p in (payload.product_ids or [])})
+        valid_links: List[int] = []
+        if product_ids:
+            rows = qall(
+                conn,
+                """
+                SELECT product_id, type_code, is_archived
+                FROM app.products
+                WHERE product_id = ANY(%s)
+                """,
+                (product_ids,),
+            )
+            rows_by_id = {int(r[0]): r for r in rows}
+            for product_id in product_ids:
+                row = rows_by_id.get(product_id)
+                if not row:
+                    raise HTTPException(400, f"Unknown product_id: {product_id}")
+                type_code = str(row[1] or "").strip().lower()
+                is_archived = bool(row[2]) if row[2] is not None else False
+                if is_archived:
+                    raise HTTPException(400, f"Product is archived: {product_id}")
+                if type_code != "game":
+                    raise HTTPException(400, "account assets support only products with type game")
+                valid_links.append(product_id)
+            # Сохраняем порядок без дублей.
+            return list(dict.fromkeys(valid_links))
+        return []
+
     @app.get("/accounts", response_model=AccountListOut)
     def list_accounts(
         q: Optional[str] = None,
         login_q: Optional[str] = None,
-        game_q: Optional[str] = None,
+        product_q: Optional[str] = None,
         region_q: Optional[str] = None,
         status_q: Optional[str] = None,
         slots_q: Optional[str] = None,
@@ -74,7 +125,7 @@ def mount_accounts_routes(
             "region": "region_code",
             "status": "status_code",
             "slots": "free_total",
-            "games": "game_titles_text",
+            "products": "product_titles_text",
             "date": "account_date",
         }
         sort_col = sort_map.get(sort_key, "login_name")
@@ -86,11 +137,11 @@ def mount_accounts_routes(
             filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR (a.login_name || '@' || d.name) ILIKE %s)")
             params.extend([f"%{login_q}%", f"%{login_q}%", f"%{login_q}%"])
         if q:
-            filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR (a.login_name || '@' || d.name) ILIKE %s OR r.code ILIKE %s OR g.title ILIKE %s)")
+            filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR (a.login_name || '@' || d.name) ILIKE %s OR r.code ILIKE %s OR p_id.title ILIKE %s)")
             params.extend([f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"])
-        if game_q:
-            filters.append("g.title ILIKE %s")
-            params.append(f"%{game_q}%")
+        if product_q:
+            filters.append("p_id.title ILIKE %s")
+            params.append(f"%{product_q}%")
         if region_q:
             filters.append("r.code ILIKE %s")
             params.append(f"%{region_q}%")
@@ -109,6 +160,7 @@ def mount_accounts_routes(
         where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
     
         with psycopg.connect(DB_DSN) as conn:
+            # Строим список аккаунтов в strict product-first режиме без compatibility fallback.
             rows = qall(
                 conn,
                 f"""
@@ -118,8 +170,9 @@ def mount_accounts_routes(
                     BOOL_OR(p.code = 'ps4') AS has_ps4,
                     COALESCE(array_agg(DISTINCT p.code ORDER BY p.code) FILTER (WHERE p.code IS NOT NULL), '{{}}'::text[]) AS platform_codes
                   FROM app.account_assets aa
-                  JOIN app.game_platforms gp ON gp.game_id = aa.game_id
-                  JOIN app.platforms p ON p.platform_id = gp.platform_id
+                  JOIN app.products pr ON pr.product_id = aa.product_id
+                  JOIN app.product_platforms pp ON pp.product_id = pr.product_id
+                  JOIN app.platforms p ON p.platform_id = pp.platform_id
                   WHERE aa.asset_type_code = 'game'
                   GROUP BY aa.account_id
                 ),
@@ -134,8 +187,8 @@ def mount_accounts_routes(
                     a.notes,
                     r.code as region_code,
                     d.name as domain_name,
-                    COALESCE(array_agg(DISTINCT g.title ORDER BY g.title) FILTER (WHERE g.title IS NOT NULL), '{{}}'::text[]) as game_titles,
-                    COALESCE(string_agg(DISTINCT g.title, ' · ' ORDER BY g.title), '') as game_titles_text,
+                    COALESCE(array_agg(DISTINCT p_id.title ORDER BY p_id.title) FILTER (WHERE p_id.title IS NOT NULL), '{{}}'::text[]) as product_titles,
+                    COALESCE(string_agg(DISTINCT p_id.title, ' · ' ORDER BY p_id.title), '') as product_titles_text,
                     ap.platform_codes,
                     COALESCE(SUM(s.free), 0) as free_total,
                     COALESCE(string_agg(st.code || ' ' || s.occupied || '/' || s.capacity, ' · ' ORDER BY st.code), '') as slots_text
@@ -144,7 +197,7 @@ def mount_accounts_routes(
                   LEFT JOIN app.domains d ON d.domain_id = a.domain_id
                   LEFT JOIN account_platforms ap ON ap.account_id = a.account_id
                   LEFT JOIN app.account_assets aa ON aa.account_id = a.account_id AND aa.asset_type_code = 'game'
-                  LEFT JOIN app.game_titles g ON g.game_id = aa.game_id
+                  LEFT JOIN app.products p_id ON p_id.product_id = aa.product_id
                   LEFT JOIN app.v_account_slot_status s
                     ON s.account_id = a.account_id
                    AND (COALESCE(ap.has_ps4, false) OR s.platform_code = 'ps5')
@@ -172,7 +225,7 @@ def mount_accounts_routes(
                   page.domain_name,
                   page.account_date,
                   page.notes,
-                  page.game_titles,
+                  page.product_titles,
                   page.platform_codes,
                   s.slot_type_code,
                   s.platform_code,
@@ -205,7 +258,7 @@ def mount_accounts_routes(
                     login_full=f"{row[3]}@{row[4]}" if row[3] and row[4] else None,
                     platform_slots=[],
                     slot_status=[],
-                    game_titles=list(row[7] or []),
+                    product_titles=list(row[7] or []),
                     platform_codes=list(row[8] or []),
                     account_date=row[5],
                     notes=row[6],
@@ -266,7 +319,7 @@ def mount_accounts_routes(
                 login_full=f"{payload.login_name}@{payload.domain_code}" if payload.login_name and payload.domain_code else None,
                 platform_slots=platform_slots,
                 slot_status=slot_status,
-                game_titles=None,
+                product_titles=None,
                 account_date=payload.account_date,
                 notes=payload.notes
             )
@@ -352,7 +405,7 @@ def mount_accounts_routes(
                 login_full=f"{row[3]}@{row[4]}" if row[3] and row[4] else None,
                 platform_slots=platform_slots,
                 slot_status=slot_status,
-                game_titles=None,
+                product_titles=None,
                 account_date=row[5],
                 notes=row[6]
             )
@@ -451,46 +504,56 @@ def mount_accounts_routes(
             conn.commit()
         return {"ok": True}
     
-    @app.get("/accounts/{account_id}/games", response_model=List[GameOut])
-    def list_account_games(account_id: int, user=Depends(get_current_user)):
+    @app.get("/accounts/{account_id}/products", response_model=List[AccountProductOut])
+    def list_account_products(account_id: int, user=Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
             ensure_account_exists(conn, account_id)
+            # Отдаем товары аккаунта только по product_id без legacy fallback.
             rows = qall(
                 conn,
                 """
-                SELECT g.game_id, g.title, g.short_title, g.link, g.logo_url, g.text_lang, g.audio_lang, g.vr_support, r.code,
-                       COALESCE(array_agg(p.code ORDER BY p.code) FILTER (WHERE p.code IS NOT NULL), '{}'::text[]) AS platform_codes
+                SELECT
+                  p_id.product_id AS product_id,
+                  p_id.type_code AS type_code,
+                  p_id.title AS title,
+                  p_id.short_title AS short_title,
+                  r.code AS region_code,
+                  COALESCE(array_agg(pl.code ORDER BY pl.code) FILTER (WHERE pl.code IS NOT NULL), '{}'::text[]) AS platform_codes
                 FROM app.account_assets aa
-                JOIN app.game_titles g ON g.game_id = aa.game_id
-                LEFT JOIN app.regions r ON r.region_id = g.region_id
-                LEFT JOIN app.game_platforms gp ON gp.game_id = g.game_id
-                LEFT JOIN app.platforms p ON p.platform_id = gp.platform_id
-                WHERE aa.account_id=%s AND aa.asset_type_code='game'
-                GROUP BY g.game_id, g.title, g.short_title, g.link, g.logo_url, g.text_lang, g.audio_lang, g.vr_support, r.code
-                ORDER BY g.title
+                JOIN app.products p_id ON p_id.product_id = aa.product_id
+                LEFT JOIN app.regions r ON r.region_id = p_id.region_id
+                LEFT JOIN app.product_platforms pp ON pp.product_id = p_id.product_id
+                LEFT JOIN app.platforms pl ON pl.platform_id = pp.platform_id
+                WHERE aa.account_id=%s
+                  AND aa.asset_type_code='game'
+                  AND p_id.is_archived IS NOT TRUE
+                GROUP BY
+                  p_id.product_id,
+                  p_id.type_code,
+                  p_id.title,
+                  p_id.short_title,
+                  r.code
+                ORDER BY p_id.title
                 """,
                 (account_id,),
             )
         return [
-            GameOut(
-                game_id=r0,
-                title=r1,
-                short_title=r2,
-                link=r3,
-                logo_url=r4,
-                text_lang=r5,
-                audio_lang=r6,
-                vr_support=r7,
-                platform_codes=list(r9 or []),
-                region_code=r8,
+            AccountProductOut(
+                product_id=int(r[0]),
+                type_code=r[1],
+                title=r[2],
+                short_title=r[3],
+                region_code=r[4],
+                platform_codes=list(r[5] or []),
             )
-            for (r0, r1, r2, r3, r4, r5, r6, r7, r8, r9) in rows
+            for r in rows
         ]
     
     @app.get("/accounts/{account_id}/slot-status", response_model=List[AccountSlotStatusOut])
     def list_account_slot_status(account_id: int, user=Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
             ensure_account_exists(conn, account_id)
+            # Для статуса слотов используем только product-first связи аккаунта.
             rows = qall(
                 conn,
                 """
@@ -501,8 +564,9 @@ def mount_accounts_routes(
                     aa.account_id,
                     BOOL_OR(p.code = 'ps4') AS has_ps4
                   FROM app.account_assets aa
-                  JOIN app.game_platforms gp ON gp.game_id = aa.game_id
-                  JOIN app.platforms p ON p.platform_id = gp.platform_id
+                  JOIN app.products pr ON pr.product_id = aa.product_id
+                  JOIN app.product_platforms pp ON pp.product_id = pr.product_id
+                  JOIN app.platforms p ON p.platform_id = pp.platform_id
                   WHERE aa.asset_type_code = 'game' AND aa.account_id = %s
                   GROUP BY aa.account_id
                 ) ap ON ap.account_id = s.account_id
@@ -528,6 +592,7 @@ def mount_accounts_routes(
     def list_account_slot_assignments(account_id: int, user=Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
             ensure_account_exists(conn, account_id)
+            # Для slot-назначений отдаем только product-first записи.
             rows = qall(
                 conn,
                 """
@@ -539,8 +604,8 @@ def mount_accounts_routes(
                   asa.slot_type_code,
                   asa.customer_id,
                   c.nickname,
-                  asa.game_id,
-                  g.title,
+                  asa.product_id AS product_id,
+                  p_id.title AS product_title,
                   asa.deal_id,
                   asa.deal_item_id,
                   asa.assigned_at,
@@ -551,8 +616,9 @@ def mount_accounts_routes(
                 LEFT JOIN app.accounts a ON a.account_id = asa.account_id
                 LEFT JOIN app.domains d ON d.domain_id = a.domain_id
                 LEFT JOIN app.customers c ON c.customer_id = asa.customer_id
-                LEFT JOIN app.game_titles g ON g.game_id = asa.game_id
+                LEFT JOIN app.products p_id ON p_id.product_id = asa.product_id
                 WHERE asa.account_id=%s
+                  AND asa.product_id IS NOT NULL
                 ORDER BY asa.released_at IS NULL DESC, asa.assigned_at DESC
                 """,
                 (account_id,),
@@ -565,8 +631,8 @@ def mount_accounts_routes(
                 slot_type_code=r[4],
                 customer_id=r[5],
                 customer_nickname=r[6],
-                game_id=r[7],
-                game_title=r[8],
+                product_id=r[7],
+                product_title=r[8],
                 deal_id=r[9],
                 deal_item_id=r[10],
                 assigned_at=r[11],
@@ -579,12 +645,16 @@ def mount_accounts_routes(
     
     @app.get("/accounts/for-deal", response_model=List[AccountOut])
     def list_accounts_for_deal(
-        game_id: int,
+        product_id: int,
         slot_type_code: Optional[str] = None,
         user=Depends(get_current_user),
     ):
         slot_type_code = (slot_type_code or "").strip() or None
         with psycopg.connect(DB_DSN) as conn:
+            # Эндпоинт strict product-first: работаем только по product_id.
+            selected_product_id = int(product_id)
+            ensure_slot_game_product(conn, selected_product_id)
+
             rows = qall(
                 conn,
                 """
@@ -594,8 +664,9 @@ def mount_accounts_routes(
                     BOOL_OR(p.code = 'ps4') AS has_ps4,
                     COALESCE(array_agg(DISTINCT p.code ORDER BY p.code) FILTER (WHERE p.code IS NOT NULL), '{}'::text[]) AS platform_codes
                   FROM app.account_assets aa
-                  JOIN app.game_platforms gp ON gp.game_id = aa.game_id
-                  JOIN app.platforms p ON p.platform_id = gp.platform_id
+                  JOIN app.products pr ON pr.product_id = aa.product_id
+                  JOIN app.product_platforms pp ON pp.product_id = pr.product_id
+                  JOIN app.platforms p ON p.platform_id = pp.platform_id
                   WHERE aa.asset_type_code = 'game'
                   GROUP BY aa.account_id
                 ),
@@ -619,7 +690,7 @@ def mount_accounts_routes(
                   JOIN app.account_assets aa
                     ON aa.account_id = a.account_id
                    AND aa.asset_type_code = 'game'
-                   AND aa.game_id = %s
+                   AND aa.product_id = %s
                   WHERE a.status_code <> 'archived'
                     AND EXISTS (
                     SELECT 1
@@ -648,7 +719,7 @@ def mount_accounts_routes(
                 LEFT JOIN app.platforms p ON p.platform_id = s.platform_id
                 ORDER BY base.account_id DESC, p.code
                 """,
-                (game_id, slot_type_code, slot_type_code),
+                (selected_product_id, slot_type_code, slot_type_code),
             )
     
         acc_map = {}
@@ -684,10 +755,14 @@ def mount_accounts_routes(
     
     @app.get("/accounts/for-deal/availability", response_model=List[SlotAvailabilityOut])
     def list_slot_availability_for_deal(
-        game_id: int,
+        product_id: int,
         user=Depends(get_current_user),
     ):
         with psycopg.connect(DB_DSN) as conn:
+            # Эндпоинт strict product-first: работаем только по product_id.
+            selected_product_id = int(product_id)
+            ensure_slot_game_product(conn, selected_product_id)
+
             rows = qall(
                 conn,
                 """
@@ -696,8 +771,9 @@ def mount_accounts_routes(
                     aa.account_id,
                     BOOL_OR(p.code = 'ps4') AS has_ps4
                   FROM app.account_assets aa
-                  JOIN app.game_platforms gp ON gp.game_id = aa.game_id
-                  JOIN app.platforms p ON p.platform_id = gp.platform_id
+                  JOIN app.products pr ON pr.product_id = aa.product_id
+                  JOIN app.product_platforms pp ON pp.product_id = pr.product_id
+                  JOIN app.platforms p ON p.platform_id = pp.platform_id
                   WHERE aa.asset_type_code = 'game'
                   GROUP BY aa.account_id
                 ),
@@ -707,7 +783,7 @@ def mount_accounts_routes(
                   JOIN app.account_assets aa
                     ON aa.account_id = a.account_id
                    AND aa.asset_type_code = 'game'
-                   AND aa.game_id = %s
+                   AND aa.product_id = %s
                   WHERE a.status_code <> 'archived'
                 )
                 SELECT
@@ -722,43 +798,48 @@ def mount_accounts_routes(
                 GROUP BY st.code
                 ORDER BY st.code
                 """,
-                (game_id,),
+                (selected_product_id,),
             )
         return [SlotAvailabilityOut(slot_type_code=r0, has_free=bool(r1)) for (r0, r1) in rows]
     
-    @app.put("/accounts/{account_id}/games")
-    def set_account_games(
+    @app.put("/accounts/{account_id}/products")
+    def set_account_products(
         account_id: int,
-        payload: AccountGamesIn,
+        payload: AccountProductsIn,
         user=Depends(require_role("admin")),
     ):
         with psycopg.connect(DB_DSN) as conn:
             ensure_account_exists(conn, account_id)
-            game_ids = list({int(g) for g in (payload.game_ids or [])})
-            if game_ids:
-                rows = qall(conn, "SELECT game_id FROM app.game_titles WHERE game_id = ANY(%s)", (game_ids,))
-                valid_ids = [int(r[0]) for r in rows]
-            else:
-                valid_ids = []
-    
+            # Обновляем привязки товаров аккаунта в product-first формате.
+            valid_links = resolve_asset_links(conn, payload)
             exec1(
                 conn,
                 "DELETE FROM app.account_assets WHERE account_id=%s AND asset_type_code='game'",
                 (account_id,),
             )
-            if valid_ids:
+            if valid_links:
                 with conn.cursor() as cur:
                     cur.executemany(
-                        "INSERT INTO app.account_assets(account_id, game_id, asset_type_code) VALUES (%s, %s, 'game')",
-                        [(account_id, gid) for gid in valid_ids],
+                        """
+                        INSERT INTO app.account_assets(account_id, product_id, asset_type_code)
+                        VALUES (%s, %s, 'game')
+                        """,
+                        [(account_id, product_id) for product_id in valid_links],
                     )
             conn.commit()
         return {"ok": True}
-    
-    @app.get("/games/{game_id}/accounts", response_model=List[GameAccountOut])
-    def list_game_accounts(game_id: int, user=Depends(get_current_user)):
+
+    @app.get("/products/{product_id}/accounts", response_model=List[ProductAccountOut])
+    def list_product_accounts(product_id: int, user=Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
-            ensure_game_exists(conn, game_id)
+            row = q1(
+                conn,
+                "SELECT 1 FROM app.products WHERE product_id=%s AND is_archived IS NOT TRUE",
+                (product_id,),
+            )
+            if not row:
+                raise HTTPException(400, f"Unknown product_id: {product_id}")
+            # Эндпоинт product-first: учитываем только сделки, где уже заполнен product_id.
             rows = qall(
                 conn,
                 """
@@ -774,21 +855,21 @@ def mount_accounts_routes(
                     di.account_id,
                     di.platform_id
                   FROM app.deal_items di
-                  WHERE di.game_id=%s
+                  WHERE di.product_id=%s
                     AND di.account_id IS NOT NULL
                     AND di.platform_id IS NOT NULL
                   ORDER BY di.account_id DESC, di.platform_id
-                ) dg
-                JOIN app.accounts a ON a.account_id = dg.account_id
+                ) dp
+                JOIN app.accounts a ON a.account_id = dp.account_id
                 LEFT JOIN app.domains d ON d.domain_id = a.domain_id
-                JOIN app.platforms p ON p.platform_id = dg.platform_id
-                LEFT JOIN app.v_account_platform_slots s ON s.account_id = dg.account_id AND s.platform_id = dg.platform_id
+                JOIN app.platforms p ON p.platform_id = dp.platform_id
+                LEFT JOIN app.v_account_platform_slots s ON s.account_id = dp.account_id AND s.platform_id = dp.platform_id
                 ORDER BY a.account_id DESC, p.code
                 """,
-                (game_id,),
+                (product_id,),
             )
         return [
-            GameAccountOut(
+            ProductAccountOut(
                 account_id=r0,
                 login_full=f"{r1}@{r2}" if r1 and r2 else None,
                 platform_code=r3,
@@ -797,11 +878,18 @@ def mount_accounts_routes(
             )
             for (r0, r1, r2, r3, r4, r5) in rows
         ]
-    
-    @app.get("/games/{game_id}/slot-assignments", response_model=List[AccountSlotAssignmentOut])
-    def list_game_slot_assignments(game_id: int, user=Depends(get_current_user)):
+
+    @app.get("/products/{product_id}/slot-assignments", response_model=List[AccountSlotAssignmentOut])
+    def list_product_slot_assignments(product_id: int, user=Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
-            ensure_game_exists(conn, game_id)
+            row = q1(
+                conn,
+                "SELECT 1 FROM app.products WHERE product_id=%s AND is_archived IS NOT TRUE",
+                (product_id,),
+            )
+            if not row:
+                raise HTTPException(400, f"Unknown product_id: {product_id}")
+            # Отдаем только product-first назначения без compatibility fallback.
             rows = qall(
                 conn,
                 """
@@ -813,8 +901,8 @@ def mount_accounts_routes(
                   asa.slot_type_code,
                   asa.customer_id,
                   c.nickname,
-                  asa.game_id,
-                  g.title,
+                  asa.product_id,
+                  p_id.title AS product_title,
                   asa.deal_id,
                   asa.deal_item_id,
                   asa.assigned_at,
@@ -825,11 +913,11 @@ def mount_accounts_routes(
                 LEFT JOIN app.accounts a ON a.account_id = asa.account_id
                 LEFT JOIN app.domains d ON d.domain_id = a.domain_id
                 LEFT JOIN app.customers c ON c.customer_id = asa.customer_id
-                LEFT JOIN app.game_titles g ON g.game_id = asa.game_id
-                WHERE asa.game_id=%s
+                LEFT JOIN app.products p_id ON p_id.product_id = asa.product_id
+                WHERE asa.product_id=%s
                 ORDER BY asa.released_at IS NULL DESC, asa.assigned_at DESC
                 """,
-                (game_id,),
+                (product_id,),
             )
         return [
             AccountSlotAssignmentOut(
@@ -839,8 +927,8 @@ def mount_accounts_routes(
                 slot_type_code=r[4],
                 customer_id=r[5],
                 customer_nickname=r[6],
-                game_id=r[7],
-                game_title=r[8],
+                product_id=r[7],
+                product_title=r[8],
                 deal_id=r[9],
                 deal_item_id=r[10],
                 assigned_at=r[11],

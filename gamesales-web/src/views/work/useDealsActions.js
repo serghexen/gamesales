@@ -58,7 +58,8 @@ export function useDealsActions({
     const payload = {
       deal_type_code: dealTypeCode,
       account_id: dealTypeCode === 'rental' ? deal.account_id : null,
-      game_id: dealTypeCode === 'rental' ? deal.game_id : null,
+      // В сделках используем единый идентификатор товара через product_id.
+      product_id: deal.product_id || null,
       customer_nickname: deal.customer_nickname || null,
       order_number: deal.order_number || null,
       responsible_username: normalizeResponsible(responsible?.value),
@@ -69,7 +70,7 @@ export function useDealsActions({
       purchase_cost: deal.purchase_cost || 0,
       login: deal.login || null,
       password: deal.password || null,
-      game_link: deal.game_link || null,
+      product_link: deal.product_link || null,
       purchase_at: dealTypeCode === 'sale' ? null : toUtcDateTime(deal.purchase_at),
       slots_used: dealTypeCode === 'rental' ? 1 : 0,
       notes: deal.notes || null,
@@ -90,7 +91,7 @@ export function useDealsActions({
     const saleDraft = isSaleDraftSave(deal.deal_type_code, saveAsDraft)
     if (!saleDraft && !deal.customer_nickname) return 'Укажите покупателя'
     if (deal.deal_type_code === 'rental') {
-      if (!deal.account_id || !deal.game_id) return 'Для шеринга укажите аккаунт и игру'
+      if (!deal.account_id || !deal.product_id) return 'Для шеринга укажите аккаунт и товар'
       if (!deal.slot_type_code) return 'Для шеринга выберите тип слота'
     }
     if (deal.deal_type_code === 'sale' && !saleDraft) {
@@ -125,7 +126,7 @@ export function useDealsActions({
       newDeal.purchase_cost = 0
       newDeal.login = ''
       newDeal.password = ''
-      newDeal.game_link = ''
+      newDeal.product_link = ''
       newDeal.purchase_at = ''
       newDeal.notes = ''
     } catch (e) {

@@ -279,6 +279,72 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"deal_id": 33})
 
+    # Продажа по product_id должна работать для товара без доп. legacy-атрибутов.
+    def test_create_deal_sale_with_product_only(self):
+        script = [
+            {"one": ("subscription", False)},  # product lookup
+            {"one": (10,)},  # region_id by code
+            {"one": None},  # customer lookup
+            {"one": (22,)},  # customer insert
+            {"one": (33,)},  # deal insert
+            {"one": (44,)},  # deal_item insert
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/deals",
+                    headers=self._auth_headers(role="manager"),
+                    json={
+                        "deal_type_code": "sale",
+                        "region_code": "RU",
+                        "product_id": 88,
+                        "customer_nickname": "cust",
+                        "price": 1000,
+                        "purchase_cost": 400,
+                    },
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"deal_id": 33})
+
+    # Аренда по product_id должна работать для товара без доп. legacy-атрибутов.
+    def test_create_deal_rental_with_product_only(self):
+        script = [
+            {"one": ("game", False)},  # product lookup
+            {"one": (1,)},  # ensure_account_exists
+            {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
+            {"one": (2,)},  # get_platform_id
+            {"one": (7,)},  # region from account
+            {"one": (1,)},  # get_account_slot_free
+            {"one": (33,)},  # deal insert
+            {"one": (44,)},  # deal_item insert
+            {"rowcount": 1},  # assignment insert
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/deals",
+                    headers=self._auth_headers(role="manager"),
+                    json={
+                        "deal_type_code": "rental",
+                        "account_id": 7,
+                        "product_id": 55,
+                        "slot_type_code": "ps5_p1",
+                        "price": 500,
+                    },
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"deal_id": 33})
+
     # Если клиент уже есть, логин/пароль должны обновляться в app.customers.
     def test_create_deal_updates_customer_credentials_for_existing_customer(self):
         script = [
@@ -313,8 +379,8 @@ class DealsEndpointsTests(unittest.TestCase):
     # Для аренды при нехватке слотов должен возвращаться 409.
     def test_create_deal_rental_not_enough_slots(self):
         script = [
+            {"one": ("game", False)},  # product lookup
             {"one": (1,)},  # ensure_account_exists
-            {"one": (1,)},  # ensure_game_active
             {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
             {"one": (2,)},  # get_platform_id
             {"one": (7,)},  # region from account
@@ -334,7 +400,7 @@ class DealsEndpointsTests(unittest.TestCase):
                     json={
                         "deal_type_code": "rental",
                         "account_id": 7,
-                        "game_id": 21,
+                        "product_id": 55,
                         "slot_type_code": "ps5_p1",
                         "customer_nickname": "cust",
                         "price": 500,
@@ -386,7 +452,7 @@ class DealsEndpointsTests(unittest.TestCase):
                     headers=self._auth_headers(role="manager"),
                     json={
                         "account_id": 7,
-                        "game_id": 21,
+                        "product_id": 55,
                         "customer_nickname": "cust",
                         "price": 500,
                     },
@@ -396,8 +462,8 @@ class DealsEndpointsTests(unittest.TestCase):
     # Успешный rental должен создать сделку и вернуть обновленные слоты.
     def test_create_rental_success(self):
         script = [
+            {"one": ("game", False)},  # product lookup
             {"one": (7,)},  # SELECT region_id FROM accounts (проверка существования + region_id)
-            {"one": (1,)},  # ensure_game_active
             {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
             {"one": (2,)},  # get_platform_id
             {"one": (5, None)},  # customer exists
@@ -419,7 +485,7 @@ class DealsEndpointsTests(unittest.TestCase):
                     headers=self._auth_headers(role="manager"),
                     json={
                         "account_id": 7,
-                        "game_id": 21,
+                        "product_id": 55,
                         "slot_type_code": "ps5_p1",
                         "customer_nickname": "cust",
                         "price": 500,
@@ -433,8 +499,8 @@ class DealsEndpointsTests(unittest.TestCase):
     # rental через /rentals должен отдавать 409 при нехватке слотов.
     def test_create_rental_not_enough_slots(self):
         script = [
+            {"one": ("game", False)},  # product lookup
             {"one": (1,)},  # ensure_account_exists
-            {"one": (1,)},  # ensure_game_active
             {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
             {"one": (2,)},  # get_platform_id
             {"one": (5, None)},  # customer exists
@@ -452,7 +518,7 @@ class DealsEndpointsTests(unittest.TestCase):
                     headers=self._auth_headers(role="manager"),
                     json={
                         "account_id": 7,
-                        "game_id": 21,
+                        "product_id": 55,
                         "slot_type_code": "ps5_p1",
                         "customer_nickname": "cust",
                         "price": 500,
@@ -488,7 +554,6 @@ class DealsEndpointsTests(unittest.TestCase):
             "A-100",
             "admin",
             77,
-            None,
             None,
             None,
             500.0,
@@ -534,7 +599,6 @@ class DealsEndpointsTests(unittest.TestCase):
             77,
             None,
             None,
-            None,
             500.0,
             100.0,
             datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
@@ -572,7 +636,6 @@ class DealsEndpointsTests(unittest.TestCase):
             "A-100",
             "admin",
             77,
-            None,
             None,
             None,
             500.0,
@@ -621,7 +684,6 @@ class DealsEndpointsTests(unittest.TestCase):
             "admin",
             77,
             7,
-            21,
             2,
             500.0,
             100.0,
@@ -639,13 +701,13 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": current_row},  # current deal row
             {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
             {"one": (2,)},  # get_platform_id
+            {"one": ("game", False)},  # product lookup
             {"one": (1,)},  # ensure_account_exists
-            {"one": (1,)},  # ensure_game_exists
             {"one": (0,)},  # get_account_slot_free
             {"one": (7, "ps5_p1")},  # current assignment for free_adjusted
             {"rowcount": 1},  # update deals
             {"rowcount": 1},  # update deal_items
-            {"one": (900, 7, "ps5_p1", 5, 21)},  # assignment details
+            {"one": (900, 7, "ps5_p1", 5, 55)},  # assignment details
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
@@ -657,7 +719,7 @@ class DealsEndpointsTests(unittest.TestCase):
                 res = client.put(
                     "/deals/77",
                     headers=self._auth_headers(role="manager"),
-                    json={"deal_type_code": "rental", "slot_type_code": "ps5_p1", "account_id": 7, "game_id": 21},
+                    json={"deal_type_code": "rental", "slot_type_code": "ps5_p1", "account_id": 7, "product_id": 55},
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
@@ -674,7 +736,6 @@ class DealsEndpointsTests(unittest.TestCase):
             "A-100",
             "admin",
             77,
-            None,
             None,
             None,
             500.0,
@@ -723,7 +784,6 @@ class DealsEndpointsTests(unittest.TestCase):
             77,
             None,
             None,
-            None,
             500.0,
             100.0,
             datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
@@ -769,7 +829,6 @@ class DealsEndpointsTests(unittest.TestCase):
             77,
             None,
             None,
-            None,
             500.0,
             100.0,
             datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
@@ -811,7 +870,6 @@ class DealsEndpointsTests(unittest.TestCase):
             "A-100",
             "manager-name",
             77,
-            None,
             None,
             None,
             500.0,
@@ -859,7 +917,6 @@ class DealsEndpointsTests(unittest.TestCase):
             "A-100",
             "manager-name",
             77,
-            None,
             None,
             None,
             500.0,
@@ -911,7 +968,6 @@ class DealsEndpointsTests(unittest.TestCase):
             77,
             None,
             None,
-            None,
             500.0,
             100.0,
             datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
@@ -959,7 +1015,6 @@ class DealsEndpointsTests(unittest.TestCase):
             77,
             None,
             None,
-            None,
             500.0,
             100.0,
             datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
@@ -1001,7 +1056,6 @@ class DealsEndpointsTests(unittest.TestCase):
             None,
             "admin",
             77,
-            None,
             None,
             None,
             0.0,
@@ -1047,7 +1101,6 @@ class DealsEndpointsTests(unittest.TestCase):
             "admin",
             77,
             7,
-            21,
             2,
             500.0,
             100.0,

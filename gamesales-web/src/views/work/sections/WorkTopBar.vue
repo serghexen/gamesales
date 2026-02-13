@@ -17,8 +17,8 @@
         <router-link class="tab" :class="{ active: activeTab === 'accounts' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'accounts' } }">
           Аккаунты
         </router-link>
-        <router-link class="tab" :class="{ active: activeTab === 'games' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'games' } }">
-          Игры
+        <router-link class="tab" :class="{ active: activeTab === 'products' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'products' } }">
+          Товары
         </router-link>
         <router-link
           v-if="isAdmin"

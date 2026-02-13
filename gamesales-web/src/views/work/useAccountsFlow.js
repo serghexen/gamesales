@@ -14,9 +14,9 @@ export function useAccountsFlow({
   accountEditMode,
   editAccount,
   newAccount,
-  accountGameSearch,
-  editAccountGameSearch,
-  accountGamesLoading,
+  accountProductSearch,
+  editAccountProductSearch,
+  accountProductsLoading,
   accountDeals,
   accountDealsError,
   accountDealsLoading,
@@ -109,16 +109,17 @@ export function useAccountsFlow({
     }
   }
 
-  // Загружает игры, привязанные к аккаунту.
-  async function loadAccountGames(accountId) {
-    accountGamesLoading.value = true
+  // Загружает товары, привязанные к аккаунту.
+  async function loadAccountProducts(accountId) {
+    accountProductsLoading.value = true
     try {
-      const items = await apiGet(`/accounts/${accountId}/games`, { token: auth.state.token })
-      editAccount.game_ids = (items || []).map((g) => g.game_id)
+      // Используем только новый product endpoint для привязок аккаунта.
+      const items = await apiGet(`/accounts/${accountId}/products`, { token: auth.state.token })
+      editAccount.product_ids = [...new Set((items || []).map((p) => Number(p?.product_id || 0)).filter(Boolean))]
     } catch {
-      editAccount.game_ids = []
+      editAccount.product_ids = []
     } finally {
-      accountGamesLoading.value = false
+      accountProductsLoading.value = false
     }
   }
 
@@ -131,7 +132,8 @@ export function useAccountsFlow({
       const params = new URLSearchParams()
       if (accountFilters.search_q) params.set('q', accountFilters.search_q)
       if (accountFilters.login_q) params.set('login_q', accountFilters.login_q)
-      if (accountFilters.game_q) params.set('game_q', accountFilters.game_q)
+      // Передаем фильтр товара через product_q.
+      if (accountFilters.product_q) params.set('product_q', accountFilters.product_q)
       if (accountFilters.region_q) params.set('region_q', accountFilters.region_q)
       if (accountFilters.status_q) params.set('status_q', accountFilters.status_q)
       if (accountFilters.date_from) params.set('date_from', accountFilters.date_from)
@@ -234,11 +236,11 @@ export function useAccountsFlow({
         account_password: editAccount.account_password,
         auth_code: editAccount.auth_code,
         reserve_text: editAccount.reserve_text,
-        game_ids: [...(editAccount.game_ids || [])],
+        product_ids: [...(editAccount.product_ids || [])],
       }
     }
     syncInitialAccountSnapshot()
-    loadAccountGames(a.account_id).finally(() => {
+    loadAccountProducts(a.account_id).finally(() => {
       if (editAccount.open && accountEditMode.value === 'view') syncInitialAccountSnapshot()
     })
     loadAccountDeals(a.account_id)
@@ -252,7 +254,7 @@ export function useAccountsFlow({
     accountModalMode.value = 'create'
     accountEditMode.value = 'edit'
     editAccount.open = true
-    accountGamesLoading.value = false
+    accountProductsLoading.value = false
     accountsError.value = null
     accountsOk.value = null
     newAccount.login_name = ''
@@ -264,8 +266,8 @@ export function useAccountsFlow({
     newAccount.account_password = ''
     newAccount.reserve_text = ''
     newAccount.auth_code = ''
-    newAccount.game_ids = []
-    accountGameSearch.value = ''
+    newAccount.product_ids = []
+    accountProductSearch.value = ''
     initialEditAccountSnapshot = null
   }
 
@@ -281,7 +283,7 @@ export function useAccountsFlow({
       account_password: '',
       reserve_text: '',
       auth_code: '',
-      game_ids: [],
+      product_ids: [],
     }) === false
     const editCurrent = {
       login_name: editAccount.login_name,
@@ -294,7 +296,7 @@ export function useAccountsFlow({
       account_password: editAccount.account_password,
       auth_code: editAccount.auth_code,
       reserve_text: editAccount.reserve_text,
-      game_ids: [...(editAccount.game_ids || [])],
+      product_ids: [...(editAccount.product_ids || [])],
     }
     const editDirty = accountModalMode.value === 'edit' && accountEditMode.value === 'edit' && !isSameNormalized(editCurrent, initialEditAccountSnapshot || {})
     if (guardEnabled && !(await confirmDiscardIfNeeded(createDirty || editDirty, { requestConfirm: requestUnsavedConfirm }))) return false
@@ -319,8 +321,8 @@ export function useAccountsFlow({
     editAccount.has_account = false
     editAccount.has_email = false
     editAccount.has_auth = false
-    editAccount.game_ids = []
-    editAccountGameSearch.value = ''
+    editAccount.product_ids = []
+    editAccountProductSearch.value = ''
     accountDeals.value = []
     accountDealsError.value = null
     accountDealsLoading.value = false
@@ -337,8 +339,8 @@ export function useAccountsFlow({
     newAccount.account_password = ''
     newAccount.reserve_text = ''
     newAccount.auth_code = ''
-    newAccount.game_ids = []
-    accountGameSearch.value = ''
+    newAccount.product_ids = []
+    accountProductSearch.value = ''
     initialEditAccountSnapshot = null
     return true
   }
@@ -409,10 +411,10 @@ export function useAccountsFlow({
         await Promise.all(secretTasks)
       }
 
-      if (newAccount.game_ids.length) {
+      if (newAccount.product_ids.length) {
         await apiPut(
-          `/accounts/${created.account_id}/games`,
-          { game_ids: newAccount.game_ids },
+          `/accounts/${created.account_id}/products`,
+          { product_ids: newAccount.product_ids },
           { token: auth.state.token }
         )
       }
@@ -427,8 +429,8 @@ export function useAccountsFlow({
       newAccount.account_password = ''
       newAccount.reserve_text = ''
       newAccount.auth_code = ''
-      newAccount.game_ids = []
-      accountGameSearch.value = ''
+      newAccount.product_ids = []
+      accountProductSearch.value = ''
       await loadAccounts()
       await loadAccountsAll()
       cancelEditAccount()
@@ -538,8 +540,8 @@ export function useAccountsFlow({
       }
 
       await apiPut(
-        `/accounts/${editAccount.account_id}/games`,
-        { game_ids: editAccount.game_ids || [] },
+        `/accounts/${editAccount.account_id}/products`,
+        { product_ids: editAccount.product_ids || [] },
         { token: auth.state.token }
       )
 
@@ -579,7 +581,7 @@ export function useAccountsFlow({
     getReserveSecrets,
     getAuthSecret,
     loadAccountSecrets,
-    loadAccountGames,
+    loadAccountProducts,
     loadAccounts,
     loadAccountsAll,
     loadAccountDeals,

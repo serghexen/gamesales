@@ -5,43 +5,43 @@ export function useWorkActions({
   mapApiError,
   loadDeals,
   loadAccounts,
-  loadGames,
+  loadProducts,
   accountsPage,
   accountsPageInput,
-  gamesPage,
-  gamesPageInput,
+  productsPage,
+  productsPageInput,
   newDeal,
   editDeal,
-  newDealGameSearch,
-  editDealGameSearch,
-  quickNewGame,
-  quickEditGame,
-  quickNewGameError,
-  quickEditGameError,
+  newDealProductSearch,
+  editDealProductSearch,
+  quickNewProduct,
+  quickEditProduct,
+  quickNewProductError,
+  quickEditProductError,
   accountSlotAssignments,
   accountSlotAssignmentsLoading,
   accountSlotAssignmentsError,
-  gameSlotAssignments,
-  gameSlotAssignmentsLoading,
-  gameSlotAssignmentsError,
+  productSlotAssignments,
+  productSlotAssignmentsLoading,
+  productSlotAssignmentsError,
   accountSlotReleaseLoading,
   editAccount,
   showDealForm,
   dealError,
   loadAccountSlotStatus,
   loadDealAccountAssignments,
-  loadDealAccountsForGame,
-  loadDealGameAssignments,
-  gameAccountsSort,
-  gameAccountsPage,
-  gameAccountsTotalPages,
-  closeGameModal,
+  loadDealAccountsForProduct,
+  loadDealProductAssignments,
+  productAccountsSort,
+  productAccountsPage,
+  productAccountsTotalPages,
+  closeProductModal,
   goToAccount,
 }) {
-  // Переход из карточки игры прямо к аккаунту.
-  function openAccountFromGame(login) {
+  // Переход из карточки товара прямо к аккаунту.
+  function openAccountFromProduct(login) {
     if (!login) return
-    closeGameModal()
+    closeProductModal()
     goToAccount(login)
   }
 
@@ -57,31 +57,31 @@ export function useWorkActions({
     loadAccounts()
   }
 
-  // Применяет поиск по играм.
-  function applyGameSearch() {
-    gamesPage.value = 1
-    gamesPageInput.value = 1
-    loadGames()
+  // Применяет поиск по товарам.
+  function applyProductSearch() {
+    productsPage.value = 1
+    productsPageInput.value = 1
+    loadProducts()
   }
 
-  function syncNewDealGameSearch() {
-    newDealGameSearch.value = ''
+  function syncNewDealProductSearch() {
+    newDealProductSearch.value = ''
   }
 
-  function syncEditDealGameSearch() {
-    editDealGameSearch.value = ''
+  function syncEditDealProductSearch() {
+    editDealProductSearch.value = ''
   }
 
-  function onNewDealGameSearch() {
-    if (newDeal.game_id) newDeal.game_id = ''
-    quickNewGameError.value = ''
-    if (newDealGameSearch.value) quickNewGame.title = newDealGameSearch.value
+  function onNewDealProductSearch() {
+    if (newDeal.product_id) newDeal.product_id = ''
+    quickNewProductError.value = ''
+    if (newDealProductSearch.value) quickNewProduct.title = newDealProductSearch.value
   }
 
-  function onEditDealGameSearch() {
-    if (editDeal.game_id) editDeal.game_id = ''
-    quickEditGameError.value = ''
-    if (editDealGameSearch.value) quickEditGame.title = editDealGameSearch.value
+  function onEditDealProductSearch() {
+    if (editDeal.product_id) editDeal.product_id = ''
+    quickEditProductError.value = ''
+    if (editDealProductSearch.value) quickEditProduct.title = editDealProductSearch.value
   }
 
   // Подгружает назначения слотов у аккаунта для модалки аккаунта.
@@ -103,22 +103,23 @@ export function useWorkActions({
     }
   }
 
-  // Подгружает назначения слотов у игры для модалки игры.
-  async function loadGameSlotAssignments(gameId) {
-    if (!gameId) {
-      gameSlotAssignments.value = []
+  // Подгружает назначения слотов у товара по product-маршруту.
+  async function loadProductSlotAssignments(productId) {
+    if (!productId) {
+      productSlotAssignments.value = []
       return
     }
-    gameSlotAssignmentsLoading.value = true
-    gameSlotAssignmentsError.value = null
+    productSlotAssignmentsLoading.value = true
+    productSlotAssignmentsError.value = null
     try {
-      const data = await apiGet(`/games/${gameId}/slot-assignments`, { token: auth.state.token })
-      gameSlotAssignments.value = data || []
+      // Используем только product-маршрут назначений слотов.
+      const data = await apiGet(`/products/${productId}/slot-assignments`, { token: auth.state.token })
+      productSlotAssignments.value = data || []
     } catch (e) {
-      gameSlotAssignmentsError.value = mapApiError(e?.message)
-      gameSlotAssignments.value = []
+      productSlotAssignmentsError.value = mapApiError(e?.message)
+      productSlotAssignments.value = []
     } finally {
-      gameSlotAssignmentsLoading.value = false
+      productSlotAssignmentsLoading.value = false
     }
   }
 
@@ -135,18 +136,18 @@ export function useWorkActions({
       if (editDeal.open && editDeal.account_id) {
         await loadAccountSlotStatus('edit')
         await loadDealAccountAssignments('edit')
-        await loadDealAccountsForGame('edit')
+        await loadDealAccountsForProduct('edit')
       }
       if (showDealForm.value && newDeal.account_id) {
         await loadAccountSlotStatus('new')
         await loadDealAccountAssignments('new')
-        await loadDealAccountsForGame('new')
+        await loadDealAccountsForProduct('new')
       }
       if (editDeal.open) {
-        await loadDealGameAssignments('edit')
+        await loadDealProductAssignments('edit')
       }
       if (showDealForm.value) {
-        await loadDealGameAssignments('new')
+        await loadDealProductAssignments('new')
       }
     } catch (e) {
       dealError.value = mapApiError(e?.message)
@@ -155,43 +156,43 @@ export function useWorkActions({
     }
   }
 
-  // Переключает сортировку таблицы аккаунтов внутри модалки игры.
-  function sortGameAccounts(key) {
-    const current = gameAccountsSort.value
+  // Переключает сортировку таблицы аккаунтов внутри модалки товара.
+  function sortProductAccounts(key) {
+    const current = productAccountsSort.value
     if (current.key === key) {
       current.dir = current.dir === 'asc' ? 'desc' : 'asc'
     } else {
-      gameAccountsSort.value = { key, dir: 'asc' }
+      productAccountsSort.value = { key, dir: 'asc' }
     }
-    gameAccountsPage.value = 1
+    productAccountsPage.value = 1
   }
 
-  function nextGameAccountsPage() {
-    if (gameAccountsPage.value < gameAccountsTotalPages.value) {
-      gameAccountsPage.value += 1
+  function nextProductAccountsPage() {
+    if (productAccountsPage.value < productAccountsTotalPages.value) {
+      productAccountsPage.value += 1
     }
   }
 
-  function prevGameAccountsPage() {
-    if (gameAccountsPage.value > 1) {
-      gameAccountsPage.value -= 1
+  function prevProductAccountsPage() {
+    if (productAccountsPage.value > 1) {
+      productAccountsPage.value -= 1
     }
   }
 
   return {
-    openAccountFromGame,
+    openAccountFromProduct,
+    applyProductSearch,
+    loadProductSlotAssignments,
+    sortProductAccounts,
+    nextProductAccountsPage,
+    prevProductAccountsPage,
     applyDealSearch,
     applyAccountSearch,
-    applyGameSearch,
-    syncNewDealGameSearch,
-    syncEditDealGameSearch,
-    onNewDealGameSearch,
-    onEditDealGameSearch,
+    syncNewDealProductSearch,
+    syncEditDealProductSearch,
+    onNewDealProductSearch,
+    onEditDealProductSearch,
     loadAccountSlotAssignments,
-    loadGameSlotAssignments,
     releaseSlotAssignment,
-    sortGameAccounts,
-    nextGameAccountsPage,
-    prevGameAccountsPage,
   }
 }

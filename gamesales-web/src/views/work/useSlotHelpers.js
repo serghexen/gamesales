@@ -2,18 +2,23 @@ import { computed } from 'vue'
 
 export function useSlotHelpers({
   slotTypes,
-  gamesAll,
+  productsAll,
   newDeal,
   editDeal,
-  dealAccountsForGameNew,
-  dealAccountsForGameEdit,
+  dealAccountsForProductNew,
+  dealAccountsForProductEdit,
   dealSlotAvailabilityNew,
   dealSlotAvailabilityEdit,
-  hasAnyGameAssignmentsNew,
-  hasAnyGameAssignmentsEdit,
+  hasAnyProductAssignmentsNew,
+  hasAnyProductAssignmentsEdit,
   accountSlotAssignments,
   accountSlotAssignmentsSort,
 }) {
+  // Используем только product-first входы в расчетах слотов сделки.
+  const dealAccountsNew = dealAccountsForProductNew
+  const dealAccountsEdit = dealAccountsForProductEdit
+  const hasAssignmentsNew = hasAnyProductAssignmentsNew
+  const hasAssignmentsEdit = hasAnyProductAssignmentsEdit
   // Читаем человеко-понятное имя типа слота.
   const getSlotTypeLabel = (code) => {
     if (!code) return '—'
@@ -116,25 +121,25 @@ export function useSlotHelpers({
     return Number(slot?.free_slots || 0)
   }
 
-  const getGameById = (gameId) => (gamesAll.value || []).find((g) => g.game_id === gameId)
+  const getProductById = (productId) => (productsAll.value || []).find((item) => item.product_id === productId)
 
-  const getGameLabelById = (gameId) => {
-    const game = getGameById(gameId)
-    return game?.title || (gameId ? String(gameId) : '—')
+  const getProductLabelById = (idValue) => {
+    // Для формы сделок используем только product_id.
+    const product = getProductById(idValue)
+    return product?.title || (idValue ? String(idValue) : '—')
   }
 
-  const getGamePlatformCodes = (gameId) => {
-    const game = getGameById(gameId)
-    const codes = Array.isArray(game?.platform_codes) ? game.platform_codes : []
+  const getProductPlatformCodes = (productId) => {
+    const product = getProductById(productId)
+    const codes = Array.isArray(product?.platform_codes) ? product.platform_codes : []
     return codes.map((c) => String(c).toLowerCase())
   }
 
-  // Можно ли использовать тип слота для выбранной игры.
-  const isSlotTypeSupportedForGame = (slotTypeCode, gameId) => {
-    if (!slotTypeCode || !gameId) return false
+  const isSlotTypeSupportedForProduct = (slotTypeCode, productId) => {
+    if (!slotTypeCode || !productId) return false
     const type = slotTypes.value.find((t) => t.code === slotTypeCode)
     if (!type?.platform_code) return true
-    const platforms = getGamePlatformCodes(gameId)
+    const platforms = getProductPlatformCodes(productId)
     if (!platforms.length) return true
     const hasPs4 = platforms.includes('ps4')
     const hasPs5 = platforms.includes('ps5')
@@ -147,7 +152,7 @@ export function useSlotHelpers({
     const isEdit = target === 'edit'
     const accountId = isEdit ? editDeal.account_id : newDeal.account_id
     if (!accountId) return []
-    const list = isEdit ? dealAccountsForGameEdit.value : dealAccountsForGameNew.value
+    const list = isEdit ? dealAccountsEdit.value : dealAccountsNew.value
     const account = (list || []).find((a) => a.account_id === accountId)
     const codes = Array.isArray(account?.platform_codes) ? account.platform_codes : []
     return codes.map((c) => String(c).toLowerCase())
@@ -156,7 +161,7 @@ export function useSlotHelpers({
   const isSlotTypeSupportedForDeal = (slotTypeCode, target) => {
     if (!slotTypeCode) return false
     const isEdit = target === 'edit'
-    const gameId = isEdit ? editDeal.game_id : newDeal.game_id
+    const productId = isEdit ? editDeal.product_id : newDeal.product_id
     const type = slotTypes.value.find((t) => t.code === slotTypeCode)
     if (!type?.platform_code) return true
     const accountPlatforms = getAccountPlatformCodesForDeal(target)
@@ -165,14 +170,14 @@ export function useSlotHelpers({
       if (hasPs4) return true
       return String(type.platform_code).toLowerCase() === 'ps5'
     }
-    return isSlotTypeSupportedForGame(slotTypeCode, gameId)
+    return isSlotTypeSupportedForProduct(slotTypeCode, productId)
   }
 
   // Формирует варианты типов слотов для формы сделки.
   const getDealSlotTypeOptions = (target) => {
     const isEdit = target === 'edit'
     const availability = isEdit ? dealSlotAvailabilityEdit.value : dealSlotAvailabilityNew.value
-    const hasAssignments = isEdit ? hasAnyGameAssignmentsEdit.value : hasAnyGameAssignmentsNew.value
+    const hasAssignments = isEdit ? hasAssignmentsEdit.value : hasAssignmentsNew.value
     return (slotTypes.value || []).map((t) => {
       const supported = isSlotTypeSupportedForDeal(t.code, target)
       const hasFree = availability?.[t.code]?.hasFree
@@ -193,9 +198,9 @@ export function useSlotHelpers({
   // Проверка: выбранный тип слота сейчас недоступен для сделки.
   const isDealSlotTypeUnsupported = (target) => {
     const isEdit = target === 'edit'
-    const gameId = isEdit ? editDeal.game_id : newDeal.game_id
+    const productId = isEdit ? editDeal.product_id : newDeal.product_id
     const slotTypeCode = isEdit ? editDeal.slot_type_code : newDeal.slot_type_code
-    if (!gameId || !slotTypeCode) return false
+    if (!productId || !slotTypeCode) return false
     return !isSlotTypeSupportedForDeal(slotTypeCode, target)
   }
 
@@ -208,7 +213,7 @@ export function useSlotHelpers({
     if (availability && Object.prototype.hasOwnProperty.call(availability, slotTypeCode)) {
       return Boolean(availability[slotTypeCode]?.hasFree)
     }
-    const list = isEdit ? dealAccountsForGameEdit.value : dealAccountsForGameNew.value
+    const list = isEdit ? dealAccountsEdit.value : dealAccountsNew.value
     return Array.isArray(list) && list.length > 0
   }
 
@@ -222,8 +227,8 @@ export function useSlotHelpers({
     getAccountFreeTotal,
     formatAccountSlots,
     getAccountFreeSlots,
-    getGameLabelById,
-    isSlotTypeSupportedForGame,
+    getProductLabelById,
+    isSlotTypeSupportedForProduct,
     getDealSlotTypeOptions,
     getDealSlotTypeLabel,
     isDealSlotTypeUnsupported,

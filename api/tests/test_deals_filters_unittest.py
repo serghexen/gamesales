@@ -7,7 +7,6 @@ from app import build_deals_filters
 def call_build_deals_filters(**overrides):
     base = dict(
         account_id=None,
-        game_id=None,
         platform_code=None,
         q=None,
         deal_type_code=None,
@@ -23,7 +22,7 @@ def call_build_deals_filters(**overrides):
         notes_q=None,
         account_q=None,
         region_q=None,
-        game_q=None,
+        product_q=None,
         platform_q=None,
         type_q=None,
         status_q=None,
@@ -47,7 +46,6 @@ class DealsFiltersTests(unittest.TestCase):
     def test_build_deals_filters_simple_fields(self):
         where_sql, params = call_build_deals_filters(
             account_id=11,
-            game_id=22,
             platform_code="ps5",
             deal_type_code="sale",
             status_code="open",
@@ -55,13 +53,12 @@ class DealsFiltersTests(unittest.TestCase):
             source_id=5,
         )
         self.assertIn("di.account_id = %s", where_sql)
-        self.assertIn("di.game_id = %s", where_sql)
         self.assertIn("p.code = %s", where_sql)
         self.assertIn("d.deal_type_code = %s", where_sql)
         self.assertIn("d.status_code = %s", where_sql)
         self.assertIn("d.flow_status_code = %s", where_sql)
         self.assertIn("c.source_id = %s", where_sql)
-        self.assertEqual(params, [11, 22, "ps5", "sale", "open", "new", 5])
+        self.assertEqual(params, [11, "ps5", "sale", "open", "new", 5])
 
     # Текстовый q должен добавлять 8 ILIKE-параметров с одним и тем же шаблоном.
     def test_build_deals_filters_global_query(self):

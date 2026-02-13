@@ -3,6 +3,7 @@ import { watch } from 'vue'
 export function useWorkLifecycleWatchers({
   route,
   TAB_KEYS,
+  normalizeWorkTab,
   activeTab,
   telegram,
   startTelegramPolling,
@@ -16,7 +17,10 @@ export function useWorkLifecycleWatchers({
   watch(
     () => route.query.tab,
     (tab) => {
-      const next = TAB_KEYS.includes(String(tab)) ? String(tab) : 'deals'
+      // При чтении из URL поддерживаем alias products как вкладку товаров.
+      const next = typeof normalizeWorkTab === 'function'
+        ? normalizeWorkTab(tab)
+        : (TAB_KEYS.includes(String(tab)) ? String(tab) : 'deals')
       if (activeTab.value !== next) {
         activeTab.value = next
       }

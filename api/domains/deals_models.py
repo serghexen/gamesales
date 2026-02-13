@@ -23,7 +23,7 @@ class RentalCreate(BaseModel):
     end_at: Optional[datetime] = None
     slots_used: int = 1
     price: float = 0
-    game_id: Optional[int] = None
+    product_id: Optional[int] = None
     platform_code: Optional[str] = None
     slot_type_code: Optional[str] = None
     source_id: Optional[int] = None
@@ -38,7 +38,7 @@ class RentalCreate(BaseModel):
 class DealCreate(BaseModel):
     deal_type_code: str = Field(..., description="sale/rental")
     account_id: Optional[int] = None
-    game_id: Optional[int] = None
+    product_id: Optional[int] = None
     customer_nickname: Optional[str] = None
     order_number: Optional[str] = None
     responsible_username: Optional[str] = None
@@ -50,7 +50,7 @@ class DealCreate(BaseModel):
     slot_type_code: Optional[str] = None
     price: float = 0
     purchase_cost: float = 0
-    game_link: Optional[str] = None
+    product_link: Optional[str] = None
     purchase_at: Optional[datetime] = None
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
@@ -67,7 +67,7 @@ class DealCreate(BaseModel):
 class DealUpdate(BaseModel):
     deal_type_code: Optional[str] = None
     account_id: Optional[int] = None
-    game_id: Optional[int] = None
+    product_id: Optional[int] = None
     customer_nickname: Optional[str] = None
     order_number: Optional[str] = None
     responsible_username: Optional[str] = None
@@ -79,7 +79,7 @@ class DealUpdate(BaseModel):
     slot_type_code: Optional[str] = None
     price: Optional[float] = None
     purchase_cost: Optional[float] = None
-    game_link: Optional[str] = None
+    product_link: Optional[str] = None
     purchase_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -106,9 +106,9 @@ class DealListItem(BaseModel):
     account_id: Optional[int] = None
     account_login: Optional[str]
     region_code: Optional[str]
-    game_id: Optional[int]
-    game_title: Optional[str]
-    game_short_title: Optional[str] = None
+    product_id: Optional[int] = None
+    product_title: Optional[str] = None
+    product_short_title: Optional[str] = None
     platform_code: Optional[str]
     slot_type_code: Optional[str] = None
     customer_nickname: Optional[str]
@@ -119,7 +119,7 @@ class DealListItem(BaseModel):
     source_id: Optional[int]
     price: float
     purchase_cost: Optional[float] = None
-    game_link: Optional[str] = None
+    product_link: Optional[str] = None
     purchase_at: Optional[datetime]
     created_at: datetime
     completed_at: Optional[datetime] = None

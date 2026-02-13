@@ -4,16 +4,16 @@ import { reactive, ref } from 'vue'
 import { useDealsViewState } from '../useDealsViewState.js'
 
 function createHarness() {
-  const gamesAll = ref([
-    { game_id: 1, title: 'God of War' },
-    { game_id: 2, title: 'FIFA 24' },
+  const productsAll = ref([
+    { product_id: 101, title: 'God of War' },
+    { product_id: 102, title: 'FIFA 24' },
   ])
-  const newDeal = reactive({ game_id: null, slot_type_code: '' })
-  const editDeal = reactive({ game_id: null, slot_type_code: '' })
-  const newDealGameSearch = ref('')
-  const editDealGameSearch = ref('')
-  const dealAccountsForGameNew = ref([{ account_id: 10 }])
-  const dealAccountsForGameEdit = ref([{ account_id: 20 }])
+  const newDeal = reactive({ product_id: null, slot_type_code: '' })
+  const editDeal = reactive({ product_id: null, slot_type_code: '' })
+  const newDealProductSearch = ref('')
+  const editDealProductSearch = ref('')
+  const dealAccountsForProductNew = ref([{ account_id: 10 }])
+  const dealAccountsForProductEdit = ref([{ account_id: 20 }])
   const dealGameAssignmentsNew = ref([
     { slot_type_code: 'full', released_at: null },
     { slot_type_code: 'full', released_at: '2026-01-01' },
@@ -23,13 +23,13 @@ function createHarness() {
   ])
 
   const state = useDealsViewState({
-    gamesAll,
+    productsAll,
     newDeal,
     editDeal,
-    newDealGameSearch,
-    editDealGameSearch,
-    dealAccountsForGameNew,
-    dealAccountsForGameEdit,
+    newDealProductSearch,
+    editDealProductSearch,
+    dealAccountsForProductNew,
+    dealAccountsForProductEdit,
     dealGameAssignmentsNew,
     dealGameAssignmentsEdit,
   })
@@ -38,33 +38,33 @@ function createHarness() {
     state,
     newDeal,
     editDeal,
-    newDealGameSearch,
-    editDealGameSearch,
+    newDealProductSearch,
+    editDealProductSearch,
   }
 }
 
 describe('useDealsViewState', () => {
   it('filters games by search and selected game fallback', () => {
     const h = createHarness()
-    h.newDealGameSearch.value = 'god'
-    expect(h.state.filteredNewDealGames.value.map((g) => g.game_id)).toEqual([1])
+    h.newDealProductSearch.value = 'god'
+    expect(h.state.filteredNewDealProducts.value.map((g) => g.product_id)).toEqual([101])
 
-    h.newDealGameSearch.value = ''
-    h.newDeal.game_id = 2
-    expect(h.state.filteredNewDealGames.value.map((g) => g.game_id)).toEqual([2])
+    h.newDealProductSearch.value = ''
+    h.newDeal.product_id = 102
+    expect(h.state.filteredNewDealProducts.value.map((g) => g.product_id)).toEqual([102])
   })
 
   it('reports no matches for non-empty search', () => {
     const h = createHarness()
-    h.editDealGameSearch.value = 'zzz'
-    expect(h.state.editDealGameNoMatches.value).toBe(true)
-    expect(h.state.filteredEditDealGames.value).toEqual([])
+    h.editDealProductSearch.value = 'zzz'
+    expect(h.state.editDealProductNoMatches.value).toBe(true)
+    expect(h.state.filteredEditDealProducts.value).toEqual([])
   })
 
   it('returns accounts only when game and slot type are selected', () => {
     const h = createHarness()
     expect(h.state.dealAccountsForNew.value).toEqual([])
-    h.newDeal.game_id = 1
+    h.newDeal.product_id = 101
     h.newDeal.slot_type_code = 'full'
     expect(h.state.dealAccountsForNew.value).toEqual([{ account_id: 10 }])
   })
@@ -74,13 +74,13 @@ describe('useDealsViewState', () => {
     h.newDeal.slot_type_code = 'full'
     h.editDeal.slot_type_code = 'share'
 
-    expect(h.state.dealGameAssignmentsForSelectedSlotNew.value).toEqual([
+    expect(h.state.dealProductAssignmentsForSelectedSlotNew.value).toEqual([
       { slot_type_code: 'full', released_at: null },
     ])
-    expect(h.state.dealGameAssignmentsForSelectedSlotEdit.value).toEqual([
+    expect(h.state.dealProductAssignmentsForSelectedSlotEdit.value).toEqual([
       { slot_type_code: 'share', released_at: null },
     ])
-    expect(h.state.hasAnyGameAssignmentsNew.value).toBe(true)
-    expect(h.state.hasAnyGameAssignmentsEdit.value).toBe(true)
+    expect(h.state.hasAnyProductAssignmentsNew.value).toBe(true)
+    expect(h.state.hasAnyProductAssignmentsEdit.value).toBe(true)
   })
 })

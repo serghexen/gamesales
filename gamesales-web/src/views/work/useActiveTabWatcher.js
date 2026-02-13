@@ -7,13 +7,13 @@ export function useActiveTabWatcher({
   defaultDealsResponsibleFilter,
   mustPrefillDealsResponsible,
   showUserForm,
-  showGameForm,
-  showGameFilters,
+  showProductForm,
+  showProductFilters,
   showDealForm,
   showAccountFilters,
-  activeGameFilter,
+  activeProductFilter,
   activeAccountFilter,
-  editGame,
+  editProduct,
   pwdOk,
   showPwdForm,
   catalogsLoadedOnce,
@@ -21,17 +21,17 @@ export function useActiveTabWatcher({
   sourcesLoadedOnce,
   slotTypesLoadedOnce,
   accountsAllLoadedOnce,
-  gamesAllLoadedOnce,
+  productsAllLoadedOnce,
   dealsBootstrapped,
   platforms,
   regions,
   domains,
   sources,
   slotTypes,
-  games,
-  gamesAll,
+  products,
+  productsAll,
   accountsAll,
-  gamesPage,
+  productsPage,
   accountsPage,
   checkApi,
   loadUsers,
@@ -39,8 +39,8 @@ export function useActiveTabWatcher({
   loadDomains,
   loadSources,
   loadSlotTypes,
-  loadGames,
-  loadGamesAll,
+  loadProducts,
+  loadProductsAll,
   loadAccounts,
   loadAccountsAll,
   loadDeals,
@@ -63,23 +63,23 @@ export function useActiveTabWatcher({
       showPwdForm.value = false
       return
     }
-    if (tab === 'games') {
+    if (tab === 'products') {
       if (!catalogsLoadedOnce.value && (!platforms.value.length || !regions.value.length)) {
         await loadCatalogs()
         if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
       }
-      gamesPage.value = 1
-      if (!games.value.length) {
-        await loadGames()
+      productsPage.value = 1
+      if (!products.value.length) {
+        await loadProducts()
       }
-      if (!gamesAllLoadedOnce.value && !gamesAll.value.length) {
-        await loadGamesAll()
-        if (gamesAll.value.length) gamesAllLoadedOnce.value = true
+      if (!productsAllLoadedOnce.value && !productsAll.value.length) {
+        await loadProductsAll()
+        if (productsAll.value.length) productsAllLoadedOnce.value = true
       }
-      showGameForm.value = false
-      showGameFilters.value = false
-      activeGameFilter.value = ''
-      editGame.open = false
+      showProductForm.value = false
+      showProductFilters.value = false
+      activeProductFilter.value = ''
+      editProduct.open = false
       return
     }
     if (tab === 'accounts') {
@@ -91,9 +91,9 @@ export function useActiveTabWatcher({
         await loadDomains()
         if (domains.value.length) domainsLoadedOnce.value = true
       }
-      if (!gamesAllLoadedOnce.value && !gamesAll.value.length) {
-        await loadGamesAll()
-        if (gamesAll.value.length) gamesAllLoadedOnce.value = true
+      if (!productsAllLoadedOnce.value && !productsAll.value.length) {
+        await loadProductsAll()
+        if (productsAll.value.length) productsAllLoadedOnce.value = true
       }
       if (!slotTypesLoadedOnce.value && !slotTypes.value.length) {
         await loadSlotTypes()
@@ -127,9 +127,9 @@ export function useActiveTabWatcher({
             if (accountsAll.value.length) accountsAllLoadedOnce.value = true
           }))
         }
-        if (!gamesAllLoadedOnce.value) {
-          tasks.push(loadGamesAll().then(() => {
-            if (gamesAll.value.length) gamesAllLoadedOnce.value = true
+        if (!productsAllLoadedOnce.value) {
+          tasks.push(loadProductsAll().then(() => {
+            if (productsAll.value.length) productsAllLoadedOnce.value = true
           }))
         }
         if (!catalogsLoadedOnce.value) {

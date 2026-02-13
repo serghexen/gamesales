@@ -7,7 +7,7 @@ from fastapi.responses import Response
 from openpyxl import Workbook
 
 
-def mount_games_import_routes(
+def mount_products_import_routes(
     app,
     *,
     DB_DSN,
@@ -23,11 +23,11 @@ def mount_games_import_routes(
     ImportReportIn,
     GAME_IMPORT_HEADERS,
 ):
-    @app.get("/games/import/template")
-    def games_import_template(user: UserOut = Depends(require_role("admin"))):
+    @app.get("/products/import/template")
+    def products_import_template(user: UserOut = Depends(require_role("admin"))):
         wb = Workbook()
         ws = wb.active
-        ws.title = "games"
+        ws.title = "products"
         ws.append(GAME_IMPORT_HEADERS)
         for col in range(1, len(GAME_IMPORT_HEADERS) + 1):
             ws.column_dimensions[chr(64 + col)].width = 20
@@ -37,11 +37,11 @@ def mount_games_import_routes(
         return Response(
             content=buf.read(),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": "attachment; filename=games_import_template.xlsx"},
+            headers={"Content-Disposition": "attachment; filename=products_import_template.xlsx"},
         )
 
-    @app.get("/games/import/status")
-    def games_import_status(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    @app.get("/products/import/status")
+    def products_import_status(job_id: str, user: UserOut = Depends(require_role("admin"))):
         status = get_import_progress(job_id)
         if not status:
             return {"phase": "idle", "current": 0, "total": 0, "done": True}
@@ -55,8 +55,8 @@ def mount_games_import_routes(
             "result": status.get("result"),
         }
 
-    @app.post("/games/import/validate")
-    def games_import_validate(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
+    @app.post("/products/import/validate")
+    def products_import_validate(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
         if not file or not file.filename:
             raise HTTPException(400, "file is required")
         if not file.filename.lower().endswith((".xlsx", ".xls")):
@@ -69,8 +69,8 @@ def mount_games_import_routes(
             errors, warnings = validate_game_import_rows(conn, rows, progress_cb=None, check_logo=False)
         return {"ok": len(errors) == 0, "total": len(rows), "errors": errors, "warnings": warnings}
 
-    @app.post("/games/import")
-    def games_import(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
+    @app.post("/products/import")
+    def products_import(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
         if not file or not file.filename:
             raise HTTPException(400, "file is required")
         if not file.filename.lower().endswith((".xlsx", ".xls")):
@@ -84,8 +84,8 @@ def mount_games_import_routes(
         thread.start()
         return {"ok": True, "job_id": job_id}
 
-    @app.post("/games/import/cancel")
-    def games_import_cancel(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    @app.post("/products/import/cancel")
+    def products_import_cancel(job_id: str, user: UserOut = Depends(require_role("admin"))):
         status = get_import_progress(job_id)
         if not status:
             return {"ok": True}
@@ -105,8 +105,8 @@ def mount_games_import_routes(
         )
         return {"ok": True}
 
-    @app.post("/games/import/report")
-    def games_import_report(payload: ImportReportIn, user: UserOut = Depends(require_role("admin"))):
+    @app.post("/products/import/report")
+    def products_import_report(payload: ImportReportIn, user: UserOut = Depends(require_role("admin"))):
         content = build_import_report_xlsx(
             [i.dict() for i in payload.errors],
             [i.dict() for i in payload.warnings],
@@ -114,5 +114,5 @@ def mount_games_import_routes(
         return Response(
             content=content,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": "attachment; filename=games_import_report.xlsx"},
+            headers={"Content-Disposition": "attachment; filename=products_import_report.xlsx"},
         )

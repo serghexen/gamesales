@@ -1,4 +1,5 @@
-export const DEAL_FILTERS_SESSION_KEY_PREFIX = 'gamesales:deal-filters:'
+export const DEAL_FILTERS_SESSION_KEY_PREFIX = 'gsales:deal-filters:'
+const LEGACY_DEAL_FILTERS_SESSION_KEY_PREFIX = 'gamesales:deal-filters:'
 
 // Строит ключ хранения фильтров по пользователю, чтобы сессии не смешивались.
 export function buildDealFiltersSessionKey(username) {
@@ -12,7 +13,9 @@ export function readDealFiltersSession(username, storage = sessionStorage) {
   const key = buildDealFiltersSessionKey(username)
   if (!key) return null
   try {
-    const raw = storage.getItem(key)
+    // Сначала читаем новый ключ, затем legacy-ключ для плавной миграции.
+    const legacyKey = key.replace(DEAL_FILTERS_SESSION_KEY_PREFIX, LEGACY_DEAL_FILTERS_SESSION_KEY_PREFIX)
+    const raw = storage.getItem(key) || storage.getItem(legacyKey)
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object') return null
@@ -56,7 +59,10 @@ export function clearDealFiltersSessionByPrefix(storage = sessionStorage) {
     const keys = []
     for (let i = 0; i < storage.length; i += 1) {
       const key = storage.key(i)
-      if (key && key.startsWith(DEAL_FILTERS_SESSION_KEY_PREFIX)) keys.push(key)
+      if (!key) continue
+      if (key.startsWith(DEAL_FILTERS_SESSION_KEY_PREFIX) || key.startsWith(LEGACY_DEAL_FILTERS_SESSION_KEY_PREFIX)) {
+        keys.push(key)
+      }
     }
     for (const key of keys) storage.removeItem(key)
   } catch {

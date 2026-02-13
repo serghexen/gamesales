@@ -11,25 +11,25 @@ export function useDealsWatchers({
   dealAccountAssignmentsEdit,
   dealSlotAvailabilityNew,
   dealSlotAvailabilityEdit,
-  loadDealAccountsForGame,
-  loadDealGameAssignments,
+  loadDealAccountsForProduct,
+  loadDealProductAssignments,
   loadAccountSlotStatus,
   loadDealAccountAssignments,
   loadDealSlotAvailability,
 }) {
   watch(
-    () => [newDeal.game_id, newDeal.slot_type_code],
+    () => [newDeal.product_id, newDeal.slot_type_code],
     () => {
-      loadDealAccountsForGame('new')
-      if (newDeal.game_id) loadDealGameAssignments('new')
+      loadDealAccountsForProduct('new')
+      if (newDeal.product_id) loadDealProductAssignments('new')
     }
   )
 
   watch(
-    () => [editDeal.game_id, editDeal.slot_type_code],
+    () => [editDeal.product_id, editDeal.slot_type_code],
     () => {
-      if (editDeal.open) loadDealAccountsForGame('edit')
-      if (editDeal.open && editDeal.game_id) loadDealGameAssignments('edit')
+      if (editDeal.open) loadDealAccountsForProduct('edit')
+      if (editDeal.open && editDeal.product_id) loadDealProductAssignments('edit')
     }
   )
 
@@ -50,7 +50,7 @@ export function useDealsWatchers({
   )
 
   watch(
-    () => newDeal.game_id,
+    () => newDeal.product_id,
     (val, prev) => {
       if (val === prev) return
       newDeal.account_id = ''
@@ -63,7 +63,7 @@ export function useDealsWatchers({
   )
 
   watch(
-    () => editDeal.game_id,
+    () => editDeal.product_id,
     (val, prev) => {
       if (!editDeal.open || dealInitLock.value) return
       if (val === prev) return

@@ -38,6 +38,14 @@ class _ScriptedCursor:
         self._current = self._script.pop(0)
         self.rowcount = int(self._current.get("rowcount", 0))
 
+    def executemany(self, sql, seq_of_params):
+        if not self._script:
+            self._current = None
+            self.rowcount = len(list(seq_of_params or []))
+            return
+        self._current = self._script.pop(0)
+        self.rowcount = int(self._current.get("rowcount", 0))
+
     def fetchone(self):
         if not self._current:
             return None
@@ -254,6 +262,384 @@ class AccountsEndpointsTests(unittest.TestCase):
                     json={"secret_key": "pwd", "secret_value": "secret"},
                 )
             self.assertEqual(res.status_code, 403)
+
+    # Проверяем новый безопасный сценарий: доступность слотов по product_id.
+    def test_slot_availability_for_deal_supports_product_id(self):
+        script = [
+            {"one": ("game", False)},
+            {"all": [("ps5_p1", True), ("ps5_p2", False)]},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/for-deal/availability?product_id=55",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(len(res.json()), 2)
+            self.assertEqual(res.json()[0]["slot_type_code"], "ps5_p1")
+
+    # Product-first: доступность слотов должна работать для товара по product_id.
+    def test_slot_availability_for_deal_supports_product_only(self):
+        script = [
+            {"one": ("game", False)},
+            {"all": [("ps5_p1", True)]},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/for-deal/availability?product_id=55",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(len(res.json()), 1)
+            self.assertEqual(res.json()[0]["slot_type_code"], "ps5_p1")
+
+    # Список аккаунтов для шеринга должен поддерживать выбор по product_id.
+    def test_list_accounts_for_deal_supports_product_id(self):
+        script = [
+            {"one": ("game", False)},
+            {
+                "all": [
+                    (
+                        7,
+                        "RU",
+                        "active",
+                        "acc1",
+                        "gmail.com",
+                        "2024-01-10",
+                        "notes",
+                        ["ps5"],
+                        "ps5",
+                        2,
+                        1,
+                        1,
+                    )
+                ]
+            },
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/for-deal?product_id=55&slot_type_code=ps5_p1",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(len(res.json()), 1)
+            self.assertEqual(res.json()[0]["account_id"], 7)
+
+    # Product-first: список аккаунтов для шеринга должен работать по product_id.
+    def test_list_accounts_for_deal_supports_product_only(self):
+        script = [
+            {"one": ("game", False)},
+            {
+                "all": [
+                    (
+                        7,
+                        "RU",
+                        "active",
+                        "acc1",
+                        "gmail.com",
+                        "2024-01-10",
+                        "notes",
+                        ["ps5"],
+                        "ps5",
+                        2,
+                        1,
+                        1,
+                    )
+                ]
+            },
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/for-deal?product_id=55&slot_type_code=ps5_p1",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(len(res.json()), 1)
+            self.assertEqual(res.json()[0]["account_id"], 7)
+
+    # Негейм-товар не должен использоваться для слотов.
+    def test_slot_availability_for_deal_rejects_non_game_product(self):
+        script = [
+            {"one": ("subscription", False)},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/for-deal/availability?product_id=88",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 400)
+
+    # Новый endpoint по товару должен возвращать назначения слотов с product-полями.
+    def test_list_product_slot_assignments_success(self):
+        script = [
+            {"one": (21,)},
+            {
+                "all": [
+                    (
+                        10,
+                        7,
+                        "acc1",
+                        "gmail.com",
+                        "ps5_p1",
+                        20,
+                        "cust",
+                        55,
+                        "Product A",
+                        1001,
+                        2002,
+                        "2026-02-12T10:00:00Z",
+                        None,
+                        "admin",
+                        None,
+                    )
+                ]
+            },
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/products/55/slot-assignments",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(len(res.json()), 1)
+            self.assertEqual(res.json()[0]["product_id"], 55)
+            self.assertEqual(res.json()[0]["product_title"], "Product A")
+
+    # Product endpoint больше не включает legacy назначения без product_id.
+    def test_list_product_slot_assignments_ignores_legacy_without_product_id(self):
+        script = [
+            {"one": (1,)},
+            {"all": []},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/products/55/slot-assignments",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), [])
+
+    # Product endpoint больше не включает legacy сделки без product_id.
+    def test_list_product_accounts_ignores_legacy_without_product_id(self):
+        script = [
+            {"one": (1,)},
+            {"all": []},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/products/55/accounts",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), [])
+
+    # Новый endpoint должен отдавать товары аккаунта в product-формате.
+    def test_list_account_products_success(self):
+        script = [
+            {"one": (1,)},
+            {"all": [(55, "game", "Game A", "GA", "RU", ["ps5"])]},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/7/products",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(len(res.json()), 1)
+            self.assertEqual(res.json()[0]["product_id"], 55)
+            self.assertEqual(res.json()[0]["platform_codes"], ["ps5"])
+
+    # Назначения слотов аккаунта должны отдавать product-поля.
+    def test_list_account_slot_assignments_includes_product_fields(self):
+        script = [
+            {"one": (1,)},
+            {
+                "all": [
+                    (
+                        10,
+                        7,
+                        "acc1",
+                        "gmail.com",
+                        "ps5_p1",
+                        20,
+                        "cust",
+                        55,
+                        "Product A",
+                        1001,
+                        2002,
+                        "2026-02-12T10:00:00Z",
+                        None,
+                        "admin",
+                        None,
+                    )
+                ]
+            },
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/7/slot-assignments",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(len(res.json()), 1)
+            self.assertEqual(res.json()[0]["product_id"], 55)
+            self.assertEqual(res.json()[0]["product_title"], "Product A")
+
+    # Account endpoint больше не включает legacy назначения без product_id.
+    def test_list_account_slot_assignments_ignores_legacy_without_product_id(self):
+        script = [
+            {"one": (1,)},
+            {"all": []},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/7/slot-assignments",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), [])
+
+    # Обновление привязок товаров должно поддерживать product_ids.
+    def test_set_account_products_success(self):
+        script = [
+            {"one": (1,)},
+            {"all": [(55, "game", False)]},
+            {"rowcount": 1},
+            {"rowcount": 1},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/accounts/7/products",
+                    headers=self._auth_headers(role="admin"),
+                    json={"product_ids": [55]},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json()["ok"], True)
+
+    # Product-first: привязка товара к аккаунту должна работать по product_id.
+    def test_set_account_products_supports_product_only(self):
+        script = [
+            {"one": (1,)},
+            {"all": [(55, "game", False)]},
+            {"rowcount": 1},
+            {"rowcount": 1},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/accounts/7/products",
+                    headers=self._auth_headers(role="admin"),
+                    json={"product_ids": [55]},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json()["ok"], True)
+
+    # Legacy game_ids больше не поддерживаются в обновлении товаров аккаунта.
+    def test_set_account_products_rejects_legacy_game_ids(self):
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/accounts/7/products",
+                    headers=self._auth_headers(role="admin"),
+                    json={"game_ids": [21]},
+                )
+            self.assertEqual(res.status_code, 422)
+
+    # Даже при наличии product_ids legacy game_ids должны отклоняться явно.
+    def test_set_account_products_rejects_mixed_product_and_legacy_ids(self):
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/accounts/7/products",
+                    headers=self._auth_headers(role="admin"),
+                    json={"product_ids": [55], "game_ids": [21]},
+                )
+            self.assertEqual(res.status_code, 422)
 
 
 if __name__ == "__main__":
