@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from fastapi import Body, Depends, File, HTTPException, UploadFile
+from fastapi import Body, Depends, HTTPException
 
 
 def mount_products_routes(
@@ -17,8 +17,6 @@ def mount_products_routes(
     get_region_id,
     get_game_platform_codes,
     get_current_user,
-    require_role,
-    encode_b64,
     ProductCreate,
     ProductUpdate,
     ProductOut,
@@ -33,10 +31,9 @@ def mount_products_routes(
             rows = qall(
                 conn,
                 """
-                SELECT st.code, st.name, p.code AS platform_code, st.mode, st.capacity
+                SELECT st.code, st.name, st.platform_code, st.mode, st.capacity
                 FROM app.slot_types st
-                JOIN app.platforms p ON p.platform_id = st.platform_id
-                ORDER BY p.code, st.capacity, st.code
+                ORDER BY st.platform_code, st.capacity, st.code
                 """,
             )
         return [SlotTypeOut(code=r[0], name=r[1], platform_code=r[2], mode=r[3], capacity=int(r[4] or 0)) for r in rows]
@@ -53,7 +50,6 @@ def mount_products_routes(
               p.short_title,
               r.code AS region_code,
               gp.link,
-              gp.logo_url,
               gp.text_lang,
               gp.audio_lang,
               gp.vr_support,
@@ -81,28 +77,14 @@ def mount_products_routes(
             short_title=row[3],
             region_code=row[4],
             link=row[5],
-            logo_url=row[6],
-            text_lang=row[7],
-            audio_lang=row[8],
-            vr_support=row[9],
+            text_lang=row[6],
+            audio_lang=row[7],
+            vr_support=row[8],
             platform_codes=platform_codes,
-            provider=row[10],
-            billing_period=row[11],
-            subscription_notes=row[12],
+            provider=row[9],
+            billing_period=row[10],
+            subscription_notes=row[11],
         )
-
-    # Проверяет, что товар существует и относится к типу game.
-    def ensure_game_product(conn, product_id: int) -> None:
-        row = q1(
-            conn,
-            "SELECT type_code FROM app.products WHERE product_id=%s",
-            (product_id,),
-        )
-        if not row:
-            raise HTTPException(404, "Product not found")
-        type_code = str(row[0] or "").strip().lower()
-        if type_code != "game":
-            raise HTTPException(400, "logo is supported only for game products")
 
     @app.get("/products", response_model=ProductListOut)
     def list_products(
@@ -175,7 +157,6 @@ def mount_products_routes(
                     p.short_title,
                     r.code AS region_code,
                     gp.link,
-                    gp.logo_url,
                     gp.text_lang,
                     gp.audio_lang,
                     gp.vr_support,
@@ -197,7 +178,6 @@ def mount_products_routes(
                     p.short_title,
                     r.code,
                     gp.link,
-                    gp.logo_url,
                     gp.text_lang,
                     gp.audio_lang,
                     gp.vr_support,
@@ -220,7 +200,6 @@ def mount_products_routes(
                   b.short_title,
                   b.region_code,
                   b.link,
-                  b.logo_url,
                   b.text_lang,
                   b.audio_lang,
                   b.vr_support,
@@ -239,7 +218,6 @@ def mount_products_routes(
                   b.short_title,
                   b.region_code,
                   b.link,
-                  b.logo_url,
                   b.text_lang,
                   b.audio_lang,
                   b.vr_support,
@@ -254,7 +232,7 @@ def mount_products_routes(
         items = []
         total = 0
         for row in rows:
-            total = int(row[14] or 0)
+            total = int(row[13] or 0)
             items.append(
                 ProductOut(
                     product_id=int(row[0]),
@@ -263,14 +241,13 @@ def mount_products_routes(
                     short_title=row[3],
                     region_code=row[4],
                     link=row[5],
-                    logo_url=row[6],
-                    text_lang=row[7],
-                    audio_lang=row[8],
-                    vr_support=row[9],
-                    provider=row[10],
-                    billing_period=row[11],
-                    subscription_notes=row[12],
-                    platform_codes=list(row[13] or []),
+                    text_lang=row[6],
+                    audio_lang=row[7],
+                    vr_support=row[8],
+                    provider=row[9],
+                    billing_period=row[10],
+                    subscription_notes=row[11],
+                    platform_codes=list(row[12] or []),
                 )
             )
 
@@ -343,11 +320,10 @@ def mount_products_routes(
                 exec1(
                     conn,
                     """
-                    INSERT INTO app.game_products(product_id, link, logo_url, text_lang, audio_lang, vr_support)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    INSERT INTO app.game_products(product_id, link, text_lang, audio_lang, vr_support)
+                    VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (product_id) DO UPDATE
                     SET link=EXCLUDED.link,
-                        logo_url=EXCLUDED.logo_url,
                         text_lang=EXCLUDED.text_lang,
                         audio_lang=EXCLUDED.audio_lang,
                         vr_support=EXCLUDED.vr_support
@@ -355,7 +331,6 @@ def mount_products_routes(
                     (
                         product_id,
                         payload.link,
-                        payload.logo_url,
                         payload.text_lang,
                         payload.audio_lang,
                         payload.vr_support,
@@ -409,7 +384,7 @@ def mount_products_routes(
                 conn,
                 """
                 SELECT p.type_code, p.title, p.short_title, p.region_id,
-                       gp.link, gp.logo_url, gp.text_lang, gp.audio_lang, gp.vr_support,
+                       gp.link, gp.text_lang, gp.audio_lang, gp.vr_support,
                        sp.provider, sp.billing_period, sp.notes
                 FROM app.products p
                 LEFT JOIN app.game_products gp ON gp.product_id = p.product_id
@@ -450,24 +425,22 @@ def mount_products_routes(
                     raise HTTPException(409, f"Product already exists for platforms: {', '.join(conflicts)}")
 
                 new_link = payload.link if payload.link is not None else row[4]
-                new_logo_url = payload.logo_url if payload.logo_url is not None else row[5]
-                new_text_lang = payload.text_lang if payload.text_lang is not None else row[6]
-                new_audio_lang = payload.audio_lang if payload.audio_lang is not None else row[7]
-                new_vr_support = payload.vr_support if payload.vr_support is not None else row[8]
+                new_text_lang = payload.text_lang if payload.text_lang is not None else row[5]
+                new_audio_lang = payload.audio_lang if payload.audio_lang is not None else row[6]
+                new_vr_support = payload.vr_support if payload.vr_support is not None else row[7]
 
                 exec1(
                     conn,
                     """
-                    INSERT INTO app.game_products(product_id, link, logo_url, text_lang, audio_lang, vr_support)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    INSERT INTO app.game_products(product_id, link, text_lang, audio_lang, vr_support)
+                    VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (product_id) DO UPDATE
                     SET link=EXCLUDED.link,
-                        logo_url=EXCLUDED.logo_url,
                         text_lang=EXCLUDED.text_lang,
                         audio_lang=EXCLUDED.audio_lang,
                         vr_support=EXCLUDED.vr_support
                     """,
-                    (product_id, new_link, new_logo_url, new_text_lang, new_audio_lang, new_vr_support),
+                    (product_id, new_link, new_text_lang, new_audio_lang, new_vr_support),
                 )
 
                 if payload.platform_codes is not None:
@@ -482,9 +455,9 @@ def mount_products_routes(
                             )
 
             if type_code == "subscription":
-                new_provider = payload.provider if payload.provider is not None else row[9]
-                new_billing_period = payload.billing_period if payload.billing_period is not None else row[10]
-                new_notes = payload.subscription_notes if payload.subscription_notes is not None else row[11]
+                new_provider = payload.provider if payload.provider is not None else row[8]
+                new_billing_period = payload.billing_period if payload.billing_period is not None else row[9]
+                new_notes = payload.subscription_notes if payload.subscription_notes is not None else row[10]
                 exec1(
                     conn,
                     """
@@ -521,61 +494,5 @@ def mount_products_routes(
             if not row:
                 raise HTTPException(404, "Product not found")
             exec1(conn, "UPDATE app.products SET is_archived=true WHERE product_id=%s", (product_id,))
-            conn.commit()
-        return {"ok": True}
-
-    @app.get("/products/{product_id}/logo")
-    def get_product_logo(product_id: int, user: UserOut = Depends(get_current_user)):
-        with psycopg.connect(DB_DSN) as conn:
-            ensure_game_product(conn, product_id)
-            row = q1(
-                conn,
-                "SELECT logo_blob, logo_mime FROM app.game_products WHERE product_id=%s",
-                (product_id,),
-            )
-            blob, mime = row if row else (None, None)
-            if not blob or not mime:
-                raise HTTPException(404, "Logo not found")
-        return {"mime": mime, "data_b64": encode_b64(blob)}
-
-    @app.post("/products/{product_id}/logo")
-    def upload_product_logo(
-        product_id: int,
-        file: UploadFile = File(...),
-        user: UserOut = Depends(require_role("admin")),
-    ):
-        if not file or not file.content_type:
-            raise HTTPException(400, "file is required")
-        if file.content_type not in ("image/jpeg", "image/png", "image/webp"):
-            raise HTTPException(400, "Only jpg, png, webp are allowed")
-        content = file.file.read()
-        if content is None:
-            raise HTTPException(400, "file is required")
-        if len(content) > 5 * 1024 * 1024:
-            raise HTTPException(400, "File too large. Max 5MB")
-        with psycopg.connect(DB_DSN) as conn:
-            ensure_game_product(conn, product_id)
-            exec1(
-                conn,
-                """
-                INSERT INTO app.game_products(product_id, logo_blob, logo_mime)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (product_id) DO UPDATE
-                SET logo_blob=EXCLUDED.logo_blob, logo_mime=EXCLUDED.logo_mime
-                """,
-                (product_id, content, file.content_type),
-            )
-            conn.commit()
-        return {"ok": True}
-
-    @app.delete("/products/{product_id}/logo")
-    def delete_product_logo(product_id: int, user: UserOut = Depends(require_role("admin"))):
-        with psycopg.connect(DB_DSN) as conn:
-            ensure_game_product(conn, product_id)
-            exec1(
-                conn,
-                "UPDATE app.game_products SET logo_blob=NULL, logo_mime=NULL WHERE product_id=%s",
-                (product_id,),
-            )
             conn.commit()
         return {"ok": True}

@@ -81,7 +81,6 @@ class ProductsEndpointsTests(unittest.TestCase):
                         "GA",
                         "RU",
                         "https://game",
-                        "https://img",
                         "ru",
                         "ru",
                         "no",
@@ -107,6 +106,29 @@ class ProductsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.json()["items"][0]["product_id"], 55)
             self.assertEqual(res.json()["items"][0]["platform_codes"], ["ps4", "ps5"])
 
+    def test_list_slot_types_success(self):
+        script = [
+            {
+                "all": [
+                    ("activate_ps4", "П3 (PS4)", "ps4", "activate", 2),
+                    ("play_ps5", "П2 (PS5)", "ps5", "play", 1),
+                ]
+            },
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get("/slot-types", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(len(body), 2)
+            self.assertEqual(body[0]["platform_code"], "ps4")
+            self.assertEqual(body[1]["platform_code"], "ps5")
+
     def test_create_subscription_product_success(self):
         script = [
             {"one": (1,)},  # product type exists
@@ -120,7 +142,6 @@ class ProductsEndpointsTests(unittest.TestCase):
                     "PS Plus",
                     "PLUS",
                     "RU",
-                    None,
                     None,
                     None,
                     None,
@@ -155,24 +176,6 @@ class ProductsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json()["product_id"], 77)
             self.assertEqual(res.json()["type_code"], "subscription")
-
-    def test_get_product_logo_success(self):
-        script = [
-            {"one": ("game",)},  # product type
-            {"one": (b"\x89PNGlogo", "image/png")},  # logo blob + mime
-        ]
-        with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
-            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
-            patch.object(app_module, "JWT_SECRET", "test-secret"),
-            patch.object(app_module, "JWT_ALG", "HS256"),
-        ):
-            with self._client() as client:
-                res = client.get("/products/55/logo", headers=self._auth_headers(role="manager"))
-            self.assertEqual(res.status_code, 200)
-            self.assertEqual(res.json()["mime"], "image/png")
-            self.assertTrue(res.json()["data_b64"])
-
 
 if __name__ == "__main__":
     unittest.main()

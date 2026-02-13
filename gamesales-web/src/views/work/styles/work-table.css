@@ -74,6 +74,60 @@
   min-width: 122px;
 }
 
+.work-page .table th.product-col-type,
+.work-page .table td.product-col-type {
+  width: 16%;
+  min-width: 130px;
+}
+
+.work-page .table th.product-col-title,
+.work-page .table td.product-col-title {
+  width: 64%;
+  min-width: 300px;
+}
+
+.work-page .table th.product-col-platform,
+.work-page .table td.product-col-platform {
+  width: 20%;
+  min-width: 110px;
+}
+
+.work-page .table th.product-col-type,
+.work-page .table th.product-col-title,
+.work-page .table th.product-col-platform {
+  position: relative;
+}
+
+.work-page .table-col-resizer {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  width: 10px;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 6;
+}
+
+.work-page .table-col-resizer::before {
+  content: '';
+  position: absolute;
+  top: 20%;
+  bottom: 20%;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: color-mix(in srgb, var(--table-border) 85%, var(--muted));
+}
+
+.work-page .table-col-resizer:hover::before,
+.work-page .table-col-resizer:focus-visible::before {
+  width: 2px;
+  background: var(--ink);
+}
+
 .work-page .table th.deal-col-responsible,
 .work-page .table th.deal-col-action {
   white-space: nowrap;

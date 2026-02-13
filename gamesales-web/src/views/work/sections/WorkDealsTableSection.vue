@@ -1,5 +1,14 @@
 <template>
-  <table class="table" :class="{ 'table--completed': dealShowCompleted, 'table--pending': !dealShowCompleted }">
+  <table ref="tableEl" class="table" :class="{ 'table--completed': dealShowCompleted, 'table--pending': !dealShowCompleted }">
+    <colgroup>
+      <col :style="getColumnStyle('type')" />
+      <col :style="getColumnStyle('customer')" />
+      <col :style="getColumnStyle('region')" />
+      <col :style="getColumnStyle('date')" />
+      <col :style="getColumnStyle('status')" />
+      <col :style="getColumnStyle('responsible')" />
+      <col :style="getColumnStyle('action')" />
+    </colgroup>
     <thead>
       <tr>
         <th class="cell--tight deal-col-type">
@@ -44,6 +53,13 @@
               </div>
             </div>
           </div>
+          <button
+            class="table-col-resizer"
+            type="button"
+            aria-label="Изменить ширину колонки Тип"
+            title="Потяните для изменения ширины"
+            @mousedown.stop.prevent="startResize($event, 'type')"
+          />
         </th>
         <th class="deal-col-customer">
           <span class="th-title th-title--filter">
@@ -89,6 +105,13 @@
             <button class="ghost ghost--small" type="button" @click="loadDeals(1); setActiveDealFilter('')">Применить</button>
             <button class="ghost ghost--small" type="button" @click="resetDealFilter('customer')">Сбросить</button>
           </div>
+          <button
+            class="table-col-resizer"
+            type="button"
+            aria-label="Изменить ширину колонки Покупатель"
+            title="Потяните для изменения ширины"
+            @mousedown.stop.prevent="startResize($event, 'customer')"
+          />
         </th>
         <th class="cell--tight deal-col-region">
           <span class="th-title th-title--filter">
@@ -132,6 +155,13 @@
               </div>
             </div>
           </div>
+          <button
+            class="table-col-resizer"
+            type="button"
+            aria-label="Изменить ширину колонки Регион"
+            title="Потяните для изменения ширины"
+            @mousedown.stop.prevent="startResize($event, 'region')"
+          />
         </th>
         <th class="deal-col-date">
           <span class="th-title th-title--filter">
@@ -197,6 +227,13 @@
             </button>
             <button class="ghost ghost--small" type="button" @click="resetDealFilter('date')">Сбросить</button>
           </div>
+          <button
+            class="table-col-resizer"
+            type="button"
+            aria-label="Изменить ширину колонки Дата и время"
+            title="Потяните для изменения ширины"
+            @mousedown.stop.prevent="startResize($event, 'date')"
+          />
         </th>
         <th class="cell--tight deal-col-status">
           <span class="th-title th-title--filter">
@@ -240,6 +277,13 @@
               </div>
             </div>
           </div>
+          <button
+            class="table-col-resizer"
+            type="button"
+            aria-label="Изменить ширину колонки Статус"
+            title="Потяните для изменения ширины"
+            @mousedown.stop.prevent="startResize($event, 'status')"
+          />
         </th>
         <th class="cell--tight deal-col-responsible">
           <span class="th-title th-title--filter">
@@ -283,6 +327,13 @@
               </div>
             </div>
           </div>
+          <button
+            class="table-col-resizer"
+            type="button"
+            aria-label="Изменить ширину колонки Ответственный"
+            title="Потяните для изменения ширины"
+            @mousedown.stop.prevent="startResize($event, 'responsible')"
+          />
         </th>
         <th class="cell--tight deal-col-action">Действие</th>
       </tr>
@@ -343,7 +394,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import {
   parseMultiValueFilterQuery,
@@ -351,6 +402,22 @@ import {
   parseResponsibleFilterQuery,
   stringifyResponsibleFilterQuery,
 } from '../dealsFilterUtils.js'
+import { useResizableTableColumns } from '../useResizableTableColumns'
+
+const tableEl = ref(null)
+const { getColumnStyle, startResize } = useResizableTableColumns({
+  tableRef: tableEl,
+  storageKey: 'work.deals.columns.v1',
+  columns: [
+    { key: 'type', defaultWidth: 10, minWidth: 8 },
+    { key: 'customer', defaultWidth: 23, minWidth: 16 },
+    { key: 'region', defaultWidth: 10, minWidth: 8 },
+    { key: 'date', defaultWidth: 17, minWidth: 12 },
+    { key: 'status', defaultWidth: 12, minWidth: 9 },
+    { key: 'responsible', defaultWidth: 14, minWidth: 10 },
+    { key: 'action', defaultWidth: 14, minWidth: 10 },
+  ],
+})
 
 const props = defineProps({
   sortedDeals: { type: Array, required: true },

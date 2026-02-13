@@ -1,48 +1,13 @@
 <template>
-  <table v-if="sortedProducts.length" class="table table--compact">
+  <table v-if="sortedProducts.length" ref="tableEl" class="table table--compact">
+    <colgroup>
+      <col :style="getColumnStyle('type')" />
+      <col :style="getColumnStyle('title')" />
+      <col :style="getColumnStyle('platform')" />
+    </colgroup>
     <thead>
       <tr>
-        <th>
-          <span class="th-title th-title--filter">
-            Товар
-            <span class="th-actions">
-              <button
-                class="filter-icon"
-                :class="{ 'filter-icon--active': Boolean(productFilters.q) }"
-                type="button"
-                aria-label="Фильтр по товару"
-                title="Фильтр по товару"
-                @click.stop="openProductFilter('title')"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M4 6h16M7 12h10M10 18h4" />
-                </svg>
-              </button>
-              <button
-                class="filter-icon filter-icon--sort"
-                type="button"
-                aria-label="Сортировка по товару"
-                title="Сортировка по товару"
-                @click.stop="toggleProductsSort('title')"
-                :class="getProductsSortClass('title')"
-              >
-                <svg viewBox="0 0 24 24">
-                  <path class="sort-icon__up" d="M7 10l5-5 5 5" />
-                  <path class="sort-icon__down" d="M7 14l5 5 5-5" />
-                </svg>
-              </button>
-            </span>
-          </span>
-          <div v-if="activeProductFilter === 'title'" class="filter-pop filter-pop--center" @click.stop>
-            <label class="field">
-              <span class="label">Товар</span>
-              <input v-model.trim="productFilterDraft.title" class="input" placeholder="товар" />
-            </label>
-            <button class="ghost ghost--small" type="button" @click="applyProductFilter('title')">Применить</button>
-            <button class="ghost ghost--small" type="button" @click="resetProductFilter('title')">Сбросить</button>
-          </div>
-        </th>
-        <th>
+        <th class="product-col-type">
           <span class="th-title th-title--filter">
             Тип
             <span class="th-actions">
@@ -85,9 +50,62 @@
             <button class="ghost ghost--small" type="button" @click="applyProductFilter('type')">Применить</button>
             <button class="ghost ghost--small" type="button" @click="resetProductFilter('type')">Сбросить</button>
           </div>
+          <button
+            class="table-col-resizer"
+            type="button"
+            aria-label="Изменить ширину колонки Тип"
+            title="Потяните для изменения ширины"
+            @mousedown.stop.prevent="startResize($event, 'type')"
+          />
         </th>
-        <th>Короткое</th>
-        <th>
+        <th class="product-col-title">
+          <span class="th-title th-title--filter">
+            Товар
+            <span class="th-actions">
+              <button
+                class="filter-icon"
+                :class="{ 'filter-icon--active': Boolean(productFilters.q) }"
+                type="button"
+                aria-label="Фильтр по товару"
+                title="Фильтр по товару"
+                @click.stop="openProductFilter('title')"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 6h16M7 12h10M10 18h4" />
+                </svg>
+              </button>
+              <button
+                class="filter-icon filter-icon--sort"
+                type="button"
+                aria-label="Сортировка по товару"
+                title="Сортировка по товару"
+                @click.stop="toggleProductsSort('title')"
+                :class="getProductsSortClass('title')"
+              >
+                <svg viewBox="0 0 24 24">
+                  <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                  <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                </svg>
+              </button>
+            </span>
+          </span>
+          <div v-if="activeProductFilter === 'title'" class="filter-pop filter-pop--center" @click.stop>
+            <label class="field">
+              <span class="label">Товар</span>
+              <input v-model.trim="productFilterDraft.title" class="input" placeholder="товар" />
+            </label>
+            <button class="ghost ghost--small" type="button" @click="applyProductFilter('title')">Применить</button>
+            <button class="ghost ghost--small" type="button" @click="resetProductFilter('title')">Сбросить</button>
+          </div>
+          <button
+            class="table-col-resizer"
+            type="button"
+            aria-label="Изменить ширину колонки Товар"
+            title="Потяните для изменения ширины"
+            @mousedown.stop.prevent="startResize($event, 'title')"
+          />
+        </th>
+        <th class="product-col-platform">
           <span class="th-title th-title--filter">
             Платформа
             <span class="th-actions">
@@ -127,55 +145,13 @@
             <button class="ghost ghost--small" type="button" @click="resetProductFilter('platform')">Сбросить</button>
           </div>
         </th>
-        <th>
-          <span class="th-title th-title--filter">
-            Регион
-            <span class="th-actions">
-              <button
-                class="filter-icon"
-                :class="{ 'filter-icon--active': Boolean(productFilters.region_code) }"
-                type="button"
-                aria-label="Фильтр по региону"
-                title="Фильтр по региону"
-                @click.stop="openProductFilter('region')"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M4 6h16M7 12h10M10 18h4" />
-                </svg>
-              </button>
-              <button
-                class="filter-icon filter-icon--sort"
-                type="button"
-                aria-label="Сортировка по региону"
-                title="Сортировка по региону"
-                @click.stop="toggleProductsSort('region')"
-                :class="getProductsSortClass('region')"
-              >
-                <svg viewBox="0 0 24 24">
-                  <path class="sort-icon__up" d="M7 10l5-5 5 5" />
-                  <path class="sort-icon__down" d="M7 14l5 5 5-5" />
-                </svg>
-              </button>
-            </span>
-          </span>
-          <div v-if="activeProductFilter === 'region'" class="filter-pop filter-pop--right" @click.stop>
-            <label class="field">
-              <span class="label">Регион</span>
-              <input v-model.trim="productFilterDraft.region" class="input" placeholder="регион" />
-            </label>
-            <button class="ghost ghost--small" type="button" @click="applyProductFilter('region')">Применить</button>
-            <button class="ghost ghost--small" type="button" @click="resetProductFilter('region')">Сбросить</button>
-          </div>
-        </th>
       </tr>
     </thead>
     <tbody>
       <tr v-for="g in pagedProducts" :key="g.product_id" class="clickable-row" @click="openProductAccounts(g)">
-        <td>{{ g.title }}</td>
-        <td>{{ formatTypeLabel(g.type_code) }}</td>
-        <td>{{ g.short_title || '—' }}</td>
-        <td>{{ formatProductPlatforms(g.platform_codes) }}</td>
-        <td>{{ g.region_code || '—' }}</td>
+        <td class="product-col-type">{{ formatTypeLabel(g.type_code) }}</td>
+        <td class="product-col-title">{{ g.title }}</td>
+        <td class="product-col-platform">{{ formatProductPlatforms(g.platform_codes) }}</td>
       </tr>
     </tbody>
   </table>
@@ -183,7 +159,21 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
+
 import { PRODUCT_TYPE_PRIMARY } from '../domainUtils'
+import { useResizableTableColumns } from '../useResizableTableColumns'
+
+const tableEl = ref(null)
+const { getColumnStyle, startResize } = useResizableTableColumns({
+  tableRef: tableEl,
+  storageKey: 'work.products.columns.v1',
+  columns: [
+    { key: 'type', defaultWidth: 18, minWidth: 12 },
+    { key: 'title', defaultWidth: 62, minWidth: 35 },
+    { key: 'platform', defaultWidth: 20, minWidth: 8 },
+  ],
+})
 
 function formatTypeLabel(typeCode) {
   if (typeCode === PRODUCT_TYPE_PRIMARY) return 'Игра'

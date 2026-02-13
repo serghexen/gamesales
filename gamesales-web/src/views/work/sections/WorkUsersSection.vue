@@ -128,11 +128,22 @@
           <div class="spoke"></div>
         </div>
       </div>
-      <table v-else-if="ctx.sortedUsers.length" class="table">
+      <table v-else-if="ctx.sortedUsers.length" ref="tableEl" class="table">
+        <colgroup>
+          <col :style="getColumnStyle('username')" />
+          <col :style="getColumnStyle('role')" />
+          <col :style="getColumnStyle('createdAt')" />
+        </colgroup>
         <thead>
           <tr>
-            <th class="sortable" @click="ctx.toggleUsersSort('username')">Логин</th>
-            <th class="sortable" @click="ctx.toggleUsersSort('role')">Роль</th>
+            <th class="sortable" @click="ctx.toggleUsersSort('username')">
+              Логин
+              <button class="table-col-resizer" type="button" aria-label="Изменить ширину колонки Логин пользователя" title="Потяните для изменения ширины" @click.stop.prevent @mousedown.stop.prevent="startResize($event, 'username')" />
+            </th>
+            <th class="sortable" @click="ctx.toggleUsersSort('role')">
+              Роль
+              <button class="table-col-resizer" type="button" aria-label="Изменить ширину колонки Роль пользователя" title="Потяните для изменения ширины" @click.stop.prevent @mousedown.stop.prevent="startResize($event, 'role')" />
+            </th>
             <th class="sortable" @click="ctx.toggleUsersSort('created_at')">Создан</th>
           </tr>
         </thead>
@@ -150,6 +161,21 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
+
+import { useResizableTableColumns } from '../useResizableTableColumns'
+
+const tableEl = ref(null)
+const { getColumnStyle, startResize } = useResizableTableColumns({
+  tableRef: tableEl,
+  storageKey: 'work.users.columns.v1',
+  columns: [
+    { key: 'username', defaultWidth: 34, minWidth: 18 },
+    { key: 'role', defaultWidth: 26, minWidth: 14 },
+    { key: 'createdAt', defaultWidth: 40, minWidth: 22 },
+  ],
+})
+
 // Контекст секции пользователей.
 defineProps({
   ctx: { type: Object, required: true },

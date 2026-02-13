@@ -102,12 +102,27 @@
       <div class="analytics-grid">
         <div>
           <h3>По дням</h3>
-          <table v-if="ctx.analyticsByDay.length" class="table table--compact table--dense">
+          <table v-if="ctx.analyticsByDay.length" ref="byDayTableEl" class="table table--compact table--dense">
+            <colgroup>
+              <col :style="getByDayColumnStyle('date')" />
+              <col :style="getByDayColumnStyle('purchase')" />
+              <col :style="getByDayColumnStyle('revenue')" />
+              <col :style="getByDayColumnStyle('margin')" />
+            </colgroup>
             <thead>
               <tr>
-                <th>Дата</th>
-                <th>Закуп</th>
-                <th>Выручка</th>
+                <th>
+                  Дата
+                  <button class="table-col-resizer" type="button" aria-label="Изменить ширину колонки Дата" title="Потяните для изменения ширины" @mousedown.stop.prevent="startByDayResize($event, 'date')" />
+                </th>
+                <th>
+                  Закуп
+                  <button class="table-col-resizer" type="button" aria-label="Изменить ширину колонки Закуп" title="Потяните для изменения ширины" @mousedown.stop.prevent="startByDayResize($event, 'purchase')" />
+                </th>
+                <th>
+                  Выручка
+                  <button class="table-col-resizer" type="button" aria-label="Изменить ширину колонки Выручка" title="Потяните для изменения ширины" @mousedown.stop.prevent="startByDayResize($event, 'revenue')" />
+                </th>
                 <th>Маржа</th>
               </tr>
             </thead>
@@ -124,12 +139,27 @@
         </div>
         <div>
           <h3>По типам</h3>
-          <table v-if="ctx.analyticsByType.length" class="table table--compact table--dense">
+          <table v-if="ctx.analyticsByType.length" ref="byTypeTableEl" class="table table--compact table--dense">
+            <colgroup>
+              <col :style="getByTypeColumnStyle('type')" />
+              <col :style="getByTypeColumnStyle('purchase')" />
+              <col :style="getByTypeColumnStyle('revenue')" />
+              <col :style="getByTypeColumnStyle('margin')" />
+            </colgroup>
             <thead>
               <tr>
-                <th>Тип</th>
-                <th>Закуп</th>
-                <th>Выручка</th>
+                <th>
+                  Тип
+                  <button class="table-col-resizer" type="button" aria-label="Изменить ширину колонки Тип сделки" title="Потяните для изменения ширины" @mousedown.stop.prevent="startByTypeResize($event, 'type')" />
+                </th>
+                <th>
+                  Закуп
+                  <button class="table-col-resizer" type="button" aria-label="Изменить ширину колонки Закуп по типам" title="Потяните для изменения ширины" @mousedown.stop.prevent="startByTypeResize($event, 'purchase')" />
+                </th>
+                <th>
+                  Выручка
+                  <button class="table-col-resizer" type="button" aria-label="Изменить ширину колонки Выручка по типам" title="Потяните для изменения ширины" @mousedown.stop.prevent="startByTypeResize($event, 'revenue')" />
+                </th>
                 <th>Маржа</th>
               </tr>
             </thead>
@@ -151,11 +181,22 @@
       <div class="analytics-grid">
         <div>
           <h3>Источники: по количеству</h3>
-          <table v-if="ctx.analyticsSourcesTopCount.length" class="table table--compact table--dense">
+          <table v-if="ctx.analyticsSourcesTopCount.length" ref="sourcesCountTableEl" class="table table--compact table--dense">
+            <colgroup>
+              <col :style="getSourcesCountColumnStyle('source')" />
+              <col :style="getSourcesCountColumnStyle('count')" />
+              <col :style="getSourcesCountColumnStyle('revenue')" />
+            </colgroup>
             <thead>
               <tr>
-                <th>Источник</th>
-                <th>Сделок</th>
+                <th>
+                  Источник
+                  <button class="table-col-resizer" type="button" aria-label="Изменить ширину колонки Источник по количеству" title="Потяните для изменения ширины" @mousedown.stop.prevent="startSourcesCountResize($event, 'source')" />
+                </th>
+                <th>
+                  Сделок
+                  <button class="table-col-resizer" type="button" aria-label="Изменить ширину колонки Сделок по источникам" title="Потяните для изменения ширины" @mousedown.stop.prevent="startSourcesCountResize($event, 'count')" />
+                </th>
                 <th>Выручка</th>
               </tr>
             </thead>
@@ -171,11 +212,22 @@
         </div>
         <div>
           <h3>Источники: по выручке</h3>
-          <table v-if="ctx.analyticsSourcesTopRevenue.length" class="table table--compact table--dense">
+          <table v-if="ctx.analyticsSourcesTopRevenue.length" ref="sourcesRevenueTableEl" class="table table--compact table--dense">
+            <colgroup>
+              <col :style="getSourcesRevenueColumnStyle('source')" />
+              <col :style="getSourcesRevenueColumnStyle('revenue')" />
+              <col :style="getSourcesRevenueColumnStyle('count')" />
+            </colgroup>
             <thead>
               <tr>
-                <th>Источник</th>
-                <th>Выручка</th>
+                <th>
+                  Источник
+                  <button class="table-col-resizer" type="button" aria-label="Изменить ширину колонки Источник по выручке" title="Потяните для изменения ширины" @mousedown.stop.prevent="startSourcesRevenueResize($event, 'source')" />
+                </th>
+                <th>
+                  Выручка
+                  <button class="table-col-resizer" type="button" aria-label="Изменить ширину колонки Выручка по источникам" title="Потяните для изменения ширины" @mousedown.stop.prevent="startSourcesRevenueResize($event, 'revenue')" />
+                </th>
                 <th>Сделок</th>
               </tr>
             </thead>
@@ -210,6 +262,57 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
+
+import { useResizableTableColumns } from '../useResizableTableColumns'
+
+const byDayTableEl = ref(null)
+const byTypeTableEl = ref(null)
+const sourcesCountTableEl = ref(null)
+const sourcesRevenueTableEl = ref(null)
+
+const { getColumnStyle: getByDayColumnStyle, startResize: startByDayResize } = useResizableTableColumns({
+  tableRef: byDayTableEl,
+  storageKey: 'work.analytics.byday.columns.v1',
+  columns: [
+    { key: 'date', defaultWidth: 25, minWidth: 16 },
+    { key: 'purchase', defaultWidth: 25, minWidth: 16 },
+    { key: 'revenue', defaultWidth: 25, minWidth: 16 },
+    { key: 'margin', defaultWidth: 25, minWidth: 16 },
+  ],
+})
+
+const { getColumnStyle: getByTypeColumnStyle, startResize: startByTypeResize } = useResizableTableColumns({
+  tableRef: byTypeTableEl,
+  storageKey: 'work.analytics.bytype.columns.v1',
+  columns: [
+    { key: 'type', defaultWidth: 28, minWidth: 18 },
+    { key: 'purchase', defaultWidth: 24, minWidth: 16 },
+    { key: 'revenue', defaultWidth: 24, minWidth: 16 },
+    { key: 'margin', defaultWidth: 24, minWidth: 16 },
+  ],
+})
+
+const { getColumnStyle: getSourcesCountColumnStyle, startResize: startSourcesCountResize } = useResizableTableColumns({
+  tableRef: sourcesCountTableEl,
+  storageKey: 'work.analytics.sourcescount.columns.v1',
+  columns: [
+    { key: 'source', defaultWidth: 46, minWidth: 24 },
+    { key: 'count', defaultWidth: 22, minWidth: 14 },
+    { key: 'revenue', defaultWidth: 32, minWidth: 18 },
+  ],
+})
+
+const { getColumnStyle: getSourcesRevenueColumnStyle, startResize: startSourcesRevenueResize } = useResizableTableColumns({
+  tableRef: sourcesRevenueTableEl,
+  storageKey: 'work.analytics.sourcesrevenue.columns.v1',
+  columns: [
+    { key: 'source', defaultWidth: 46, minWidth: 24 },
+    { key: 'revenue', defaultWidth: 32, minWidth: 18 },
+    { key: 'count', defaultWidth: 22, minWidth: 14 },
+  ],
+})
+
 defineProps({
   ctx: { type: Object, required: true },
 })

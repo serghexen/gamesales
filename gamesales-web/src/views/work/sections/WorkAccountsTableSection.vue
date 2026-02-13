@@ -1,5 +1,11 @@
 <template>
-  <table v-if="sortedAccounts.length" class="table table--compact">
+  <table v-if="sortedAccounts.length" ref="tableEl" class="table table--compact">
+    <colgroup>
+      <col :style="getColumnStyle('login')" />
+      <col :style="getColumnStyle('products')" />
+      <col :style="getColumnStyle('slots')" />
+      <col :style="getColumnStyle('reserve')" />
+    </colgroup>
     <thead>
       <tr>
         <th class="cell--account">
@@ -41,8 +47,15 @@
             <button class="ghost ghost--small" type="button" @click="applyAccountFilter('login')">Применить</button>
             <button class="ghost ghost--small" type="button" @click="resetAccountFilter('login')">Сбросить</button>
           </div>
+          <button
+            class="table-col-resizer"
+            type="button"
+            aria-label="Изменить ширину колонки Почта"
+            title="Потяните для изменения ширины"
+            @mousedown.stop.prevent="startResize($event, 'login')"
+          />
         </th>
-        <th>
+        <th class="account-col-products">
           <span class="th-title th-title--filter">
             Товары
             <span class="th-actions">
@@ -81,9 +94,25 @@
             <button class="ghost ghost--small" type="button" @click="applyAccountFilter('product')">Применить</button>
             <button class="ghost ghost--small" type="button" @click="resetAccountFilter('product')">Сбросить</button>
           </div>
+          <button
+            class="table-col-resizer"
+            type="button"
+            aria-label="Изменить ширину колонки Товары"
+            title="Потяните для изменения ширины"
+            @mousedown.stop.prevent="startResize($event, 'products')"
+          />
         </th>
-        <th>Слоты</th>
-        <th>Резерв</th>
+        <th class="account-col-slots">
+          Слоты
+          <button
+            class="table-col-resizer"
+            type="button"
+            aria-label="Изменить ширину колонки Слоты"
+            title="Потяните для изменения ширины"
+            @mousedown.stop.prevent="startResize($event, 'slots')"
+          />
+        </th>
+        <th class="account-col-reserve">Резерв</th>
       </tr>
     </thead>
     <tbody>
@@ -104,6 +133,22 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
+
+import { useResizableTableColumns } from '../useResizableTableColumns'
+
+const tableEl = ref(null)
+const { getColumnStyle, startResize } = useResizableTableColumns({
+  tableRef: tableEl,
+  storageKey: 'work.accounts.columns.v1',
+  columns: [
+    { key: 'login', defaultWidth: 30, minWidth: 20 },
+    { key: 'products', defaultWidth: 34, minWidth: 20 },
+    { key: 'slots', defaultWidth: 20, minWidth: 12 },
+    { key: 'reserve', defaultWidth: 16, minWidth: 10 },
+  ],
+})
+
 defineProps({
   sortedAccounts: { type: Array, required: true },
   accountFilters: { type: Object, required: true },

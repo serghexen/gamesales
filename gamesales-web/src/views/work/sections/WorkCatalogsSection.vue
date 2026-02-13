@@ -118,7 +118,11 @@
               </button>
             </div>
           </div>
-          <table v-if="sortedSources.length" class="table table--compact">
+          <table v-if="sortedSources.length" ref="sourcesTableEl" class="table table--compact">
+            <colgroup>
+              <col :style="getSourcesColumnStyle('code')" />
+              <col :style="getSourcesColumnStyle('name')" />
+            </colgroup>
             <thead>
               <tr>
                 <th>
@@ -138,6 +142,13 @@
                       </svg>
                     </button>
                   </span>
+                  <button
+                    class="table-col-resizer"
+                    type="button"
+                    aria-label="Изменить ширину колонки Код источника"
+                    title="Потяните для изменения ширины"
+                    @mousedown.stop.prevent="startSourcesResize($event, 'code')"
+                  />
                 </th>
                 <th>
                   <span class="th-title">
@@ -197,7 +208,12 @@
               </button>
             </div>
           </div>
-          <table v-if="sortedPlatforms.length" class="table table--compact">
+          <table v-if="sortedPlatforms.length" ref="platformsTableEl" class="table table--compact">
+            <colgroup>
+              <col :style="getPlatformsColumnStyle('code')" />
+              <col :style="getPlatformsColumnStyle('name')" />
+              <col :style="getPlatformsColumnStyle('slots')" />
+            </colgroup>
             <thead>
               <tr>
                 <th>
@@ -217,6 +233,13 @@
                       </svg>
                     </button>
                   </span>
+                  <button
+                    class="table-col-resizer"
+                    type="button"
+                    aria-label="Изменить ширину колонки Код платформы"
+                    title="Потяните для изменения ширины"
+                    @mousedown.stop.prevent="startPlatformsResize($event, 'code')"
+                  />
                 </th>
                 <th>
                   <span class="th-title">
@@ -235,6 +258,13 @@
                       </svg>
                     </button>
                   </span>
+                  <button
+                    class="table-col-resizer"
+                    type="button"
+                    aria-label="Изменить ширину колонки Название платформы"
+                    title="Потяните для изменения ширины"
+                    @mousedown.stop.prevent="startPlatformsResize($event, 'name')"
+                  />
                 </th>
                 <th>
                   <span class="th-title">
@@ -295,7 +325,12 @@
               </button>
             </div>
           </div>
-          <table v-if="sortedRegions.length" class="table table--compact">
+          <table v-if="sortedRegions.length" ref="regionsTableEl" class="table table--compact">
+            <colgroup>
+              <col :style="getRegionsColumnStyleByRole('code')" />
+              <col :style="getRegionsColumnStyleByRole('name')" />
+              <col v-if="isAdmin" :style="getRegionsColumnStyleByRole('rate')" />
+            </colgroup>
             <thead>
               <tr>
                 <th>
@@ -315,6 +350,13 @@
                       </svg>
                     </button>
                   </span>
+                  <button
+                    class="table-col-resizer"
+                    type="button"
+                    aria-label="Изменить ширину колонки Код региона"
+                    title="Потяните для изменения ширины"
+                    @mousedown.stop.prevent="startRegionsResizeByRole($event, 'code')"
+                  />
                 </th>
                 <th>
                   <span class="th-title">
@@ -333,6 +375,14 @@
                       </svg>
                     </button>
                   </span>
+                  <button
+                    v-if="isAdmin"
+                    class="table-col-resizer"
+                    type="button"
+                    aria-label="Изменить ширину колонки Название региона"
+                    title="Потяните для изменения ширины"
+                    @mousedown.stop.prevent="startRegionsResizeByRole($event, 'name')"
+                  />
                 </th>
                 <th v-if="isAdmin">Коэф.</th>
               </tr>
@@ -353,7 +403,9 @@
 </template>
 
 <script setup>
-import { reactive, toRefs } from 'vue'
+import { reactive, ref, toRefs } from 'vue'
+
+import { useResizableTableColumns } from '../useResizableTableColumns'
 import WorkCatalogModals from './WorkCatalogModals.vue'
 
 // Один объект контекста, чтобы компонент был проще подключать.
@@ -361,6 +413,62 @@ const props = defineProps({
   ctx: { type: Object, required: true },
 })
 const ctx = reactive(props.ctx)
+
+const sourcesTableEl = ref(null)
+const platformsTableEl = ref(null)
+const regionsTableEl = ref(null)
+
+const { getColumnStyle: getSourcesColumnStyle, startResize: startSourcesResize } = useResizableTableColumns({
+  tableRef: sourcesTableEl,
+  storageKey: 'work.catalogs.sources.columns.v1',
+  columns: [
+    { key: 'code', defaultWidth: 34, minWidth: 18 },
+    { key: 'name', defaultWidth: 66, minWidth: 32 },
+  ],
+})
+
+const { getColumnStyle: getPlatformsColumnStyle, startResize: startPlatformsResize } = useResizableTableColumns({
+  tableRef: platformsTableEl,
+  storageKey: 'work.catalogs.platforms.columns.v1',
+  columns: [
+    { key: 'code', defaultWidth: 24, minWidth: 14 },
+    { key: 'name', defaultWidth: 56, minWidth: 30 },
+    { key: 'slots', defaultWidth: 20, minWidth: 12 },
+  ],
+})
+
+const { getColumnStyle: getRegionsColumnStyle, startResize: startRegionsResize } = useResizableTableColumns({
+  tableRef: regionsTableEl,
+  storageKey: 'work.catalogs.regions.admin.columns.v1',
+  columns: [
+    { key: 'code', defaultWidth: 24, minWidth: 14 },
+    { key: 'name', defaultWidth: 56, minWidth: 30 },
+    { key: 'rate', defaultWidth: 20, minWidth: 12 },
+  ],
+})
+
+const { getColumnStyle: getRegionsUserColumnStyle, startResize: startRegionsUserResize } = useResizableTableColumns({
+  tableRef: regionsTableEl,
+  storageKey: 'work.catalogs.regions.user.columns.v1',
+  columns: [
+    { key: 'code', defaultWidth: 30, minWidth: 16 },
+    { key: 'name', defaultWidth: 70, minWidth: 34 },
+  ],
+})
+
+// Возвращает стиль ширины колонки в зависимости от роли, чтобы не оставлять "пустые" проценты.
+function getRegionsColumnStyleByRole(key) {
+  return isAdmin.value ? getRegionsColumnStyle(key) : getRegionsUserColumnStyle(key)
+}
+
+// Запускает ресайз для текущего набора колонок таблицы регионов.
+function startRegionsResizeByRole(event, key) {
+  if (isAdmin.value) {
+    startRegionsResize(event, key)
+    return
+  }
+  startRegionsUserResize(event, key)
+}
 
 const {
   catalogsError,

@@ -291,7 +291,6 @@ class ProductCreate(BaseModel):
     region_code: Optional[str] = None
     platform_codes: Optional[List[str]] = None
     link: Optional[str] = None
-    logo_url: Optional[str] = None
     text_lang: Optional[str] = None
     audio_lang: Optional[str] = None
     vr_support: Optional[str] = None
@@ -306,7 +305,6 @@ class ProductUpdate(BaseModel):
     region_code: Optional[str] = None
     platform_codes: Optional[List[str]] = None
     link: Optional[str] = None
-    logo_url: Optional[str] = None
     text_lang: Optional[str] = None
     audio_lang: Optional[str] = None
     vr_support: Optional[str] = None
@@ -321,7 +319,6 @@ class ProductOut(BaseModel):
     short_title: Optional[str] = None
     region_code: Optional[str] = None
     link: Optional[str] = None
-    logo_url: Optional[str] = None
     text_lang: Optional[str] = None
     audio_lang: Optional[str] = None
     vr_support: Optional[str] = None
@@ -733,8 +730,6 @@ mount_products_routes(
     get_region_id=get_region_id,
     get_game_platform_codes=get_game_platform_codes,
     get_current_user=get_current_user,
-    require_role=require_role,
-    encode_b64=b64_encode,
     ProductCreate=ProductCreate,
     ProductUpdate=ProductUpdate,
     ProductOut=ProductOut,

@@ -113,7 +113,7 @@
 import { ref, reactive, computed, nextTick, proxyRefs, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../stores/auth'
-import { API_BASE, apiGet, apiPost, apiDelete, apiPut, apiPostForm, apiGetFile, apiPostFormWithProgress } from '../api/http'
+import { API_BASE, apiGet, apiPost, apiDelete, apiPut, apiPostForm, apiGetFile } from '../api/http'
 import {
   TAB_KEYS,
   TELEGRAM_DIALOGS_POLL_MS,
@@ -125,9 +125,6 @@ import {
   ACCOUNT_IMPORT_JOB_KEY,
   SLOT_VALIDATE_JOB_KEY,
   SLOT_IMPORT_JOB_KEY,
-  PRODUCT_LOGO_CACHE_KEY,
-  LEGACY_PRODUCT_LOGO_CACHE_FALLBACK_KEY,
-  PRODUCT_LOGO_CACHE_TTL_MS,
   PRODUCT_TYPE_PRIMARY,
   dealTypeOptions,
   dealFlowStatusOptions,
@@ -180,7 +177,6 @@ import { useDealModalFlow } from './work/useDealModalFlow'
 import { useUserProfileFlow } from './work/useUserProfileFlow'
 import { useWorkActions } from './work/useWorkActions'
 import { useWorkUiHelpers } from './work/useWorkUiHelpers'
-import { useProductLogoCache } from './work/useProductLogoCache'
 import { createDeferredCall } from './work/deferredCall'
 import { useWorkSectionContexts } from './work/useWorkSectionContexts'
 import WorkDashboardHero from './work/sections/WorkDashboardHero.vue'
@@ -680,7 +676,6 @@ const newProductState = reactive({
   title: '',
   short_title: '',
   link: '',
-  logo_url: '',
   text_lang: '',
   audio_lang: '',
   vr_support: '',
@@ -709,9 +704,6 @@ const editProductState = reactive({
   title: '',
   short_title: '',
   link: '',
-  logo_url: '',
-  logo_b64: '',
-  logo_mime: '',
   text_lang: '',
   audio_lang: '',
   vr_support: '',
@@ -892,15 +884,6 @@ const productImportJobId = ref('')
 const accountImportJobId = ref('')
 const importDetailsRef = ref(null)
 const accountImportDetailsRef = ref(null)
-const productLogoLoading = ref(false)
-const productLogoCache = new Map()
-const productLogoUploading = ref(false)
-const productLogoProgress = ref(0)
-const { readLogoCache, writeLogoCache, clearLogoCache } = useProductLogoCache({
-  cacheKey: PRODUCT_LOGO_CACHE_KEY,
-  fallbackCacheKey: LEGACY_PRODUCT_LOGO_CACHE_FALLBACK_KEY,
-  ttlMs: PRODUCT_LOGO_CACHE_TTL_MS,
-})
 const showDomainForm = ref(false)
 const showSourceForm = ref(false)
 const showPlatformForm = ref(false)
@@ -1083,8 +1066,6 @@ const {
   openProductAccounts,
   openCreateProductModal,
   closeProductModal,
-  onProductLogoSelected,
-  removeProductLogo,
   goToAccount,
   loadProducts,
   loadProductsAll,
@@ -1097,7 +1078,6 @@ const {
   apiPost,
   apiPut,
   apiDelete,
-  apiPostFormWithProgress,
   mapApiError,
   closeAllModals,
   resetModalPos,
@@ -1127,13 +1107,6 @@ const {
   productSlotAssignments,
   productSlotAssignmentsError,
   productSlotAssignmentsLoading,
-  productLogoLoading,
-  productLogoUploading,
-  productLogoProgress,
-  productLogoCache,
-  readLogoCache,
-  writeLogoCache,
-  clearLogoCache,
   loadProductSlotAssignments,
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
@@ -1740,11 +1713,6 @@ const {
 loadAccountSlotAssignmentsDeferred.set(loadAccountSlotAssignmentsFromActions)
 loadProductSlotAssignmentsDeferred.set(loadProductSlotAssignmentsFromActions)
 
-const productLogoSrc = computed(() => {
-  if (!editProductState.logo_b64 || !editProductState.logo_mime) return ''
-  return `data:${editProductState.logo_mime};base64,${editProductState.logo_b64}`
-})
-
 // Контекст вкладки аккаунтов: фильтры, таблица, пагинация и модалки.
 const accountsSectionCtx = asCtx({
   accountFilters,
@@ -1912,12 +1880,6 @@ const {
   productLoading,
   createProduct,
   archiveProduct,
-  productLogoSrc,
-  productLogoLoading,
-  onProductLogoSelected,
-  productLogoUploading,
-  productLogoProgress,
-  removeProductLogo,
   platforms,
   getRegionLabel,
   regions,

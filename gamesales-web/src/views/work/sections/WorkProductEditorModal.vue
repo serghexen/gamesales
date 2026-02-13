@@ -117,36 +117,6 @@
                 <option value="subscription">subscription</option>
               </select>
             </label>
-            <div class="field field--full">
-              <span class="label">Логотип</span>
-              <div class="logo-upload">
-                <div v-if="editProduct.logo_b64" class="logo-preview">
-                  <img :src="productLogoSrc" alt="logo" />
-                </div>
-                <div v-else-if="productLogoLoading" class="logo-preview logo-preview--loading">
-                  <span class="muted">Загрузка…</span>
-                </div>
-                <div class="logo-actions">
-                  <input
-                    class="input input--file"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    @change="onProductLogoSelected"
-                    :disabled="productEditMode === 'view'"
-                  />
-                  <span v-if="productLogoUploading" class="muted">Загрузка {{ productLogoProgress }}%</span>
-                  <button
-                    v-if="editProduct.logo_b64"
-                    class="ghost ghost--small ghost--danger"
-                    type="button"
-                    @click="removeProductLogo"
-                    :disabled="productEditMode === 'view'"
-                  >
-                    Удалить
-                  </button>
-                </div>
-              </div>
-            </div>
             <label class="field">
               <span class="label">Название</span>
               <input v-model.trim="editProduct.title" class="input" placeholder="Например, GTA V" :readonly="productEditMode === 'view'" />
@@ -176,8 +146,8 @@
               <input v-model.trim="editProduct.provider" class="input" placeholder="например: sony" :readonly="productEditMode === 'view'" />
             </label>
             <label class="field">
-              <span class="label">Период биллинга</span>
-              <input v-model.trim="editProduct.billing_period" class="input" placeholder="month/year" :readonly="productEditMode === 'view'" />
+              <span class="label">Период подписки</span>
+              <input v-model.trim="editProduct.billing_period" class="input" placeholder="месяц/год" :readonly="productEditMode === 'view'" />
             </label>
             <label class="field">
               <span class="label">Заметки по подписке</span>
@@ -319,10 +289,6 @@
 
           <!-- Создание нового товара -->
           <div v-else class="form form--stack form--compact">
-            <div class="field field--full">
-              <span class="label">Логотип</span>
-              <p class="muted">Логотип можно загрузить после создания товара.</p>
-            </div>
             <label class="field">
               <span class="label">Тип</span>
               <select v-model="newProduct.type_code" class="input input--select">
@@ -359,8 +325,8 @@
               <input v-model.trim="newProduct.provider" class="input" placeholder="например: sony" />
             </label>
             <label class="field">
-              <span class="label">Период биллинга</span>
-              <input v-model.trim="newProduct.billing_period" class="input" placeholder="month/year" />
+              <span class="label">Период подписки</span>
+              <input v-model.trim="newProduct.billing_period" class="input" placeholder="месяц/год" />
             </label>
             <label class="field">
               <span class="label">Заметки по подписке</span>
@@ -415,12 +381,6 @@ const {
   productLoading,
   createProduct,
   archiveProduct,
-  productLogoSrc,
-  productLogoLoading,
-  onProductLogoSelected,
-  productLogoUploading,
-  productLogoProgress,
-  removeProductLogo,
   platforms,
   getRegionLabel,
   regions,

@@ -84,7 +84,6 @@ export function useDealsFlow({
           platform_codes: state.platform_codes,
           short_title: null,
           link: null,
-          logo_url: null,
           text_lang: null,
           audio_lang: null,
           vr_support: null,

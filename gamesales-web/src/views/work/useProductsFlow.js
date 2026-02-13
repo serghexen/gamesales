@@ -7,7 +7,6 @@ export function useProductsFlow({
   apiPost,
   apiPut,
   apiDelete,
-  apiPostFormWithProgress,
   mapApiError,
   closeAllModals,
   resetModalPos,
@@ -37,13 +36,6 @@ export function useProductsFlow({
   productSlotAssignments,
   productSlotAssignmentsError,
   productSlotAssignmentsLoading,
-  productLogoLoading,
-  productLogoUploading,
-  productLogoProgress,
-  productLogoCache,
-  readLogoCache,
-  writeLogoCache,
-  clearLogoCache,
   loadProductSlotAssignments,
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
@@ -80,9 +72,6 @@ export function useProductsFlow({
     editProduct.title = normalized.title || ''
     editProduct.short_title = normalized.short_title || ''
     editProduct.link = normalized.link || ''
-    editProduct.logo_url = normalized.logo_url || ''
-    editProduct.logo_b64 = ''
-    editProduct.logo_mime = ''
     editProduct.text_lang = normalized.text_lang || ''
     editProduct.audio_lang = normalized.audio_lang || ''
     editProduct.vr_support = normalized.vr_support || ''
@@ -97,7 +86,6 @@ export function useProductsFlow({
       title: editProduct.title,
       short_title: editProduct.short_title,
       link: editProduct.link,
-      logo_url: editProduct.logo_url,
       text_lang: editProduct.text_lang,
       audio_lang: editProduct.audio_lang,
       vr_support: editProduct.vr_support,
@@ -106,11 +94,6 @@ export function useProductsFlow({
       provider: editProduct.provider,
       billing_period: editProduct.billing_period,
       subscription_notes: editProduct.subscription_notes,
-      logo_b64: '',
-      logo_mime: '',
-    }
-    if (editProduct.product_id && isGameType(editProduct)) {
-      loadProductLogo(editProduct.product_id)
     }
   }
 
@@ -123,9 +106,6 @@ export function useProductsFlow({
     editProduct.title = ''
     editProduct.short_title = ''
     editProduct.link = ''
-    editProduct.logo_url = ''
-    editProduct.logo_b64 = ''
-    editProduct.logo_mime = ''
     editProduct.text_lang = ''
     editProduct.audio_lang = ''
     editProduct.vr_support = ''
@@ -134,9 +114,6 @@ export function useProductsFlow({
     editProduct.provider = ''
     editProduct.billing_period = ''
     editProduct.subscription_notes = ''
-    productLogoLoading.value = false
-    productLogoUploading.value = false
-    productLogoProgress.value = 0
     productSlotAssignments.value = []
     productSlotAssignmentsError.value = null
     productSlotAssignmentsLoading.value = false
@@ -162,7 +139,6 @@ export function useProductsFlow({
       type_code: PRODUCT_TYPE_PRIMARY,
       short_title: '',
       link: '',
-      logo_url: '',
       text_lang: '',
       audio_lang: '',
       vr_support: '',
@@ -176,14 +152,11 @@ export function useProductsFlow({
       title: editProduct.title,
       short_title: editProduct.short_title,
       link: editProduct.link,
-      logo_url: editProduct.logo_url,
       text_lang: editProduct.text_lang,
       audio_lang: editProduct.audio_lang,
       vr_support: editProduct.vr_support,
       platform_codes: [...(editProduct.platform_codes || [])],
       region_code: editProduct.region_code,
-      logo_b64: editProduct.logo_b64 || '',
-      logo_mime: editProduct.logo_mime || '',
     }
     const editDirty = editProduct.open && productEditMode.value === 'edit' && !isSameNormalized(editCurrent, initialEditProductSnapshot || {})
     if (guardEnabled && !(await confirmDiscardIfNeeded(createDirty || editDirty, { requestConfirm: requestUnsavedConfirm }))) return false
@@ -202,7 +175,6 @@ export function useProductsFlow({
     newProduct.type_code = PRODUCT_TYPE_PRIMARY
     newProduct.short_title = ''
     newProduct.link = ''
-    newProduct.logo_url = ''
     newProduct.text_lang = ''
     newProduct.audio_lang = ''
     newProduct.vr_support = ''
@@ -233,87 +205,6 @@ export function useProductsFlow({
     if (editProduct.product_id) {
       productAccountsPage.value = 1
       loadProductAccounts(editProduct.product_id)
-    }
-  }
-
-  // Загружает логотип игры (сначала из кэша, потом из API).
-  async function loadProductLogo(productId) {
-    editProduct.logo_b64 = ''
-    editProduct.logo_mime = ''
-    productLogoLoading.value = true
-    if (productLogoCache.has(productId)) {
-      const cached = productLogoCache.get(productId)
-      editProduct.logo_b64 = cached?.data_b64 || ''
-      editProduct.logo_mime = cached?.mime || ''
-      productLogoLoading.value = false
-      return
-    }
-    const stored = readLogoCache(productId)
-    if (stored) {
-      editProduct.logo_b64 = stored?.data_b64 || ''
-      editProduct.logo_mime = stored?.mime || ''
-      productLogoCache.set(productId, { data_b64: editProduct.logo_b64, mime: editProduct.logo_mime })
-      productLogoLoading.value = false
-      return
-    }
-    try {
-      const res = await apiGet(`/products/${productId}/logo`, { token: auth.state.token })
-      editProduct.logo_b64 = res?.data_b64 || ''
-      editProduct.logo_mime = res?.mime || ''
-      productLogoCache.set(productId, { data_b64: editProduct.logo_b64, mime: editProduct.logo_mime })
-      writeLogoCache(productId, { data_b64: editProduct.logo_b64, mime: editProduct.logo_mime })
-    } catch {
-      // no logo or error, ignore
-    } finally {
-      productLogoLoading.value = false
-      if (editProduct.open && productEditMode.value === 'view' && initialEditProductSnapshot) {
-        initialEditProductSnapshot.logo_b64 = editProduct.logo_b64 || ''
-        initialEditProductSnapshot.logo_mime = editProduct.logo_mime || ''
-      }
-    }
-  }
-
-  // Загружает новый логотип игры с прогрессом.
-  async function onProductLogoSelected(event) {
-    const file = event?.target?.files?.[0]
-    if (!file || !editProduct.product_id || !isGameType(editProduct)) return
-    const form = new FormData()
-    form.append('file', file)
-    productLogoLoading.value = true
-    productLogoUploading.value = true
-    productLogoProgress.value = 0
-    try {
-      await apiPostFormWithProgress(`/products/${editProduct.product_id}/logo`, form, {
-        token: auth.state.token,
-        onProgress: (p) => { productLogoProgress.value = p },
-      })
-      productLogoCache.delete(editProduct.product_id)
-      clearLogoCache(editProduct.product_id)
-      await loadProductLogo(editProduct.product_id)
-    } catch (e) {
-      productError.value = mapApiError(e?.message)
-      productLogoLoading.value = false
-    } finally {
-      productLogoUploading.value = false
-      event.target.value = ''
-    }
-  }
-
-  // Удаляет логотип игры.
-  async function removeProductLogo() {
-    if (!editProduct.product_id || !isGameType(editProduct)) return
-    productLogoLoading.value = true
-    productLogoUploading.value = false
-    try {
-      await apiDelete(`/products/${editProduct.product_id}/logo`, { token: auth.state.token })
-      editProduct.logo_b64 = ''
-      editProduct.logo_mime = ''
-      productLogoCache.delete(editProduct.product_id)
-      clearLogoCache(editProduct.product_id)
-    } catch (e) {
-      productError.value = mapApiError(e?.message)
-    } finally {
-      productLogoLoading.value = false
     }
   }
 
@@ -392,7 +283,6 @@ export function useProductsFlow({
           title: newProduct.title,
           short_title: newProduct.short_title || null,
           link: isGameType(newProduct) ? (newProduct.link || null) : null,
-          logo_url: isGameType(newProduct) ? (newProduct.logo_url || null) : null,
           text_lang: isGameType(newProduct) ? (newProduct.text_lang || null) : null,
           audio_lang: isGameType(newProduct) ? (newProduct.audio_lang || null) : null,
           vr_support: isGameType(newProduct) ? (newProduct.vr_support || null) : null,
@@ -409,7 +299,6 @@ export function useProductsFlow({
       newProduct.title = ''
       newProduct.short_title = ''
       newProduct.link = ''
-      newProduct.logo_url = ''
       newProduct.text_lang = ''
       newProduct.audio_lang = ''
       newProduct.vr_support = ''
@@ -447,7 +336,6 @@ export function useProductsFlow({
           title: editProduct.title,
           short_title: editProduct.short_title || null,
           link: isGameType(editProduct) ? (editProduct.link || null) : null,
-          logo_url: isGameType(editProduct) ? (editProduct.logo_url || null) : null,
           text_lang: isGameType(editProduct) ? (editProduct.text_lang || null) : null,
           audio_lang: isGameType(editProduct) ? (editProduct.audio_lang || null) : null,
           vr_support: isGameType(editProduct) ? (editProduct.vr_support || null) : null,
@@ -523,12 +411,9 @@ export function useProductsFlow({
     openProductAccounts,
     openCreateProductModal,
     closeProductModal,
-    onProductLogoSelected,
-    removeProductLogo,
     loadProducts,
     loadProductsAll,
     loadProductAccounts,
-    loadProductLogo,
     createProduct,
     updateProduct,
     archiveProduct,

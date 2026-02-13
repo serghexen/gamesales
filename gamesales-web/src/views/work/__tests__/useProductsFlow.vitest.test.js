@@ -9,7 +9,6 @@ function createHarness() {
   const apiPost = vi.fn()
   const apiPut = vi.fn()
   const apiDelete = vi.fn()
-  const apiPostFormWithProgress = vi.fn()
 
   const showProductForm = ref(false)
   const productEditMode = ref('view')
@@ -20,9 +19,6 @@ function createHarness() {
     title: '',
     short_title: '',
     link: '',
-    logo_url: '',
-    logo_b64: '',
-    logo_mime: '',
     text_lang: '',
     audio_lang: '',
     vr_support: '',
@@ -37,7 +33,6 @@ function createHarness() {
     title: '',
     short_title: '',
     link: '',
-    logo_url: '',
     text_lang: '',
     audio_lang: '',
     vr_support: '',
@@ -54,7 +49,6 @@ function createHarness() {
     apiPost,
     apiPut,
     apiDelete,
-    apiPostFormWithProgress,
     mapApiError: (v) => String(v || ''),
     closeAllModals: vi.fn(),
     resetModalPos: vi.fn(),
@@ -84,13 +78,6 @@ function createHarness() {
     productSlotAssignments: ref([]),
     productSlotAssignmentsError: ref(null),
     productSlotAssignmentsLoading: ref(false),
-    productLogoLoading: ref(false),
-    productLogoUploading: ref(false),
-    productLogoProgress: ref(0),
-    productLogoCache: new Map(),
-    readLogoCache: vi.fn(() => null),
-    writeLogoCache: vi.fn(),
-    clearLogoCache: vi.fn(),
     loadProductSlotAssignments: vi.fn(),
     suppressUnsavedConfirm: ref(false),
     requestUnsavedConfirm: vi.fn(async () => true),
@@ -183,17 +170,5 @@ describe('useProductsFlow', () => {
     await h.flow.loadProductAccounts(55)
 
     expect(h.apiGet).toHaveBeenCalledWith('/products/55/accounts', { token: 'token-1' })
-  })
-
-  it('loadProductLogo requests product logo endpoint', async () => {
-    const h = createHarness()
-    h.editProduct.open = true
-    h.apiGet.mockResolvedValueOnce({ mime: 'image/png', data_b64: 'Zm9v' })
-
-    await h.flow.loadProductLogo(55)
-
-    expect(h.apiGet).toHaveBeenCalledWith('/products/55/logo', { token: 'token-1' })
-    expect(h.editProduct.logo_mime).toBe('image/png')
-    expect(h.editProduct.logo_b64).toBe('Zm9v')
   })
 })
