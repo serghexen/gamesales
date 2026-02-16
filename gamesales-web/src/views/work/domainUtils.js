@@ -91,6 +91,9 @@ export const mapApiError = (message) => {
   if (text.includes('Unknown flow_status_code')) return 'Неизвестный статус'
   if (text.includes('flow_status_code draft is allowed only for sale deals')) return 'Черновик доступен только для продажи'
   if (text.includes('draft deal cannot be completed directly')) return 'Черновик нельзя сразу перевести в статус Завершен'
+  if (text.includes('deal was modified by another user') || text.includes('lock_version is required')) {
+    return 'Сделка уже изменена другим пользователем. Обновите список и попробуйте снова'
+  }
   if (text.includes('customer_nickname is required for non-draft sale')) return 'Укажите покупателя'
   if (text.includes('delete is allowed only for draft deals')) return 'Удалить можно только черновик'
   if (text.includes('is_refund can be changed only for pending deals')) return 'Признак возврата можно менять только у сделки в ожидании'

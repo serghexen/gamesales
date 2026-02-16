@@ -340,11 +340,17 @@
     </thead>
     <tbody>
       <tr
-        v-for="d in sortedDeals"
+        v-for="d in animatedDeals"
         :key="d.deal_id"
         class="clickable-row"
-        :class="{ 'row-active': editDeal.open && editDeal.deal_id === d.deal_id, 'row-refund': d.is_refund }"
-        @click="startEditDeal(d)"
+        :data-deal-id="d.deal_id"
+        :class="{
+          'row-active': editDeal.open && editDeal.deal_id === d.deal_id,
+          'row-refund': d.is_refund,
+          'deal-row-flip-in': !isRemovingDealRow(d.deal_id) && isNewDealRow(d.deal_id),
+          'deal-row-flip-out': isRemovingDealRow(d.deal_id),
+        }"
+        @click="onDealRowClick(d)"
       >
         <td class="cell--tight deal-col-type">{{ d.deal_type || '—' }}</td>
         <td class="deal-col-customer">{{ d.customer_nickname || '—' }}</td>
@@ -384,9 +390,15 @@
             {{ dealSaving && dealCompletingId === d.deal_id ? 'Возвращаем...' : 'Возврат' }}
           </button>
           <span v-else class="muted">—</span>
+          <div
+            v-if="isDealEditedByAnotherUser(d.deal_id)"
+            class="muted"
+          >
+            Редактирует: {{ getDealEditingActor(d.deal_id) }}
+          </div>
         </td>
       </tr>
-      <tr v-if="!sortedDeals.length">
+      <tr v-if="!animatedDeals.length">
         <td :colspan="emptyColspan" class="muted">Пока нет сделок.</td>
       </tr>
     </tbody>
@@ -397,7 +409,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 
 import {
   parseMultiValueFilterQuery,
@@ -409,6 +421,13 @@ import { useResizableTableColumns } from '../useResizableTableColumns'
 
 const tableEl = ref(null)
 const coinsContainerRef = ref(null)
+const highlightedDealRows = ref({})
+const removingDealRows = ref({})
+const removingDeals = ref([])
+const knownDealsById = ref({})
+const rowEnterTimers = new Map()
+const rowLeaveTimers = new Map()
+const knownDealIds = ref([])
 const { getColumnStyle, startResize } = useResizableTableColumns({
   tableRef: tableEl,
   storageKey: 'work.deals.columns.v1',
@@ -442,6 +461,9 @@ const props = defineProps({
   maxDate: { type: String, required: true },
   editDeal: { type: Object, required: true },
   startEditDeal: { type: Function, required: true },
+  dealEditingByDealId: { type: Object, default: () => ({}) },
+  currentUsername: { type: String, default: '' },
+  showDealWarning: { type: Function, default: null },
   formatDateTimeMinutes: { type: Function, required: true },
   dealShowCompleted: { type: Boolean, required: true },
   markDealCompleted: { type: Function, required: true },
@@ -451,6 +473,93 @@ const props = defineProps({
 })
 
 const emptyColspan = computed(() => 7)
+const animatedDeals = computed(() => {
+  const base = Array.isArray(props.sortedDeals) ? props.sortedDeals : []
+  if (!removingDeals.value.length) return base
+  const present = new Set(base.map((deal) => deal?.deal_id).filter(Boolean))
+  const leaving = removingDeals.value.filter((deal) => !present.has(deal?.deal_id))
+  return [...base, ...leaving]
+})
+
+watch(
+  () => props.sortedDeals,
+  (nextDeals) => {
+    const deals = Array.isArray(nextDeals) ? nextDeals : []
+    const currentIds = deals.map((deal) => deal?.deal_id).filter(Boolean)
+    const nextCache = { ...knownDealsById.value }
+    for (const deal of deals) {
+      if (deal?.deal_id) nextCache[deal.deal_id] = deal
+    }
+    knownDealsById.value = nextCache
+
+    // На первом рендере только запоминаем текущий набор id без анимации.
+    if (!knownDealIds.value.length) {
+      knownDealIds.value = currentIds
+      return
+    }
+
+    const previous = new Set(knownDealIds.value)
+    const incoming = currentIds.filter((id) => !previous.has(id))
+    const currentSet = new Set(currentIds)
+    const removed = knownDealIds.value.filter((id) => !currentSet.has(id))
+
+    for (const id of incoming) {
+      // Если строка вернулась до конца анимации удаления, отменяем удаление.
+      const leaveTimer = rowLeaveTimers.get(id)
+      if (leaveTimer) {
+        clearTimeout(leaveTimer)
+        rowLeaveTimers.delete(id)
+      }
+      if (removingDealRows.value[id]) {
+        const nextRemoving = { ...removingDealRows.value }
+        delete nextRemoving[id]
+        removingDealRows.value = nextRemoving
+        removingDeals.value = removingDeals.value.filter((deal) => deal?.deal_id !== id)
+      }
+      highlightedDealRows.value = { ...highlightedDealRows.value, [id]: true }
+      const prevTimer = rowEnterTimers.get(id)
+      if (prevTimer) clearTimeout(prevTimer)
+      const timer = setTimeout(() => {
+        const next = { ...highlightedDealRows.value }
+        delete next[id]
+        highlightedDealRows.value = next
+        rowEnterTimers.delete(id)
+      }, 1800)
+      rowEnterTimers.set(id, timer)
+    }
+
+    for (const id of removed) {
+      if (removingDealRows.value[id]) continue
+      const removedDeal = knownDealsById.value[id]
+      if (!removedDeal) continue
+
+      removingDealRows.value = { ...removingDealRows.value, [id]: true }
+      removingDeals.value = [...removingDeals.value, removedDeal]
+
+      const prevLeaveTimer = rowLeaveTimers.get(id)
+      if (prevLeaveTimer) clearTimeout(prevLeaveTimer)
+      const leaveTimer = setTimeout(() => {
+        const nextRemoving = { ...removingDealRows.value }
+        delete nextRemoving[id]
+        removingDealRows.value = nextRemoving
+        removingDeals.value = removingDeals.value.filter((deal) => deal?.deal_id !== id)
+        rowLeaveTimers.delete(id)
+      }, 820)
+      rowLeaveTimers.set(id, leaveTimer)
+    }
+
+    knownDealIds.value = currentIds
+  },
+  { immediate: true, deep: false },
+)
+
+onBeforeUnmount(() => {
+  // Чистим таймеры входа/выхода строк при размонтировании таблицы.
+  for (const timer of rowEnterTimers.values()) clearTimeout(timer)
+  for (const timer of rowLeaveTimers.values()) clearTimeout(timer)
+  rowEnterTimers.clear()
+  rowLeaveTimers.clear()
+})
 const responsibleFilterValues = computed({
   get: () => parseResponsibleFilterQuery(props.dealFilters.responsible_q),
   set: (values) => {
@@ -485,6 +594,38 @@ const statusFilterValues = computed({
 // Применяет мультифильтр сразу после клика по чекбоксу, без отдельной кнопки.
 function applyDealMultiFilter() {
   props.loadDeals(1)
+}
+
+function isNewDealRow(dealId) {
+  return Boolean(highlightedDealRows.value?.[dealId])
+}
+
+function isRemovingDealRow(dealId) {
+  return Boolean(removingDealRows.value?.[dealId])
+}
+
+function onDealRowClick(deal) {
+  // Пока строка уходит с анимацией удаления, блокируем открытие модалки редактирования.
+  if (isRemovingDealRow(deal?.deal_id)) return
+  // Не даем открывать редактирование, если строку уже редактирует другой пользователь.
+  if (isDealEditedByAnotherUser(deal?.deal_id)) {
+    if (typeof props.showDealWarning === 'function') {
+      props.showDealWarning(`Сделку сейчас редактирует ${getDealEditingActor(deal?.deal_id) || 'другой пользователь'}`)
+    }
+    return
+  }
+  props.startEditDeal(deal)
+}
+
+function getDealEditingActor(dealId) {
+  return String(props.dealEditingByDealId?.[dealId]?.actor || '').trim()
+}
+
+function isDealEditedByAnotherUser(dealId) {
+  const actor = getDealEditingActor(dealId)
+  if (!actor) return false
+  const me = String(props.currentUsername || '').trim().toLowerCase()
+  return actor.toLowerCase() !== me
 }
 
 function spawnCompletionCoins(originPoint) {

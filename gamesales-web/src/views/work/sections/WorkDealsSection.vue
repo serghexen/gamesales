@@ -17,29 +17,9 @@
       <p v-if="ctx.dealListError" class="bad">{{ ctx.dealListError }}</p>
       <p v-if="ctx.dealError" class="bad">{{ ctx.dealError }}</p>
       <p v-if="ctx.dealOk" class="ok">{{ ctx.dealOk }}</p>
-      <div v-if="!ctx.dealListError && ctx.dealListLoading" class="loader-wrap loader-overlay">
-        <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
-          <div class="wheel"></div>
-          <div class="hamster">
-            <div class="hamster__body">
-              <div class="hamster__head">
-                <div class="hamster__ear"></div>
-                <div class="hamster__eye"></div>
-                <div class="hamster__nose"></div>
-              </div>
-              <div class="hamster__limb hamster__limb--fr"></div>
-              <div class="hamster__limb hamster__limb--fl"></div>
-              <div class="hamster__limb hamster__limb--br"></div>
-              <div class="hamster__limb hamster__limb--bl"></div>
-              <div class="hamster__tail"></div>
-            </div>
-          </div>
-          <div class="spoke"></div>
-        </div>
-      </div>
 
       <WorkDealFilterChips
-        v-if="!ctx.dealListError && !ctx.dealListLoading && ctx.activeDealChips.length"
+        v-if="!ctx.dealListError && ctx.activeDealChips.length"
         :active-deal-chips="ctx.activeDealChips"
         :reset-deal-filter="ctx.resetDealFilter"
       />
@@ -63,6 +43,9 @@
         :max-date="ctx.maxDate"
         :edit-deal="ctx.editDeal"
         :start-edit-deal="ctx.startEditDeal"
+        :deal-editing-by-deal-id="ctx.dealEditingByDealId"
+        :current-username="ctx.currentUsername"
+        :show-deal-warning="ctx.showDealWarning"
         :format-date-time-minutes="ctx.formatDateTimeMinutes"
         :deal-show-completed="ctx.dealShowCompleted"
         :mark-deal-completed="ctx.markDealCompleted"

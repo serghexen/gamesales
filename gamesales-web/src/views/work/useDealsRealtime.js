@@ -3,6 +3,44 @@ import { onBeforeUnmount, ref, watch } from 'vue'
 import { API_BASE } from '../../api/http'
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000]
+const DEAL_EDIT_HEARTBEAT_MS = 15000
+
+// Применяет событие редактирования к локальной карте блокировок по сделкам.
+export function applyDealEditingRealtimeEvent(editingByDealId, payload) {
+  const current = editingByDealId && typeof editingByDealId === 'object' ? editingByDealId : {}
+  const eventType = String(payload?.event || '').trim().toLowerCase()
+  if (eventType === 'connected') {
+    const list = Array.isArray(payload?.editing) ? payload.editing : []
+    const next = {}
+    for (const item of list) {
+      const dealId = Number(item?.deal_id || 0)
+      const actor = String(item?.actor || '').trim()
+      if (!dealId || !actor) continue
+      next[dealId] = {
+        actor,
+        changedAt: String(item?.changed_at || ''),
+      }
+    }
+    return next
+  }
+  const dealId = Number(payload?.deal_id || 0)
+  if (!dealId) return current
+  if (eventType === 'deal_edit_started') {
+    return {
+      ...current,
+      [dealId]: {
+        actor: String(payload?.actor || '').trim(),
+        changedAt: String(payload?.changed_at || ''),
+      },
+    }
+  }
+  if (eventType === 'deal_edit_stopped') {
+    const next = { ...current }
+    delete next[dealId]
+    return next
+  }
+  return current
+}
 
 // Собирает URL websocket для событий сделок на основе API_BASE и токена.
 export function buildDealsWsUrl(apiBase, token, locationLike = null) {
@@ -34,15 +72,62 @@ export function useDealsRealtime({
   showDealForm,
   loadDeals,
   wsState: externalWsState = null,
+  editingByDealId: externalEditingByDealId = null,
 }) {
   const wsState = externalWsState || ref('offline')
+  const editingByDealId = externalEditingByDealId || ref({})
   let ws = null
   let reconnectTimer = null
   let reloadTimer = null
   let reconnectAttempt = 0
   let pendingRefresh = false
+  let editingDealId = null
+  let editHeartbeatTimer = null
 
   const canApplyReloadNow = () => activeTab.value === 'deals' && !showDealForm.value && !editDeal.open
+
+  // Отправляет событие редактирования сделки на backend по активному websocket.
+  const sendEditingEvent = (eventType, dealId) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    const normalizedId = Number(dealId || 0)
+    if (!normalizedId) return
+    try {
+      ws.send(JSON.stringify({ event: eventType, deal_id: normalizedId }))
+    } catch {
+      // Ошибку отправки проглатываем: состояние синхронизируется при следующем соединении.
+    }
+  }
+
+  // Запускает периодическое продление lock во время редактирования сделки.
+  const startEditHeartbeat = () => {
+    if (editHeartbeatTimer || !editingDealId) return
+    editHeartbeatTimer = setInterval(() => {
+      sendEditingEvent('deal_edit_heartbeat', editingDealId)
+    }, DEAL_EDIT_HEARTBEAT_MS)
+  }
+
+  // Останавливает heartbeat, когда редактирование завершено или сокет отключен.
+  const stopEditHeartbeat = () => {
+    if (!editHeartbeatTimer) return
+    clearInterval(editHeartbeatTimer)
+    editHeartbeatTimer = null
+  }
+
+  // Синхронизирует "мягкий lock" текущего пользователя по состоянию модалки редактирования.
+  const syncEditingState = () => {
+    const nextDealId = activeTab.value === 'deals' && editDeal.open ? Number(editDeal.deal_id || 0) : 0
+    if (editingDealId && editingDealId !== nextDealId) {
+      sendEditingEvent('deal_edit_stopped', editingDealId)
+      editingDealId = null
+      stopEditHeartbeat()
+    }
+    if (nextDealId && editingDealId !== nextDealId) {
+      sendEditingEvent('deal_edit_started', nextDealId)
+      editingDealId = nextDealId
+      startEditHeartbeat()
+    }
+    if (!nextDealId) stopEditHeartbeat()
+  }
 
   // Обновляет список сделок с коротким debounce, чтобы не дергать API на каждое событие отдельно.
   const scheduleReload = () => {
@@ -60,6 +145,11 @@ export function useDealsRealtime({
       reconnectTimer = null
     }
     if (ws) {
+      if (editingDealId) {
+        sendEditingEvent('deal_edit_stopped', editingDealId)
+        editingDealId = null
+      }
+      stopEditHeartbeat()
       ws.onopen = null
       ws.onmessage = null
       ws.onclose = null
@@ -86,6 +176,9 @@ export function useDealsRealtime({
     ws.onopen = () => {
       reconnectAttempt = 0
       wsState.value = 'online'
+      // После переподключения повторно заявляем, что текущая сделка открыта на редактирование.
+      syncEditingState()
+      startEditHeartbeat()
     }
     ws.onmessage = (event) => {
       let payload = null
@@ -94,7 +187,9 @@ export function useDealsRealtime({
       } catch {
         return
       }
-      if (!payload?.event || payload.event === 'connected') return
+      if (!payload?.event) return
+      editingByDealId.value = applyDealEditingRealtimeEvent(editingByDealId.value, payload)
+      if (payload.event === 'connected') return
       if (canApplyReloadNow()) {
         scheduleReload()
         return
@@ -130,6 +225,14 @@ export function useDealsRealtime({
     { immediate: true },
   )
 
+  watch(
+    [activeTab, () => editDeal.open, () => editDeal.deal_id],
+    () => {
+      syncEditingState()
+    },
+    { immediate: true },
+  )
+
   // Если были отложенные события во время редактирования, применяем обновление после закрытия формы.
   watch(
     [activeTab, showDealForm, () => editDeal.open],
@@ -144,10 +247,16 @@ export function useDealsRealtime({
   onBeforeUnmount(() => {
     pendingRefresh = false
     if (reloadTimer) clearTimeout(reloadTimer)
+    if (editingDealId) {
+      sendEditingEvent('deal_edit_stopped', editingDealId)
+      editingDealId = null
+    }
+    stopEditHeartbeat()
     cleanupSocket()
   })
 
   return {
     wsState,
+    editingByDealId,
   }
 }

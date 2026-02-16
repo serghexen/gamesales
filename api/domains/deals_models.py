@@ -65,6 +65,7 @@ class DealCreate(BaseModel):
 
 
 class DealUpdate(BaseModel):
+    lock_version: Optional[int] = None
     deal_type_code: Optional[str] = None
     account_id: Optional[int] = None
     product_id: Optional[int] = None
@@ -98,6 +99,7 @@ class DealUpdate(BaseModel):
 
 class DealListItem(BaseModel):
     deal_id: int
+    lock_version: int = 1
     deal_type: str
     deal_type_code: Optional[str] = None
     status: str

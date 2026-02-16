@@ -10,6 +10,8 @@ from fastapi import Query, WebSocket, WebSocketDisconnect
 
 
 DEALS_EVENTS_CHANNEL = "app.deals.events"
+DEALS_EDITING_KEY_PREFIX = "app.deals.editing:"
+DEALS_EDITING_TTL_SECONDS = 45
 
 
 def build_deals_events(
@@ -50,7 +52,7 @@ def mount_deals_ws_routes(
     @app.websocket("/ws/deals")
     async def deals_ws(websocket: WebSocket, token: Optional[str] = Query(default=None)):
         try:
-            parse_ws_user(token)
+            user = parse_ws_user(token)
         except Exception:
             await websocket.close(code=1008, reason="Unauthorized")
             return
@@ -59,6 +61,46 @@ def mount_deals_ws_routes(
         client = None
         pubsub = None
         disconnect_task = None
+        active_editing_ids = set()
+
+        # Публикует событие редактирования сделки в общий канал.
+        async def publish_edit_event(event_type: str, deal_id: int):
+            payload = {
+                "event": event_type,
+                "deal_id": int(deal_id),
+                "actor": getattr(user, "username", "") or "",
+                "changed_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await client.publish(DEALS_EVENTS_CHANNEL, json.dumps(payload, ensure_ascii=True))
+
+        # Возвращает текущее состояние "кто редактирует какую сделку" для инициализации клиента.
+        async def load_editing_snapshot():
+            items = []
+            pattern = f"{DEALS_EDITING_KEY_PREFIX}*"
+            async for key in client.scan_iter(match=pattern):
+                raw = await client.get(key)
+                if not raw:
+                    continue
+                try:
+                    parsed = json.loads(raw)
+                except Exception:
+                    continue
+                deal_id_raw = str(key).replace(DEALS_EDITING_KEY_PREFIX, "", 1)
+                try:
+                    deal_id = int(deal_id_raw)
+                except Exception:
+                    continue
+                actor = str(parsed.get("actor") or "").strip()
+                if not actor:
+                    continue
+                items.append(
+                    {
+                        "deal_id": deal_id,
+                        "actor": actor,
+                        "changed_at": parsed.get("changed_at") or "",
+                    }
+                )
+            return items
 
         # Поднимает новое подключение к Redis Pub/Sub и подписывается на канал сделок.
         async def open_pubsub():
@@ -83,12 +125,65 @@ def mount_deals_ws_routes(
         try:
             client, pubsub = await open_pubsub()
             # Отправляем служебное событие, чтобы клиент понимал, что подписка установлена.
-            await websocket.send_text(json.dumps({"event": "connected"}, ensure_ascii=True))
+            await websocket.send_text(
+                json.dumps(
+                    {
+                        "event": "connected",
+                        "editing": await load_editing_snapshot(),
+                    },
+                    ensure_ascii=True,
+                )
+            )
 
-            # Отдельно слушаем входящие сообщения, чтобы вовремя поймать disconnect.
+            # Отдельно слушаем входящие сообщения от клиента (редактирование/disconnect).
             async def watch_disconnect():
                 while True:
-                    await websocket.receive_text()
+                    raw = await websocket.receive_text()
+                    try:
+                        message = json.loads(str(raw or "{}"))
+                    except Exception:
+                        continue
+                    event_type = str(message.get("event") or "").strip().lower()
+                    deal_id_raw = message.get("deal_id")
+                    if event_type not in {"deal_edit_started", "deal_edit_stopped", "deal_edit_heartbeat"}:
+                        continue
+                    try:
+                        deal_id = int(deal_id_raw)
+                    except Exception:
+                        continue
+                    if deal_id <= 0:
+                        continue
+                    if event_type == "deal_edit_started":
+                        # Обновляем TTL "мягкого" lock и рассылаем событие всем подписчикам.
+                        payload = {
+                            "actor": getattr(user, "username", "") or "",
+                            "changed_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        await client.set(
+                            f"{DEALS_EDITING_KEY_PREFIX}{deal_id}",
+                            json.dumps(payload, ensure_ascii=True),
+                            ex=DEALS_EDITING_TTL_SECONDS,
+                        )
+                        active_editing_ids.add(deal_id)
+                        await publish_edit_event("deal_edit_started", deal_id)
+                        continue
+                    if event_type == "deal_edit_heartbeat":
+                        # Продлеваем TTL мягкого lock, пока пользователь держит форму редактирования открытой.
+                        payload = {
+                            "actor": getattr(user, "username", "") or "",
+                            "changed_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        await client.set(
+                            f"{DEALS_EDITING_KEY_PREFIX}{deal_id}",
+                            json.dumps(payload, ensure_ascii=True),
+                            ex=DEALS_EDITING_TTL_SECONDS,
+                        )
+                        active_editing_ids.add(deal_id)
+                        continue
+                    await client.delete(f"{DEALS_EDITING_KEY_PREFIX}{deal_id}")
+                    if deal_id in active_editing_ids:
+                        active_editing_ids.remove(deal_id)
+                    await publish_edit_event("deal_edit_stopped", deal_id)
 
             disconnect_task = asyncio.create_task(watch_disconnect())
             while True:
@@ -113,4 +208,27 @@ def mount_deals_ws_routes(
         finally:
             if disconnect_task is not None:
                 disconnect_task.cancel()
+            # При отключении клиента освобождаем все "мягкие" lock, которые он держал.
+            if client is not None and active_editing_ids:
+                actor = getattr(user, "username", "") or ""
+                for deal_id in list(active_editing_ids):
+                    try:
+                        key = f"{DEALS_EDITING_KEY_PREFIX}{deal_id}"
+                        raw = await client.get(key)
+                        if raw:
+                            parsed = json.loads(raw)
+                            owner = str(parsed.get("actor") or "").strip()
+                            if owner and owner != actor:
+                                continue
+                        await client.delete(key)
+                        payload = {
+                            "event": "deal_edit_stopped",
+                            "deal_id": int(deal_id),
+                            "actor": actor,
+                            "changed_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        await client.publish(DEALS_EVENTS_CHANNEL, json.dumps(payload, ensure_ascii=True))
+                    except Exception:
+                        # Ошибка очистки локов не должна валить закрытие веб-сокета.
+                        pass
             await close_pubsub(client, pubsub)

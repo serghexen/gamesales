@@ -587,6 +587,156 @@
   background: rgba(239, 68, 68, 0.24);
 }
 
+.work-page .deal-row-flip-in td {
+  animation: deal-row-flip-in 0.8s ease-out, deal-row-glow 1.8s ease-out;
+  transform-origin: center;
+  background: linear-gradient(
+    135deg,
+    rgba(76, 175, 80, 0.16) 0%,
+    rgba(33, 150, 243, 0.16) 100%
+  );
+  position: relative;
+  overflow: hidden;
+}
+
+.work-page .deal-row-flip-in td::after {
+  content: '';
+  position: absolute;
+  top: -55%;
+  left: -65%;
+  width: 55%;
+  height: 210%;
+  background: linear-gradient(
+    45deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.32) 50%,
+    transparent 70%
+  );
+  transform: translateX(-220%) rotate(18deg);
+  animation: deal-row-shine 1.25s ease-out;
+  pointer-events: none;
+}
+
+.work-page .deal-row-flip-out td {
+  animation: deal-row-flip-out 0.8s ease-in forwards, deal-row-red-glow 0.8s ease-out;
+  transform-origin: center;
+  background: linear-gradient(
+    135deg,
+    rgba(244, 67, 54, 0.15) 0%,
+    rgba(233, 30, 99, 0.15) 100%
+  );
+  position: relative;
+  overflow: hidden;
+}
+
+.work-page .deal-row-flip-out td::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  right: -50%;
+  bottom: -50%;
+  background: linear-gradient(
+    45deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.4) 50%,
+    transparent 70%
+  );
+  animation: deal-row-fade-shine 0.8s ease-out;
+  pointer-events: none;
+}
+
+@keyframes deal-row-flip-in {
+  0% {
+    opacity: 0;
+    transform: perspective(1000px) rotateX(-90deg) translateY(-30px);
+  }
+
+  50% {
+    opacity: 0.6;
+    transform: perspective(1000px) rotateX(-45deg) translateY(-8px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: perspective(1000px) rotateX(0deg) translateY(0);
+  }
+}
+
+@keyframes deal-row-flip-out {
+  0% {
+    opacity: 1;
+    transform: perspective(1000px) rotateX(0deg) translateY(0) scale(1);
+  }
+
+  30% {
+    opacity: 0.9;
+    transform: perspective(1000px) rotateX(20deg) translateY(-5px) scale(1.02);
+  }
+
+  100% {
+    opacity: 0;
+    transform: perspective(1000px) rotateX(90deg) translateY(-100px) scale(0.8);
+  }
+}
+
+@keyframes deal-row-glow {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1px rgba(76, 175, 80, 0.35),
+      0 0 6px rgba(76, 175, 80, 0.25);
+  }
+
+  50% {
+    box-shadow:
+      inset 0 0 0 1px rgba(76, 175, 80, 0.55),
+      0 0 16px rgba(76, 175, 80, 0.4);
+  }
+}
+
+@keyframes deal-row-red-glow {
+  0% {
+    box-shadow:
+      0 0 5px rgba(244, 67, 54, 0.3),
+      0 0 10px rgba(244, 67, 54, 0.2);
+  }
+
+  50% {
+    box-shadow:
+      0 0 20px rgba(244, 67, 54, 0.6),
+      0 0 30px rgba(244, 67, 54, 0.4);
+  }
+
+  100% {
+    box-shadow:
+      0 0 0 rgba(244, 67, 54, 0),
+      0 0 0 rgba(244, 67, 54, 0);
+  }
+}
+
+@keyframes deal-row-shine {
+  0% {
+    transform: translateX(-220%) rotate(18deg);
+  }
+
+  100% {
+    transform: translateX(420%) rotate(18deg);
+  }
+}
+
+@keyframes deal-row-fade-shine {
+  0% {
+    transform: translateX(-100%) translateY(-100%) rotate(45deg);
+    opacity: 0.5;
+  }
+
+  100% {
+    transform: translateX(100%) translateY(100%) rotate(45deg);
+    opacity: 0;
+  }
+}
+
 .work-page .deal-date-lines {
   display: grid;
   gap: 2px;

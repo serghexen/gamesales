@@ -300,6 +300,7 @@ CREATE TABLE IF NOT EXISTS app.deals (
   currency     text NOT NULL DEFAULT 'RUB',
   total_amount numeric(14,2),
   notes        text,
+  lock_version integer NOT NULL DEFAULT 1,
   created_at   timestamptz NOT NULL DEFAULT now(),
   completed_at timestamptz
 );
@@ -315,6 +316,7 @@ COMMENT ON COLUMN app.deals.responsible_username IS 'Ответственный 
 COMMENT ON COLUMN app.deals.currency IS 'Валюта';
 COMMENT ON COLUMN app.deals.total_amount IS 'Сумма сделки';
 COMMENT ON COLUMN app.deals.notes IS 'Заметки';
+COMMENT ON COLUMN app.deals.lock_version IS 'Версия записи для optimistic locking';
 COMMENT ON COLUMN app.deals.created_at IS 'Дата создания сделки';
 COMMENT ON COLUMN app.deals.completed_at IS 'Дата завершения сделки';
 

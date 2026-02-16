@@ -55,6 +55,7 @@ describe('domainUtils', () => {
     expect(mapApiError('slot_type_code is required for rental')).toBe('Для шеринга нужно выбрать тип слота')
     expect(mapApiError('order_number must be unique for market source')).toBe('Для market-источника номер заказа уже используется')
     expect(mapApiError('draft deal cannot be completed directly')).toBe('Черновик нельзя сразу перевести в статус Завершен')
+    expect(mapApiError('deal was modified by another user')).toBe('Сделка уже изменена другим пользователем. Обновите список и попробуйте снова')
     expect(mapApiError('is_refund can be changed only for pending deals')).toBe('Признак возврата можно менять только у сделки в ожидании')
     expect(mapApiError('не достаточно прав для проведения возврата')).toBe('не достаточно прав для проведения возврата')
     expect(mapApiError('query.payload: Field required')).toBe('Некорректный формат запроса. Обновите страницу и попробуйте снова')

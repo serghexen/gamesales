@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 
 import WorkDealsTableSection from '../sections/WorkDealsTableSection.vue'
 
@@ -31,6 +32,9 @@ function buildProps(overrides = {}) {
     maxDate: '2026-12-31',
     editDeal: { open: false, deal_id: null },
     startEditDeal: () => {},
+    dealEditingByDealId: {},
+    currentUsername: 'admin',
+    showDealWarning: () => {},
     formatDateTimeMinutes: (value) => String(value || ''),
     dealShowCompleted: false,
     markDealCompleted: () => {},
@@ -207,5 +211,83 @@ describe('WorkDealsTableSection', () => {
     await statusCheckboxes[0].setValue(true)
     await statusCheckboxes[1].setValue(true)
     expect(dealFilters.status_q).toBe('pending,draft')
+  })
+
+  it('marks newly added rows with flip animation class', async () => {
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        sortedDeals: [
+          { deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+        ],
+      }),
+    })
+
+    await wrapper.setProps({
+      sortedDeals: [
+        { deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+        { deal_id: 2, deal_type: 'Продажа', customer_nickname: 'B', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+      ],
+    })
+    await nextTick()
+
+    const rows = wrapper.findAll('tbody tr')
+    expect(rows[1].classes()).toContain('deal-row-flip-in')
+  })
+
+  it('animates removed row and blocks click while it disappears', async () => {
+    vi.useFakeTimers()
+    const startEditDeal = vi.fn()
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        startEditDeal,
+        sortedDeals: [
+          { deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+          { deal_id: 2, deal_type: 'Продажа', customer_nickname: 'B', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+        ],
+      }),
+    })
+
+    await wrapper.setProps({
+      sortedDeals: [
+        { deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+      ],
+    })
+    await nextTick()
+
+    const row = wrapper.find('tbody tr[data-deal-id="2"]')
+    expect(row.exists()).toBe(true)
+    expect(row.classes()).toContain('deal-row-flip-out')
+
+    await row.trigger('click')
+    expect(startEditDeal).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(820)
+    await nextTick()
+    expect(wrapper.find('tbody tr[data-deal-id="2"]').exists()).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('blocks row open when deal is edited by another user', async () => {
+    const startEditDeal = vi.fn()
+    const showDealWarning = vi.fn()
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        startEditDeal,
+        showDealWarning,
+        currentUsername: 'admin',
+        dealEditingByDealId: {
+          10: { actor: 'manager-1', changedAt: '2026-02-16T20:00:00Z' },
+        },
+        sortedDeals: [
+          { deal_id: 10, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+        ],
+      }),
+    })
+
+    await wrapper.find('tbody tr[data-deal-id="10"]').trigger('click')
+
+    expect(startEditDeal).not.toHaveBeenCalled()
+    expect(showDealWarning).toHaveBeenCalledWith('Сделку сейчас редактирует manager-1')
+    expect(wrapper.text()).toContain('Редактирует: manager-1')
   })
 })

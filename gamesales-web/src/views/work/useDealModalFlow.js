@@ -84,6 +84,8 @@ export function useDealModalFlow({
   function applyDealToEditState(deal) {
     if (!deal) return
     editDeal.deal_id = deal.deal_id
+    // Храним версию записи, чтобы backend мог отследить конфликт параллельного редактирования.
+    editDeal.lock_version = Number(deal.lock_version || 1)
     editDeal.created_at = toDateTimeLocalValue(deal.created_at)
     // Берем дату завершения из API, чтобы показать ее рядом со статусом.
     editDeal.completed_at = toDateTimeLocalValue(deal.completed_at)
@@ -112,6 +114,7 @@ export function useDealModalFlow({
   function cancelEditDeal() {
     editDeal.open = false
     editDeal.deal_id = null
+    editDeal.lock_version = 1
     editDeal.created_at = ''
     // Дата завершения нужна для показа в форме только у завершенных сделок.
     editDeal.completed_at = ''
@@ -219,6 +222,7 @@ export function useDealModalFlow({
       responsible: newDealResponsible.value,
     }
     const editCurrent = {
+      lock_version: editDeal.lock_version,
       deal_type_code: editDeal.deal_type_code,
       account_id: editDeal.account_id,
       product_id: editDeal.product_id,
@@ -311,6 +315,7 @@ export function useDealModalFlow({
     dealAccountsForProductEdit.value = []
     // Сохраняем исходные данные в том же формате, что и форма, чтобы корректно сравнивать "грязные" изменения.
     initialEditDealSnapshot = {
+      lock_version: Number(deal.lock_version || 1),
       created_at: toDateTimeLocalValue(deal.created_at),
       completed_at: toDateTimeLocalValue(deal.completed_at),
       deal_type_code: deal.deal_type_code || (deal.deal_type === 'Шеринг' ? 'rental' : 'sale'),

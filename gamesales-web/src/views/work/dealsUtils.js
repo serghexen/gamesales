@@ -26,6 +26,7 @@ export function createEditDealState() {
   return {
     open: false,
     deal_id: null,
+    lock_version: 1,
     created_at: '',
     completed_at: '',
     deal_type_code: 'sale',

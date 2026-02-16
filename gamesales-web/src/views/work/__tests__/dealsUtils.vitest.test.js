@@ -25,6 +25,7 @@ describe('dealsUtils', () => {
     const state = createEditDealState()
     expect(state.open).toBe(false)
     expect(state.deal_id).toBeNull()
+    expect(state.lock_version).toBe(1)
     expect(state.order_number).toBe('')
     expect(state.product_id).toBe('')
     expect(state.login).toBe('')

@@ -34,6 +34,7 @@ function createDeps(overrides = {}) {
     },
     editDeal: {
       deal_id: 1,
+      lock_version: 7,
       deal_type_code: 'sale',
       account_id: '',
       product_id: 56,
@@ -176,6 +177,7 @@ describe('useDealsActions', () => {
     expect(deps.apiPut.mock.calls[0][1].password).toBe('edit-pass')
     expect(deps.apiPut.mock.calls[0][1].responsible_username).toBe('alice')
     expect(deps.apiPut.mock.calls[0][1].is_refund).toBe(false)
+    expect(deps.apiPut.mock.calls[0][1].lock_version).toBe(7)
   })
 
   it('updateDeal sends manual created/completed dates for existing deal', async () => {
@@ -279,11 +281,39 @@ describe('useDealsActions', () => {
     const deps = createDeps()
     const { markDealCompleted } = useDealsActions(deps)
 
-    const ok = await markDealCompleted({ deal_id: 10, is_refund: false })
+    const ok = await markDealCompleted({ deal_id: 10, is_refund: false, lock_version: 4 })
 
-    expect(deps.apiPut).toHaveBeenCalledWith('/deals/10', { flow_status_code: 'completed' }, { token: 'token' })
+    expect(deps.apiPut).toHaveBeenCalledWith('/deals/10', { flow_status_code: 'completed', lock_version: 4 }, { token: 'token' })
     expect(deps.loadDeals).toHaveBeenCalledWith(1)
     expect(ok).toBe(true)
+  })
+
+  it('shows warning on version conflict during updateDeal', async () => {
+    const conflict = new Error('deal was modified by another user')
+    conflict.status = 409
+    const deps = createDeps({
+      apiPut: vi.fn().mockRejectedValue(conflict),
+    })
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.showDealWarning).toHaveBeenCalledWith('Запись уже изменилась у другого пользователя. Обновите список и повторите правку.')
+    expect(deps.dealError.value).toBe('deal was modified by another user')
+  })
+
+  it('shows warning on version conflict during markDealCompleted', async () => {
+    const conflict = new Error('deal was modified by another user')
+    conflict.status = 409
+    const deps = createDeps({
+      apiPut: vi.fn().mockRejectedValue(conflict),
+    })
+    const { markDealCompleted } = useDealsActions(deps)
+
+    const ok = await markDealCompleted({ deal_id: 11, is_refund: false, lock_version: 3 })
+
+    expect(deps.showDealWarning).toHaveBeenCalledWith('Сделка уже была изменена другим пользователем. Обновите список.')
+    expect(ok).toBe(false)
   })
 
   it('updateDeal blocks refund completion for non-admin roles', async () => {

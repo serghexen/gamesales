@@ -472,6 +472,7 @@ def mount_deals_routes(
                   d.deal_type_code,
                   d.status_code,
                   d.flow_status_code,
+                  d.lock_version,
                   d.region_id,
                   d.customer_id,
                   d.total_amount,
@@ -501,8 +502,21 @@ def mount_deals_routes(
             if not row:
                 raise HTTPException(404, "Deal not found")
     
-            current_type, status_code, flow_status_code, region_id, customer_id, total_amount, order_number, responsible_username, deal_item_id, \
-                account_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link, returned_at = row
+            if len(row) >= 22:
+                current_type, status_code, flow_status_code, current_lock_version, region_id, customer_id, total_amount, order_number, responsible_username, deal_item_id, \
+                    account_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link, returned_at = row
+            else:
+                # Поддерживаем старый формат строки (без lock_version) в тестовых моках.
+                current_type, status_code, flow_status_code, region_id, customer_id, total_amount, order_number, responsible_username, deal_item_id, \
+                    account_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link, returned_at = row
+                current_lock_version = 1
+            # Проверяем версию записи, чтобы не перезаписать чужие правки при одновременном редактировании.
+            expected_lock_version = payload.lock_version
+            # Для обратной совместимости допускаем старые клиенты без lock_version.
+            if expected_lock_version is None:
+                expected_lock_version = int(current_lock_version or 1)
+            if int(expected_lock_version) != int(current_lock_version or 0):
+                raise HTTPException(409, "deal was modified by another user")
             user_role = (getattr(user, "role", "") or "").strip().lower()
             can_edit_completed = has_completed_deal_access(user)
             # Завершенные сделки редактируют только admin/owner; для возврата есть отдельный endpoint.
@@ -663,7 +677,7 @@ def mount_deals_routes(
             completed_at_override = payload.completed_at is not None
             completed_at_override_value = payload.completed_at if completed_at_override else None
 
-            exec1(
+            updated_rows = exec1(
                 conn,
                 """
                 UPDATE app.deals
@@ -679,8 +693,10 @@ def mount_deals_routes(
                         WHEN %s THEN %s
                         WHEN %s THEN %s
                         ELSE completed_at
-                    END
+                    END,
+                    lock_version=lock_version + 1
                 WHERE deal_id=%s
+                  AND lock_version=%s
                 """,
                 (
                     deal_type,
@@ -697,8 +713,12 @@ def mount_deals_routes(
                     completed_at_changed,
                     completed_at_value,
                     deal_id,
+                    expected_lock_version,
                 ),
             )
+            # Защищаемся от гонки: если версия уже изменилась между чтением и UPDATE, отклоняем сохранение.
+            if updated_rows <= 0:
+                raise HTTPException(409, "deal was modified by another user")
     
             # Для rental обновляем строку в product-first режиме через product_id.
             if deal_type == "rental":
@@ -1052,7 +1072,8 @@ def mount_deals_routes(
                   di.slot_type_code,
                   di.notes,
                   di.game_link as product_link,
-                  (di.returned_at IS NOT NULL) as is_refund
+                  (di.returned_at IS NOT NULL) as is_refund,
+                  d.lock_version
                 FROM app.deal_items di
                 JOIN app.deals d ON d.deal_id = di.deal_id
                 LEFT JOIN app.deal_types dt ON dt.code = d.deal_type_code
@@ -1093,9 +1114,11 @@ def mount_deals_routes(
             notes = r[27]
             product_link = r[28]
             is_refund = bool(r[29])
+            lock_version = int((r[30] if len(r) > 30 else 1) or 1)
             items.append(
                 DealListItem(
                     deal_id=r[0],
+                    lock_version=lock_version,
                     deal_type=r[1],
                     deal_type_code=r[2],
                     status=r[3],

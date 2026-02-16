@@ -46,6 +46,15 @@ export function useDealsActions({
     return Number.isFinite(parsed) ? parsed : null
   }
 
+  // Определяет конфликт версий сделки, когда запись уже изменил другой пользователь.
+  function isDealVersionConflict(error) {
+    const status = Number(error?.status || 0)
+    if (status === 409) return true
+    const text = String(error?.message || '').toLowerCase()
+    return text.includes('deal was modified by another user')
+      || text.includes('lock_version')
+  }
+
   // Определяет, нужно ли ослаблять проверки и сохранять сделку как черновик.
   function isDraftSave(saveAsDraft) {
     return Boolean(saveAsDraft)
@@ -93,6 +102,10 @@ export function useDealsActions({
     if (deal?.deal_id && String(nextFlowStatus || '').trim().toLowerCase() === 'completed') {
       payload.created_at = normalizeOptionalDateTime(deal.created_at)
       payload.completed_at = normalizeOptionalDateTime(deal.completed_at)
+    }
+    if (deal?.deal_id) {
+      // Для update всегда передаем версию записи, чтобы backend мог отфильтровать гонки.
+      payload.lock_version = Number(deal.lock_version || 1)
     }
     return payload
   }
@@ -214,6 +227,11 @@ export function useDealsActions({
       updatedOk = true
       dealOk.value = saveAsDraft ? 'Черновик обновлен' : 'Сделка обновлена'
     } catch (e) {
+      if (isDealVersionConflict(e)) {
+        if (typeof showDealWarning === 'function') {
+          showDealWarning('Запись уже изменилась у другого пользователя. Обновите список и повторите правку.')
+        }
+      }
       dealError.value = mapApiError(e?.message)
     } finally {
       // Если обновление не удалось, снимаем блокировку сразу.
@@ -323,12 +341,20 @@ export function useDealsActions({
     try {
       await apiPut(
         `/deals/${deal.deal_id}`,
-        { flow_status_code: 'completed' },
+        {
+          flow_status_code: 'completed',
+          lock_version: Number(deal.lock_version || 1),
+        },
         { token: auth.state.token }
       )
       await loadDeals(dealPage.value)
       completedOk = true
     } catch (e) {
+      if (isDealVersionConflict(e)) {
+        if (typeof showDealWarning === 'function') {
+          showDealWarning('Сделка уже была изменена другим пользователем. Обновите список.')
+        }
+      }
       dealError.value = mapApiError(e?.message)
     } finally {
       dealSaving.value = false
