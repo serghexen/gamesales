@@ -134,6 +134,25 @@ describe('useDealsActions', () => {
     expect(deps.dealError.value).toBeNull()
   })
 
+  it('createDealDraft allows empty required rental fields and sends draft status', async () => {
+    const deps = createDeps()
+    deps.newDeal.deal_type_code = 'rental'
+    deps.newDeal.customer_nickname = ''
+    deps.newDeal.account_id = ''
+    deps.newDeal.product_id = ''
+    deps.newDeal.slot_type_code = ''
+    const { createDealDraft } = useDealsActions(deps)
+
+    await createDealDraft()
+
+    expect(deps.apiPost).toHaveBeenCalledTimes(1)
+    expect(deps.apiPost.mock.calls[0][1].deal_type_code).toBe('rental')
+    expect(deps.apiPost.mock.calls[0][1].account_id).toBeNull()
+    expect(deps.apiPost.mock.calls[0][1].product_id).toBeNull()
+    expect(deps.apiPost.mock.calls[0][1].flow_status_code).toBe('draft')
+    expect(deps.dealError.value).toBeNull()
+  })
+
   it('updateDeal allows zero price for sale', async () => {
     const deps = createDeps()
     deps.editDeal.price = 0
@@ -161,6 +180,7 @@ describe('useDealsActions', () => {
 
   it('updateDeal sends manual created/completed dates for existing deal', async () => {
     const deps = createDeps()
+    deps.editDeal.flow_status_code = 'completed'
     deps.editDeal.created_at = '2026-02-09T10:00'
     deps.editDeal.completed_at = '2026-02-09T11:30'
     const { updateDeal } = useDealsActions(deps)
@@ -170,6 +190,20 @@ describe('useDealsActions', () => {
     expect(deps.apiPut).toHaveBeenCalledTimes(1)
     expect(deps.apiPut.mock.calls[0][1].created_at).toContain('2026-02-09T')
     expect(deps.apiPut.mock.calls[0][1].completed_at).toContain('2026-02-09T')
+  })
+
+  it('updateDeal does not send manual system dates for non-completed status', async () => {
+    const deps = createDeps()
+    deps.editDeal.flow_status_code = 'draft'
+    deps.editDeal.created_at = '2026-02-09T10:00'
+    deps.editDeal.completed_at = '2026-02-09T11:30'
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.apiPut).toHaveBeenCalledTimes(1)
+    expect(deps.apiPut.mock.calls[0][1].created_at).toBeUndefined()
+    expect(deps.apiPut.mock.calls[0][1].completed_at).toBeUndefined()
   })
 
   it('updateDealDraft allows empty required sale fields and sends draft status', async () => {
@@ -183,6 +217,23 @@ describe('useDealsActions', () => {
     await updateDealDraft()
 
     expect(deps.apiPut).toHaveBeenCalledTimes(1)
+    expect(deps.apiPut.mock.calls[0][1].flow_status_code).toBe('draft')
+    expect(deps.dealError.value).toBeNull()
+  })
+
+  it('updateDealDraft allows empty required rental fields and sends draft status', async () => {
+    const deps = createDeps()
+    deps.editDeal.deal_type_code = 'rental'
+    deps.editDeal.customer_nickname = ''
+    deps.editDeal.account_id = ''
+    deps.editDeal.product_id = ''
+    deps.editDeal.slot_type_code = ''
+    const { updateDealDraft } = useDealsActions(deps)
+
+    await updateDealDraft()
+
+    expect(deps.apiPut).toHaveBeenCalledTimes(1)
+    expect(deps.apiPut.mock.calls[0][1].deal_type_code).toBe('rental')
     expect(deps.apiPut.mock.calls[0][1].flow_status_code).toBe('draft')
     expect(deps.dealError.value).toBeNull()
   })
@@ -216,11 +267,23 @@ describe('useDealsActions', () => {
     })
     const { markDealCompleted } = useDealsActions(deps)
 
-    await markDealCompleted({ deal_id: 10, is_refund: true })
+    const ok = await markDealCompleted({ deal_id: 10, is_refund: true })
 
     expect(deps.apiPut).not.toHaveBeenCalled()
     expect(deps.dealError.value).toBeNull()
     expect(deps.showDealWarning).toHaveBeenCalledWith('не достаточно прав для проведения возврата')
+    expect(ok).toBe(false)
+  })
+
+  it('markDealCompleted returns true on successful completion', async () => {
+    const deps = createDeps()
+    const { markDealCompleted } = useDealsActions(deps)
+
+    const ok = await markDealCompleted({ deal_id: 10, is_refund: false })
+
+    expect(deps.apiPut).toHaveBeenCalledWith('/deals/10', { flow_status_code: 'completed' }, { token: 'token' })
+    expect(deps.loadDeals).toHaveBeenCalledWith(1)
+    expect(ok).toBe(true)
   })
 
   it('updateDeal blocks refund completion for non-admin roles', async () => {

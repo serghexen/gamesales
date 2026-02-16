@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { ref, reactive } from 'vue'
 
 import { useWorkSectionContexts } from '../useWorkSectionContexts.js'
 
 describe('useWorkSectionContexts', () => {
   it('builds deal modal shell/body reactive state', () => {
-    const editDeal = reactive({ open: false })
+    const editDeal = reactive({ open: false, flow_status_code: '' })
     const showDealForm = ref(false)
     const dealEditMode = ref('view')
     const dealLoading = ref(false)
@@ -13,9 +13,13 @@ describe('useWorkSectionContexts', () => {
     const dealQuickProductBusy = ref(false)
     const responsibleUserOptions = ref(['manager1'])
     const canEditCompletedDeal = ref(true)
+    const newDeal = reactive({ deal_type_code: 'rental' })
 
+    const updateDeal = vi.fn()
+    const updateDealDraft = vi.fn()
     const ctx = useWorkSectionContexts({
       editDeal,
+      newDeal,
       showDealForm,
       dealEditMode,
       dealLoading,
@@ -25,8 +29,8 @@ describe('useWorkSectionContexts', () => {
       responsibleUserOptions,
       closeDealModal: () => {},
       dealModalTitle: ref('Title'),
-      updateDeal: () => {},
-      updateDealDraft: () => {},
+      updateDeal,
+      updateDealDraft,
       createDeal: () => {},
       createDealDraft: () => {},
       toggleDealEditMode: () => {},
@@ -35,6 +39,7 @@ describe('useWorkSectionContexts', () => {
     expect(ctx.dealEditorModalShellCtx.isOpen).toBe(false)
     showDealForm.value = true
     expect(ctx.dealEditorModalShellCtx.isOpen).toBe(true)
+    expect(ctx.dealEditorModalShellCtx.showCreateDraft).toBe(true)
 
     editDeal.open = true
     dealEditMode.value = 'edit'
@@ -51,5 +56,11 @@ describe('useWorkSectionContexts', () => {
     expect(ctx.dealEditorModalBodyCtx.quickBusyLabel).toBe('Создаем товар…')
     expect(ctx.dealEditorFormCtx.responsibleUserOptions).toEqual(['manager1'])
     expect(ctx.dealEditorFormCtx.allowCompletedDealEdit).toBe(true)
+
+    editDeal.flow_status_code = 'draft'
+    expect(ctx.dealEditorModalShellCtx.showSaveDraft).toBe(false)
+    ctx.dealEditorModalShellCtx.onSaveEdit()
+    expect(updateDealDraft).toHaveBeenCalledTimes(1)
+    expect(updateDeal).toHaveBeenCalledTimes(0)
   })
 })

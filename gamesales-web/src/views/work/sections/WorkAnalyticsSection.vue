@@ -9,7 +9,7 @@
         <button class="ghost" type="button" :disabled="ctx.analyticsLoading" @click="ctx.loadAnalytics">
           Применить
         </button>
-        <button class="btn btn--icon btn--glow btn--glow-refresh" type="button" :disabled="ctx.analyticsLoading" aria-label="Обновить" title="Обновить" @click="ctx.loadAnalytics">
+        <button class="catalog-refresh-btn" type="button" :disabled="ctx.analyticsLoading" aria-label="Обновить" title="Обновить" @click="ctx.loadAnalytics">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M20 12a8 8 0 1 1-2.3-5.7" />
             <path d="M20 4v6h-6" />

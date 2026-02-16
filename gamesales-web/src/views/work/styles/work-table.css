@@ -194,6 +194,17 @@
   gap: 6px;
 }
 
+.work-page .catalog .th-title {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  padding-right: 16px;
+}
+
+.work-page .catalog .th-title .filter-icon--sort {
+  margin-left: auto;
+}
+
 .work-page .th-title--filter {
   position: relative;
   display: flex;

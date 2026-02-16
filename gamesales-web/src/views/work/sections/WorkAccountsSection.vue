@@ -128,6 +128,7 @@
         :account-modal-mode="ctx.accountModalMode"
         :account-edit-mode="ctx.accountEditMode"
         :set-account-edit-mode="ctx.setAccountEditMode"
+        :toggle-account-edit-mode="ctx.toggleAccountEditMode"
         :update-account="ctx.updateAccount"
         :accounts-loading="ctx.accountsLoading"
         :create-account="ctx.createAccount"
@@ -142,6 +143,8 @@
         :account-product-titles="ctx.accountProductTitles"
         :edit-account-product-search="ctx.editAccountProductSearch"
         :set-edit-account-product-search="ctx.setEditAccountProductSearch"
+        :edit-account-product-type="ctx.editAccountProductType"
+        :set-edit-account-product-type="ctx.setEditAccountProductType"
         :filtered-edit-account-products="ctx.filteredEditAccountProducts"
         :account-slot-assignments-error="ctx.accountSlotAssignmentsError"
         :account-slot-assignments-loading="ctx.accountSlotAssignmentsLoading"
@@ -163,6 +166,8 @@
         :new-account="ctx.newAccount"
         :account-product-search="ctx.accountProductSearch"
         :set-account-product-search="ctx.setAccountProductSearch"
+        :account-product-type="ctx.accountProductType"
+        :set-account-product-type="ctx.setAccountProductType"
         :filtered-account-products="ctx.filteredAccountProducts"
       />
 

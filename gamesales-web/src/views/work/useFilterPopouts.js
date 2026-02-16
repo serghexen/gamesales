@@ -2,6 +2,7 @@ import { onBeforeUnmount, watch } from 'vue'
 
 export function useFilterPopouts({
   activeDealFilter,
+  activeProductFilter,
   activeGameFilter,
   activeAccountFilter,
 }) {
@@ -12,11 +13,14 @@ export function useFilterPopouts({
     activeDealFilter.value = ''
   }
 
-  const onGameFilterOutside = (event) => {
-    if (!activeGameFilter.value) return
+  // Поддерживаем новый product-фильтр и старое имя game-фильтра для совместимости.
+  const resolvedProductFilter = activeProductFilter || activeGameFilter
+
+  const onProductFilterOutside = (event) => {
+    if (!resolvedProductFilter?.value) return
     const target = event.target
     if (target?.closest?.('.filter-pop') || target?.closest?.('.filter-icon')) return
-    activeGameFilter.value = ''
+    resolvedProductFilter.value = ''
   }
 
   const onAccountFilterOutside = (event) => {
@@ -34,13 +38,16 @@ export function useFilterPopouts({
     }
   })
 
-  watch(activeGameFilter, (val) => {
-    if (val) {
-      window.addEventListener('click', onGameFilterOutside)
-    } else {
-      window.removeEventListener('click', onGameFilterOutside)
-    }
-  })
+  if (resolvedProductFilter) {
+    // Навешиваем обработчик только когда реально передан источник для watch.
+    watch(resolvedProductFilter, (val) => {
+      if (val) {
+        window.addEventListener('click', onProductFilterOutside)
+      } else {
+        window.removeEventListener('click', onProductFilterOutside)
+      }
+    })
+  }
 
   watch(activeAccountFilter, (val) => {
     if (val) {
@@ -52,7 +59,7 @@ export function useFilterPopouts({
 
   onBeforeUnmount(() => {
     window.removeEventListener('click', onDealFilterOutside)
-    window.removeEventListener('click', onGameFilterOutside)
+    window.removeEventListener('click', onProductFilterOutside)
     window.removeEventListener('click', onAccountFilterOutside)
   })
 }

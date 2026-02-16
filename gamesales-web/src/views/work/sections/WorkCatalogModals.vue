@@ -12,7 +12,7 @@
           <div class="toolbar-actions">
             <button
               v-if="editDomain.open && domainEditMode === 'edit'"
-              class="btn btn--icon-plain"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
               @click="saveEditDomain"
               :disabled="catalogsLoading"
               aria-label="Сохранить"
@@ -26,7 +26,7 @@
             </button>
             <button
               v-if="editDomain.open"
-              class="btn btn--icon-plain btn--edit"
+              class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--edit"
               type="button"
               aria-label="Редактировать"
               title="Редактировать"
@@ -40,7 +40,7 @@
             </button>
             <button
               v-if="editDomain.open"
-              class="btn btn--icon-plain btn--danger"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--delete"
               type="button"
               aria-label="Удалить"
               title="Удалить"
@@ -52,7 +52,7 @@
             </button>
             <button
               v-else
-              class="btn btn--icon-plain"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
               @click="createDomain"
               :disabled="catalogsLoading"
               aria-label="Добавить домен"
@@ -65,7 +65,7 @@
               </svg>
             </button>
             <button
-              class="btn btn--icon-plain"
+              class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close"
               type="button"
               aria-label="Закрыть"
               title="Закрыть"
@@ -131,7 +131,7 @@
           <div class="toolbar-actions">
             <button
               v-if="editSource.open && sourceEditMode === 'edit'"
-              class="btn btn--icon-plain"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
               @click="saveEditSource"
               :disabled="catalogsLoading"
               aria-label="Сохранить"
@@ -145,7 +145,7 @@
             </button>
             <button
               v-if="editSource.open"
-              class="btn btn--icon-plain btn--edit"
+              class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--edit"
               type="button"
               aria-label="Редактировать"
               title="Редактировать"
@@ -159,7 +159,7 @@
             </button>
             <button
               v-if="editSource.open"
-              class="btn btn--icon-plain btn--danger"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--delete"
               type="button"
               aria-label="Удалить"
               title="Удалить"
@@ -171,7 +171,7 @@
             </button>
             <button
               v-else
-              class="btn btn--icon-plain"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
               @click="createSource"
               :disabled="catalogsLoading"
               aria-label="Добавить источник"
@@ -184,7 +184,7 @@
               </svg>
             </button>
             <button
-              class="btn btn--icon-plain"
+              class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close"
               type="button"
               aria-label="Закрыть"
               title="Закрыть"
@@ -258,7 +258,7 @@
           <div class="toolbar-actions">
             <button
               v-if="editPlatform.open && platformEditMode === 'edit'"
-              class="btn btn--icon-plain"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
               @click="saveEditPlatform"
               :disabled="catalogsLoading"
               aria-label="Сохранить"
@@ -272,7 +272,7 @@
             </button>
             <button
               v-if="editPlatform.open"
-              class="btn btn--icon-plain btn--edit"
+              class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--edit"
               type="button"
               aria-label="Редактировать"
               title="Редактировать"
@@ -286,7 +286,7 @@
             </button>
             <button
               v-if="editPlatform.open"
-              class="btn btn--icon-plain btn--danger"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--delete"
               type="button"
               aria-label="Удалить"
               title="Удалить"
@@ -298,7 +298,7 @@
             </button>
             <button
               v-else
-              class="btn btn--icon-plain"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
               @click="createPlatform"
               :disabled="catalogsLoading"
               aria-label="Добавить платформу"
@@ -311,7 +311,7 @@
               </svg>
             </button>
             <button
-              class="btn btn--icon-plain"
+              class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close"
               type="button"
               aria-label="Закрыть"
               title="Закрыть"
@@ -393,7 +393,7 @@
           <div class="toolbar-actions">
             <button
               v-if="editRegion.open && regionEditMode === 'edit'"
-              class="btn btn--icon-plain"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
               @click="saveEditRegion"
               :disabled="catalogsLoading"
               aria-label="Сохранить"
@@ -407,7 +407,7 @@
             </button>
             <button
               v-if="editRegion.open"
-              class="btn btn--icon-plain btn--edit"
+              class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--edit"
               type="button"
               aria-label="Редактировать"
               title="Редактировать"
@@ -421,7 +421,7 @@
             </button>
             <button
               v-if="editRegion.open"
-              class="btn btn--icon-plain btn--danger"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--delete"
               type="button"
               aria-label="Удалить"
               title="Удалить"
@@ -433,7 +433,7 @@
             </button>
             <button
               v-else
-              class="btn btn--icon-plain"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
               @click="createRegion"
               :disabled="catalogsLoading"
               aria-label="Добавить регион"
@@ -446,7 +446,7 @@
               </svg>
             </button>
             <button
-              class="btn btn--icon-plain"
+              class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close"
               type="button"
               aria-label="Закрыть"
               title="Закрыть"

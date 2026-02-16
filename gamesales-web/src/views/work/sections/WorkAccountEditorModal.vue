@@ -2,13 +2,13 @@
 
             <teleport to="body">
               <div v-if="editAccount.open" class="work-page work-modal-root modal-backdrop" @click.self="cancelEditAccount">
-                <div :ref="modalRef" class="modal" :style="modalStyle">
+                <div :ref="modalRef" class="modal modal--auto modal--account-editor" :style="modalStyle">
                   <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
-                    <h3>{{ accountModalMode === 'create' ? 'Новый аккаунт' : 'Аккаунт' }}</h3>
+                    <h3 class="account-modal-title">{{ accountModalTitle }}</h3>
                     <div class="toolbar-actions">
                       <button
                         v-if="accountModalMode === 'edit' && accountEditMode === 'edit'"
-                        class="btn btn--icon-plain"
+                        class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
                         @click="updateAccount"
                         :disabled="accountsLoading"
                         aria-label="Сохранить изменения"
@@ -22,7 +22,7 @@
                       </button>
                       <button
                         v-if="accountModalMode === 'create'"
-                        class="btn btn--icon-plain"
+                        class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
                         @click="createAccount"
                         :disabled="accountsLoading"
                         aria-label="Создать аккаунт"
@@ -36,12 +36,11 @@
                       </button>
                       <button
                         v-if="accountModalMode === 'edit'"
-                        class="btn btn--icon-plain btn--edit"
+                        class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--edit"
                         type="button"
                         aria-label="Редактировать"
                         title="Редактировать"
-                        @click="setAccountEditMode('edit')"
-                        :disabled="accountEditMode === 'edit'"
+                        @click="toggleAccountEditMode"
                       >
                         <svg viewBox="0 0 24 24" aria-hidden="true">
                           <path d="M4 20h4l10-10-4-4L4 16v4Z" />
@@ -50,7 +49,7 @@
                       </button>
                       <button
                         v-if="accountModalMode === 'edit'"
-                        class="btn btn--icon-plain btn--danger"
+                        class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--delete"
                         type="button"
                         aria-label="Удалить"
                         title="Удалить"
@@ -61,7 +60,7 @@
                         </svg>
                       </button>
                       <button
-                        class="btn btn--icon-plain"
+                        class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close"
                         type="button"
                         aria-label="Закрыть"
                         title="Закрыть"
@@ -118,96 +117,100 @@
                       </div>
                     </div>
                     <div v-else-if="accountModalMode === 'edit'" class="form form--stack form--compact">
-                      <label class="field">
-                        <span class="label">Логин (без домена)</span>
-                        <input v-model.trim="editAccount.login_name" class="input" placeholder="user" :readonly="accountEditMode === 'view'" />
-                      </label>
-                      <label class="field">
-                        <span class="label">Домен</span>
-                        <input
-                          v-if="accountEditMode === 'view'"
-                          class="input"
-                          :value="getDomainLabel(editAccount.domain_code)"
-                          readonly
-                        />
-                        <select v-else v-model="editAccount.domain_code" class="input input--select">
-                          <option value="">— не выбрано —</option>
-                          <option v-for="d in domains" :key="d.name" :value="d.name">
-                            {{ d.name }}
-                          </option>
-                        </select>
-                      </label>
-                      <label class="field">
-                        <span class="label">Регион</span>
-                        <input
-                          v-if="accountEditMode === 'view'"
-                          class="input"
-                          :value="getRegionLabel(editAccount.region_code)"
-                          readonly
-                        />
-                        <select v-else v-model="editAccount.region_code" class="input input--select">
-                          <option value="">— не выбрано —</option>
-                          <option v-for="r in regions" :key="r.code" :value="r.code">
-                            {{ r.name }} ({{ r.code }})
-                          </option>
-                        </select>
-                      </label>
-                      <label class="field">
-                        <span class="label">Статус</span>
-                        <input
-                          v-if="accountEditMode === 'view'"
-                          class="input"
-                          :value="getAccountStatusLabel(editAccount.status_code)"
-                          readonly
-                        />
-                        <select v-else v-model="editAccount.status_code" class="input input--select">
-                          <option value="active">active</option>
-                          <option value="banned">banned</option>
-                          <option value="archived">archived</option>
-                          <option value="problem">problem</option>
-                        </select>
-                      </label>
-                      <label class="field">
-                        <span class="label">Дата</span>
-                        <input v-model="editAccount.account_date" class="input" type="date" :max="maxDate" :readonly="accountEditMode === 'view'" />
-                      </label>
-                      <label class="field">
-                        <span class="label">Комментарий</span>
-                        <input v-model.trim="editAccount.notes" class="input" placeholder="заметки" :readonly="accountEditMode === 'view'" />
-                      </label>
-                      <label class="field">
-                        <span class="label">Пароль почта</span>
-                        <input v-model.trim="editAccount.email_password" class="input" autocomplete="new-password" :readonly="accountEditMode === 'view'" />
-                      </label>
-                      <label class="field">
-                        <span class="label">Пароль аккаунт</span>
-                        <input v-model.trim="editAccount.account_password" class="input" autocomplete="new-password" :readonly="accountEditMode === 'view'" />
-                      </label>
-                      <label class="field">
+                      <div class="deal-form__double field--full">
+                        <label class="field">
+                          <span class="label">Логин (без домена)</span>
+                          <input v-model.trim="editAccount.login_name" class="input" placeholder="user" :readonly="accountEditMode === 'view'" />
+                        </label>
+                        <label class="field">
+                          <span class="label">Домен</span>
+                          <input
+                            v-if="accountEditMode === 'view'"
+                            class="input"
+                            :value="getDomainLabel(editAccount.domain_code)"
+                            readonly
+                          />
+                          <select v-else v-model="editAccount.domain_code" class="input input--select">
+                            <option value="">— не выбрано —</option>
+                            <option v-for="d in domains" :key="d.name" :value="d.name">
+                              {{ d.name }}
+                            </option>
+                          </select>
+                        </label>
+                      </div>
+                      <div class="deal-form__double field--full">
+                        <label class="field">
+                          <span class="label">Регион</span>
+                          <input
+                            v-if="accountEditMode === 'view'"
+                            class="input"
+                            :value="getRegionLabel(editAccount.region_code)"
+                            readonly
+                          />
+                          <select v-else v-model="editAccount.region_code" class="input input--select">
+                            <option value="">— не выбрано —</option>
+                            <option v-for="r in regions" :key="r.code" :value="r.code">
+                              {{ r.name }} ({{ r.code }})
+                            </option>
+                          </select>
+                        </label>
+                        <label class="field">
+                          <span class="label">Дата</span>
+                          <input v-model="editAccount.account_date" class="input" type="date" :max="maxDate" :readonly="accountEditMode === 'view'" />
+                        </label>
+                      </div>
+                      <div class="deal-form__double field--full">
+                        <label class="field">
+                          <span class="label">Пароль аккаунт</span>
+                          <input v-model.trim="editAccount.account_password" class="input" autocomplete="new-password" :readonly="accountEditMode === 'view'" />
+                        </label>
+                        <label class="field">
+                          <span class="label">Пароль почта</span>
+                          <input v-model.trim="editAccount.email_password" class="input" autocomplete="new-password" :readonly="accountEditMode === 'view'" />
+                        </label>
+                      </div>
+                      <label class="field field--full">
                         <span class="label">Код аутентификатора</span>
                         <input v-model.trim="editAccount.auth_code" class="input" placeholder="код" :readonly="accountEditMode === 'view'" />
                       </label>
-                      <label class="field field--full">
-                        <span class="label">Резерв</span>
+                      <div class="field field--comment-collapsible field--full">
+                        <button class="comment-toggle" type="button" @click="editAccountReserveOpen = !editAccountReserveOpen" :disabled="accountEditMode === 'view'">
+                          {{ editAccountReserveOpen || editAccount.reserve_text ? 'Резерв' : '+ Резерв' }}
+                        </button>
                         <textarea
+                          v-if="editAccountReserveOpen || editAccount.reserve_text"
                           v-model.trim="editAccount.reserve_text"
-                          class="input input--textarea"
+                          class="input input--textarea input--textarea--compact"
+                          :rows="getCompactNotesRows(editAccount.reserve_text)"
                           placeholder="mkn4N5 6uGjMm ..."
                           :readonly="accountEditMode === 'view'"
                         />
-                      </label>
+                      </div>
                       <div class="field field--full">
-                        <span class="label">Товары (необязательно)</span>
+                        <span class="label account-products-title">Товары (необязательно)</span>
                         <div v-if="accountEditMode === 'view'" class="pill-list">
                           <span v-for="t in accountProductTitles" :key="t" class="pill">{{ t }}</span>
                           <span v-if="!accountProductTitles.length" class="muted">Пока нет товаров.</span>
                         </div>
                         <div v-else>
-                          <input v-model.trim="editAccountProductSearchModel" class="input" placeholder="поиск" />
-                          <div class="check-list">
+                          <div class="account-product-filters field--full">
+                            <label class="field">
+                              <span class="label">Поиск</span>
+                              <input v-model.trim="editAccountProductSearchModel" class="input" placeholder="поиск" />
+                            </label>
+                            <label class="field">
+                              <span class="label">Тип товара</span>
+                              <select v-model="editAccountProductTypeModel" class="input input--select">
+                                <option value="">Все</option>
+                                <option value="game">Игра</option>
+                                <option value="subscription">Подписка</option>
+                              </select>
+                            </label>
+                          </div>
+                          <div class="check-list check-list--account-products">
                             <label v-for="g in filteredEditAccountProducts" :key="g.product_id" class="check-item">
                               <input type="checkbox" :value="g.product_id" v-model="editAccount.product_ids" />
-                              <span>{{ g.title }}</span>
+                              <span>{{ g.title }} <span class="muted">({{ getProductTypeLabel(g.type_code) }})</span></span>
                             </label>
                           </div>
                         </div>
@@ -320,71 +323,113 @@
                         </table>
                         <p v-else class="muted">Сделок по аккаунту пока нет.</p>
                       </div>
+                      <div class="field field--comment-collapsible field--full">
+                        <button class="comment-toggle" type="button" @click="editAccountCommentOpen = !editAccountCommentOpen" :disabled="accountEditMode === 'view'">
+                          {{ editAccountCommentOpen || editAccount.notes ? 'Комментарий' : '+ Комментарий' }}
+                        </button>
+                        <textarea
+                          v-if="editAccountCommentOpen || editAccount.notes"
+                          v-model.trim="editAccount.notes"
+                          class="input input--textarea input--textarea--compact"
+                          :rows="getCompactNotesRows(editAccount.notes)"
+                          :readonly="accountEditMode === 'view'"
+                        />
+                      </div>
                       <p v-if="accountsError" class="bad">{{ accountsError }}</p>
                       <p v-if="accountsOk" class="ok">{{ accountsOk }}</p>
                       <div v-if="accountEditMode === 'edit'" class="toolbar-actions">
                       </div>
                     </div>
                     <div v-else class="form form--stack form--compact">
-                      <label class="field">
-                        <span class="label">Логин (без домена)</span>
-                        <input v-model.trim="newAccount.login_name" class="input" placeholder="user" />
-                      </label>
-                      <label class="field">
-                        <span class="label">Домен</span>
-                        <select v-model="newAccount.domain_code" class="input input--select">
-                          <option value="">— не выбрано —</option>
-                          <option v-for="d in domains" :key="d.name" :value="d.name">
-                            {{ d.name }}
-                          </option>
-                        </select>
-                      </label>
-                      <label class="field">
-                        <span class="label">Регион</span>
-                        <select v-model="newAccount.region_code" class="input input--select">
-                          <option value="">— не выбрано —</option>
-                          <option v-for="r in regions" :key="r.code" :value="r.code">
-                            {{ r.name }} ({{ r.code }})
-                          </option>
-                        </select>
-                      </label>
-                      <label class="field">
-                        <span class="label">Комментарий</span>
-                        <input v-model.trim="newAccount.notes" class="input" placeholder="заметки" />
-                      </label>
-                      <label class="field">
-                        <span class="label">Дата</span>
-                        <input v-model="newAccount.account_date" class="input" type="date" :max="maxDate" />
-                      </label>
-                      <label class="field">
-                        <span class="label">Пароль почта</span>
-                        <input v-model.trim="newAccount.email_password" class="input" autocomplete="new-password" />
-                      </label>
-                      <label class="field">
-                        <span class="label">Пароль аккаунт</span>
-                        <input v-model.trim="newAccount.account_password" class="input" autocomplete="new-password" />
-                      </label>
-                      <label class="field">
+                      <div class="deal-form__double field--full">
+                        <label class="field">
+                          <span class="label">Логин (без домена)</span>
+                          <input v-model.trim="newAccount.login_name" class="input" placeholder="user" />
+                        </label>
+                        <label class="field">
+                          <span class="label">Домен</span>
+                          <select v-model="newAccount.domain_code" class="input input--select">
+                            <option value="">— не выбрано —</option>
+                            <option v-for="d in domains" :key="d.name" :value="d.name">
+                              {{ d.name }}
+                            </option>
+                          </select>
+                        </label>
+                      </div>
+                      <div class="deal-form__double field--full">
+                        <label class="field">
+                          <span class="label">Регион</span>
+                          <select v-model="newAccount.region_code" class="input input--select">
+                            <option value="">— не выбрано —</option>
+                            <option v-for="r in regions" :key="r.code" :value="r.code">
+                              {{ r.name }} ({{ r.code }})
+                            </option>
+                          </select>
+                        </label>
+                        <label class="field">
+                          <span class="label">Дата</span>
+                          <input v-model="newAccount.account_date" class="input" type="date" :max="maxDate" />
+                        </label>
+                      </div>
+                      <div class="deal-form__double field--full">
+                        <label class="field">
+                          <span class="label">Пароль аккаунт</span>
+                          <input v-model.trim="newAccount.account_password" class="input" autocomplete="new-password" />
+                        </label>
+                        <label class="field">
+                          <span class="label">Пароль почта</span>
+                          <input v-model.trim="newAccount.email_password" class="input" autocomplete="new-password" />
+                        </label>
+                      </div>
+                      <label class="field field--full">
                         <span class="label">Код аутентификатора</span>
                         <input v-model.trim="newAccount.auth_code" class="input" placeholder="код" />
                       </label>
-                      <label class="field field--full">
-                        <span class="label">Резерв</span>
+                      <div class="field field--comment-collapsible field--full">
+                        <button class="comment-toggle" type="button" @click="newAccountReserveOpen = !newAccountReserveOpen">
+                          {{ newAccountReserveOpen || newAccount.reserve_text ? 'Резерв' : '+ Резерв' }}
+                        </button>
                         <textarea
+                          v-if="newAccountReserveOpen || newAccount.reserve_text"
                           v-model.trim="newAccount.reserve_text"
-                          class="input input--textarea"
+                          class="input input--textarea input--textarea--compact"
+                          :rows="getCompactNotesRows(newAccount.reserve_text)"
                           placeholder="mkn4N5 6uGjMm ..."
                         />
-                      </label>
+                      </div>
                       <div class="field field--full">
-                        <span class="label">Товары (необязательно)</span>
-                        <input v-model.trim="accountProductSearchModel" class="input" placeholder="поиск" />
-                        <div class="check-list">
-                          <label v-for="g in filteredAccountProducts" :key="g.product_id" class="check-item">
-                            <input type="checkbox" :value="g.product_id" v-model="newAccount.product_ids" />
-                            <span>{{ g.title }}</span>
+                        <span class="label account-products-title">Товары (необязательно)</span>
+                        <div class="account-product-filters field--full">
+                          <label class="field">
+                            <span class="label">Поиск</span>
+                            <input v-model.trim="accountProductSearchModel" class="input" placeholder="поиск" />
+                          </label>
+                          <label class="field">
+                            <span class="label">Тип товара</span>
+                            <select v-model="accountProductTypeModel" class="input input--select">
+                              <option value="">Все</option>
+                              <option value="game">Игра</option>
+                              <option value="subscription">Подписка</option>
+                            </select>
                           </label>
                         </div>
+                        <div class="check-list check-list--account-products">
+                          <label v-for="g in filteredAccountProducts" :key="g.product_id" class="check-item">
+                            <input type="checkbox" :value="g.product_id" v-model="newAccount.product_ids" />
+                            <span>{{ g.title }} <span class="muted">({{ getProductTypeLabel(g.type_code) }})</span></span>
+                          </label>
+                        </div>
+                      </div>
+                      <div class="field field--comment-collapsible field--full">
+                        <button class="comment-toggle" type="button" @click="newAccountCommentOpen = !newAccountCommentOpen">
+                          {{ newAccountCommentOpen || newAccount.notes ? 'Комментарий' : '+ Комментарий' }}
+                        </button>
+                        <textarea
+                          v-if="newAccountCommentOpen || newAccount.notes"
+                          v-model.trim="newAccount.notes"
+                          class="input input--textarea input--textarea--compact"
+                          :rows="getCompactNotesRows(newAccount.notes)"
+                        />
                       </div>
                       <p v-if="accountsError" class="bad">{{ accountsError }}</p>
                       <p v-if="accountsOk" class="ok">{{ accountsOk }}</p>
@@ -396,7 +441,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps([
   'editAccount',
@@ -407,6 +452,7 @@ const props = defineProps([
   'accountModalMode',
   'accountEditMode',
   'setAccountEditMode',
+  'toggleAccountEditMode',
   'updateAccount',
   'accountsLoading',
   'createAccount',
@@ -420,6 +466,7 @@ const props = defineProps([
   'maxDate',
   'accountProductTitles',
   'editAccountProductSearch',
+  'editAccountProductType',
   'filteredEditAccountProducts',
   'accountSlotAssignmentsError',
   'accountSlotAssignmentsLoading',
@@ -440,9 +487,12 @@ const props = defineProps([
   'accountsOk',
   'newAccount',
   'accountProductSearch',
+  'accountProductType',
   'filteredAccountProducts',
   'setEditAccountProductSearch',
   'setAccountProductSearch',
+  'setEditAccountProductType',
+  'setAccountProductType',
 ])
 
 const editAccountProductSearchModel = computed({
@@ -450,8 +500,70 @@ const editAccountProductSearchModel = computed({
   set: (value) => props.setEditAccountProductSearch(value),
 })
 
+const editAccountProductTypeModel = computed({
+  get: () => props.editAccountProductType,
+  set: (value) => props.setEditAccountProductType(value),
+})
+
 const accountProductSearchModel = computed({
   get: () => props.accountProductSearch,
   set: (value) => props.setAccountProductSearch(value),
 })
+
+const accountProductTypeModel = computed({
+  get: () => props.accountProductType,
+  set: (value) => props.setAccountProductType(value),
+})
+
+// Формирует заголовок модалки аккаунта в нужном формате.
+const accountModalTitle = computed(() => {
+  if (props.accountModalMode === 'create') return 'Новый аккаунт'
+  const login = String(props.editAccount?.login_name || '').trim()
+  const domain = String(props.editAccount?.domain_code || '').trim()
+  if (!login && !domain) return 'АККАУНТ'
+  if (!domain) return `АККАУНТ - ${login}`
+  if (!login) return `АККАУНТ - @${domain}`
+  return `АККАУНТ - ${login}@${domain}`
+})
+
+const newAccountReserveOpen = ref(false)
+const newAccountCommentOpen = ref(false)
+const editAccountReserveOpen = ref(false)
+const editAccountCommentOpen = ref(false)
+
+// Приводит подпись типа товара к короткому читаемому виду для списка чекбоксов.
+const getProductTypeLabel = (typeCode) => (String(typeCode || '').toLowerCase() === 'subscription' ? 'подписка' : 'игра')
+
+// Подбирает компактную высоту textarea для комментариев и резерва.
+const getCompactNotesRows = (value) => {
+  const text = String(value || '')
+  if (!text) return 2
+  return Math.max(2, Math.min(6, Math.ceil(text.length / 110)))
+}
+
+// Синхронизирует состояние сворачиваемых полей по содержимому при каждом открытии модалки.
+const syncCollapsiblePanels = () => {
+  const isOpen = Boolean(props.editAccount?.open)
+  if (!isOpen) {
+    newAccountReserveOpen.value = false
+    newAccountCommentOpen.value = false
+    editAccountReserveOpen.value = false
+    editAccountCommentOpen.value = false
+    return
+  }
+  const isCreate = props.accountModalMode === 'create'
+  if (isCreate) {
+    newAccountReserveOpen.value = Boolean(String(props.newAccount?.reserve_text || '').trim())
+    newAccountCommentOpen.value = Boolean(String(props.newAccount?.notes || '').trim())
+  } else {
+    editAccountReserveOpen.value = Boolean(String(props.editAccount?.reserve_text || '').trim())
+    editAccountCommentOpen.value = Boolean(String(props.editAccount?.notes || '').trim())
+  }
+}
+
+watch(
+  () => [props.editAccount?.open, props.accountModalMode, props.editAccount?.account_id],
+  () => syncCollapsiblePanels(),
+  { immediate: true },
+)
 </script>

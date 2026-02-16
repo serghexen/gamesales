@@ -287,12 +287,18 @@ def mount_accounts_routes(
         with psycopg.connect(DB_DSN) as conn:
             region_id = get_region_id(conn, payload.region_code)
             domain_id = get_domain_id(conn, payload.domain_code)
-    
-            row = q1(conn, """
-                INSERT INTO app.accounts(login_name, domain_id, region_id, notes, account_date)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING account_id
-            """, (payload.login_name, domain_id, region_id, payload.notes, payload.account_date))
+
+            try:
+                row = q1(conn, """
+                    INSERT INTO app.accounts(login_name, domain_id, region_id, notes, account_date)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING account_id
+                """, (payload.login_name, domain_id, region_id, payload.notes, payload.account_date))
+            except Exception as exc:
+                # 23505 = unique_violation (PostgreSQL), срабатывает и при proxy-обертке psycopg.
+                if getattr(exc, "sqlstate", None) == "23505":
+                    raise HTTPException(409, "Account already exists")
+                raise
             account_id = int(row[0])
     
             ps4_id, ps4_slots = get_platform_info(conn, "ps4")

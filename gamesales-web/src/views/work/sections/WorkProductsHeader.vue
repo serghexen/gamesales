@@ -28,50 +28,61 @@
             @keydown.enter.prevent="applyProductSearch"
           />
         </label>
-        <button class="btn btn--icon btn--glow btn--glow-filter" type="button" @click="applyProductSearch" aria-label="Найти" title="Найти">
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 21l-4.2-4.2" />
-            <circle cx="11" cy="11" r="7" />
-          </svg>
+        <button class="product-search-btn" type="button" @click="applyProductSearch" aria-label="Найти" title="Найти">
+          <span class="product-search-btn__content">
+            <svg class="product-search-btn__icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 21l-4.2-4.2" />
+              <circle cx="11" cy="11" r="7" />
+            </svg>
+          </span>
         </button>
       </div>
     </div>
     <div class="toolbar-actions">
       <button
-        class="btn btn--icon btn--glow btn--glow-import"
+        class="product-import-btn"
+        type="button"
         title="Импорт товаров"
         aria-label="Импорт товаров"
         @click="openProductImport"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 3v12" />
-          <path d="M7 10l5 5 5-5" />
-          <path d="M5 21h14" />
-        </svg>
+        <span class="product-import-btn__content">
+          <svg class="product-import-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+        </span>
       </button>
       <button
-        class="btn btn--icon btn--glow btn--glow-export"
+        class="product-export-btn"
+        type="button"
         title="Выгрузка товаров будет позже"
         aria-label="Выгрузка товаров будет позже"
         :disabled="true"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 21V9" />
-          <path d="M7 14l5-5 5 5" />
-          <path d="M5 3h14" />
-        </svg>
+        <span class="product-export-btn__content">
+          <svg class="product-export-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+        </span>
       </button>
       <button
-        class="btn btn--icon btn--glow btn--glow-refresh"
+        class="product-refresh-btn"
+        type="button"
         title="Обновить список"
         aria-label="Обновить список"
         @click="loadProducts"
         :disabled="productsLoading"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M20 12a8 8 0 1 1-2.3-5.7" />
-          <path d="M20 4v6h-6" />
-        </svg>
+        <span class="product-refresh-btn__content">
+          <svg class="product-refresh-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+            <path d="M20 4v6h-6" />
+          </svg>
+        </span>
       </button>
     </div>
   </div>

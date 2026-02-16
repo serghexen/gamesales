@@ -234,10 +234,16 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"deal_id": 33})
 
-    # Черновик не разрешаем для шеринга.
-    def test_create_deal_rental_draft_is_forbidden(self):
+    # Черновик шеринга можно сохранить без обязательных полей.
+    def test_create_deal_rental_draft_allows_empty_fields(self):
+        script = [
+            {"one": (1,)},  # flow_status lookup
+            {"one": (33,)},  # deal insert
+            {"one": (44,)},  # deal_item insert
+        ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -247,7 +253,8 @@ class DealsEndpointsTests(unittest.TestCase):
                     headers=self._auth_headers(role="manager"),
                     json={"deal_type_code": "rental", "flow_status_code": "draft"},
                 )
-            self.assertEqual(res.status_code, 400)
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"deal_id": 33})
 
     # Успешная продажа должна вернуть deal_id.
     def test_create_deal_sale_success(self):
@@ -1088,8 +1095,8 @@ class DealsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 400)
 
-    # Черновик в update разрешаем только для продажи.
-    def test_update_deal_rental_draft_is_forbidden(self):
+    # Черновик в update разрешаем и для шеринга.
+    def test_update_deal_rental_draft_is_allowed(self):
         current_row = (
             "rental",
             "confirmed",
@@ -1117,6 +1124,9 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
             {"one": (1,)},  # flow_status lookup
+            {"rowcount": 1},  # update deals
+            {"rowcount": 1},  # update deal_items
+            {"rowcount": 1},  # release slot assignment
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
@@ -1130,7 +1140,8 @@ class DealsEndpointsTests(unittest.TestCase):
                     headers=self._auth_headers(role="manager"),
                     json={"flow_status_code": "draft"},
                 )
-            self.assertEqual(res.status_code, 400)
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
 
     # Возврат из completed в pending должен быть доступен любой роли.
     def test_return_completed_sale_to_pending_success(self):

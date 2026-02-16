@@ -16,6 +16,8 @@ export function useAccountsFlow({
   newAccount,
   accountProductSearch,
   editAccountProductSearch,
+  accountProductType,
+  editAccountProductType,
   accountProductsLoading,
   accountDeals,
   accountDealsError,
@@ -38,6 +40,8 @@ export function useAccountsFlow({
   loadAccountSlotAssignments,
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
+  requestDealConfirm,
+  showDealWarning,
 }) {
   let initialEditAccountSnapshot = null
   // Раскодирует base64-строку с учетом UTF-8.
@@ -223,6 +227,7 @@ export function useAccountsFlow({
     editAccount.has_account = Boolean(account)
     editAccount.has_email = Boolean(email)
     editAccount.has_auth = Boolean(authSecret)
+    editAccountProductType.value = ''
     // Фиксируем исходное состояние, чтобы уметь определять несохраненные изменения.
     const syncInitialAccountSnapshot = () => {
       initialEditAccountSnapshot = {
@@ -268,7 +273,33 @@ export function useAccountsFlow({
     newAccount.auth_code = ''
     newAccount.product_ids = []
     accountProductSearch.value = ''
+    // Тип товара в поиске при новом открытии формы всегда сбрасываем на "все".
+    accountProductType.value = ''
     initialEditAccountSnapshot = null
+  }
+
+  // Переключает режим просмотра/редактирования и при возврате в просмотр откатывает несохраненные поля.
+  function toggleAccountEditMode() {
+    if (accountModalMode.value !== 'edit') return
+    if (accountEditMode.value === 'edit') {
+      const snapshot = initialEditAccountSnapshot || {}
+      editAccount.login_name = snapshot.login_name || ''
+      editAccount.domain_code = snapshot.domain_code || ''
+      editAccount.region_code = snapshot.region_code || ''
+      editAccount.status_code = snapshot.status_code || 'active'
+      editAccount.notes = snapshot.notes || ''
+      editAccount.account_date = snapshot.account_date || ''
+      editAccount.email_password = snapshot.email_password || ''
+      editAccount.account_password = snapshot.account_password || ''
+      editAccount.auth_code = snapshot.auth_code || ''
+      editAccount.reserve_text = snapshot.reserve_text || ''
+      editAccount.product_ids = [...(snapshot.product_ids || [])]
+      accountEditMode.value = 'view'
+      editAccountProductSearch.value = ''
+      editAccountProductType.value = ''
+      return
+    }
+    accountEditMode.value = 'edit'
   }
 
   async function cancelEditAccount() {
@@ -323,6 +354,7 @@ export function useAccountsFlow({
     editAccount.has_auth = false
     editAccount.product_ids = []
     editAccountProductSearch.value = ''
+    editAccountProductType.value = ''
     accountDeals.value = []
     accountDealsError.value = null
     accountDealsLoading.value = false
@@ -341,6 +373,7 @@ export function useAccountsFlow({
     newAccount.auth_code = ''
     newAccount.product_ids = []
     accountProductSearch.value = ''
+    accountProductType.value = ''
     initialEditAccountSnapshot = null
     return true
   }
@@ -431,11 +464,25 @@ export function useAccountsFlow({
       newAccount.auth_code = ''
       newAccount.product_ids = []
       accountProductSearch.value = ''
-      await loadAccounts()
-      await loadAccountsAll()
-      cancelEditAccount()
+      accountProductType.value = ''
+      // После успешного сохранения закрываем модалку без повторного confirm о несохраненных правках.
+      if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = true
+      try {
+        await cancelEditAccount()
+      } finally {
+        if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = false
+      }
+      // Обновляем списки уже после закрытия модалки, чтобы сетевые задержки не мешали UX.
+      await Promise.allSettled([loadAccounts(), loadAccountsAll()])
     } catch (e) {
-      accountsError.value = mapApiError(e?.message)
+      const mappedError = mapApiError(e?.message)
+      // Для дубликата логина показываем фирменное предупреждение, а не inline-ошибку.
+      if (mappedError === 'Данный аккаунт уже есть в базе данных' && typeof showDealWarning === 'function') {
+        showDealWarning(mappedError)
+        accountsError.value = null
+      } else {
+        accountsError.value = mappedError
+      }
     } finally {
       accountsLoading.value = false
     }
@@ -546,9 +593,15 @@ export function useAccountsFlow({
       )
 
       accountsOk.value = 'Аккаунт обновлён'
-      await loadAccounts()
-      await loadAccountsAll()
-      cancelEditAccount()
+      // После успешного сохранения закрываем модалку без повторного confirm о несохраненных правках.
+      if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = true
+      try {
+        await cancelEditAccount()
+      } finally {
+        if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = false
+      }
+      // Обновляем список после закрытия, чтобы модалка не зависела от времени ответа API.
+      await Promise.allSettled([loadAccounts(), loadAccountsAll()])
     } catch (e) {
       accountsError.value = mapApiError(e?.message)
     } finally {
@@ -560,14 +613,28 @@ export function useAccountsFlow({
     accountsError.value = null
     accountsOk.value = null
     if (!editAccount.account_id) return
-    if (!window.confirm('Архивировать аккаунт?')) return
+    // Подтверждение удаления показываем в фирменном модальном стиле.
+    const isConfirmed = typeof requestDealConfirm === 'function'
+      ? await requestDealConfirm({
+        title: 'Предупреждение',
+        message: 'Удалить аккаунт?',
+        confirmText: 'Удалить',
+        cancelText: 'Отмена',
+      })
+      : window.confirm('Удалить аккаунт?')
+    if (!isConfirmed) return
     accountsLoading.value = true
     try {
       await apiDelete(`/accounts/${editAccount.account_id}`, { token: auth.state.token })
-      accountsOk.value = 'Аккаунт архивирован'
-      await loadAccounts()
-      await loadAccountsAll()
-      cancelEditAccount()
+      // После успешного удаления закрываем модалку без повторного confirm о несохраненных правках.
+      if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = true
+      try {
+        await cancelEditAccount()
+      } finally {
+        if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = false
+      }
+      // Обновляем таблицы после закрытия модалки.
+      await Promise.allSettled([loadAccounts(), loadAccountsAll()])
     } catch (e) {
       accountsError.value = mapApiError(e?.message)
     } finally {
@@ -586,6 +653,7 @@ export function useAccountsFlow({
     loadAccountsAll,
     loadAccountDeals,
     startEditAccount,
+    toggleAccountEditMode,
     openCreateAccountModal,
     cancelEditAccount,
     createAccount,

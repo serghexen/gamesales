@@ -23,56 +23,67 @@
             />
           </label>
           <button
-            class="btn btn--icon btn--glow btn--glow-filter"
+            class="account-search-btn"
             type="button"
             @click="applyAccountSearch"
             aria-label="Найти"
             title="Найти"
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 21l-4.2-4.2" />
-              <circle cx="11" cy="11" r="7" />
-            </svg>
+            <span class="account-search-btn__content">
+              <svg class="account-search-btn__icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 21l-4.2-4.2" />
+                <circle cx="11" cy="11" r="7" />
+              </svg>
+            </span>
           </button>
         </div>
       </div>
     </div>
     <div class="toolbar-actions">
       <button
-        class="btn btn--icon btn--glow btn--glow-import"
+        class="account-import-btn account-import-btn--accounts"
+        type="button"
         title="Импорт аккаунтов"
         aria-label="Импорт аккаунтов"
         @click="openAccountImport"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 3v12" />
-          <path d="M7 10l5 5 5-5" />
-          <path d="M5 21h14" />
-        </svg>
+        <span class="account-import-btn__content">
+          <svg class="account-import-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+        </span>
       </button>
       <button
-        class="btn btn--icon btn--glow btn--glow-import-slots"
+        class="account-import-btn account-import-btn--slots"
+        type="button"
         title="Импорт слотов"
         aria-label="Импорт слотов"
         @click="openSlotImport"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 3v12" />
-          <path d="M7 10l5 5 5-5" />
-          <path d="M5 21h14" />
-        </svg>
+        <span class="account-import-btn__content">
+          <svg class="account-import-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+        </span>
       </button>
       <button
-        class="btn btn--icon btn--glow btn--glow-refresh"
+        class="account-refresh-btn"
+        type="button"
         aria-label="Обновить список"
         title="Обновить список"
         @click="loadAccounts"
         :disabled="accountsLoading"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M20 12a8 8 0 1 1-2.3-5.7" />
-          <path d="M20 4v6h-6" />
-        </svg>
+        <span class="account-refresh-btn__content">
+          <svg class="account-refresh-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+            <path d="M20 4v6h-6" />
+          </svg>
+        </span>
       </button>
     </div>
   </div>

@@ -81,6 +81,7 @@ function createHarness() {
     loadProductSlotAssignments: vi.fn(),
     suppressUnsavedConfirm: ref(false),
     requestUnsavedConfirm: vi.fn(async () => true),
+    requestDealConfirm: vi.fn(async () => true),
   }
 
   return {
@@ -230,5 +231,44 @@ describe('useProductsFlow', () => {
 
     expect(closed).toBe(true)
     expect(h.deps.requestUnsavedConfirm).not.toHaveBeenCalled()
+  })
+
+  it('toggleProductEditMode reverts unsaved changes on second click', () => {
+    const h = createHarness()
+    h.flow.startEditProduct({
+      product_id: 10,
+      type_code: 'game',
+      title: 'Game A',
+      short_title: 'GA',
+      text_lang: 'RU',
+      platform_codes: ['ps5'],
+      region_code: 'RU',
+      subscription_notes: 'note',
+    })
+
+    h.flow.toggleProductEditMode()
+    expect(h.deps.productEditMode.value).toBe('edit')
+
+    h.editProduct.title = 'Changed'
+    h.editProduct.subscription_notes = 'Changed note'
+
+    h.flow.toggleProductEditMode()
+    expect(h.deps.productEditMode.value).toBe('view')
+    expect(h.editProduct.title).toBe('Game A')
+    expect(h.editProduct.subscription_notes).toBe('note')
+  })
+
+  it('archiveProduct uses custom confirm callback before delete', async () => {
+    const h = createHarness()
+    h.editProduct.open = true
+    h.editProduct.product_id = 55
+    h.deps.requestDealConfirm.mockResolvedValueOnce(true)
+    h.deps.apiDelete.mockResolvedValueOnce({})
+    h.apiGet.mockResolvedValue({ items: [], total: 0 })
+
+    await h.flow.archiveProduct()
+
+    expect(h.deps.requestDealConfirm).toHaveBeenCalledTimes(1)
+    expect(h.deps.apiDelete).toHaveBeenCalledWith('/products/55', { token: 'token-1' })
   })
 })

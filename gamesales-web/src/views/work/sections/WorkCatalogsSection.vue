@@ -30,7 +30,8 @@
         <!-- Модалки справочников живут отдельно, чтобы не раздувать шаблон -->
         <WorkCatalogModals :ctx="catalogModalsCtx" />
 
-        <div class="catalog">
+        <div class="catalog-grid">
+        <div class="catalog catalog--domain">
           <div class="panel__head">
             <div class="toolbar-actions">
               <button class="deal-create-btn" type="button" @click="openDomainModal" aria-label="Добавить домен" title="Добавить домен">
@@ -45,7 +46,7 @@
             </div>
             <div class="toolbar-actions">
               <button
-                class="btn btn--icon btn--glow btn--glow-refresh"
+                class="catalog-refresh-btn"
                 title="Обновить список"
                 aria-label="Обновить список"
                 @click="loadDomains"
@@ -58,7 +59,10 @@
               </button>
             </div>
           </div>
-          <table v-if="sortedDomains.length" class="table table--compact">
+          <table v-if="sortedDomains.length" ref="domainsTableEl" class="table table--compact">
+            <colgroup>
+              <col :style="getDomainsColumnStyle('name')" />
+            </colgroup>
             <thead>
               <tr>
                 <th>
@@ -78,6 +82,13 @@
                       </svg>
                     </button>
                   </span>
+                  <button
+                    class="table-col-resizer"
+                    type="button"
+                    aria-label="Изменить ширину колонки Домен"
+                    title="Потяните для изменения ширины"
+                    @mousedown.stop.prevent="startDomainsResize($event, 'name')"
+                  />
                 </th>
               </tr>
             </thead>
@@ -90,7 +101,7 @@
           <p v-else class="muted">Пока нет доменов.</p>
         </div>
 
-        <div class="catalog">
+        <div class="catalog catalog--source">
           <div class="panel__head">
             <div class="toolbar-actions">
               <button class="deal-create-btn" type="button" @click="openSourceModal" aria-label="Добавить источник" title="Добавить источник">
@@ -105,7 +116,7 @@
             </div>
             <div class="toolbar-actions">
               <button
-                class="btn btn--icon btn--glow btn--glow-refresh"
+                class="catalog-refresh-btn"
                 title="Обновить список"
                 aria-label="Обновить список"
                 @click="loadSources"
@@ -167,6 +178,13 @@
                       </svg>
                     </button>
                   </span>
+                  <button
+                    class="table-col-resizer"
+                    type="button"
+                    aria-label="Изменить ширину колонки Название источника"
+                    title="Потяните для изменения ширины"
+                    @mousedown.stop.prevent="startSourcesResize($event, 'name')"
+                  />
                 </th>
               </tr>
             </thead>
@@ -180,7 +198,7 @@
           <p v-else class="muted">Пока нет источников.</p>
         </div>
 
-        <div class="catalog">
+        <div class="catalog catalog--platform">
           <div class="panel__head">
             <div class="toolbar-actions">
               <button class="deal-create-btn" type="button" @click="openPlatformModal" aria-label="Добавить платформу" title="Добавить платформу">
@@ -195,7 +213,7 @@
             </div>
             <div class="toolbar-actions">
               <button
-                class="btn btn--icon btn--glow btn--glow-refresh"
+                class="catalog-refresh-btn"
                 title="Обновить список"
                 aria-label="Обновить список"
                 @click="loadCatalogs"
@@ -283,6 +301,13 @@
                       </svg>
                     </button>
                   </span>
+                  <button
+                    class="table-col-resizer"
+                    type="button"
+                    aria-label="Изменить ширину колонки Слоты платформы"
+                    title="Потяните для изменения ширины"
+                    @mousedown.stop.prevent="startPlatformsResize($event, 'slots')"
+                  />
                 </th>
               </tr>
             </thead>
@@ -297,7 +322,7 @@
           <p v-else class="muted">Пока нет платформ.</p>
         </div>
 
-        <div class="catalog">
+        <div class="catalog catalog--region">
           <div class="panel__head">
             <div class="toolbar-actions">
               <button class="deal-create-btn" type="button" @click="openRegionModal" aria-label="Добавить регион" title="Добавить регион">
@@ -312,7 +337,7 @@
             </div>
             <div class="toolbar-actions">
               <button
-                class="btn btn--icon btn--glow btn--glow-refresh"
+                class="catalog-refresh-btn"
                 title="Обновить список"
                 aria-label="Обновить список"
                 @click="loadCatalogs"
@@ -376,7 +401,6 @@
                     </button>
                   </span>
                   <button
-                    v-if="isAdmin"
                     class="table-col-resizer"
                     type="button"
                     aria-label="Изменить ширину колонки Название региона"
@@ -384,7 +408,16 @@
                     @mousedown.stop.prevent="startRegionsResizeByRole($event, 'name')"
                   />
                 </th>
-                <th v-if="isAdmin">Коэф.</th>
+                <th v-if="isAdmin">
+                  <span class="th-title">Коэф.</span>
+                  <button
+                    class="table-col-resizer"
+                    type="button"
+                    aria-label="Изменить ширину колонки Коэффициент региона"
+                    title="Потяните для изменения ширины"
+                    @mousedown.stop.prevent="startRegionsResizeByRole($event, 'rate')"
+                  />
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -396,6 +429,7 @@
             </tbody>
           </table>
           <p v-else class="muted">Пока нет регионов.</p>
+        </div>
         </div>
       </div>
     </div>
@@ -414,9 +448,18 @@ const props = defineProps({
 })
 const ctx = reactive(props.ctx)
 
+const domainsTableEl = ref(null)
 const sourcesTableEl = ref(null)
 const platformsTableEl = ref(null)
 const regionsTableEl = ref(null)
+
+const { getColumnStyle: getDomainsColumnStyle, startResize: startDomainsResize } = useResizableTableColumns({
+  tableRef: domainsTableEl,
+  storageKey: 'work.catalogs.domains.columns.v1',
+  columns: [
+    { key: 'name', defaultWidth: 100, minWidth: 36 },
+  ],
+})
 
 const { getColumnStyle: getSourcesColumnStyle, startResize: startSourcesResize } = useResizableTableColumns({
   tableRef: sourcesTableEl,

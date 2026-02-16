@@ -39,6 +39,12 @@ def mount_deals_routes(
         normalized = (value or "").strip()
         return normalized or None
 
+    # Проверяет привилегии пользователя для операций с завершенными/возвратными сделками.
+    def has_completed_deal_access(user) -> bool:
+        role = (getattr(user, "role", "") or "").strip().lower()
+        username = (getattr(user, "username", "") or "").strip().lower()
+        return role in {"admin", "administrator", "owner"} or username in {"admin", "owner"}
+
     # Находит owner и возвращает отображаемое имя для поля "Ответственный".
     def resolve_owner_responsible_name(conn) -> str:
         row = q1(
@@ -270,12 +276,11 @@ def mount_deals_routes(
         deal_type = payload.deal_type_code.strip().lower()
         if deal_type not in ("sale", "rental"):
             raise HTTPException(400, "deal_type_code must be sale or rental")
-        # Для создания поддерживаем draft только для продаж.
+        # Для создания поддерживаем draft и для продаж, и для шеринга.
         new_flow_status = (payload.flow_status_code or "pending").strip().lower()
-        if new_flow_status == "draft" and deal_type != "sale":
-            raise HTTPException(400, "flow_status_code draft is allowed only for sale deals")
         sale_is_draft = deal_type == "sale" and new_flow_status == "draft"
-        if deal_type == "rental":
+        rental_is_draft = deal_type == "rental" and new_flow_status == "draft"
+        if deal_type == "rental" and not rental_is_draft:
             if not payload.slot_type_code:
                 raise HTTPException(400, "slot_type_code is required for rental")
             if not payload.account_id:
@@ -313,13 +318,13 @@ def mount_deals_routes(
                     conn,
                     product_id=payload.product_id,
                     for_rental=(deal_type == "rental"),
-                    must_be_active=(deal_type == "rental"),
+                    must_be_active=(deal_type == "rental" and not rental_is_draft),
                 )
-            if deal_type == "rental":
+            if deal_type == "rental" and not rental_is_draft:
                 ensure_account_exists(conn, payload.account_id)
             ensure_source_exists(conn, payload.source_id)
             platform_id = None
-            if deal_type == "rental":
+            if deal_type == "rental" and not rental_is_draft:
                 slot_type = ensure_account_allows_slot_type(conn, payload.account_id, payload.slot_type_code)
                 platform_id = get_platform_id(conn, slot_type[1])
             region_id = get_region_id(conn, payload.region_code)
@@ -364,7 +369,7 @@ def mount_deals_routes(
                 customer_source_id = int(customer_row[0]) if customer_row and customer_row[0] is not None else None
                 validate_market_order_number_unique(conn, customer_source_id, order_number)
     
-            if deal_type == "rental":
+            if deal_type == "rental" and not rental_is_draft:
                 free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
                 if free < 1:
                     raise HTTPException(409, "Not enough free slots for selected slot type")
@@ -380,7 +385,7 @@ def mount_deals_routes(
     
             # Для новых сделок (sale/rental) храним только product_id.
             product_link = payload.product_link
-            if deal_type == "rental":
+            if deal_type == "rental" and not rental_is_draft:
                 row_item = q1(conn, """
                     INSERT INTO app.deal_items(
                       deal_id, account_id, product_id, platform_id,
@@ -413,7 +418,7 @@ def mount_deals_routes(
                     0, payload.slot_type_code, payload.notes, product_link
                 ))
             deal_item_id = int(row_item[0])
-            if deal_type == "rental":
+            if deal_type == "rental" and not rental_is_draft:
                 exec1(
                 conn,
                 """
@@ -499,8 +504,7 @@ def mount_deals_routes(
             current_type, status_code, flow_status_code, region_id, customer_id, total_amount, order_number, responsible_username, deal_item_id, \
                 account_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link, returned_at = row
             user_role = (getattr(user, "role", "") or "").strip().lower()
-            user_name = (getattr(user, "username", "") or "").strip().lower()
-            can_edit_completed = user_role in {"admin", "owner"} or user_name in {"admin", "owner"}
+            can_edit_completed = has_completed_deal_access(user)
             # Завершенные сделки редактируют только admin/owner; для возврата есть отдельный endpoint.
             if str(flow_status_code or "").strip().lower() == "completed" and not can_edit_completed:
                 raise HTTPException(403, "editing completed deal is allowed only for admin/owner")
@@ -517,9 +521,11 @@ def mount_deals_routes(
                 row = q1(conn, "SELECT 1 FROM app.deal_flow_statuses WHERE code=%s", (payload.flow_status_code,))
                 if not row:
                     raise HTTPException(400, "Unknown flow_status_code")
-            # Черновик применяем только для продаж, чтобы не ломать правила шеринга.
-            if new_flow_status == "draft" and deal_type != "sale":
-                raise HTTPException(400, "flow_status_code draft is allowed only for sale deals")
+            # Черновик нельзя переводить сразу в completed из формы редактирования.
+            if str(flow_status_code or "").strip().lower() == "draft" and str(new_flow_status or "").strip().lower() == "completed":
+                raise HTTPException(400, "draft deal cannot be completed directly")
+            # Черновик допускаем и для продаж, и для шеринга.
+            rental_is_draft = deal_type == "rental" and new_flow_status == "draft"
 
             new_account_id = payload.account_id if payload.account_id is not None else account_id
             ensure_source_exists(conn, payload.source_id if payload.source_id is not None else None)
@@ -537,7 +543,7 @@ def mount_deals_routes(
             new_slot_type_code = payload.slot_type_code if payload.slot_type_code is not None else slot_type_code
             new_platform_id = platform_id
             slot_type_platform = None
-            if deal_type == "rental":
+            if deal_type == "rental" and not rental_is_draft:
                 if not new_slot_type_code:
                     raise HTTPException(400, "slot_type_code is required for rental")
                 slot_type = get_slot_type(conn, new_slot_type_code)
@@ -588,7 +594,7 @@ def mount_deals_routes(
                 raise HTTPException(400, "is_refund is allowed only for sale deals")
             # Проведение возврата в completed разрешено только владельцу или администратору.
             is_completing_now = flow_status_code != "completed" and new_flow_status == "completed"
-            if is_completing_now and new_is_refund and user_role not in {"admin", "owner"}:
+            if is_completing_now and new_is_refund and user_role not in {"admin", "administrator", "owner"}:
                 raise HTTPException(403, "не достаточно прав для проведения возврата")
             # Храним признак возврата через returned_at: timestamp при включении и null при выключении.
             new_returned_at = returned_at
@@ -612,12 +618,12 @@ def mount_deals_routes(
                 if new_flow_status != "draft" and customer_id is None:
                     raise HTTPException(400, "customer_nickname is required for non-draft sale")
             if deal_type == "rental":
-                new_slots_used = 1
+                new_slots_used = 0 if rental_is_draft else 1
                 new_returned_at = None
             validate_date_range(new_start_at, new_end_at, "end_at")
     
             # check slots for rental
-            if deal_type == "rental":
+            if deal_type == "rental" and not rental_is_draft:
                 # Для rental валидируем продукт в product-first режиме.
                 if payload.product_id is None:
                     raise HTTPException(400, "product_id is required for rental")
@@ -770,48 +776,52 @@ def mount_deals_routes(
                     ),
                 )
             if deal_type == "rental":
-                row_assign = q1(
-                    conn,
-                    """
-                    SELECT assignment_id, account_id, slot_type_code, customer_id, product_id
-                    FROM app.account_slot_assignments
-                    WHERE deal_item_id=%s AND released_at IS NULL
-                    """,
-                    (deal_item_id,),
-                )
-                current_assign = row_assign[0] if row_assign else None
-                # Сравниваем назначение только по product_id.
-                assigned_product_id = int(row_assign[4]) if row_assign and row_assign[4] is not None else None
-                need_new_assign = (
-                    (not row_assign)
-                    or int(row_assign[1]) != int(new_account_id)
-                    or row_assign[2] != new_slot_type_code
-                    or (customer_id is not None and row_assign[3] != customer_id)
-                    or (assigned_product_id != int(payload.product_id))
-                )
-                if need_new_assign and current_assign:
+                if rental_is_draft:
+                    # При переводе шеринга в черновик снимаем активное назначение слота.
                     release_slot_assignment(conn, deal_item_id, user.username)
-                if need_new_assign:
-                    exec1(
+                else:
+                    row_assign = q1(
                         conn,
                         """
-                        INSERT INTO app.account_slot_assignments(
-                          account_id, slot_type_code, customer_id, product_id, deal_id, deal_item_id, assigned_by
-                        )
-                        VALUES (
-                          %s, %s, %s, %s, %s, %s, %s
-                        )
+                        SELECT assignment_id, account_id, slot_type_code, customer_id, product_id
+                        FROM app.account_slot_assignments
+                        WHERE deal_item_id=%s AND released_at IS NULL
                         """,
-                        (
-                            new_account_id,
-                            new_slot_type_code,
-                            customer_id,
-                            payload.product_id,
-                            deal_id,
-                            deal_item_id,
-                            user.username,
-                        ),
+                        (deal_item_id,),
                     )
+                    current_assign = row_assign[0] if row_assign else None
+                    # Сравниваем назначение только по product_id.
+                    assigned_product_id = int(row_assign[4]) if row_assign and row_assign[4] is not None else None
+                    need_new_assign = (
+                        (not row_assign)
+                        or int(row_assign[1]) != int(new_account_id)
+                        or row_assign[2] != new_slot_type_code
+                        or (customer_id is not None and row_assign[3] != customer_id)
+                        or (assigned_product_id != int(payload.product_id))
+                    )
+                    if need_new_assign and current_assign:
+                        release_slot_assignment(conn, deal_item_id, user.username)
+                    if need_new_assign:
+                        exec1(
+                            conn,
+                            """
+                            INSERT INTO app.account_slot_assignments(
+                              account_id, slot_type_code, customer_id, product_id, deal_id, deal_item_id, assigned_by
+                            )
+                            VALUES (
+                              %s, %s, %s, %s, %s, %s, %s
+                            )
+                            """,
+                            (
+                                new_account_id,
+                                new_slot_type_code,
+                                customer_id,
+                                payload.product_id,
+                                deal_id,
+                                deal_item_id,
+                                user.username,
+                            ),
+                        )
             conn.commit()
             # После успешного update отправляем событие об изменении сделки.
             if publish_deal_event:
@@ -968,9 +978,7 @@ def mount_deals_routes(
             else:
                 where_sql = "WHERE d.status_code <> 'cancelled'"
             # Возвратные сделки в списке видят только admin/owner.
-            user_role = (getattr(user, "role", "") or "").strip().lower()
-            user_name = (getattr(user, "username", "") or "").strip().lower()
-            can_view_refunds = user_role in {"admin", "owner"} or user_name in {"admin", "owner"}
+            can_view_refunds = has_completed_deal_access(user)
             if not can_view_refunds:
                 if where_sql:
                     where_sql = f"{where_sql} AND di.returned_at IS NULL"

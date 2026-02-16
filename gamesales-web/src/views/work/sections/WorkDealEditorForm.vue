@@ -209,7 +209,7 @@
                             />
                             <select v-else v-model="editDeal.flow_status_code" class="input input--select">
                               <option value="">— не выбрано —</option>
-                              <option v-for="s in dealFlowStatusOptions" :key="s.code" :value="s.code">
+                              <option v-for="s in editFlowStatusOptions" :key="s.code" :value="s.code">
                                 {{ s.name }}
                               </option>
                             </select>
@@ -387,7 +387,7 @@
                           />
                           <select v-else v-model="editDeal.flow_status_code" class="input input--select">
                             <option value="">— не выбрано —</option>
-                            <option v-for="s in dealFlowStatusOptions" :key="s.code" :value="s.code">
+                            <option v-for="s in editFlowStatusOptions" :key="s.code" :value="s.code">
                               {{ s.name }}
                             </option>
                           </select>
@@ -984,5 +984,13 @@ const canEditSystemDates = computed(() => {
 const refundEditBlockedReason = computed(() => {
   // Подсказываем причину блокировки, чтобы было понятно почему чекбокс недоступен.
   return canEditRefundFlag.value ? '' : 'Признак можно менять только в статусе В ожидании (или в Завершено для admin/owner)'
+})
+
+const editFlowStatusOptions = computed(() => {
+  // Для черновика не даем прямой переход в "Завершен" из формы редактирования.
+  const currentStatus = String(editDeal.value?.flow_status_code || '').trim().toLowerCase()
+  const list = Array.isArray(dealFlowStatusOptions.value) ? dealFlowStatusOptions.value : []
+  if (currentStatus !== 'draft') return list
+  return list.filter((item) => String(item?.code || '').trim().toLowerCase() !== 'completed')
 })
 </script>

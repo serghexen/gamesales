@@ -9,6 +9,7 @@ export function useWorkSectionContexts({
   startModalDrag,
   productEditMode,
   updateProduct,
+  toggleProductEditMode,
   productLoading,
   createProduct,
   archiveProduct,
@@ -223,6 +224,17 @@ export function useWorkSectionContexts({
     return Boolean(canEditCompletedDeal?.value ?? canEditCompletedDeal)
   })
 
+  const isDraftDeal = computed(() => String(editDeal.flow_status_code || '').trim().toLowerCase() === 'draft')
+
+  async function saveEditDeal() {
+    // Для черновика всегда сохраняем в черновик, чтобы не отправлять обычный save.
+    if (isDraftDeal.value) {
+      await updateDealDraft()
+      return
+    }
+    await updateDeal()
+  }
+
   // Контекст модалки товара.
   const productEditorModalCtx = proxyRefs({
     editProduct,
@@ -233,6 +245,7 @@ export function useWorkSectionContexts({
     startModalDrag,
     productEditMode,
     updateProduct,
+    toggleProductEditMode,
     productLoading,
     createProduct,
     archiveProduct,
@@ -360,16 +373,17 @@ export function useWorkSectionContexts({
     startModalDrag,
     title: dealModalTitle,
     showSaveEdit: computed(() => editDeal.open && dealEditMode.value === 'edit'),
-    showSaveDraft: computed(() => editDeal.open && dealEditMode.value === 'edit' && editDeal.deal_type_code === 'sale'),
+    // Для черновика показываем только одну кнопку сохранения.
+    showSaveDraft: computed(() => editDeal.open && dealEditMode.value === 'edit' && !isDraftDeal.value),
     showCreate: computed(() => !editDeal.open),
-    showCreateDraft: computed(() => !editDeal.open && newDeal.deal_type_code === 'sale'),
+    showCreateDraft: computed(() => !editDeal.open),
     // Кнопку удаления показываем только для черновика, чтобы не удалять рабочие сделки.
     showDelete: computed(() => editDeal.open && editDeal.flow_status_code === 'draft'),
     // Для завершенных сделок даем режим редактирования только admin/owner.
     showEdit: computed(() => editDeal.open && (editDeal.flow_status_code !== 'completed' || allowCompletedDealEdit.value)),
     // Кнопка редактирования теперь работает как переключатель режимов view/edit.
     editDisabled: computed(() => dealLoading.value || (editDeal.flow_status_code === 'completed' && !allowCompletedDealEdit.value)),
-    onSaveEdit: updateDeal,
+    onSaveEdit: saveEditDeal,
     onSaveDraft: updateDealDraft,
     onCreate: createDeal,
     onCreateDraft: createDealDraft,

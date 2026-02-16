@@ -10,7 +10,11 @@ function createHarness() {
     apiPost: vi.fn(),
     apiPut: vi.fn(),
     apiDelete: vi.fn(),
-    mapApiError: (m) => m || 'error',
+    mapApiError: (m) => {
+      const text = String(m || '')
+      if (text.includes('Account already exists')) return 'Данный аккаунт уже есть в базе данных'
+      return text || 'error'
+    },
     resolveAccountSort: () => ({ key: 'login', dir: 'asc' }),
     closeAllModals: vi.fn(),
     resetModalPos: vi.fn(),
@@ -20,6 +24,8 @@ function createHarness() {
     newAccount: reactive({ product_ids: [] }),
     accountProductSearch: ref(''),
     editAccountProductSearch: ref(''),
+    accountProductType: ref(''),
+    editAccountProductType: ref(''),
     accountProductsLoading: ref(false),
     accountDeals: ref([]),
     accountDealsError: ref(null),
@@ -42,6 +48,8 @@ function createHarness() {
     loadAccountSlotAssignments: vi.fn(),
     suppressUnsavedConfirm: ref(false),
     requestUnsavedConfirm: vi.fn(),
+    requestDealConfirm: vi.fn(),
+    showDealWarning: vi.fn(),
   }
   const flow = useAccountsFlow(h)
   return { ...h, ...flow }
@@ -67,5 +75,51 @@ describe('useAccountsFlow', () => {
     expect(h.apiGet).toHaveBeenCalledTimes(1)
     expect(h.apiGet).toHaveBeenCalledWith('/accounts/5/products', { token: 'token-1' })
     expect(h.editAccount.product_ids).toEqual([])
+  })
+
+  it('openCreateAccountModal resets product type filter to all', () => {
+    const h = createHarness()
+    h.accountProductType.value = 'subscription'
+
+    h.openCreateAccountModal()
+
+    expect(h.accountProductType.value).toBe('')
+  })
+
+  it('toggleAccountEditMode reverts unsaved changes on second click', () => {
+    const h = createHarness()
+    h.startEditAccount({
+      account_id: 5,
+      login_name: 'user',
+      domain_code: 'mail.com',
+      region_code: 'RU',
+      notes: 'note',
+      account_date: '2025-01-01',
+      status: 'active',
+    })
+
+    h.toggleAccountEditMode()
+    expect(h.accountEditMode.value).toBe('edit')
+
+    h.editAccount.login_name = 'changed'
+    h.editAccount.notes = 'changed note'
+
+    h.toggleAccountEditMode()
+    expect(h.accountEditMode.value).toBe('view')
+    expect(h.editAccount.login_name).toBe('user')
+    expect(h.editAccount.notes).toBe('note')
+  })
+
+  it('createAccount duplicate shows warning modal text instead of inline error', async () => {
+    const h = createHarness()
+    h.openCreateAccountModal()
+    h.newAccount.login_name = 'dup'
+    h.newAccount.domain_code = 'mail.com'
+    h.apiPost.mockRejectedValueOnce(new Error('Account already exists'))
+
+    await h.createAccount()
+
+    expect(h.showDealWarning).toHaveBeenCalledWith('Данный аккаунт уже есть в базе данных')
+    expect(h.accountsError.value).toBeNull()
   })
 })

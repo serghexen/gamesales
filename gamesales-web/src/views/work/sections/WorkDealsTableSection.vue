@@ -365,9 +365,9 @@
         <td class="cell--tight deal-col-action">
           <button
             v-if="!dealShowCompleted"
-            class="mini-btn"
+            class="mini-btn mini-btn--complete"
             type="button"
-            @click.stop="markDealCompleted(d)"
+            @click.stop="onMarkDealCompletedClick($event, d)"
             :disabled="dealSaving"
           >
             <span v-if="dealSaving && dealCompletingId === d.deal_id" class="spinner spinner--small" aria-hidden="true"></span>
@@ -391,6 +391,9 @@
       </tr>
     </tbody>
   </table>
+  <teleport to="body">
+    <div ref="coinsContainerRef" class="deal-complete-coins-container" aria-hidden="true"></div>
+  </teleport>
 </template>
 
 <script setup>
@@ -405,6 +408,7 @@ import {
 import { useResizableTableColumns } from '../useResizableTableColumns'
 
 const tableEl = ref(null)
+const coinsContainerRef = ref(null)
 const { getColumnStyle, startResize } = useResizableTableColumns({
   tableRef: tableEl,
   storageKey: 'work.deals.columns.v1',
@@ -481,5 +485,59 @@ const statusFilterValues = computed({
 // Применяет мультифильтр сразу после клика по чекбоксу, без отдельной кнопки.
 function applyDealMultiFilter() {
   props.loadDeals(1)
+}
+
+function spawnCompletionCoins(originPoint) {
+  const container = coinsContainerRef.value
+  if (!container || !originPoint) return
+
+  const buttonCenterX = Number(originPoint.x || 0)
+  const buttonTop = Number(originPoint.y || 0)
+  if (!buttonCenterX && !buttonTop) return
+  const coinCount = 15 + Math.floor(Math.random() * 11)
+
+  for (let i = 0; i < coinCount; i += 1) {
+    setTimeout(() => {
+      // Создаем "монету" и разбрасываем ее по дуге для эффекта завершения сделки.
+      const coin = document.createElement('div')
+      coin.className = 'deal-complete-coin'
+
+      const spreadAngle = (Math.random() - 0.5) * Math.PI * 0.9
+      const startOffset = (Math.random() - 0.5) * 20
+      const upHeight = -100 - Math.random() * 80
+      const midX = Math.sin(spreadAngle) * (50 + Math.random() * 60)
+      const horizontalDistance = midX + (Math.sin(spreadAngle) * (30 + Math.random() * 40))
+      const fallDistance = 350 + Math.random() * 150
+      const midFallDistance = fallDistance * 0.5
+      const duration = 1.2 + Math.random() * 0.6
+
+      coin.style.left = `${buttonCenterX}px`
+      coin.style.top = `${buttonTop}px`
+      coin.style.setProperty('--start-x', `${startOffset}px`)
+      coin.style.setProperty('--up-y', `${upHeight}px`)
+      coin.style.setProperty('--mid-x', `${midX}px`)
+      coin.style.setProperty('--fall-x', `${horizontalDistance}px`)
+      coin.style.setProperty('--fall-y-mid', `${midFallDistance}px`)
+      coin.style.setProperty('--fall-y', `${fallDistance}px`)
+      coin.style.setProperty('--fall-x-end', `${horizontalDistance + ((Math.random() - 0.5) * 40)}px`)
+      coin.style.setProperty('--fall-duration', `${duration}s`)
+
+      container.appendChild(coin)
+      setTimeout(() => coin.remove(), duration * 1000)
+    }, i * 10)
+  }
+}
+
+async function onMarkDealCompletedClick(event, deal) {
+  // Координаты кнопки сохраняем до await, чтобы после ответа backend анимация знала точку старта.
+  const triggerEl = event?.currentTarget
+  const rect = triggerEl?.getBoundingClientRect?.()
+  const originPoint = rect
+    ? { x: rect.left + (rect.width / 2), y: rect.top }
+    : null
+
+  // Монеты запускаем только после успешного ответа backend о завершении сделки.
+  const completedOk = await props.markDealCompleted(deal)
+  if (completedOk) spawnCompletionCoins(originPoint)
 }
 </script>

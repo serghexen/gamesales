@@ -31,11 +31,13 @@
               @keydown.enter.prevent="applyDealSearch"
             />
           </label>
-          <button class="btn btn--icon btn--glow btn--glow-filter" type="button" @click="applyDealSearch" aria-label="Найти" title="Найти">
-            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 21l-4.2-4.2" />
-              <circle cx="11" cy="11" r="7" />
-            </svg>
+          <button class="deal-search-btn" type="button" @click="applyDealSearch" aria-label="Найти" title="Найти">
+            <span class="deal-search-btn__content">
+              <svg class="deal-search-btn__icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 21l-4.2-4.2" />
+                <circle cx="11" cy="11" r="7" />
+              </svg>
+            </span>
           </button>
         </div>
       </div>
@@ -58,16 +60,19 @@
         <span class="switch-label">Показать завершенные</span>
       </div>
       <button
-        class="btn btn--icon btn--glow btn--glow-refresh"
+        class="deal-refresh-btn"
+        type="button"
         title="Обновить список"
         aria-label="Обновить список"
         @click="loadDeals(1)"
         :disabled="dealListLoading"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M20 12a8 8 0 1 1-2.3-5.7" />
-          <path d="M20 4v6h-6" />
-        </svg>
+        <span class="deal-refresh-btn__content">
+          <svg class="deal-refresh-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+            <path d="M20 4v6h-6" />
+          </svg>
+        </span>
       </button>
     </div>
   </div>

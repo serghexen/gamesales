@@ -24,3 +24,28 @@
   width: 100%;
 }
 
+.work-page .account-modal-title {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.work-page .account-products-title {
+  display: block;
+  text-align: center;
+}
+
+.work-page .account-product-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(180px, 0.55fr);
+  gap: 8px;
+}
+
+.work-page .check-list.check-list--account-products {
+  max-height: 100px;
+}
+
+@media (max-width: 720px) {
+  .work-page .account-product-filters {
+    grid-template-columns: 1fr;
+  }
+}

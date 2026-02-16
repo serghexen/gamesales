@@ -28,6 +28,19 @@
   flex-wrap: wrap;
 }
 
+.work-page .panel__head--users {
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.work-page .toolbar-actions--users {
+  justify-content: flex-start;
+}
+
+.work-page .toolbar-actions--users-refresh {
+  margin-left: auto;
+}
+
 .work-page .switch-wrap {
   display: inline-flex;
   align-items: center;

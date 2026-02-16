@@ -96,6 +96,32 @@ describe('WorkDealsTableSection', () => {
     expect(markDealReturned).toHaveBeenCalledTimes(1)
   })
 
+  it('calls completion action from complete button in pending list', async () => {
+    const markDealCompleted = vi.fn()
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        markDealCompleted,
+        dealShowCompleted: false,
+        sortedDeals: [
+          {
+            deal_id: 1,
+            deal_type: 'Продажа',
+            customer_nickname: 'Покупатель',
+            region_code: 'RU',
+            purchase_at: '2026-02-11 10:00',
+            created_at: '2026-02-11 09:00',
+            completed_at: null,
+            flow_status: 'В ожидании',
+            responsible_username: 'manager',
+          },
+        ],
+      }),
+    })
+
+    await wrapper.find('button.mini-btn--complete').trigger('click')
+    expect(markDealCompleted).toHaveBeenCalledTimes(1)
+  })
+
   it('supports multi-select for type filter', async () => {
     const dealFilters = {
       type_q: '',

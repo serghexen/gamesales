@@ -26,7 +26,7 @@ export function useDealsActions({
   // Проверяет, может ли текущий пользователь проводить возврат (admin/owner).
   function canCompleteRefund() {
     const role = String(auth?.state?.role || '').trim().toLowerCase()
-    return role === 'admin' || role === 'owner'
+    return role === 'admin' || role === 'administrator' || role === 'owner'
   }
 
   // Приводит поле ответственного к значению, которое понимает API.
@@ -36,9 +36,19 @@ export function useDealsActions({
     return normalized || null
   }
 
+  // Нормализует числовые id из формы: пустое значение превращает в null.
+  function normalizeOptionalInt(value) {
+    if (value === null || value === undefined) return null
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null
+    const raw = String(value).trim()
+    if (!raw) return null
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
   // Определяет, нужно ли ослаблять проверки и сохранять сделку как черновик.
-  function isSaleDraftSave(dealTypeCode, saveAsDraft) {
-    return Boolean(saveAsDraft) && dealTypeCode === 'sale'
+  function isDraftSave(saveAsDraft) {
+    return Boolean(saveAsDraft)
   }
 
   // Нормализует дату/время из формы в ISO, чтобы API всегда получал единый формат.
@@ -54,16 +64,17 @@ export function useDealsActions({
   // Собирает payload для create/update в едином формате, чтобы не дублировать маппинг полей.
   function buildDealPayload(deal, responsible, saveAsDraft = false) {
     const dealTypeCode = deal.deal_type_code
-    const saleDraft = isSaleDraftSave(dealTypeCode, saveAsDraft)
+    const draftSave = isDraftSave(saveAsDraft)
+    const nextFlowStatus = draftSave ? 'draft' : (deal.flow_status_code || null)
     const payload = {
       deal_type_code: dealTypeCode,
-      account_id: dealTypeCode === 'rental' ? deal.account_id : null,
+      account_id: dealTypeCode === 'rental' ? normalizeOptionalInt(deal.account_id) : null,
       // В сделках используем единый идентификатор товара через product_id.
-      product_id: deal.product_id || null,
+      product_id: normalizeOptionalInt(deal.product_id),
       customer_nickname: deal.customer_nickname || null,
       order_number: deal.order_number || null,
       responsible_username: normalizeResponsible(responsible?.value),
-      source_id: deal.source_id || null,
+      source_id: normalizeOptionalInt(deal.source_id),
       region_code: deal.region_code || null,
       slot_type_code: dealTypeCode === 'rental' ? (deal.slot_type_code || null) : null,
       price: deal.price || 0,
@@ -74,27 +85,27 @@ export function useDealsActions({
       purchase_at: dealTypeCode === 'sale' ? null : toUtcDateTime(deal.purchase_at),
       slots_used: dealTypeCode === 'rental' ? 1 : 0,
       notes: deal.notes || null,
-      flow_status_code: saleDraft ? 'draft' : (deal.flow_status_code || null),
+      flow_status_code: nextFlowStatus,
       // Признак возврата отправляем только для продаж, для остальных типов не трогаем поле.
       is_refund: dealTypeCode === 'sale' ? Boolean(deal.is_refund) : null,
     }
-    // Системные даты передаем только при редактировании существующей сделки.
-    if (deal?.deal_id) {
+    // Системные даты передаем только для завершенных сделок (иначе backend отклонит запрос).
+    if (deal?.deal_id && String(nextFlowStatus || '').trim().toLowerCase() === 'completed') {
       payload.created_at = normalizeOptionalDateTime(deal.created_at)
       payload.completed_at = normalizeOptionalDateTime(deal.completed_at)
     }
     return payload
   }
 
-  // Проверяет обязательные поля. Для черновика продажи допускаем пустые поля.
+  // Проверяет обязательные поля. Для черновика сделки допускаем пустые поля.
   function validateDealBeforeSave(deal, { saveAsDraft = false } = {}) {
-    const saleDraft = isSaleDraftSave(deal.deal_type_code, saveAsDraft)
-    if (!saleDraft && !deal.customer_nickname) return 'Укажите покупателя'
-    if (deal.deal_type_code === 'rental') {
+    const draftSave = isDraftSave(saveAsDraft)
+    if (!draftSave && !deal.customer_nickname) return 'Укажите покупателя'
+    if (deal.deal_type_code === 'rental' && !draftSave) {
       if (!deal.account_id || !deal.product_id) return 'Для шеринга укажите аккаунт и товар'
       if (!deal.slot_type_code) return 'Для шеринга выберите тип слота'
     }
-    if (deal.deal_type_code === 'sale' && !saleDraft) {
+    if (deal.deal_type_code === 'sale' && !draftSave) {
       if (!deal.region_code) return 'Укажите регион'
       if (!deal.source_id) return 'Укажите источник'
     }
@@ -177,7 +188,7 @@ export function useDealsActions({
       dealError.value = validationError
       return
     }
-    const nextFlowStatus = isSaleDraftSave(editDeal.deal_type_code, saveAsDraft)
+    const nextFlowStatus = isDraftSave(saveAsDraft)
       ? 'draft'
       : (editDeal.flow_status_code || null)
     // Для возврата проверяем право проведения заранее, чтобы не ждать ответ сервера.
@@ -295,7 +306,7 @@ export function useDealsActions({
 
   // Быстро переводит сделку в статус "completed".
   async function markDealCompleted(deal) {
-    if (!deal?.deal_id) return
+    if (!deal?.deal_id) return false
     dealError.value = null
     dealOk.value = null
     // Не даем обычным ролям проводить возврат, чтобы сразу показать понятную ошибку в UI.
@@ -303,11 +314,12 @@ export function useDealsActions({
       const warningText = 'не достаточно прав для проведения возврата'
       // Для быстрого завершения тоже показываем модальное предупреждение в стиле интерфейса.
       if (typeof showDealWarning === 'function') showDealWarning(warningText)
-      return
+      return false
     }
     // Сохраняем id строки, чтобы сразу показать лоадер на нужной кнопке в таблице.
     if (dealCompletingId) dealCompletingId.value = deal.deal_id
     dealSaving.value = true
+    let completedOk = false
     try {
       await apiPut(
         `/deals/${deal.deal_id}`,
@@ -315,12 +327,14 @@ export function useDealsActions({
         { token: auth.state.token }
       )
       await loadDeals(dealPage.value)
+      completedOk = true
     } catch (e) {
       dealError.value = mapApiError(e?.message)
     } finally {
       dealSaving.value = false
       if (dealCompletingId) dealCompletingId.value = null
     }
+    return completedOk
   }
 
   // Возвращает завершенную продажу в "pending", включает признак возврата и передает владельцу.

@@ -63,28 +63,32 @@
       <div class="tabs tabs--right">
         <span v-if="userRoleName" class="top-role">{{ userRoleName }}</span>
         <router-link
-          class="tab tab--icon"
-          :class="{ active: activeTab === 'profile' }"
+          class="top-profile-btn"
+          :class="{ 'is-active': activeTab === 'profile' }"
           :to="{ name: 'work', query: { ...routeQuery, tab: 'profile' } }"
           aria-label="Профиль"
           title="Профиль"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" />
-            <path d="M4 20a8 8 0 0 1 16 0" />
-          </svg>
+          <span class="top-profile-btn__content">
+            <svg class="top-profile-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          </span>
         </router-link>
         <button
-          class="tab tab--icon tab--danger"
+          class="top-logout-btn"
           @click="ctx.onLogout"
           aria-label="Выйти"
           title="Выйти"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-            <path d="M10 17l5-5-5-5" />
-            <path d="M15 12H3" />
-          </svg>
+          <span class="top-logout-btn__content">
+            <svg class="top-logout-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </span>
         </button>
       </div>
     </div>

@@ -12,7 +12,7 @@
           <div class="toolbar-actions">
             <button
               v-if="showSaveEdit"
-              class="btn btn--icon-plain"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
               type="button"
               aria-label="Сохранить изменения"
               title="Сохранить изменения"
@@ -27,7 +27,7 @@
             </button>
             <button
               v-if="showSaveDraft"
-              class="btn btn--icon-plain btn--draft"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--draft"
               type="button"
               aria-label="Сохранить как черновик"
               title="Сохранить как черновик"
@@ -35,14 +35,13 @@
               :disabled="actionsDisabled"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M8 4h8l4 4v12H4V4h4" />
-                <path d="M9 12h6" />
-                <path d="M12 9v6" />
+                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2" />
+                <path d="M9 12h6m-6 4h6" />
               </svg>
             </button>
             <button
               v-if="showCreate"
-              class="btn btn--icon-plain"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
               type="button"
               aria-label="Сохранить сделку"
               title="Сохранить сделку"
@@ -57,7 +56,7 @@
             </button>
             <button
               v-if="showCreateDraft"
-              class="btn btn--icon-plain btn--draft"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--draft"
               type="button"
               aria-label="Создать черновик"
               title="Создать черновик"
@@ -65,14 +64,13 @@
               :disabled="actionsDisabled"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M8 4h8l4 4v12H4V4h4" />
-                <path d="M9 12h6" />
-                <path d="M12 9v6" />
+                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2" />
+                <path d="M9 12h6m-6 4h6" />
               </svg>
             </button>
             <button
               v-if="showEdit"
-              class="btn btn--icon-plain btn--icon-round btn--edit"
+              class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--edit"
               type="button"
               aria-label="Редактировать"
               title="Редактировать"
@@ -86,7 +84,7 @@
             </button>
             <button
               v-if="showDelete"
-              class="btn btn--icon-plain btn--danger"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--delete"
               type="button"
               aria-label="Удалить"
               title="Удалить"
@@ -98,7 +96,7 @@
               </svg>
             </button>
             <button
-              class="btn btn--icon-plain btn--icon-round"
+              class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close"
               type="button"
               aria-label="Закрыть"
               title="Закрыть"

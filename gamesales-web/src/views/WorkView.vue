@@ -372,6 +372,12 @@ const setEditAccountProductSearch = (value) => {
 const setAccountProductSearch = (value) => {
   accountProductSearch.value = value
 }
+const setEditAccountProductType = (value) => {
+  editAccountProductType.value = value
+}
+const setAccountProductType = (value) => {
+  accountProductType.value = value
+}
 const setSlotImportLimit = (value) => {
   slotImportLimit.value = value
 }
@@ -383,6 +389,20 @@ const setActiveDealFilter = (value) => {
 }
 const dealsBootstrapped = ref(false)
 const dealsRealtimeStatus = ref('offline')
+
+// Нормализует роль из сессии, чтобы проверки прав не зависели от регистра и вариантов названия.
+function normalizeRole(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+// Проверяет привилегированную роль для операций со сделками (admin/owner).
+function hasCompletedDealsAccess(roleValue, usernameValue) {
+  const role = normalizeRole(roleValue)
+  const me = String(usernameValue || '').trim().toLowerCase()
+  const privilegedRoles = new Set(['admin', 'administrator', 'owner'])
+  const privilegedUsers = new Set(['admin', 'owner'])
+  return privilegedRoles.has(role) || privilegedUsers.has(me)
+}
 
 // Загружает кандидатов для поля "Ответственный" в сделках.
 async function loadResponsibleUsers() {
@@ -396,16 +416,12 @@ async function loadResponsibleUsers() {
 }
 
 const canViewPrivilegedResponsible = computed(() => {
-  const role = String(auth.state.role || '').trim().toLowerCase()
-  const me = String(auth.state.user || '').trim().toLowerCase()
-  return role === 'admin' || role === 'owner' || me === 'admin' || me === 'owner'
+  return hasCompletedDealsAccess(auth.state.role, auth.state.user)
 })
 
 const canEditCompletedDeals = computed(() => {
   // Завершенные сделки редактируют только администратор и владелец.
-  const role = String(auth.state.role || '').trim().toLowerCase()
-  const me = String(auth.state.user || '').trim().toLowerCase()
-  return role === 'admin' || role === 'owner' || me === 'admin' || me === 'owner'
+  return hasCompletedDealsAccess(auth.state.role, auth.state.user)
 })
 
 const currentUserResponsibleName = computed(() => {
@@ -553,7 +569,11 @@ const activeAccountChips = computed(() => {
   return chips
 })
 
-const isAdmin = computed(() => auth.state.role === 'admin')
+const isAdmin = computed(() => {
+  // Для admin-вкладок принимаем оба варианта кодов роли.
+  const role = normalizeRole(auth.state.role)
+  return role === 'admin' || role === 'administrator'
+})
 const mustPrefillDealsResponsible = computed(() => {
   const role = String(auth.state.role || '').trim().toLowerCase()
   return role === 'manager' || role === 'operator'
@@ -809,6 +829,8 @@ const accountModalMode = ref('edit')
 const showAccountFilters = ref(false)
 const accountProductSearch = ref('')
 const editAccountProductSearch = ref('')
+const accountProductType = ref('')
+const editAccountProductType = ref('')
 const accountProductsLoading = ref(false)
 const activeAccountFilter = ref('')
 const accountFilterDraft = reactive({
@@ -1001,6 +1023,8 @@ const {
   productsAll,
   accountProductSearch,
   editAccountProductSearch,
+  accountProductType,
+  editAccountProductType,
 })
 
 const getDealTypeName = (code) => dealTypeOptions.find((t) => t.code === code)?.name || code || '—'
@@ -1073,6 +1097,7 @@ const {
   loadProductsAll,
   createProduct,
   updateProduct,
+  toggleProductEditMode,
   archiveProduct,
 } = useProductsFlow({
   auth,
@@ -1112,6 +1137,7 @@ const {
   loadProductSlotAssignments,
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
+  requestDealConfirm,
 })
 
 const {
@@ -1119,6 +1145,7 @@ const {
   loadAccounts,
   loadAccountsAll: loadAccountsAllFromAccountsFlow,
   startEditAccount,
+  toggleAccountEditMode,
   openCreateAccountModal,
   cancelEditAccount,
   createAccount,
@@ -1140,6 +1167,8 @@ const {
   newAccount,
   accountProductSearch,
   editAccountProductSearch,
+  accountProductType,
+  editAccountProductType,
   accountProductsLoading,
   accountDeals,
   accountDealsError,
@@ -1162,6 +1191,8 @@ const {
   loadAccountSlotAssignments,
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
+  requestDealConfirm,
+  showDealWarning,
 })
 
 loadAccountsAllDeferred.set(loadAccountsAllFromAccountsFlow)
@@ -1370,23 +1401,6 @@ const dashboardSectionCtx = asCtx({
   apiOk,
   loading,
   checkApi,
-})
-
-// Контекст вкладки профиля: переход в users и смена пароля.
-const profileSectionCtx = asCtx({
-  isAdmin,
-  setActiveTab,
-  openPwdModal,
-  showPwdForm,
-  closePwdModal,
-  modalRef,
-  modalStyle,
-  startModalDrag,
-  pwdLoading,
-  pwdForm,
-  pwdError,
-  pwdOk,
-  changePassword,
 })
 
 // Импорт/валидация/отмена для игр, аккаунтов и слотов.
@@ -1776,6 +1790,7 @@ const accountsSectionCtx = asCtx({
   accountModalMode,
   accountEditMode,
   setAccountEditMode,
+  toggleAccountEditMode,
   updateAccount,
   createAccount,
   deleteAccount,
@@ -1789,6 +1804,8 @@ const accountsSectionCtx = asCtx({
   accountProductTitles,
   editAccountProductSearch,
   setEditAccountProductSearch,
+  editAccountProductType,
+  setEditAccountProductType,
   filteredEditAccountProducts,
   accountSlotAssignmentsError,
   accountSlotAssignmentsLoading,
@@ -1810,6 +1827,8 @@ const accountsSectionCtx = asCtx({
   newAccount,
   accountProductSearch,
   setAccountProductSearch,
+  accountProductType,
+  setAccountProductType,
   filteredAccountProducts,
   showSlotImport,
   closeSlotImport,
@@ -1879,6 +1898,7 @@ const {
   startModalDrag,
   productEditMode,
   updateProduct,
+  toggleProductEditMode,
   productLoading,
   createProduct,
   archiveProduct,
@@ -2197,6 +2217,23 @@ const usersSectionCtx = asCtx({
   userOk,
   sortedUsers,
   toggleUsersSort,
+})
+
+// Контекст вкладки профиля: смена пароля и встраивание списка пользователей.
+const profileSectionCtx = asCtx({
+  isAdmin,
+  openPwdModal,
+  showPwdForm,
+  closePwdModal,
+  modalRef,
+  modalStyle,
+  startModalDrag,
+  pwdLoading,
+  pwdForm,
+  pwdError,
+  pwdOk,
+  changePassword,
+  usersSectionCtx,
 })
 
 useWorkLifecycle({

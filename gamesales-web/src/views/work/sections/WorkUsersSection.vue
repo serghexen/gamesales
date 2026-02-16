@@ -1,11 +1,7 @@
 <template>
-  <section class="panel panel--wide">
-    <div class="panel__head">
-      <div>
-        <h2>Пользователи</h2>
-        <p class="muted">Создание менеджеров и управление доступом.</p>
-      </div>
-      <div class="toolbar-actions">
+  <component :is="props.embedded ? 'div' : 'section'" :class="props.embedded ? 'work-users-embedded' : 'panel panel--wide'">
+    <div class="panel__head panel__head--users">
+      <div class="toolbar-actions toolbar-actions--users">
         <button class="deal-create-btn" type="button" aria-label="Добавить пользователя" title="Добавить пользователя" @click="ctx.openUserModal">
           <span class="deal-create-btn__text">Пользователь</span>
           <span class="deal-create-btn__icon">
@@ -15,38 +11,56 @@
             </svg>
           </span>
         </button>
+      </div>
+      <div class="toolbar-actions toolbar-actions--users-refresh">
         <button
-          class="btn btn--icon btn--glow btn--glow-refresh"
+          class="deal-refresh-btn"
           title="Обновить список"
           aria-label="Обновить список"
           :disabled="ctx.userLoading"
           @click="ctx.loadUsers"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M20 12a8 8 0 1 1-2.3-5.7" />
-            <path d="M20 4v6h-6" />
-          </svg>
+          <span class="deal-refresh-btn__content">
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="deal-refresh-btn__icon">
+              <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+              <path d="M20 4v6h-6" />
+            </svg>
+          </span>
         </button>
       </div>
     </div>
     <div class="panel__body">
-      <p class="muted">Нажмите иконку, чтобы добавить пользователя.</p>
       <teleport to="body">
         <div v-if="ctx.showUserForm" class="work-page work-modal-root modal-backdrop" @click.self="ctx.closeUserModal">
           <div :ref="ctx.modalRef" class="modal modal--auto" :style="ctx.modalStyle">
             <div class="panel__head panel__head--tight modal__head" @mousedown="ctx.startModalDrag">
               <h3>Новый пользователь</h3>
-              <button
-                class="btn btn--icon-plain"
-                type="button"
-                aria-label="Закрыть"
-                title="Закрыть"
-                @click="ctx.closeUserModal"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M6 6l12 12M18 6l-12 12" />
-                </svg>
-              </button>
+              <div class="toolbar-actions">
+                <button
+                  class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
+                  :disabled="ctx.userLoading"
+                  aria-label="Сохранить"
+                  title="Сохранить"
+                  @click="ctx.createUser"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 4h12l4 4v12H4z" />
+                    <path d="M7 4v6h8V4" />
+                    <path d="M7 20v-6h10v6" />
+                  </svg>
+                </button>
+                <button
+                  class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close"
+                  type="button"
+                  aria-label="Закрыть"
+                  title="Закрыть"
+                  @click="ctx.closeUserModal"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6l-12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
             <div class="modal__body" :class="{ 'modal__body--locked': ctx.userLoading }">
               <div v-if="ctx.userLoading" class="modal__body-overlay">
@@ -87,19 +101,6 @@
                     <option v-for="r in ctx.roles" :key="r.code" :value="r.code">{{ r.name }}</option>
                   </select>
                 </label>
-                <div class="toolbar-actions">
-                  <button
-                    class="btn btn--icon-plain"
-                    :disabled="ctx.userLoading"
-                    aria-label="Создать пользователя"
-                    title="Создать пользователя"
-                    @click="ctx.createUser"
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
-                </div>
               </div>
             </div>
           </div>
@@ -157,7 +158,7 @@
       </table>
       <p v-else class="muted">Пока нет пользователей.</p>
     </div>
-  </section>
+  </component>
 </template>
 
 <script setup>
@@ -177,7 +178,8 @@ const { getColumnStyle, startResize } = useResizableTableColumns({
 })
 
 // Контекст секции пользователей.
-defineProps({
+const props = defineProps({
   ctx: { type: Object, required: true },
+  embedded: { type: Boolean, default: false },
 })
 </script>

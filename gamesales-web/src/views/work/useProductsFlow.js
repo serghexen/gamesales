@@ -39,6 +39,7 @@ export function useProductsFlow({
   loadProductSlotAssignments,
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
+  requestDealConfirm,
 }) {
   let initialEditProductSnapshot = null
   let initialCreateProductSnapshot = null
@@ -230,6 +231,29 @@ export function useProductsFlow({
     }
   }
 
+  // Переключает режим карточки товара и при возврате в просмотр откатывает несохраненные изменения.
+  function toggleProductEditMode() {
+    if (!editProduct.open) return
+    if (productEditMode.value === 'edit') {
+      const snapshot = initialEditProductSnapshot || {}
+      editProduct.type_code = snapshot.type_code || PRODUCT_TYPE_PRIMARY
+      editProduct.title = snapshot.title || ''
+      editProduct.short_title = snapshot.short_title || ''
+      editProduct.link = snapshot.link || ''
+      editProduct.text_lang = snapshot.text_lang || ''
+      editProduct.audio_lang = snapshot.audio_lang || ''
+      editProduct.vr_support = snapshot.vr_support || ''
+      editProduct.platform_codes = [...(snapshot.platform_codes || [])]
+      editProduct.region_code = snapshot.region_code || ''
+      editProduct.provider = snapshot.provider || ''
+      editProduct.billing_period = snapshot.billing_period || ''
+      editProduct.subscription_notes = snapshot.subscription_notes || ''
+      productEditMode.value = 'view'
+      return
+    }
+    productEditMode.value = 'edit'
+  }
+
   function refreshProductAccounts() {
     // Обновляем список связанных аккаунтов по product_id.
     if (editProduct.product_id) {
@@ -404,12 +428,20 @@ export function useProductsFlow({
     productError.value = null
     productOk.value = null
     if (!editProduct.product_id) return
-    if (!window.confirm('Архивировать товар?')) return
+    // Для удаления товара используем фирменное модальное подтверждение, как в сделках.
+    const isConfirmed = typeof requestDealConfirm === 'function'
+      ? await requestDealConfirm({
+        title: 'Предупреждение',
+        message: 'Удалить товар?',
+        confirmText: 'Удалить',
+        cancelText: 'Отмена',
+      })
+      : window.confirm('Удалить товар?')
+    if (!isConfirmed) return
     productLoading.value = true
     productSaving.value = true
     try {
       await apiDelete(`/products/${editProduct.product_id}`, { token: auth.state.token })
-      productOk.value = 'Товар архивирован'
       await loadProducts()
       await loadProductsAll()
       closeProductModal()
@@ -464,6 +496,7 @@ export function useProductsFlow({
     goToAccount,
     openDealProduct,
     startEditProduct,
+    toggleProductEditMode,
     cancelEditProduct,
     refreshProductAccounts,
   }

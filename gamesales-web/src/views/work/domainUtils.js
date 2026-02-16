@@ -90,6 +90,7 @@ export const mapApiError = (message) => {
   if (text.includes('order_number must be unique for market source')) return 'Для market-источника номер заказа уже используется'
   if (text.includes('Unknown flow_status_code')) return 'Неизвестный статус'
   if (text.includes('flow_status_code draft is allowed only for sale deals')) return 'Черновик доступен только для продажи'
+  if (text.includes('draft deal cannot be completed directly')) return 'Черновик нельзя сразу перевести в статус Завершен'
   if (text.includes('customer_nickname is required for non-draft sale')) return 'Укажите покупателя'
   if (text.includes('delete is allowed only for draft deals')) return 'Удалить можно только черновик'
   if (text.includes('is_refund can be changed only for pending deals')) return 'Признак возврата можно менять только у сделки в ожидании'
@@ -108,6 +109,9 @@ export const mapApiError = (message) => {
   if (text.includes('Unknown slot_type_code')) return 'Неизвестный тип слота'
   if (text.includes('Unknown region_code')) return 'Неизвестный регион'
   if (text.includes('Unknown domain')) return 'Неизвестный домен'
+  if (text.includes('Account already exists') || text.includes('uq_account_login') || text.includes('duplicate key value violates unique constraint "uq_account_login"')) {
+    return 'Данный аккаунт уже есть в базе данных'
+  }
   if (text.includes('User not found')) return 'Покупатель не найден'
   if (text.includes('Account not found')) return 'Аккаунт не найден'
   if (text.includes('Product not found')) return 'Товар не найден'
