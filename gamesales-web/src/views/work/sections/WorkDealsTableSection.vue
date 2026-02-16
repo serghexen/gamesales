@@ -344,11 +344,13 @@
         :key="d.deal_id"
         class="clickable-row"
         :data-deal-id="d.deal_id"
+        :data-lock-label="getDealLockLabel(d.deal_id)"
         :class="{
           'row-active': editDeal.open && editDeal.deal_id === d.deal_id,
           'row-refund': d.is_refund,
           'deal-row-flip-in': !isRemovingDealRow(d.deal_id) && isNewDealRow(d.deal_id),
           'deal-row-flip-out': isRemovingDealRow(d.deal_id),
+          'deal-row-locked': isDealEditedByAnotherUser(d.deal_id),
         }"
         @click="onDealRowClick(d)"
       >
@@ -369,12 +371,18 @@
         <td class="cell--tight deal-col-status">{{ d.flow_status || '—' }}</td>
         <td class="cell--tight deal-col-responsible">{{ d.responsible_username || '—' }}</td>
         <td class="cell--tight deal-col-action">
+          <span
+            v-if="isDealEditedByAnotherUser(d.deal_id)"
+            class="deal-row-lock-label"
+          >
+            {{ getDealLockLabel(d.deal_id) }}
+          </span>
           <button
-            v-if="!dealShowCompleted"
+            v-else-if="!dealShowCompleted"
             class="mini-btn mini-btn--complete"
             type="button"
             @click.stop="onMarkDealCompletedClick($event, d)"
-            :disabled="dealSaving"
+            :disabled="dealSaving || isDealEditedByAnotherUser(d.deal_id)"
           >
             <span v-if="dealSaving && dealCompletingId === d.deal_id" class="spinner spinner--small" aria-hidden="true"></span>
             {{ dealSaving && dealCompletingId === d.deal_id ? 'Завершаем...' : 'Завершить' }}
@@ -384,18 +392,12 @@
             class="mini-btn mini-btn--danger"
             type="button"
             @click.stop="markDealReturned(d)"
-            :disabled="dealSaving"
+            :disabled="dealSaving || isDealEditedByAnotherUser(d.deal_id)"
           >
             <span v-if="dealSaving && dealCompletingId === d.deal_id" class="spinner spinner--small" aria-hidden="true"></span>
             {{ dealSaving && dealCompletingId === d.deal_id ? 'Возвращаем...' : 'Возврат' }}
           </button>
           <span v-else class="muted">—</span>
-          <div
-            v-if="isDealEditedByAnotherUser(d.deal_id)"
-            class="muted"
-          >
-            Редактирует: {{ getDealEditingActor(d.deal_id) }}
-          </div>
         </td>
       </tr>
       <tr v-if="!animatedDeals.length">
@@ -463,6 +465,7 @@ const props = defineProps({
   startEditDeal: { type: Function, required: true },
   dealEditingByDealId: { type: Object, default: () => ({}) },
   currentUsername: { type: String, default: '' },
+  responsibleNameByUsername: { type: Object, default: () => ({}) },
   showDealWarning: { type: Function, default: null },
   formatDateTimeMinutes: { type: Function, required: true },
   dealShowCompleted: { type: Boolean, required: true },
@@ -617,15 +620,29 @@ function onDealRowClick(deal) {
   props.startEditDeal(deal)
 }
 
-function getDealEditingActor(dealId) {
+function getDealEditingActorUsername(dealId) {
   return String(props.dealEditingByDealId?.[dealId]?.actor || '').trim()
 }
 
-function isDealEditedByAnotherUser(dealId) {
+function getDealEditingActor(dealId) {
+  const username = getDealEditingActorUsername(dealId)
+  if (!username) return ''
+  const byUsername = props.responsibleNameByUsername?.[username] || props.responsibleNameByUsername?.[username.toLowerCase()]
+  const mapped = String(byUsername || '').trim()
+  return mapped || username
+}
+
+function getDealLockLabel(dealId) {
+  // Подпись для визуальной маски заблокированной строки в таблице.
   const actor = getDealEditingActor(dealId)
-  if (!actor) return false
+  return actor ? `Редактирует: ${actor}` : ''
+}
+
+function isDealEditedByAnotherUser(dealId) {
+  const actorUsername = getDealEditingActorUsername(dealId)
+  if (!actorUsername) return false
   const me = String(props.currentUsername || '').trim().toLowerCase()
-  return actor.toLowerCase() !== me
+  return actorUsername.toLowerCase() !== me
 }
 
 function spawnCompletionCoins(originPoint) {

@@ -45,6 +45,7 @@
         :start-edit-deal="ctx.startEditDeal"
         :deal-editing-by-deal-id="ctx.dealEditingByDealId"
         :current-username="ctx.currentUsername"
+        :responsible-name-by-username="ctx.responsibleNameByUsername"
         :show-deal-warning="ctx.showDealWarning"
         :format-date-time-minutes="ctx.formatDateTimeMinutes"
         :deal-show-completed="ctx.dealShowCompleted"

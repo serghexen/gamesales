@@ -42,6 +42,14 @@ export function applyDealEditingRealtimeEvent(editingByDealId, payload) {
   return current
 }
 
+// Определяет, нужно ли держать lock для сделки: только в режиме реального редактирования.
+export function shouldHoldDealEditLock({ activeTab, editDealOpen, dealEditMode, dealId }) {
+  const tab = String(activeTab || '').trim().toLowerCase()
+  const mode = String(dealEditMode || '').trim().toLowerCase()
+  const normalizedDealId = Number(dealId || 0)
+  return tab === 'deals' && Boolean(editDealOpen) && mode === 'edit' && normalizedDealId > 0
+}
+
 // Собирает URL websocket для событий сделок на основе API_BASE и токена.
 export function buildDealsWsUrl(apiBase, token, locationLike = null) {
   const safeToken = String(token || '').trim()
@@ -69,6 +77,7 @@ export function useDealsRealtime({
   auth,
   dealPage,
   editDeal,
+  dealEditMode,
   showDealForm,
   loadDeals,
   wsState: externalWsState = null,
@@ -115,7 +124,14 @@ export function useDealsRealtime({
 
   // Синхронизирует "мягкий lock" текущего пользователя по состоянию модалки редактирования.
   const syncEditingState = () => {
-    const nextDealId = activeTab.value === 'deals' && editDeal.open ? Number(editDeal.deal_id || 0) : 0
+    const nextDealId = shouldHoldDealEditLock({
+      activeTab: activeTab.value,
+      editDealOpen: editDeal.open,
+      dealEditMode: dealEditMode?.value,
+      dealId: editDeal.deal_id,
+    })
+      ? Number(editDeal.deal_id || 0)
+      : 0
     if (editingDealId && editingDealId !== nextDealId) {
       sendEditingEvent('deal_edit_stopped', editingDealId)
       editingDealId = null
@@ -226,7 +242,7 @@ export function useDealsRealtime({
   )
 
   watch(
-    [activeTab, () => editDeal.open, () => editDeal.deal_id],
+    [activeTab, () => editDeal.open, () => editDeal.deal_id, () => dealEditMode?.value],
     () => {
       syncEditingState()
     },

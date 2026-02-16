@@ -34,6 +34,7 @@ function buildProps(overrides = {}) {
     startEditDeal: () => {},
     dealEditingByDealId: {},
     currentUsername: 'admin',
+    responsibleNameByUsername: {},
     showDealWarning: () => {},
     formatDateTimeMinutes: (value) => String(value || ''),
     dealShowCompleted: false,
@@ -278,6 +279,9 @@ describe('WorkDealsTableSection', () => {
         dealEditingByDealId: {
           10: { actor: 'manager-1', changedAt: '2026-02-16T20:00:00Z' },
         },
+        responsibleNameByUsername: {
+          'manager-1': 'Иван',
+        },
         sortedDeals: [
           { deal_id: 10, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
         ],
@@ -287,7 +291,8 @@ describe('WorkDealsTableSection', () => {
     await wrapper.find('tbody tr[data-deal-id="10"]').trigger('click')
 
     expect(startEditDeal).not.toHaveBeenCalled()
-    expect(showDealWarning).toHaveBeenCalledWith('Сделку сейчас редактирует manager-1')
-    expect(wrapper.text()).toContain('Редактирует: manager-1')
+    expect(showDealWarning).toHaveBeenCalledWith('Сделку сейчас редактирует Иван')
+    expect(wrapper.find('tbody tr[data-deal-id="10"]').classes()).toContain('deal-row-locked')
+    expect(wrapper.find('tbody tr[data-deal-id="10"]').attributes('data-lock-label')).toBe('Редактирует: Иван')
   })
 })

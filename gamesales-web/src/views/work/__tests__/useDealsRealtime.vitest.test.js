@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { buildDealsWsUrl, applyDealEditingRealtimeEvent } from '../useDealsRealtime.js'
+import { buildDealsWsUrl, applyDealEditingRealtimeEvent, shouldHoldDealEditLock } from '../useDealsRealtime.js'
 
 describe('useDealsRealtime', () => {
   it('buildDealsWsUrl converts absolute http api base to ws url', () => {
@@ -44,5 +44,26 @@ describe('useDealsRealtime', () => {
 
     const stopped = applyDealEditingRealtimeEvent(started, { event: 'deal_edit_stopped', deal_id: 12 })
     expect(stopped[12]).toBeUndefined()
+  })
+
+  it('shouldHoldDealEditLock returns true only for deals tab and edit mode', () => {
+    expect(shouldHoldDealEditLock({
+      activeTab: 'deals',
+      editDealOpen: true,
+      dealEditMode: 'edit',
+      dealId: 15,
+    })).toBe(true)
+    expect(shouldHoldDealEditLock({
+      activeTab: 'deals',
+      editDealOpen: true,
+      dealEditMode: 'view',
+      dealId: 15,
+    })).toBe(false)
+    expect(shouldHoldDealEditLock({
+      activeTab: 'accounts',
+      editDealOpen: true,
+      dealEditMode: 'edit',
+      dealId: 15,
+    })).toBe(false)
   })
 })

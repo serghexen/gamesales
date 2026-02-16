@@ -470,6 +470,18 @@ const responsibleUserOptions = computed(() => {
   pushName(currentUserResponsibleName.value)
   return options
 })
+
+const responsibleNameByUsername = computed(() => {
+  // Карта username -> name для UI, чтобы в блокировках показывать человекочитаемое имя.
+  const map = {}
+  for (const user of responsibleUsers.value) {
+    const username = String(user?.username || '').trim().toLowerCase()
+    const name = String(user?.name || '').trim()
+    if (!username) continue
+    map[username] = name || String(user?.username || '').trim()
+  }
+  return map
+})
 const catalogsLoadedOnce = ref(false)
 const domainsLoadedOnce = ref(false)
 const sourcesLoadedOnce = ref(false)
@@ -1963,6 +1975,7 @@ const {
   dealsRealtimeStatus,
   dealEditingByDealId,
   currentUsername: computed(() => String(auth.state.user || '')),
+  responsibleNameByUsername,
   showDealWarning,
   dealFilters,
   applyDealSearch,
@@ -2346,6 +2359,7 @@ useDealsRealtime({
   auth,
   dealPage,
   editDeal,
+  dealEditMode,
   showDealForm,
   loadDeals,
   wsState: dealsRealtimeStatus,
