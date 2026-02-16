@@ -1064,6 +1064,8 @@ const newProduct = newProductState
 
 const {
   openProductAccounts,
+  openCreateGameProductModal,
+  openCreateSubscriptionProductModal,
   openCreateProductModal,
   closeProductModal,
   goToAccount,
@@ -1885,6 +1887,8 @@ const {
   regions,
   productAccountsError,
   productAccountsLoading,
+  productAccounts,
+  productAccountsSort,
   pagedProductAccounts,
   sortProductAccounts,
   openAccountFromProduct,
@@ -2089,6 +2093,8 @@ const {
 const productsSectionCtx = asCtx({
   productFilters,
   applyProductSearch,
+  openCreateGameProductModal,
+  openCreateSubscriptionProductModal,
   openCreateProductModal,
   loadProducts,
   productsLoading,

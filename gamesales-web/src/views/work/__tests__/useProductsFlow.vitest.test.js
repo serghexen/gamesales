@@ -118,7 +118,7 @@ describe('useProductsFlow', () => {
     expect(h.products.value[0]).toMatchObject({ product_id: 8, type_code: 'subscription' })
   })
 
-  it('loadProductsAll keeps only game products from /products response', async () => {
+  it('loadProductsAll keeps both game and subscription products from /products response', async () => {
     const h = createHarness()
     h.apiGet.mockResolvedValueOnce({
       items: [
@@ -130,10 +130,11 @@ describe('useProductsFlow', () => {
 
     await h.flow.loadProductsAll()
 
-    expect(h.apiGet).toHaveBeenCalledWith('/products?all=true&type_code=game&sort_key=title&sort_dir=asc', { token: 'token-1' })
+    expect(h.apiGet).toHaveBeenCalledWith('/products?all=true&sort_key=title&sort_dir=asc', { token: 'token-1' })
     expect(h.productsAll.value).toEqual([
       expect.objectContaining({ product_id: 10, type_code: 'game' }),
       expect.objectContaining({ product_id: 12, type_code: 'game' }),
+      expect.objectContaining({ product_id: 11, type_code: 'subscription' }),
     ])
   })
 
@@ -163,6 +164,35 @@ describe('useProductsFlow', () => {
     )
   })
 
+  it('createProduct posts game payload with forced game type and comment', async () => {
+    const h = createHarness()
+    h.newProduct.type_code = 'unexpected'
+    h.newProduct.title = 'GTA V'
+    h.newProduct.text_lang = 'RU'
+    h.newProduct.audio_lang = 'EN'
+    h.newProduct.vr_support = 'нет'
+    h.newProduct.platform_codes = ['ps5']
+    h.newProduct.subscription_notes = 'Тестовый комментарий'
+    h.apiPost.mockResolvedValueOnce({ product_id: 78 })
+    h.apiGet.mockResolvedValue({ items: [], total: 0 })
+
+    await h.flow.createProduct()
+
+    expect(h.apiPost).toHaveBeenCalledWith(
+      '/products',
+      expect.objectContaining({
+        type_code: 'game',
+        title: 'GTA V',
+        text_lang: 'RU',
+        audio_lang: 'EN',
+        vr_support: 'нет',
+        platform_codes: ['ps5'],
+        subscription_notes: 'Тестовый комментарий',
+      }),
+      { token: 'token-1' },
+    )
+  })
+
   it('loadProductAccounts requests product endpoint', async () => {
     const h = createHarness()
     h.apiGet.mockResolvedValueOnce([])
@@ -170,5 +200,35 @@ describe('useProductsFlow', () => {
     await h.flow.loadProductAccounts(55)
 
     expect(h.apiGet).toHaveBeenCalledWith('/products/55/accounts', { token: 'token-1' })
+  })
+
+  it('opens create modal with game type for game button', () => {
+    const h = createHarness()
+    h.newProduct.type_code = 'subscription'
+
+    h.flow.openCreateGameProductModal()
+
+    expect(h.deps.showProductForm.value).toBe(true)
+    expect(h.newProduct.type_code).toBe('game')
+  })
+
+  it('opens create modal with subscription type for subscription button', () => {
+    const h = createHarness()
+    h.newProduct.type_code = 'game'
+
+    h.flow.openCreateSubscriptionProductModal()
+
+    expect(h.deps.showProductForm.value).toBe(true)
+    expect(h.newProduct.type_code).toBe('subscription')
+  })
+
+  it('closeProductModal does not ask confirm for untouched subscription create form', async () => {
+    const h = createHarness()
+
+    h.flow.openCreateSubscriptionProductModal()
+    const closed = await h.flow.closeProductModal()
+
+    expect(closed).toBe(true)
+    expect(h.deps.requestUnsavedConfirm).not.toHaveBeenCalled()
   })
 })

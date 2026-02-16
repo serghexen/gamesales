@@ -7,12 +7,12 @@
     >
       <div
         :ref="modalRef"
-        :class="['modal', editProduct.open ? 'modal--full' : 'modal--auto']"
+        :class="['modal', 'modal--auto', 'modal--product-editor']"
         :style="modalStyle"
       >
         <!-- Шапка модалки: действия сохранить/создать/удалить/закрыть -->
         <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
-          <h3>{{ editProduct.open ? (editProduct.title ? `Товар ${editProduct.title}` : 'Товар') : 'Новый товар' }}</h3>
+          <h3>{{ editProduct.open ? editProductTitle : createProductTitle }}</h3>
           <div class="toolbar-actions">
             <button
               v-if="editProduct.open && productEditMode === 'edit'"
@@ -110,178 +110,508 @@
           <!-- Редактирование существующего товара -->
           <div v-if="editProduct.open" class="form form--stack form--compact">
             <label class="field">
-              <span class="label">Тип</span>
-              <input v-if="productEditMode === 'view'" class="input" :value="editProduct.type_code || PRODUCT_TYPE_PRIMARY" readonly />
-              <select v-else v-model="editProduct.type_code" class="input input--select">
-                <option :value="PRODUCT_TYPE_PRIMARY">Игра</option>
-                <option value="subscription">subscription</option>
-              </select>
-            </label>
-            <label class="field">
               <span class="label">Название</span>
-              <input v-model.trim="editProduct.title" class="input" placeholder="Например, GTA V" :readonly="productEditMode === 'view'" />
+              <input v-model.trim="editProduct.title" class="input" placeholder="" :readonly="productEditMode === 'view'" />
             </label>
-            <label class="field">
+            <label v-if="isEditGameType" class="field">
               <span class="label">Короткое название</span>
-              <input v-model.trim="editProduct.short_title" class="input" placeholder="Например, GTA V" :readonly="productEditMode === 'view'" />
+              <input v-model.trim="editProduct.short_title" class="input" placeholder="" :readonly="productEditMode === 'view'" />
             </label>
-            <label class="field">
-              <span class="label">Ссылка</span>
-              <input v-model.trim="editProduct.link" class="input" placeholder="https://..." :readonly="productEditMode === 'view'" />
-            </label>
-            <label class="field">
-              <span class="label">Язык текста</span>
-              <input v-model.trim="editProduct.text_lang" class="input" placeholder="RU/EN/..." :readonly="productEditMode === 'view'" />
-            </label>
-            <label class="field">
-              <span class="label">Язык озвучки</span>
-              <input v-model.trim="editProduct.audio_lang" class="input" placeholder="RU/EN/..." :readonly="productEditMode === 'view'" />
-            </label>
-            <label class="field">
-              <span class="label">Поддержка VR</span>
-              <input v-model.trim="editProduct.vr_support" class="input" placeholder="например: есть/нет" :readonly="productEditMode === 'view'" />
-            </label>
-            <label class="field">
-              <span class="label">Провайдер подписки</span>
-              <input v-model.trim="editProduct.provider" class="input" placeholder="например: sony" :readonly="productEditMode === 'view'" />
-            </label>
-            <label class="field">
-              <span class="label">Период подписки</span>
-              <input v-model.trim="editProduct.billing_period" class="input" placeholder="месяц/год" :readonly="productEditMode === 'view'" />
-            </label>
-            <label class="field">
-              <span class="label">Заметки по подписке</span>
-              <input v-model.trim="editProduct.subscription_notes" class="input" placeholder="комментарий" :readonly="productEditMode === 'view'" />
-            </label>
-            <div class="field field--full">
-              <span class="label">Платформы</span>
-              <div class="check-list check-list--compact">
-                <label v-for="p in platforms" :key="p.code" class="check-item">
-                  <input type="checkbox" :value="p.code" v-model="editProduct.platform_codes" :disabled="productEditMode === 'view'" />
-                  <span>{{ p.name }} ({{ p.code }})</span>
+            <template v-if="isEditGameType">
+              <label class="field">
+                <span class="label">Язык текста</span>
+                <input v-model.trim="editProduct.text_lang" class="input" placeholder="" :readonly="productEditMode === 'view'" />
+              </label>
+              <label class="field">
+                <span class="label">Язык озвучки</span>
+                <input v-model.trim="editProduct.audio_lang" class="input" placeholder="" :readonly="productEditMode === 'view'" />
+              </label>
+              <div class="deal-form__double field--full">
+                <label class="field">
+                  <span class="label">Поддержка VR</span>
+                  <input v-model.trim="editProduct.vr_support" class="input" placeholder="" :readonly="productEditMode === 'view'" />
+                </label>
+                <label class="field">
+                  <span class="label">Регион</span>
+                  <input
+                    v-if="productEditMode === 'view'"
+                    class="input"
+                    :value="getRegionLabel(editProduct.region_code)"
+                    readonly
+                  />
+                  <select v-else v-model="editProduct.region_code" class="input input--select">
+                    <option value="">— не выбрано —</option>
+                    <option v-for="r in regions" :key="r.code" :value="r.code">
+                      {{ r.name }} ({{ r.code }})
+                    </option>
+                  </select>
                 </label>
               </div>
-            </div>
-            <label class="field">
-              <span class="label">Регион</span>
-              <input
-                v-if="productEditMode === 'view'"
-                class="input"
-                :value="getRegionLabel(editProduct.region_code)"
-                readonly
-              />
-              <select v-else v-model="editProduct.region_code" class="input input--select">
-                <option value="">— не выбрано —</option>
-                <option v-for="r in regions" :key="r.code" :value="r.code">
-                  {{ r.name }} ({{ r.code }})
-                </option>
-              </select>
-            </label>
+              <div class="field field--full">
+                <span class="label">Платформа</span>
+                <div class="check-list check-list--compact">
+                  <label v-for="p in platforms" :key="p.code" class="check-item">
+                    <input type="checkbox" :value="p.code" v-model="editProduct.platform_codes" :disabled="productEditMode === 'view'" />
+                    <span>{{ p.name }} ({{ p.code }})</span>
+                  </label>
+                </div>
+              </div>
+              <label class="field field--full">
+                <span class="label">Ссылка</span>
+                <input v-model.trim="editProduct.link" class="input" placeholder="https://..." :readonly="productEditMode === 'view'" />
+              </label>
+              <div class="field field--comment-collapsible field--full">
+                <button class="comment-toggle" type="button" @click="editProductCommentOpen = !editProductCommentOpen" :disabled="productEditMode === 'view'">
+                  {{ editProductCommentOpen || editProduct.subscription_notes ? 'Комментарий' : '+ Комментарий' }}
+                </button>
+                <textarea
+                  v-if="editProductCommentOpen || editProduct.subscription_notes"
+                  v-model.trim="editProduct.subscription_notes"
+                  class="input input--textarea input--textarea--compact"
+                  :rows="getCompactNotesRows(editProduct.subscription_notes)"
+                  :readonly="productEditMode === 'view'"
+                />
+              </div>
+            </template>
+            <template v-else>
+              <label class="field">
+                <span class="label">Регион</span>
+                <input
+                  v-if="productEditMode === 'view'"
+                  class="input"
+                  :value="getRegionLabel(editProduct.region_code)"
+                  readonly
+                />
+                <select v-else v-model="editProduct.region_code" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="r in regions" :key="r.code" :value="r.code">
+                    {{ r.name }} ({{ r.code }})
+                  </option>
+                </select>
+              </label>
+              <div class="field field--full">
+                <span class="label">Платформа</span>
+                <div class="check-list check-list--compact">
+                  <label v-for="p in platforms" :key="p.code" class="check-item">
+                    <input type="checkbox" :value="p.code" v-model="editProduct.platform_codes" :disabled="productEditMode === 'view'" />
+                    <span>{{ p.name }} ({{ p.code }})</span>
+                  </label>
+                </div>
+              </div>
+              <div class="field field--comment-collapsible field--full">
+                <button class="comment-toggle" type="button" @click="editProductCommentOpen = !editProductCommentOpen" :disabled="productEditMode === 'view'">
+                  {{ editProductCommentOpen || editProduct.subscription_notes ? 'Комментарий' : '+ Комментарий' }}
+                </button>
+                <textarea
+                  v-if="editProductCommentOpen || editProduct.subscription_notes"
+                  v-model.trim="editProduct.subscription_notes"
+                  class="input input--textarea input--textarea--compact"
+                  :rows="getCompactNotesRows(editProduct.subscription_notes)"
+                  :readonly="productEditMode === 'view'"
+                />
+              </div>
+            </template>
             <div class="divider"></div>
             <div class="field field--full">
-              <span class="label">Аккаунты по сделкам</span>
-              <p v-if="productAccountsError" class="bad">{{ productAccountsError }}</p>
-              <div v-if="productAccountsLoading" class="loader-wrap loader-wrap--compact">
-                <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
-                  <div class="wheel"></div>
-                  <div class="hamster">
-                    <div class="hamster__body">
-                      <div class="hamster__head">
-                        <div class="hamster__ear"></div>
-                        <div class="hamster__eye"></div>
-                        <div class="hamster__nose"></div>
+              <button
+                class="section-toggle"
+                type="button"
+                :aria-expanded="productAccountsOpen ? 'true' : 'false'"
+                @click="productAccountsOpen = !productAccountsOpen"
+              >
+                <span class="label">Аккаунты по сделкам ({{ productAccountsCount }})</span>
+                <svg class="section-toggle__chevron" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+              <template v-if="productAccountsOpen">
+                <p v-if="productAccountsError" class="bad">{{ productAccountsError }}</p>
+                <div v-if="productAccountsLoading" class="loader-wrap loader-wrap--compact">
+                  <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                    <div class="wheel"></div>
+                    <div class="hamster">
+                      <div class="hamster__body">
+                        <div class="hamster__head">
+                          <div class="hamster__ear"></div>
+                          <div class="hamster__eye"></div>
+                          <div class="hamster__nose"></div>
+                        </div>
+                        <div class="hamster__limb hamster__limb--fr"></div>
+                        <div class="hamster__limb hamster__limb--fl"></div>
+                        <div class="hamster__limb hamster__limb--br"></div>
+                        <div class="hamster__limb hamster__limb--bl"></div>
+                        <div class="hamster__tail"></div>
                       </div>
-                      <div class="hamster__limb hamster__limb--fr"></div>
-                      <div class="hamster__limb hamster__limb--fl"></div>
-                      <div class="hamster__limb hamster__limb--br"></div>
-                      <div class="hamster__limb hamster__limb--bl"></div>
-                      <div class="hamster__tail"></div>
                     </div>
+                    <div class="spoke"></div>
                   </div>
-                  <div class="spoke"></div>
                 </div>
-              </div>
-              <table v-else-if="pagedProductAccounts.length" class="table table--compact table--dense">
-                <thead>
-                  <tr>
-                    <th class="sortable" @click="sortProductAccounts('login_full')">Аккаунт</th>
-                    <th class="sortable" @click="sortProductAccounts('platform_code')">Платформа</th>
-                    <th class="sortable cell--num" @click="sortProductAccounts('free_slots')">Свободно</th>
-                    <th class="sortable cell--num" @click="sortProductAccounts('occupied_slots')">Занято</th>
-                    <th class="cell--tight"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="a in pagedProductAccounts" :key="`${a.account_id}-${a.platform_code}`">
-                    <td>{{ a.login_full || '—' }}</td>
-                    <td>{{ (a.platform_code || '—').toUpperCase() }}</td>
-                    <td class="cell--num">{{ a.free_slots ?? 0 }}</td>
-                    <td class="cell--num">{{ a.occupied_slots ?? 0 }}</td>
-                    <td class="cell--tight">
-                      <button class="ghost ghost--small" type="button" @click="openAccountFromProduct(a.login_full)">
-                        Открыть
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-              <p v-else class="muted">Сделок по товару пока нет.</p>
-              <div v-if="productAccountsTotalPages > 1" class="pager">
-                <button class="ghost" @click="prevProductAccountsPage" :disabled="productAccountsPage <= 1">
-                  ← Назад
-                </button>
-                <span class="muted">Страница {{ productAccountsPage }} из {{ productAccountsTotalPages }}</span>
-                <button class="ghost" @click="nextProductAccountsPage" :disabled="productAccountsPage >= productAccountsTotalPages">
-                  Вперёд →
-                </button>
-              </div>
+                <table v-else-if="pagedProductAccounts.length" ref="accountsTableEl" class="table table--compact table--dense">
+                  <colgroup>
+                    <col :style="getProductAccountsColumnStyle('account')" />
+                    <col :style="getProductAccountsColumnStyle('platform')" />
+                    <col :style="getProductAccountsColumnStyle('free')" />
+                    <col :style="getProductAccountsColumnStyle('occupied')" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th class="sortable">
+                        <span class="th-title th-title--filter">
+                          Аккаунт
+                          <span class="th-actions">
+                            <button
+                              class="filter-icon filter-icon--sort"
+                              type="button"
+                              aria-label="Сортировка по аккаунту"
+                              title="Сортировка по аккаунту"
+                              @click.stop="sortProductAccounts('login_full')"
+                              :class="getProductAccountsSortClass('login_full')"
+                            >
+                              <svg viewBox="0 0 24 24">
+                                <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                                <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                              </svg>
+                            </button>
+                          </span>
+                        </span>
+                        <button
+                          class="table-col-resizer"
+                          type="button"
+                          aria-label="Изменить ширину колонки Аккаунт"
+                          title="Потяните для изменения ширины"
+                          @mousedown.stop.prevent="startProductAccountsResize($event, 'account')"
+                        />
+                      </th>
+                      <th class="sortable">
+                        <span class="th-title th-title--filter">
+                          Платформа
+                          <span class="th-actions">
+                            <button
+                              class="filter-icon filter-icon--sort"
+                              type="button"
+                              aria-label="Сортировка по платформе"
+                              title="Сортировка по платформе"
+                              @click.stop="sortProductAccounts('platform_code')"
+                              :class="getProductAccountsSortClass('platform_code')"
+                            >
+                              <svg viewBox="0 0 24 24">
+                                <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                                <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                              </svg>
+                            </button>
+                          </span>
+                        </span>
+                        <button
+                          class="table-col-resizer"
+                          type="button"
+                          aria-label="Изменить ширину колонки Платформа"
+                          title="Потяните для изменения ширины"
+                          @mousedown.stop.prevent="startProductAccountsResize($event, 'platform')"
+                        />
+                      </th>
+                      <th class="sortable cell--num">
+                        <span class="th-title th-title--filter">
+                          Свободно
+                          <span class="th-actions">
+                            <button
+                              class="filter-icon filter-icon--sort"
+                              type="button"
+                              aria-label="Сортировка по свободным слотам"
+                              title="Сортировка по свободным слотам"
+                              @click.stop="sortProductAccounts('free_slots')"
+                              :class="getProductAccountsSortClass('free_slots')"
+                            >
+                              <svg viewBox="0 0 24 24">
+                                <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                                <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                              </svg>
+                            </button>
+                          </span>
+                        </span>
+                        <button
+                          class="table-col-resizer"
+                          type="button"
+                          aria-label="Изменить ширину колонки Свободно"
+                          title="Потяните для изменения ширины"
+                          @mousedown.stop.prevent="startProductAccountsResize($event, 'free')"
+                        />
+                      </th>
+                      <th class="sortable cell--num">
+                        <span class="th-title th-title--filter">
+                          Занято
+                          <span class="th-actions">
+                            <button
+                              class="filter-icon filter-icon--sort"
+                              type="button"
+                              aria-label="Сортировка по занятым слотам"
+                              title="Сортировка по занятым слотам"
+                              @click.stop="sortProductAccounts('occupied_slots')"
+                              :class="getProductAccountsSortClass('occupied_slots')"
+                            >
+                              <svg viewBox="0 0 24 24">
+                                <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                                <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                              </svg>
+                            </button>
+                          </span>
+                        </span>
+                        <button
+                          class="table-col-resizer"
+                          type="button"
+                          aria-label="Изменить ширину колонки Занято"
+                          title="Потяните для изменения ширины"
+                          @mousedown.stop.prevent="startProductAccountsResize($event, 'occupied')"
+                        />
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="a in pagedProductAccounts" :key="`${a.account_id}-${a.platform_code}`">
+                      <td class="product-account-cell" @click="openAccountFromCell(a.login_full)">
+                        <span class="product-account-cell__text">{{ a.login_full || '—' }}</span>
+                      </td>
+                      <td>{{ (a.platform_code || '—').toUpperCase() }}</td>
+                      <td class="cell--num">{{ a.free_slots ?? 0 }}</td>
+                      <td class="cell--num">{{ a.occupied_slots ?? 0 }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p v-else class="muted">Сделок по товару пока нет.</p>
+                <div v-if="productAccountsTotalPages > 1" class="pager">
+                  <button class="ghost" @click="prevProductAccountsPage" :disabled="productAccountsPage <= 1">
+                    ← Назад
+                  </button>
+                  <span class="muted">Страница {{ productAccountsPage }} из {{ productAccountsTotalPages }}</span>
+                  <button class="ghost" @click="nextProductAccountsPage" :disabled="productAccountsPage >= productAccountsTotalPages">
+                    Вперёд →
+                  </button>
+                </div>
+              </template>
             </div>
             <div class="field field--full">
-              <span class="label">Слоты по товару</span>
-              <p v-if="productSlotAssignmentsError" class="bad">{{ productSlotAssignmentsError }}</p>
-              <div v-if="productSlotAssignmentsLoading" class="loader-wrap loader-wrap--compact">
-                <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
-                  <div class="wheel"></div>
-                  <div class="hamster">
-                    <div class="hamster__body">
-                      <div class="hamster__head">
-                        <div class="hamster__ear"></div>
-                        <div class="hamster__eye"></div>
-                        <div class="hamster__nose"></div>
+              <button
+                class="section-toggle"
+                type="button"
+                :aria-expanded="productSlotsOpen ? 'true' : 'false'"
+                @click="productSlotsOpen = !productSlotsOpen"
+              >
+                <span class="label">Слоты по товару ({{ productSlotsCount }})</span>
+                <svg class="section-toggle__chevron" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+              <template v-if="productSlotsOpen">
+                <p v-if="productSlotAssignmentsError" class="bad">{{ productSlotAssignmentsError }}</p>
+                <div v-if="productSlotAssignmentsLoading" class="loader-wrap loader-wrap--compact">
+                  <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                    <div class="wheel"></div>
+                    <div class="hamster">
+                      <div class="hamster__body">
+                        <div class="hamster__head">
+                          <div class="hamster__ear"></div>
+                          <div class="hamster__eye"></div>
+                          <div class="hamster__nose"></div>
+                        </div>
+                        <div class="hamster__limb hamster__limb--fr"></div>
+                        <div class="hamster__limb hamster__limb--fl"></div>
+                        <div class="hamster__limb hamster__limb--br"></div>
+                        <div class="hamster__limb hamster__limb--bl"></div>
+                        <div class="hamster__tail"></div>
                       </div>
-                      <div class="hamster__limb hamster__limb--fr"></div>
-                      <div class="hamster__limb hamster__limb--fl"></div>
-                      <div class="hamster__limb hamster__limb--br"></div>
-                      <div class="hamster__limb hamster__limb--bl"></div>
-                      <div class="hamster__tail"></div>
                     </div>
+                    <div class="spoke"></div>
                   </div>
-                  <div class="spoke"></div>
                 </div>
-              </div>
-              <table v-else-if="productSlotAssignments.length" class="table table--compact table--dense">
-                <thead>
-                  <tr>
-                    <th>Аккаунт</th>
-                    <th>Слот</th>
-                    <th>Покупатель</th>
-                    <th>Статус</th>
-                    <th>Назначено</th>
-                    <th>Снято</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="s in productSlotAssignments" :key="s.assignment_id">
-                    <td>{{ s.account_login || s.account_id || '—' }}</td>
-                    <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
-                    <td>{{ s.customer_nickname || '—' }}</td>
-                    <td>{{ getSlotAssignmentStatus(s) }}</td>
-                    <td>{{ formatDateTimeMinutes(s.assigned_at) }}</td>
-                    <td>{{ s.released_at ? formatDateTimeMinutes(s.released_at) : '—' }}</td>
-                  </tr>
-                </tbody>
-              </table>
-              <p v-else class="muted">Слотов по товару пока нет.</p>
+                <table v-else-if="pagedProductSlotAssignments.length" ref="slotsTableEl" class="table table--compact table--dense">
+                  <colgroup>
+                    <col :style="getProductSlotsColumnStyle('account')" />
+                    <col :style="getProductSlotsColumnStyle('slot')" />
+                    <col :style="getProductSlotsColumnStyle('customer')" />
+                    <col :style="getProductSlotsColumnStyle('status')" />
+                    <col :style="getProductSlotsColumnStyle('assigned')" />
+                    <col :style="getProductSlotsColumnStyle('released')" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th class="sortable">
+                        <span class="th-title th-title--filter">
+                          Аккаунт
+                          <span class="th-actions">
+                            <button
+                              class="filter-icon filter-icon--sort"
+                              type="button"
+                              aria-label="Сортировка слотов по аккаунту"
+                              title="Сортировка слотов по аккаунту"
+                              @click.stop="toggleProductSlotsSort('account')"
+                              :class="getProductSlotsSortClass('account')"
+                            >
+                              <svg viewBox="0 0 24 24">
+                                <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                                <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                              </svg>
+                            </button>
+                          </span>
+                        </span>
+                        <button
+                          class="table-col-resizer"
+                          type="button"
+                          aria-label="Изменить ширину колонки Аккаунт слотов"
+                          title="Потяните для изменения ширины"
+                          @mousedown.stop.prevent="startProductSlotsResize($event, 'account')"
+                        />
+                      </th>
+                      <th class="sortable">
+                        <span class="th-title th-title--filter">
+                          Слот
+                          <span class="th-actions">
+                            <button
+                              class="filter-icon filter-icon--sort"
+                              type="button"
+                              aria-label="Сортировка слотов по типу"
+                              title="Сортировка слотов по типу"
+                              @click.stop="toggleProductSlotsSort('slot')"
+                              :class="getProductSlotsSortClass('slot')"
+                            >
+                              <svg viewBox="0 0 24 24">
+                                <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                                <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                              </svg>
+                            </button>
+                          </span>
+                        </span>
+                        <button
+                          class="table-col-resizer"
+                          type="button"
+                          aria-label="Изменить ширину колонки Слот"
+                          title="Потяните для изменения ширины"
+                          @mousedown.stop.prevent="startProductSlotsResize($event, 'slot')"
+                        />
+                      </th>
+                      <th class="sortable">
+                        <span class="th-title th-title--filter">
+                          Покупатель
+                          <span class="th-actions">
+                            <button
+                              class="filter-icon filter-icon--sort"
+                              type="button"
+                              aria-label="Сортировка слотов по покупателю"
+                              title="Сортировка слотов по покупателю"
+                              @click.stop="toggleProductSlotsSort('customer')"
+                              :class="getProductSlotsSortClass('customer')"
+                            >
+                              <svg viewBox="0 0 24 24">
+                                <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                                <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                              </svg>
+                            </button>
+                          </span>
+                        </span>
+                        <button
+                          class="table-col-resizer"
+                          type="button"
+                          aria-label="Изменить ширину колонки Покупатель слотов"
+                          title="Потяните для изменения ширины"
+                          @mousedown.stop.prevent="startProductSlotsResize($event, 'customer')"
+                        />
+                      </th>
+                      <th class="sortable">
+                        <span class="th-title th-title--filter">
+                          Статус
+                          <span class="th-actions">
+                            <button
+                              class="filter-icon filter-icon--sort"
+                              type="button"
+                              aria-label="Сортировка слотов по статусу"
+                              title="Сортировка слотов по статусу"
+                              @click.stop="toggleProductSlotsSort('status')"
+                              :class="getProductSlotsSortClass('status')"
+                            >
+                              <svg viewBox="0 0 24 24">
+                                <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                                <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                              </svg>
+                            </button>
+                          </span>
+                        </span>
+                        <button
+                          class="table-col-resizer"
+                          type="button"
+                          aria-label="Изменить ширину колонки Статус слотов"
+                          title="Потяните для изменения ширины"
+                          @mousedown.stop.prevent="startProductSlotsResize($event, 'status')"
+                        />
+                      </th>
+                      <th class="sortable">
+                        <span class="th-title th-title--filter">
+                          Назначено
+                          <span class="th-actions">
+                            <button
+                              class="filter-icon filter-icon--sort"
+                              type="button"
+                              aria-label="Сортировка слотов по дате назначения"
+                              title="Сортировка слотов по дате назначения"
+                              @click.stop="toggleProductSlotsSort('assigned')"
+                              :class="getProductSlotsSortClass('assigned')"
+                            >
+                              <svg viewBox="0 0 24 24">
+                                <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                                <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                              </svg>
+                            </button>
+                          </span>
+                        </span>
+                        <button
+                          class="table-col-resizer"
+                          type="button"
+                          aria-label="Изменить ширину колонки Назначено"
+                          title="Потяните для изменения ширины"
+                          @mousedown.stop.prevent="startProductSlotsResize($event, 'assigned')"
+                        />
+                      </th>
+                      <th class="sortable">
+                        <span class="th-title th-title--filter">
+                          Снято
+                          <span class="th-actions">
+                            <button
+                              class="filter-icon filter-icon--sort"
+                              type="button"
+                              aria-label="Сортировка слотов по дате снятия"
+                              title="Сортировка слотов по дате снятия"
+                              @click.stop="toggleProductSlotsSort('released')"
+                              :class="getProductSlotsSortClass('released')"
+                            >
+                              <svg viewBox="0 0 24 24">
+                                <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                                <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                              </svg>
+                            </button>
+                          </span>
+                        </span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="s in pagedProductSlotAssignments" :key="s.assignment_id">
+                      <td>{{ s.account_login || s.account_id || '—' }}</td>
+                      <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
+                      <td>{{ s.customer_nickname || '—' }}</td>
+                      <td>{{ getSlotAssignmentStatus(s) }}</td>
+                      <td>{{ formatDateTimeMinutes(s.assigned_at) }}</td>
+                      <td>{{ s.released_at ? formatDateTimeMinutes(s.released_at) : '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p v-else class="muted">Слотов по товару пока нет.</p>
+                <div v-if="productSlotsTotalPages > 1" class="pager">
+                  <button class="ghost" @click="prevProductSlotsPage" :disabled="productSlotsPage <= 1">
+                    ← Назад
+                  </button>
+                  <span class="muted">Страница {{ productSlotsPage }} из {{ productSlotsTotalPages }}</span>
+                  <button class="ghost" @click="nextProductSlotsPage" :disabled="productSlotsPage >= productSlotsTotalPages">
+                    Вперёд →
+                  </button>
+                </div>
+              </template>
             </div>
             <p v-if="productError" class="bad">{{ productError }}</p>
             <p v-if="productOk" class="ok">{{ productOk }}</p>
@@ -290,66 +620,93 @@
           <!-- Создание нового товара -->
           <div v-else class="form form--stack form--compact">
             <label class="field">
-              <span class="label">Тип</span>
-              <select v-model="newProduct.type_code" class="input input--select">
-                <option :value="PRODUCT_TYPE_PRIMARY">Игра</option>
-                <option value="subscription">subscription</option>
-              </select>
-            </label>
-            <label class="field">
               <span class="label">Название</span>
-              <input v-model.trim="newProduct.title" class="input" placeholder="Например, GTA V" />
+              <input v-model.trim="newProduct.title" class="input" placeholder="" />
             </label>
-            <label class="field">
+            <label v-if="newProduct.type_code === PRODUCT_TYPE_PRIMARY" class="field">
               <span class="label">Короткое название</span>
-              <input v-model.trim="newProduct.short_title" class="input" placeholder="Например, GTA V" />
+              <input v-model.trim="newProduct.short_title" class="input" placeholder="" />
             </label>
-            <label class="field">
-              <span class="label">Ссылка</span>
-              <input v-model.trim="newProduct.link" class="input" placeholder="https://..." />
-            </label>
-            <label class="field">
-              <span class="label">Язык текста</span>
-              <input v-model.trim="newProduct.text_lang" class="input" placeholder="RU/EN/..." />
-            </label>
-            <label class="field">
-              <span class="label">Язык озвучки</span>
-              <input v-model.trim="newProduct.audio_lang" class="input" placeholder="RU/EN/..." />
-            </label>
-            <label class="field">
-              <span class="label">Поддержка VR</span>
-              <input v-model.trim="newProduct.vr_support" class="input" placeholder="например: есть/нет" />
-            </label>
-            <label class="field">
-              <span class="label">Провайдер подписки</span>
-              <input v-model.trim="newProduct.provider" class="input" placeholder="например: sony" />
-            </label>
-            <label class="field">
-              <span class="label">Период подписки</span>
-              <input v-model.trim="newProduct.billing_period" class="input" placeholder="месяц/год" />
-            </label>
-            <label class="field">
-              <span class="label">Заметки по подписке</span>
-              <input v-model.trim="newProduct.subscription_notes" class="input" placeholder="комментарий" />
-            </label>
-            <div class="field field--full">
-              <span class="label">Платформы (опционально)</span>
-              <div class="check-list check-list--compact">
-                <label v-for="p in platforms" :key="p.code" class="check-item">
-                  <input type="checkbox" :value="p.code" v-model="newProduct.platform_codes" />
-                  <span>{{ p.name }} ({{ p.code }})</span>
+            <template v-if="newProduct.type_code === PRODUCT_TYPE_PRIMARY">
+              <label class="field">
+                <span class="label">Язык текста</span>
+                <input v-model.trim="newProduct.text_lang" class="input" placeholder="" />
+              </label>
+              <label class="field">
+                <span class="label">Язык озвучки</span>
+                <input v-model.trim="newProduct.audio_lang" class="input" placeholder="" />
+              </label>
+              <div class="deal-form__double field--full">
+                <label class="field">
+                  <span class="label">Поддержка VR</span>
+                  <input v-model.trim="newProduct.vr_support" class="input" placeholder="" />
+                </label>
+                <label class="field">
+                  <span class="label">Регион</span>
+                  <select v-model="newProduct.region_code" class="input input--select">
+                    <option value="">— не выбрано —</option>
+                    <option v-for="r in regions" :key="r.code" :value="r.code">
+                      {{ r.name }} ({{ r.code }})
+                    </option>
+                  </select>
                 </label>
               </div>
-            </div>
-            <label class="field">
-              <span class="label">Регион (опционально)</span>
-              <select v-model="newProduct.region_code" class="input input--select">
-                <option value="">— не выбрано —</option>
-                <option v-for="r in regions" :key="r.code" :value="r.code">
-                  {{ r.name }} ({{ r.code }})
-                </option>
-              </select>
-            </label>
+              <div class="field field--full">
+                <span class="label">Платформа</span>
+                <div class="check-list check-list--compact">
+                  <label v-for="p in platforms" :key="p.code" class="check-item">
+                    <input type="checkbox" :value="p.code" v-model="newProduct.platform_codes" />
+                    <span>{{ p.name }} ({{ p.code }})</span>
+                  </label>
+                </div>
+              </div>
+              <label class="field field--full">
+                <span class="label">Ссылка</span>
+                <input v-model.trim="newProduct.link" class="input" placeholder="https://..." />
+              </label>
+              <div class="field field--comment-collapsible field--full">
+                <button class="comment-toggle" type="button" @click="newProductCommentOpen = !newProductCommentOpen">
+                  {{ newProductCommentOpen || newProduct.subscription_notes ? 'Комментарий' : '+ Комментарий' }}
+                </button>
+                <textarea
+                  v-if="newProductCommentOpen || newProduct.subscription_notes"
+                  v-model.trim="newProduct.subscription_notes"
+                  class="input input--textarea input--textarea--compact"
+                  :rows="getCompactNotesRows(newProduct.subscription_notes)"
+                />
+              </div>
+            </template>
+            <template v-else>
+              <label class="field">
+                <span class="label">Регион</span>
+                <select v-model="newProduct.region_code" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="r in regions" :key="r.code" :value="r.code">
+                    {{ r.name }} ({{ r.code }})
+                  </option>
+                </select>
+              </label>
+              <div class="field field--full">
+                <span class="label">Платформа</span>
+                <div class="check-list check-list--compact">
+                  <label v-for="p in platforms" :key="p.code" class="check-item">
+                    <input type="checkbox" :value="p.code" v-model="newProduct.platform_codes" />
+                    <span>{{ p.name }} ({{ p.code }})</span>
+                  </label>
+                </div>
+              </div>
+              <div class="field field--comment-collapsible field--full">
+                <button class="comment-toggle" type="button" @click="newProductCommentOpen = !newProductCommentOpen">
+                  {{ newProductCommentOpen || newProduct.subscription_notes ? 'Комментарий' : '+ Комментарий' }}
+                </button>
+                <textarea
+                  v-if="newProductCommentOpen || newProduct.subscription_notes"
+                  v-model.trim="newProduct.subscription_notes"
+                  class="input input--textarea input--textarea--compact"
+                  :rows="getCompactNotesRows(newProduct.subscription_notes)"
+                />
+              </div>
+            </template>
             <p v-if="productError" class="bad">{{ productError }}</p>
             <p v-if="productOk" class="ok">{{ productOk }}</p>
           </div>
@@ -360,8 +717,9 @@
 </template>
 
 <script setup>
-import { reactive, toRefs } from 'vue'
+import { computed, reactive, ref, toRefs, watch } from 'vue'
 import { PRODUCT_TYPE_PRIMARY } from '../domainUtils'
+import { useResizableTableColumns } from '../useResizableTableColumns'
 
 // Передаем один объект контекста, чтобы не раздувать длинный список props.
 const props = defineProps({
@@ -386,7 +744,9 @@ const {
   regions,
   productAccountsError,
   productAccountsLoading,
+  productAccounts,
   pagedProductAccounts,
+  productAccountsSort,
   sortProductAccounts,
   openAccountFromProduct,
   productAccountsTotalPages,
@@ -403,4 +763,176 @@ const {
   productOk,
   newProduct,
 } = toRefs(ctx)
+
+// Заголовок новой карточки зависит от типа товара, который выбран кнопкой в шапке вкладки.
+const createProductTitle = computed(() => (
+  (newProduct.value?.type_code || PRODUCT_TYPE_PRIMARY) === PRODUCT_TYPE_PRIMARY
+    ? 'НОВЫЙ ТОВАР - ИГРА'
+    : 'НОВЫЙ ТОВАР - ПОДПИСКА'
+))
+
+const isEditGameType = computed(() => (editProduct.value?.type_code || PRODUCT_TYPE_PRIMARY) === PRODUCT_TYPE_PRIMARY)
+
+// В заголовке редактирования показываем тип товара и текущее название.
+const editProductTitle = computed(() => {
+  const typeLabel = isEditGameType.value ? 'ИГРА' : 'ПОДПИСКА'
+  const title = String(editProduct.value?.title || '').trim()
+  return `ТОВАР (${typeLabel}) - ${title || 'БЕЗ НАЗВАНИЯ'}`
+})
+
+const newProductCommentOpen = ref(false)
+const editProductCommentOpen = ref(false)
+const productAccountsOpen = ref(false)
+const productSlotsOpen = ref(false)
+const productSlotsPage = ref(1)
+const productSlotsPageSize = 10
+const productSlotsSort = ref({ key: 'assigned', dir: 'desc' })
+const accountsTableEl = ref(null)
+const slotsTableEl = ref(null)
+
+const { getColumnStyle: getProductAccountsColumnStyle, startResize: startProductAccountsResize } = useResizableTableColumns({
+  tableRef: accountsTableEl,
+  storageKey: 'work.productmodal.accounts.columns.v1',
+  columns: [
+    { key: 'account', defaultWidth: 44, minWidth: 24 },
+    { key: 'platform', defaultWidth: 18, minWidth: 12 },
+    { key: 'free', defaultWidth: 19, minWidth: 12 },
+    { key: 'occupied', defaultWidth: 19, minWidth: 12 },
+  ],
+})
+
+const { getColumnStyle: getProductSlotsColumnStyle, startResize: startProductSlotsResize } = useResizableTableColumns({
+  tableRef: slotsTableEl,
+  storageKey: 'work.productmodal.slots.columns.v1',
+  columns: [
+    { key: 'account', defaultWidth: 18, minWidth: 12 },
+    { key: 'slot', defaultWidth: 12, minWidth: 10 },
+    { key: 'customer', defaultWidth: 18, minWidth: 12 },
+    { key: 'status', defaultWidth: 16, minWidth: 10 },
+    { key: 'assigned', defaultWidth: 18, minWidth: 12 },
+    { key: 'released', defaultWidth: 18, minWidth: 12 },
+  ],
+})
+
+const productAccountsCount = computed(() => (Array.isArray(productAccounts.value) ? productAccounts.value.length : 0))
+const productSlotsCount = computed(() => (Array.isArray(productSlotAssignments.value) ? productSlotAssignments.value.length : 0))
+
+// Считаем количество страниц для списка слотов внутри модалки товара.
+const productSlotsTotalPages = computed(() => {
+  const pages = Math.ceil(productSlotsCount.value / productSlotsPageSize)
+  return pages > 0 ? pages : 1
+})
+
+// Сортируем слоты локально в модалке, чтобы быстро переключать порядок колонок.
+const sortedProductSlotAssignments = computed(() => {
+  const list = [...(productSlotAssignments.value || [])]
+  const { key, dir } = productSlotsSort.value
+  const factor = dir === 'asc' ? 1 : -1
+  list.sort((a, b) => {
+    const av = getProductSlotSortValue(a, key)
+    const bv = getProductSlotSortValue(b, key)
+    if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * factor
+    return String(av || '').localeCompare(String(bv || '')) * factor
+  })
+  return list
+})
+
+// Показываем только текущую страницу слотов, чтобы таблица не росла бесконечно.
+const pagedProductSlotAssignments = computed(() => {
+  const start = (productSlotsPage.value - 1) * productSlotsPageSize
+  return sortedProductSlotAssignments.value.slice(start, start + productSlotsPageSize)
+})
+
+// Переключает страницу слотов назад с защитой от выхода за границы.
+const prevProductSlotsPage = () => {
+  if (productSlotsPage.value > 1) productSlotsPage.value -= 1
+}
+
+// Переключает страницу слотов вперед с защитой от выхода за границы.
+const nextProductSlotsPage = () => {
+  if (productSlotsPage.value < productSlotsTotalPages.value) productSlotsPage.value += 1
+}
+
+// Повторяет визуальное поведение иконки сортировки, как в основных таблицах.
+const getSortButtonClass = (state) => ({
+  'sort-icon--active': Boolean(state),
+  'sort-icon--asc': state === 'asc',
+  'sort-icon--desc': state === 'desc',
+})
+
+// Меняет колонку сортировки слотов и направление по повторному клику.
+const toggleProductSlotsSort = (key) => {
+  const current = productSlotsSort.value
+  if (current.key === key) {
+    productSlotsSort.value = { key, dir: current.dir === 'asc' ? 'desc' : 'asc' }
+  } else {
+    productSlotsSort.value = { key, dir: 'asc' }
+  }
+  productSlotsPage.value = 1
+}
+
+// Возвращает текстовый индикатор направления, чтобы пользователь видел активную сортировку.
+const getProductSlotsSortClass = (key) => getSortButtonClass(productSlotsSort.value.key === key ? productSlotsSort.value.dir : '')
+const getProductAccountsSortClass = (key) => getSortButtonClass(productAccountsSort.value?.key === key ? productAccountsSort.value?.dir : '')
+
+// Открывает аккаунт из ячейки только при обычном клике, без выделенного текста.
+const openAccountFromCell = (login) => {
+  const selectedText = String(window.getSelection?.()?.toString?.() || '').trim()
+  if (selectedText) return
+  if (!login) return
+  openAccountFromProduct.value(login)
+}
+
+// Достает значение для сравнения по выбранной колонке слотов.
+const getProductSlotSortValue = (item, key) => {
+  if (key === 'account') return item?.account_login || item?.account_id || ''
+  if (key === 'slot') return getSlotTypeLabel.value(item?.slot_type_code)
+  if (key === 'customer') return item?.customer_nickname || ''
+  if (key === 'status') return getSlotAssignmentStatus.value(item)
+  if (key === 'assigned') return Date.parse(item?.assigned_at || '') || 0
+  if (key === 'released') return Date.parse(item?.released_at || '') || 0
+  return ''
+}
+
+// При новом открытии карточки товара раскрываем секции и сбрасываем пагинацию слотов.
+watch(
+  () => editProduct.value?.product_id,
+  () => {
+    productAccountsOpen.value = false
+    productSlotsOpen.value = false
+    productSlotsPage.value = 1
+  },
+)
+
+// Синхронизирует состояние блока комментария при открытии/закрытии модалки.
+const syncCommentPanels = () => {
+  const showCreate = Boolean(showProductForm.value)
+  const showEdit = Boolean(editProduct.value?.open)
+  if (!showCreate && !showEdit) {
+    newProductCommentOpen.value = false
+    editProductCommentOpen.value = false
+    return
+  }
+  // Если комментарий пустой, блок стартует свернутым; если текст есть — раскрываем.
+  if (showCreate) newProductCommentOpen.value = Boolean(String(newProduct.value?.subscription_notes || '').trim())
+  if (showEdit) editProductCommentOpen.value = Boolean(String(editProduct.value?.subscription_notes || '').trim())
+}
+
+watch(
+  () => [showProductForm.value, editProduct.value?.open, editProduct.value?.product_id],
+  () => syncCommentPanels(),
+  { immediate: true },
+)
+
+// Если данных стало меньше, держим текущую страницу слотов в допустимом диапазоне.
+watch(productSlotsTotalPages, (total) => {
+  if (productSlotsPage.value > total) productSlotsPage.value = total
+})
+
+// Подбираем высоту textarea, чтобы комментарий не занимал лишнее место.
+const getCompactNotesRows = (value) => {
+  const text = String(value || '')
+  if (!text) return 2
+  return Math.max(2, Math.min(6, Math.ceil(text.length / 110)))
+}
 </script>

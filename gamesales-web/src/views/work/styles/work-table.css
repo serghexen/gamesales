@@ -158,6 +158,19 @@
   cursor: text;
 }
 
+.work-page .product-account-cell {
+  cursor: pointer;
+}
+
+.work-page .product-account-cell:hover {
+  background: color-mix(in srgb, var(--table-bg) 84%, var(--accent) 16%);
+}
+
+.work-page .product-account-cell__text {
+  cursor: text;
+  user-select: text;
+}
+
 .work-page .slot-line {
   display: block;
 }

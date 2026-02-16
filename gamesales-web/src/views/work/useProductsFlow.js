@@ -41,6 +41,7 @@ export function useProductsFlow({
   requestUnsavedConfirm,
 }) {
   let initialEditProductSnapshot = null
+  let initialCreateProductSnapshot = null
   // Нормализует товар из API в формат, совместимый с текущим UI вкладки.
   function normalizeProduct(product) {
     return {
@@ -52,11 +53,6 @@ export function useProductsFlow({
       billing_period: product?.billing_period || '',
       subscription_notes: product?.subscription_notes || '',
     }
-  }
-
-  // Возвращает true, если товар относится к типу игры.
-  function isGameType(item) {
-    return String(item?.type_code || '').toLowerCase() === PRODUCT_TYPE_PRIMARY
   }
 
   // Открывает игру в режиме просмотра и подгружает логотип.
@@ -120,34 +116,67 @@ export function useProductsFlow({
     initialEditProductSnapshot = null
   }
 
-  // Открывает форму создания новой игры.
-  function openCreateProductModal() {
+  // Подготавливает форму создания товара с выбранным типом.
+  function openCreateProductModalByType(typeCode) {
     closeAllModals()
     resetModalPos()
     showProductForm.value = true
     productEditMode.value = 'edit'
     cancelEditProduct()
+    // Фиксируем тип, чтобы кнопки "Игра" и "Подписка" открывали нужный сценарий.
+    newProduct.type_code = typeCode || PRODUCT_TYPE_PRIMARY
+    // Запоминаем стартовое состояние формы создания для корректной проверки "грязных" правок.
+    initialCreateProductSnapshot = {
+      type_code: newProduct.type_code,
+      title: newProduct.title,
+      short_title: newProduct.short_title,
+      link: newProduct.link,
+      text_lang: newProduct.text_lang,
+      audio_lang: newProduct.audio_lang,
+      vr_support: newProduct.vr_support,
+      platform_codes: [...(newProduct.platform_codes || [])],
+      region_code: newProduct.region_code,
+      provider: newProduct.provider,
+      billing_period: newProduct.billing_period,
+      subscription_notes: newProduct.subscription_notes,
+    }
     productError.value = null
     productOk.value = null
+  }
+
+  // Открывает форму создания игры.
+  function openCreateGameProductModal() {
+    openCreateProductModalByType(PRODUCT_TYPE_PRIMARY)
+  }
+
+  // Открывает форму создания подписки.
+  function openCreateSubscriptionProductModal() {
+    openCreateProductModalByType('subscription')
+  }
+
+  // Оставляем совместимость для старых вызовов.
+  function openCreateProductModal() {
+    openCreateGameProductModal()
   }
 
   // Закрывает модалку игры и очищает все временные поля.
   async function closeProductModal() {
     const guardEnabled = !suppressUnsavedConfirm?.value
-    const createDirty = showProductForm.value && !isSameNormalized(newProduct, {
-      title: '',
-      type_code: PRODUCT_TYPE_PRIMARY,
-      short_title: '',
-      link: '',
-      text_lang: '',
-      audio_lang: '',
-      vr_support: '',
-      platform_codes: [],
-      region_code: '',
-      provider: '',
-      billing_period: '',
-      subscription_notes: '',
-    })
+    const createCurrent = {
+      type_code: newProduct.type_code,
+      title: newProduct.title,
+      short_title: newProduct.short_title,
+      link: newProduct.link,
+      text_lang: newProduct.text_lang,
+      audio_lang: newProduct.audio_lang,
+      vr_support: newProduct.vr_support,
+      platform_codes: [...(newProduct.platform_codes || [])],
+      region_code: newProduct.region_code,
+      provider: newProduct.provider,
+      billing_period: newProduct.billing_period,
+      subscription_notes: newProduct.subscription_notes,
+    }
+    const createDirty = showProductForm.value && !isSameNormalized(createCurrent, initialCreateProductSnapshot || {})
     const editCurrent = {
       title: editProduct.title,
       short_title: editProduct.short_title,
@@ -183,18 +212,19 @@ export function useProductsFlow({
     newProduct.provider = ''
     newProduct.billing_period = ''
     newProduct.subscription_notes = ''
+    initialCreateProductSnapshot = null
     return true
   }
 
-  // Открывает модалку игры и грузит связанные аккаунты/слоты.
+  // Открывает карточку товара и грузит связанные аккаунты/слоты по product_id.
   function openProductAccounts(product) {
     const normalized = normalizeProduct(product || {})
     resetModalPos()
     startEditProduct(normalized)
     productAccounts.value = []
     productAccountsPage.value = 1
-    // Для карточки игры используем только product_id.
-    if (isGameType(normalized) && normalized.product_id) {
+    // Для обоих типов товара (игра/подписка) используем единый сценарий загрузки.
+    if (normalized.product_id) {
       loadProductAccounts(normalized.product_id)
       loadProductSlotAssignments(normalized.product_id)
     }
@@ -236,12 +266,11 @@ export function useProductsFlow({
     try {
       const params = new URLSearchParams()
       params.set('all', 'true')
-      params.set('type_code', PRODUCT_TYPE_PRIMARY)
       params.set('sort_key', 'title')
       params.set('sort_dir', 'asc')
       const res = await apiGet(`/products?${params.toString()}`, { token: auth.state.token })
-      // В этом списке оставляем только товары типа "Игра".
-      productsAll.value = (res?.items || []).map(normalizeProduct).filter(isGameType)
+      // Для переходов из сделок держим все типы товаров, чтобы корректно открывать игру и подписку.
+      productsAll.value = (res?.items || []).map(normalizeProduct)
     } catch {
       productsAll.value = []
     }
@@ -276,20 +305,26 @@ export function useProductsFlow({
     productLoading.value = true
     productSaving.value = true
     try {
+      // Нормализуем тип перед отправкой, чтобы кнопка "Игра" всегда создавала game.
+      const typeCode = String(newProduct.type_code || '').toLowerCase() === 'subscription'
+        ? 'subscription'
+        : PRODUCT_TYPE_PRIMARY
       await apiPost(
         '/products',
         {
-          type_code: newProduct.type_code || PRODUCT_TYPE_PRIMARY,
+          type_code: typeCode,
           title: newProduct.title,
           short_title: newProduct.short_title || null,
-          link: isGameType(newProduct) ? (newProduct.link || null) : null,
-          text_lang: isGameType(newProduct) ? (newProduct.text_lang || null) : null,
-          audio_lang: isGameType(newProduct) ? (newProduct.audio_lang || null) : null,
-          vr_support: isGameType(newProduct) ? (newProduct.vr_support || null) : null,
-          platform_codes: isGameType(newProduct) ? (newProduct.platform_codes || []) : [],
-          provider: !isGameType(newProduct) ? (newProduct.provider || null) : null,
-          billing_period: !isGameType(newProduct) ? (newProduct.billing_period || null) : null,
-          subscription_notes: !isGameType(newProduct) ? (newProduct.subscription_notes || null) : null,
+          link: typeCode === PRODUCT_TYPE_PRIMARY ? (newProduct.link || null) : null,
+          text_lang: typeCode === PRODUCT_TYPE_PRIMARY ? (newProduct.text_lang || null) : null,
+          audio_lang: typeCode === PRODUCT_TYPE_PRIMARY ? (newProduct.audio_lang || null) : null,
+          vr_support: typeCode === PRODUCT_TYPE_PRIMARY ? (newProduct.vr_support || null) : null,
+          // Платформы сохраняем для обоих типов товаров (игра и подписка).
+          platform_codes: newProduct.platform_codes || [],
+          provider: typeCode !== PRODUCT_TYPE_PRIMARY ? (newProduct.provider || null) : null,
+          billing_period: typeCode !== PRODUCT_TYPE_PRIMARY ? (newProduct.billing_period || null) : null,
+          // Поле используем как универсальный комментарий для игры и подписки.
+          subscription_notes: newProduct.subscription_notes || null,
           region_code: newProduct.region_code || null,
         },
         { token: auth.state.token }
@@ -329,20 +364,26 @@ export function useProductsFlow({
     productLoading.value = true
     productSaving.value = true
     try {
+      // Для редактирования тоже нормализуем тип в допустимые значения.
+      const typeCode = String(editProduct.type_code || '').toLowerCase() === 'subscription'
+        ? 'subscription'
+        : PRODUCT_TYPE_PRIMARY
       await apiPut(
         `/products/${editProduct.product_id}`,
         {
-          type_code: editProduct.type_code,
+          type_code: typeCode,
           title: editProduct.title,
           short_title: editProduct.short_title || null,
-          link: isGameType(editProduct) ? (editProduct.link || null) : null,
-          text_lang: isGameType(editProduct) ? (editProduct.text_lang || null) : null,
-          audio_lang: isGameType(editProduct) ? (editProduct.audio_lang || null) : null,
-          vr_support: isGameType(editProduct) ? (editProduct.vr_support || null) : null,
-          platform_codes: isGameType(editProduct) ? (editProduct.platform_codes || []) : [],
-          provider: !isGameType(editProduct) ? (editProduct.provider || null) : null,
-          billing_period: !isGameType(editProduct) ? (editProduct.billing_period || null) : null,
-          subscription_notes: !isGameType(editProduct) ? (editProduct.subscription_notes || null) : null,
+          link: typeCode === PRODUCT_TYPE_PRIMARY ? (editProduct.link || null) : null,
+          text_lang: typeCode === PRODUCT_TYPE_PRIMARY ? (editProduct.text_lang || null) : null,
+          audio_lang: typeCode === PRODUCT_TYPE_PRIMARY ? (editProduct.audio_lang || null) : null,
+          vr_support: typeCode === PRODUCT_TYPE_PRIMARY ? (editProduct.vr_support || null) : null,
+          // Платформы сохраняем для обоих типов товаров (игра и подписка).
+          platform_codes: editProduct.platform_codes || [],
+          provider: typeCode !== PRODUCT_TYPE_PRIMARY ? (editProduct.provider || null) : null,
+          billing_period: typeCode !== PRODUCT_TYPE_PRIMARY ? (editProduct.billing_period || null) : null,
+          // Поле используем как универсальный комментарий для игры и подписки.
+          subscription_notes: editProduct.subscription_notes || null,
           region_code: editProduct.region_code || null,
         },
         { token: auth.state.token }
@@ -389,11 +430,12 @@ export function useProductsFlow({
     if (!deal || !deal.product_id) return
     setActiveTab('products')
     productFilters.q = deal.product_title || ''
-    productFilters.type_code = PRODUCT_TYPE_PRIMARY
+    // Не ограничиваем тип, чтобы из сделки открывался любой товар.
+    productFilters.type_code = ''
     productFilters.platform_code = ''
     productFilters.region_code = ''
     productFilterDraft.title = productFilters.q
-    productFilterDraft.type = PRODUCT_TYPE_PRIMARY
+    productFilterDraft.type = ''
     productFilterDraft.platform = ''
     productFilterDraft.region = ''
     productsPage.value = 1
@@ -409,6 +451,8 @@ export function useProductsFlow({
 
   return {
     openProductAccounts,
+    openCreateGameProductModal,
+    openCreateSubscriptionProductModal,
     openCreateProductModal,
     closeProductModal,
     loadProducts,

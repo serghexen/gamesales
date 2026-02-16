@@ -327,6 +327,14 @@
   max-height: min(74vh, 560px);
 }
 
+.work-modal-root.modal-backdrop .modal--product-editor.modal--auto {
+  max-height: min(94vh, 820px);
+}
+
+.work-modal-root.modal-backdrop .modal--product-editor.modal--auto .modal__body {
+  max-height: min(84vh, 720px);
+}
+
 .work-modal-root.modal-backdrop .modal--full {
   height: min(92vh, 880px);
 }
@@ -1037,6 +1045,35 @@
 .work-page .comment-toggle:hover {
   color: var(--ink);
   border-color: color-mix(in srgb, var(--accent) 45%, var(--input-border));
+}
+
+.work-page .section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.work-page .section-toggle:hover .label {
+  color: var(--ink);
+}
+
+.work-page .section-toggle__chevron {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  transition: transform 0.2s ease;
+}
+
+.work-page .section-toggle[aria-expanded='true'] .section-toggle__chevron {
+  transform: rotate(180deg);
 }
 
 .work-page .deal-form__triple--sale-top {

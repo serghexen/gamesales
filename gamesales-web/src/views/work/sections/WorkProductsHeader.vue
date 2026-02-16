@@ -2,8 +2,17 @@
   <div class="panel__head">
     <div>
       <div class="toolbar-actions">
-        <button class="deal-create-btn" type="button" @click="openCreateProductModal" aria-label="Добавить товар" title="Добавить товар">
-          <span class="deal-create-btn__text">Товар</span>
+        <button class="deal-create-btn" type="button" @click="openCreateGameProductModal" aria-label="Добавить игру" title="Добавить игру">
+          <span class="deal-create-btn__text">Игра</span>
+          <span class="deal-create-btn__icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
+              <line y2="19" y1="5" x2="12" x1="12"></line>
+              <line y2="12" y1="12" x2="19" x1="5"></line>
+            </svg>
+          </span>
+        </button>
+        <button class="deal-create-btn deal-create-btn--sharing" type="button" @click="openCreateSubscriptionProductModal" aria-label="Добавить подписку" title="Добавить подписку">
+          <span class="deal-create-btn__text">Подписка</span>
           <span class="deal-create-btn__icon">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
               <line y2="19" y1="5" x2="12" x1="12"></line>
@@ -72,7 +81,8 @@
 defineProps({
   productFilters: { type: Object, required: true },
   applyProductSearch: { type: Function, required: true },
-  openCreateProductModal: { type: Function, required: true },
+  openCreateGameProductModal: { type: Function, required: true },
+  openCreateSubscriptionProductModal: { type: Function, required: true },
   openProductImport: { type: Function, required: true },
   loadProducts: { type: Function, required: true },
   productsLoading: { type: Boolean, required: true },

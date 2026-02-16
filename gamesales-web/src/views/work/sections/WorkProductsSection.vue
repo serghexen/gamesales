@@ -3,7 +3,8 @@
     <WorkProductsHeader
       :product-filters="ctx.productFilters"
       :apply-product-search="ctx.applyProductSearch"
-      :open-create-product-modal="ctx.openCreateProductModal"
+      :open-create-game-product-modal="ctx.openCreateGameProductModal"
+      :open-create-subscription-product-modal="ctx.openCreateSubscriptionProductModal"
       :open-product-import="ctx.openProductImport"
       :load-products="ctx.loadProducts"
       :products-loading="ctx.productsLoading"
