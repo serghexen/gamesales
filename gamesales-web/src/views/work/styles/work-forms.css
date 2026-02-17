@@ -389,6 +389,26 @@
   max-width: 100%;
 }
 
+.work-page .deal-products-title {
+  display: block;
+  text-align: center;
+}
+
+.work-page .deal-product-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(180px, 0.55fr);
+  gap: 8px;
+  align-items: end;
+}
+
+.work-page .deal-product-filters .input--search {
+  margin-bottom: 0;
+}
+
+.work-page .deal-product-filters .input--search-row {
+  margin-top: 2px;
+}
+
 .work-page .deal-form__col--right .field--product,
 .work-page .deal-form__col--right .field--product .input,
 .work-page .deal-form__col--right .field--product .input--search,
@@ -397,6 +417,12 @@
   width: 100%;
   max-width: 100%;
   justify-self: stretch;
+}
+
+@media (max-width: 720px) {
+  .work-page .deal-product-filters {
+    grid-template-columns: 1fr;
+  }
 }
 
 .work-page .input--file {

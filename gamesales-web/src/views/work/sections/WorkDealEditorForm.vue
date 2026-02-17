@@ -108,46 +108,53 @@
                         <label
                           v-if="editDeal.deal_type_code === 'rental'"
                           class="field field--product"
-                          :class="{ 'field--product-selected': Boolean(editDeal.product_id) && !editDealProductSearch }"
                         >
-                          <span class="label">Товар</span>
                           <input
                             v-if="dealEditMode === 'view'"
                             class="input"
                             :value="getProductLabelById(editDeal.product_id)"
                             readonly
                           />
-                          <div v-else-if="!editDeal.product_id" class="input input--compact input--search input--search-row">
-                            <input
-                              v-model.trim="editDealProductSearch"
-                              class="input--search-field"
-                              placeholder="поиск товара"
-                              @input="onEditDealProductSearch"
-                            />
+                          <div
+                            v-if="dealEditMode !== 'view'"
+                            class="deal-product-filters field--full"
+                          >
+                            <label class="field">
+                              <span class="label">Поиск</span>
+                              <div class="input input--search input--search-row">
+                                <input
+                                  v-model.trim="editDealProductSearch"
+                                  class="input--search-field"
+                                  placeholder="поиск товара"
+                                  @input="onEditDealProductSearch"
+                                />
+                              </div>
+                            </label>
+                            <label class="field">
+                              <span class="label">Тип товара</span>
+                              <select v-model="editDealProductTypeFilter" class="input input--select">
+                                <option value="all">Все</option>
+                                <option value="game">Игра</option>
+                                <option value="subscription">Подписка</option>
+                              </select>
+                            </label>
                           </div>
                           <div
                             v-if="dealEditMode !== 'view'"
                             class="input--select-wrap"
-                            :class="{ 'input--select-wrap--selected': Boolean(editDeal.product_id) && !editDealProductSearch }"
                           >
-                            <input
-                              v-if="editDeal.product_id && !editDealProductSearch"
-                              class="input"
-                              :value="getProductLabelById(editDeal.product_id)"
-                              readonly
-                            />
                             <select
-                              v-else-if="!editDealProductNoMatches"
+                              v-if="!editDealProductNoMatches"
                               v-model.number="editDeal.product_id"
                               :class="[
                                 'input input--select input--list',
-                                { 'input--list--compact': editDealProductNoMatches || (editDeal.product_id && !editDealProductSearch) }
+                                { 'input--list--compact': editDeal.product_id && !editDealProductSearch }
                               ]"
-                              :size="editDealProductNoMatches ? 1 : 8"
+                              :size="editDeal.product_id && !editDealProductSearch ? 1 : 8"
                               @change="syncEditDealProductSearch"
                             >
                               <option value="">— не выбрано —</option>
-                              <option v-for="g in filteredEditDealProducts" :key="g.product_id" :value="g.product_id">
+                              <option v-for="g in filteredEditDealProductsByType" :key="g.product_id" :value="g.product_id">
                                 {{ g.title }}
                               </option>
                             </select>
@@ -628,36 +635,38 @@
                         <label
                           v-if="newDeal.deal_type_code === 'rental'"
                           class="field field--product"
-                          :class="{ 'field--product-selected': Boolean(newDeal.product_id) && !newDealProductSearch }"
                         >
-                          <span class="label">Товар</span>
-                          <div v-if="!newDeal.product_id" class="input input--compact input--search input--search-row">
-                            <input
-                              v-model.trim="newDealProductSearch"
-                              class="input--search-field"
-                              placeholder="поиск товара"
-                              @input="onNewDealProductSearch"
-                            />
+                          <div class="deal-product-filters field--full">
+                            <label class="field">
+                              <span class="label">Поиск</span>
+                              <div class="input input--search input--search-row">
+                                <input
+                                  v-model.trim="newDealProductSearch"
+                                  class="input--search-field"
+                                  placeholder="поиск товара"
+                                  @input="onNewDealProductSearch"
+                                />
+                              </div>
+                            </label>
+                            <label class="field">
+                              <span class="label">Тип товара</span>
+                              <select v-model="newDealProductTypeFilter" class="input input--select">
+                                <option value="all">Все</option>
+                                <option value="game">Игра</option>
+                                <option value="subscription">Подписка</option>
+                              </select>
+                            </label>
                           </div>
-                          <div class="input--select-wrap" :class="{ 'input--select-wrap--selected': Boolean(newDeal.product_id) && !newDealProductSearch }">
-                            <input
-                              v-if="newDeal.product_id && !newDealProductSearch"
-                              class="input"
-                              :value="getProductLabelById(newDeal.product_id)"
-                              readonly
-                            />
+                          <div class="input--select-wrap">
                             <select
-                              v-else-if="!newDealProductNoMatches"
+                              v-if="!newDealProductNoMatches"
                               v-model.number="newDeal.product_id"
-                              :class="[
-                                'input input--select input--list input--list--product-short',
-                                { 'input--list--compact': newDealProductNoMatches || (newDeal.product_id && !newDealProductSearch) }
-                              ]"
-                              :size="newDealProductNoMatches ? 1 : 3"
+                              class="input input--select input--list input--list--product-short"
+                              :size="3"
                               @change="syncNewDealProductSearch"
                             >
                               <option value="">— не выбрано —</option>
-                              <option v-for="g in filteredNewDealProducts" :key="g.product_id" :value="g.product_id">
+                              <option v-for="g in filteredNewDealProductsByType" :key="g.product_id" :value="g.product_id">
                                 {{ g.title }}
                               </option>
                             </select>
@@ -959,7 +968,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, toRefs } from 'vue'
+import { computed, reactive, ref, toRefs, watch } from 'vue'
 
 // Большая форма сделки (режим редактирования и создания) вынесена из WorkView.
 const props = defineProps({
@@ -1046,6 +1055,31 @@ const {
   editDealCommentOpen,
   getCompactNotesRows,
 } = toRefs(ctx)
+
+const editDealProductTypeFilter = ref('all')
+const newDealProductTypeFilter = ref('all')
+
+// Фильтрует товары в редактировании сделки по выбранному типу.
+const filteredEditDealProductsByType = computed(() => {
+  if (!editDealProductTypeFilter.value || editDealProductTypeFilter.value === 'all') return filteredEditDealProducts.value
+  return (filteredEditDealProducts.value || []).filter((item) => item?.type_code === editDealProductTypeFilter.value)
+})
+
+// Фильтрует товары в создании сделки по выбранному типу.
+const filteredNewDealProductsByType = computed(() => {
+  if (!newDealProductTypeFilter.value || newDealProductTypeFilter.value === 'all') return filteredNewDealProducts.value
+  return (filteredNewDealProducts.value || []).filter((item) => item?.type_code === newDealProductTypeFilter.value)
+})
+
+// Сбрасывает фильтр типа при новом открытии редактирования, чтобы не прятать товары.
+watch(() => editDeal.value?.open, (isOpen) => {
+  if (isOpen) editDealProductTypeFilter.value = 'all'
+})
+
+// Сбрасывает фильтр типа при открытии создания шеринга, чтобы список был полным.
+watch(() => newDeal.value?.deal_type_code, (dealTypeCode) => {
+  if (dealTypeCode === 'rental') newDealProductTypeFilter.value = 'all'
+})
 
 const canEditRefundFlag = computed(() => {
   // Признак возврата можно менять в ожидании всем, а в завершенных только admin/owner.
