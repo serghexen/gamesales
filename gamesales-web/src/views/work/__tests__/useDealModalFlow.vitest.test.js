@@ -62,6 +62,7 @@ function createDeps() {
     newDealResponsible: ref(''),
     editDealResponsible: ref(''),
     newDealCommentOpen: ref(false),
+    editDealCommentOpen: ref(false),
     newDealProductSearch: ref(''),
     editDealProductSearch: ref(''),
     quickNewProduct: { title: '', platform_codes: [] },
@@ -145,11 +146,13 @@ describe('useDealModalFlow', () => {
     const deps = createDeps()
     const api = useDealModalFlow(deps)
 
+    deps.editDealCommentOpen.value = true
     api.openCreateSharingModal()
     const closed = await api.closeDealModal()
 
     expect(closed).toBe(true)
     expect(deps.requestUnsavedConfirm).not.toHaveBeenCalled()
+    expect(deps.editDealCommentOpen.value).toBe(false)
   })
 
   it('prefills responsible with current session user for new sale', () => {

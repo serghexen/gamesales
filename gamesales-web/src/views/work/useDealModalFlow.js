@@ -14,6 +14,7 @@ export function useDealModalFlow({
   newDealResponsible,
   editDealResponsible,
   newDealCommentOpen,
+  editDealCommentOpen,
   newDealProductSearch,
   editDealProductSearch,
   quickNewProduct,
@@ -77,6 +78,7 @@ export function useDealModalFlow({
       purchase_at: newDeal.purchase_at,
       slots_used: newDeal.slots_used,
       notes: newDeal.notes,
+      is_refund: newDeal.is_refund,
       responsible: newDealResponsible.value,
     }
   }
@@ -91,7 +93,7 @@ export function useDealModalFlow({
     editDeal.completed_at = toDateTimeLocalValue(deal.completed_at)
     editDeal.deal_type_code = deal.deal_type_code || (deal.deal_type === 'Шеринг' ? 'rental' : 'sale')
     editDeal.account_id = deal.account_id
-    editDeal.product_id = deal.product_id || ''
+    editDeal.product_id = deal.product_id || deal.game_id || ''
     editDeal.customer_nickname = deal.customer_nickname || ''
     editDeal.order_number = deal.order_number || ''
     editDeal.source_id = deal.source_id || ''
@@ -137,6 +139,8 @@ export function useDealModalFlow({
     editDeal.flow_status_code = ''
     editDeal.is_refund = false
     editDealResponsible.value = ''
+    // Закрываем комментарий при сбросе формы редактирования, чтобы не тянуть старое состояние.
+    if (editDealCommentOpen?.value !== undefined) editDealCommentOpen.value = false
     dealEditMode.value = 'view'
     initialEditDealSnapshot = null
     dealAccountAssignmentsEdit.value = []
@@ -151,6 +155,8 @@ export function useDealModalFlow({
     dealError.value = null
     dealOk.value = null
     newDealCommentOpen.value = false
+    if (editDealCommentOpen?.value !== undefined) editDealCommentOpen.value = false
+    newDeal.is_refund = false
     // Для новых сделок сразу подставляем ответственного из текущей сессии.
     newDealResponsible.value = getDefaultResponsibleName()
     newDealProductSearch.value = ''
@@ -200,6 +206,7 @@ export function useDealModalFlow({
       purchase_at: '',
       slots_used: 1,
       notes: '',
+      is_refund: false,
       responsible: getDefaultResponsibleName(),
     }
     const createCurrent = {
@@ -219,6 +226,7 @@ export function useDealModalFlow({
       purchase_at: newDeal.purchase_at,
       slots_used: newDeal.slots_used,
       notes: newDeal.notes,
+      is_refund: newDeal.is_refund,
       responsible: newDealResponsible.value,
     }
     const editCurrent = {
@@ -268,6 +276,7 @@ export function useDealModalFlow({
     newDeal.purchase_at = ''
     newDeal.slots_used = 1
     newDeal.notes = ''
+    newDeal.is_refund = false
     // После закрытия возвращаем дефолт для следующего открытия формы.
     newDealResponsible.value = getDefaultResponsibleName()
     newDealCommentOpen.value = false
@@ -304,6 +313,7 @@ export function useDealModalFlow({
     editDeal.open = true
     dealInitLock.value = true
     dealEditMode.value = 'view'
+    if (editDealCommentOpen?.value !== undefined) editDealCommentOpen.value = false
     editDealProductSearch.value = ''
     quickEditProduct.title = ''
     quickEditProduct.platform_codes = []
@@ -320,7 +330,7 @@ export function useDealModalFlow({
       completed_at: toDateTimeLocalValue(deal.completed_at),
       deal_type_code: deal.deal_type_code || (deal.deal_type === 'Шеринг' ? 'rental' : 'sale'),
       account_id: deal.account_id,
-      product_id: deal.product_id || '',
+      product_id: deal.product_id || deal.game_id || '',
       customer_nickname: deal.customer_nickname || '',
       order_number: deal.order_number || '',
       source_id: deal.source_id || '',

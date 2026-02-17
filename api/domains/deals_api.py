@@ -530,6 +530,13 @@ def mount_deals_routes(
             deal_type = (payload.deal_type_code or current_type or "").strip().lower()
             if deal_type not in ("sale", "rental"):
                 raise HTTPException(400, "deal_type_code must be sale or rental")
+            current_product_id = None
+            if deal_type == "rental" and payload.product_id is None:
+                # Для частичных update берем текущий product_id из deal_item, чтобы не требовать повторного выбора товара.
+                product_row = q1(conn, "SELECT product_id FROM app.deal_items WHERE deal_item_id=%s", (deal_item_id,))
+                current_product_id = int(product_row[0]) if product_row and product_row[0] is not None else None
+            # Для update используем переданный product_id, а если его нет — сохраняем текущий.
+            new_product_id = payload.product_id if payload.product_id is not None else current_product_id
             new_flow_status = payload.flow_status_code if payload.flow_status_code is not None else flow_status_code
             if payload.flow_status_code is not None:
                 row = q1(conn, "SELECT 1 FROM app.deal_flow_statuses WHERE code=%s", (payload.flow_status_code,))
@@ -543,11 +550,11 @@ def mount_deals_routes(
 
             new_account_id = payload.account_id if payload.account_id is not None else account_id
             ensure_source_exists(conn, payload.source_id if payload.source_id is not None else None)
-            if payload.product_id is not None and deal_type != "rental":
+            if new_product_id is not None and deal_type != "rental":
                 # Для продажи валидируем только product_id.
                 validate_deal_product_id(
                     conn,
-                    product_id=payload.product_id,
+                    product_id=new_product_id,
                     for_rental=False,
                     must_be_active=False,
                 )
@@ -604,8 +611,8 @@ def mount_deals_routes(
             allow_refund_change = flow_status_code == "pending" or (flow_status_code == "completed" and can_edit_completed)
             if is_refund_changed and not allow_refund_change:
                 raise HTTPException(400, "is_refund can be changed only for pending deals")
-            if payload.is_refund and deal_type != "sale":
-                raise HTTPException(400, "is_refund is allowed only for sale deals")
+            if payload.is_refund and deal_type not in {"sale", "rental"}:
+                raise HTTPException(400, "is_refund is allowed only for sale or rental deals")
             # Проведение возврата в completed разрешено только владельцу или администратору.
             is_completing_now = flow_status_code != "completed" and new_flow_status == "completed"
             if is_completing_now and new_is_refund and user_role not in {"admin", "administrator", "owner"}:
@@ -617,8 +624,8 @@ def mount_deals_routes(
                     new_returned_at = returned_at or now_utc()
                 else:
                     new_returned_at = None
-            if deal_type == "sale" and new_is_refund:
-                # Для возвратной продажи всегда назначаем owner ответственным.
+            if deal_type in {"sale", "rental"} and new_is_refund:
+                # Для возвратной сделки назначаем owner ответственным.
                 new_responsible_username = resolve_owner_responsible_name(conn)
             if deal_type == "sale":
                 new_slots_used = 0
@@ -633,17 +640,16 @@ def mount_deals_routes(
                     raise HTTPException(400, "customer_nickname is required for non-draft sale")
             if deal_type == "rental":
                 new_slots_used = 0 if rental_is_draft else 1
-                new_returned_at = None
             validate_date_range(new_start_at, new_end_at, "end_at")
     
             # check slots for rental
             if deal_type == "rental" and not rental_is_draft:
                 # Для rental валидируем продукт в product-first режиме.
-                if payload.product_id is None:
+                if new_product_id is None:
                     raise HTTPException(400, "product_id is required for rental")
                 validate_deal_product_id(
                     conn,
-                    product_id=payload.product_id,
+                    product_id=new_product_id,
                     for_rental=True,
                     must_be_active=False,
                 )
@@ -743,7 +749,7 @@ def mount_deals_routes(
                     """,
                     (
                         new_account_id,
-                        payload.product_id,
+                        new_product_id,
                         new_platform_id,
                         new_price,
                         new_purchase_cost,
@@ -780,7 +786,7 @@ def mount_deals_routes(
                     """,
                     (
                         new_account_id,
-                        payload.product_id,
+                        new_product_id,
                         new_platform_id,
                         new_price,
                         new_purchase_cost,
@@ -817,7 +823,7 @@ def mount_deals_routes(
                         or int(row_assign[1]) != int(new_account_id)
                         or row_assign[2] != new_slot_type_code
                         or (customer_id is not None and row_assign[3] != customer_id)
-                        or (assigned_product_id != int(payload.product_id))
+                        or (assigned_product_id != int(new_product_id))
                     )
                     if need_new_assign and current_assign:
                         release_slot_assignment(conn, deal_item_id, user.username)
@@ -836,7 +842,7 @@ def mount_deals_routes(
                                 new_account_id,
                                 new_slot_type_code,
                                 customer_id,
-                                payload.product_id,
+                                new_product_id,
                                 deal_id,
                                 deal_item_id,
                                 user.username,
@@ -854,7 +860,7 @@ def mount_deals_routes(
         return {"ok": True}
 
     @app.post("/deals/{deal_id}/return")
-    def return_completed_sale_to_pending(deal_id: int, user=Depends(get_current_user)):
+    def return_completed_deal_to_pending(deal_id: int, user=Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT set_config('app.user', %s, true)", (user.username,))
@@ -874,8 +880,9 @@ def mount_deals_routes(
             if not row:
                 raise HTTPException(404, "Deal not found")
             deal_type_code, flow_status_code, returned_at = row
-            if str(deal_type_code or "").strip().lower() != "sale":
-                raise HTTPException(400, "return is allowed only for sale deals")
+            normalized_deal_type = str(deal_type_code or "").strip().lower()
+            if normalized_deal_type not in {"sale", "rental"}:
+                raise HTTPException(400, "return is allowed only for sale or rental deals")
             if str(flow_status_code or "").strip().lower() != "completed":
                 raise HTTPException(400, "return is allowed only for completed deals")
             if returned_at is not None:

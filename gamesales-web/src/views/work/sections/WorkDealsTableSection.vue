@@ -287,7 +287,7 @@
         </th>
         <th class="cell--tight deal-col-responsible">
           <span class="th-title th-title--filter">
-            {{ dealShowCompleted ? 'Ответств.' : 'Ответ.' }}
+            {{ dealShowCompleted ? 'Ответств.' : 'Ответств.' }}
             <span class="th-actions">
               <button
                 class="filter-icon"
@@ -388,7 +388,7 @@
             {{ dealSaving && dealCompletingId === d.deal_id ? 'Завершаем...' : 'Завершить' }}
           </button>
           <button
-            v-else-if="d.deal_type_code === 'sale' && !d.is_refund"
+            v-else-if="(d.deal_type_code === 'sale' || d.deal_type_code === 'rental') && !d.is_refund"
             class="mini-btn mini-btn--danger"
             type="button"
             @click.stop="markDealReturned(d)"

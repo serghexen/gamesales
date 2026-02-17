@@ -722,6 +722,7 @@ const newProductState = reactive({
 const newDeal = reactive(createNewDealState())
 const newDealResponsible = ref('')
 const newDealCommentOpen = ref(false)
+const editDealCommentOpen = ref(false)
 
 const editDeal = reactive(createEditDealState())
 const editDealResponsible = ref('')
@@ -1292,6 +1293,7 @@ const {
   newDealResponsible,
   editDealResponsible,
   newDealCommentOpen,
+  editDealCommentOpen,
   newDealProductSearch,
   editDealProductSearch,
   quickNewProduct,
@@ -2097,6 +2099,7 @@ const {
   dealAccountAssignmentsLoadingNew,
   dealAccountAssignmentsNew,
   newDealCommentOpen,
+  editDealCommentOpen,
   getCompactNotesRows,
   catalogsError,
   catalogsOk,

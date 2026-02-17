@@ -180,6 +180,21 @@ describe('useDealsActions', () => {
     expect(deps.apiPut.mock.calls[0][1].lock_version).toBe(7)
   })
 
+  it('updateDeal sends is_refund for rental too', async () => {
+    const deps = createDeps()
+    deps.editDeal.deal_type_code = 'rental'
+    deps.editDeal.is_refund = true
+    deps.editDeal.account_id = 15
+    deps.editDeal.product_id = 56
+    deps.editDeal.slot_type_code = 'share'
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.apiPut).toHaveBeenCalledTimes(1)
+    expect(deps.apiPut.mock.calls[0][1].is_refund).toBe(true)
+  })
+
   it('updateDeal sends manual created/completed dates for existing deal', async () => {
     const deps = createDeps()
     deps.editDeal.flow_status_code = 'completed'
@@ -331,6 +346,24 @@ describe('useDealsActions', () => {
     expect(deps.showDealWarning).toHaveBeenCalledWith('не достаточно прав для проведения возврата')
   })
 
+  it('updateDeal blocks rental refund completion for non-admin roles', async () => {
+    const deps = createDeps({
+      auth: { state: { token: 'token', user: 'tester', role: 'manager' } },
+    })
+    deps.editDeal.deal_type_code = 'rental'
+    deps.editDeal.account_id = 10
+    deps.editDeal.slot_type_code = 'share'
+    deps.editDeal.is_refund = true
+    deps.editDeal.flow_status_code = 'completed'
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.apiPut).not.toHaveBeenCalled()
+    expect(deps.dealError.value).toBeNull()
+    expect(deps.showDealWarning).toHaveBeenCalledWith('не достаточно прав для проведения возврата')
+  })
+
   it('markDealReturned calls return endpoint for completed sale', async () => {
     const deps = createDeps()
     const { markDealReturned } = useDealsActions(deps)
@@ -338,6 +371,16 @@ describe('useDealsActions', () => {
     await markDealReturned({ deal_id: 15, deal_type_code: 'sale', is_refund: false })
 
     expect(deps.apiPost).toHaveBeenCalledWith('/deals/15/return', {}, { token: 'token' })
+    expect(deps.loadDeals).toHaveBeenCalledWith(1)
+  })
+
+  it('markDealReturned calls return endpoint for completed rental', async () => {
+    const deps = createDeps()
+    const { markDealReturned } = useDealsActions(deps)
+
+    await markDealReturned({ deal_id: 16, deal_type_code: 'rental', is_refund: false })
+
+    expect(deps.apiPost).toHaveBeenCalledWith('/deals/16/return', {}, { token: 'token' })
     expect(deps.loadDeals).toHaveBeenCalledWith(1)
   })
 })

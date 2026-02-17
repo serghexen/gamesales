@@ -1163,6 +1163,26 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
 
+    # Возврат завершенного шеринга в pending также должен работать.
+    def test_return_completed_rental_to_pending_success(self):
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": ("rental", "completed", None)},  # deal state
+            {"one": ("Owner Name", "owner_user")},  # owner name + username
+            {"rowcount": 1},  # update deals
+            {"rowcount": 1},  # update deal_items
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post("/deals/77/return", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
+
     # Повторный возврат не разрешаем, если признак уже выставлен.
     def test_return_completed_sale_to_pending_forbidden_for_already_refund(self):
         script = [

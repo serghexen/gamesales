@@ -1,34 +1,244 @@
 <template>
-                    <div v-if="editDeal.open" class="form deal-form" :class="{ 'deal-form--sale': editDeal.deal_type_code === 'sale' }">
+                    <div v-if="editDeal.open" class="form deal-form" :class="{ 'deal-form--sale': editDeal.deal_type_code === 'sale' || editDeal.deal_type_code === 'rental' }">
                       <div class="deal-form__col deal-form__col--left">
-                        <label
-                          v-if="editDeal.deal_type_code === 'rental' && (dealEditMode === 'view' || dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length)"
-                          class="field"
-                        >
-                          <span class="label">Тип слота</span>
+                        <div v-if="editDeal.deal_type_code === 'rental'" class="deal-form__triple deal-form__triple--sale-status-row">
+                          <label class="field">
+                            <span class="label">Дата создания</span>
+                            <input
+                              v-if="dealEditMode !== 'view' && canEditSystemDates"
+                              v-model="editDeal.created_at"
+                              class="input"
+                              type="datetime-local"
+                            />
+                            <input
+                              v-else
+                              class="input"
+                              :value="formatDateTimeMinutes(editDeal.created_at)"
+                              readonly
+                            />
+                          </label>
+                          <label class="field">
+                            <span class="label">Дата завершения</span>
+                            <input
+                              v-if="dealEditMode !== 'view' && canEditSystemDates"
+                              v-model="editDeal.completed_at"
+                              class="input"
+                              type="datetime-local"
+                            />
+                            <input
+                              v-else
+                              class="input"
+                              :value="editDeal.completed_at ? formatDateTimeMinutes(editDeal.completed_at) : '—'"
+                              readonly
+                            />
+                          </label>
+                          <label class="field">
+                            <span class="label">Статус</span>
+                            <input
+                              v-if="dealEditMode === 'view'"
+                              class="input"
+                              :value="getFlowStatusLabel(editDeal.flow_status_code)"
+                              readonly
+                            />
+                            <select v-else v-model="editDeal.flow_status_code" class="input input--select">
+                              <option value="">— не выбрано —</option>
+                              <option v-for="s in editFlowStatusOptions" :key="s.code" :value="s.code">
+                                {{ s.name }}
+                              </option>
+                            </select>
+                          </label>
+                        </div>
+                        <div v-if="editDeal.deal_type_code === 'rental' && (dealEditMode !== 'view' || editDeal.is_refund)" class="field">
+                          <span class="label">Возврат</span>
                           <input
                             v-if="dealEditMode === 'view'"
                             class="input"
-                            :value="getSlotTypeLabel(editDeal.slot_type_code)"
+                            :value="editDeal.is_refund ? 'Да' : 'Нет'"
                             readonly
                           />
-                          <select
-                            v-else
-                            v-model="editDeal.slot_type_code"
-                            class="input input--select"
-                            :disabled="!editDeal.product_id || dealSlotAvailabilityLoadingEdit"
+                          <label v-else class="check-item" :title="refundEditBlockedReason">
+                            <input
+                              v-model="editDeal.is_refund"
+                              type="checkbox"
+                              :disabled="!canEditRefundFlag"
+                            />
+                            <span>Произвести возврат</span>
+                          </label>
+                        </div>
+                        <div
+                          v-if="editDeal.deal_type_code === 'rental'"
+                          class="deal-form__triple deal-form__triple--rental-top"
+                        >
+                          <label class="field">
+                            <span class="label">Источник</span>
+                            <input
+                              v-if="dealEditMode === 'view'"
+                              class="input"
+                              :value="getSourceLabelById(editDeal.source_id)"
+                              readonly
+                            />
+                            <select v-else v-model.number="editDeal.source_id" class="input input--select">
+                              <option value="">— не выбрано —</option>
+                              <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">
+                                {{ s.name }} ({{ s.code }})
+                              </option>
+                            </select>
+                          </label>
+                          <label class="field">
+                            <span class="label">Номер заявки</span>
+                            <input v-model.trim="editDeal.order_number" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
+                          </label>
+                          <label class="field">
+                            <span class="label">Покупатель</span>
+                            <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
+                          </label>
+                          <label class="field">
+                            <span class="label">Сумма</span>
+                            <input
+                              v-model.number="editDeal.price"
+                              class="input"
+                              type="number"
+                              min="0"
+                              :max="maxPrice"
+                              @input="editDeal.price = clampPrice(editDeal.price)"
+                              :readonly="dealEditMode === 'view'"
+                            />
+                          </label>
+                        </div>
+                        <label
+                          v-if="editDeal.deal_type_code === 'rental'"
+                          class="field field--product"
+                          :class="{ 'field--product-selected': Boolean(editDeal.product_id) && !editDealProductSearch }"
+                        >
+                          <span class="label">Товар</span>
+                          <input
+                            v-if="dealEditMode === 'view'"
+                            class="input"
+                            :value="getProductLabelById(editDeal.product_id)"
+                            readonly
+                          />
+                          <div v-else-if="!editDeal.product_id" class="input input--compact input--search input--search-row">
+                            <input
+                              v-model.trim="editDealProductSearch"
+                              class="input--search-field"
+                              placeholder="поиск товара"
+                              @input="onEditDealProductSearch"
+                            />
+                          </div>
+                          <div
+                            v-if="dealEditMode !== 'view'"
+                            class="input--select-wrap"
+                            :class="{ 'input--select-wrap--selected': Boolean(editDeal.product_id) && !editDealProductSearch }"
                           >
-                            <option value="">{{ !editDeal.product_id ? 'Сначала выберите товар' : (dealSlotAvailabilityLoadingEdit ? '(формируется список)' : '— не выбрано —') }}</option>
-                            <option
-                              v-for="st in getDealSlotTypeOptions('edit')"
-                              :key="st.code"
-                              :value="st.code"
-                              :disabled="!st.supported"
+                            <input
+                              v-if="editDeal.product_id && !editDealProductSearch"
+                              class="input"
+                              :value="getProductLabelById(editDeal.product_id)"
+                              readonly
+                            />
+                            <select
+                              v-else-if="!editDealProductNoMatches"
+                              v-model.number="editDeal.product_id"
+                              :class="[
+                                'input input--select input--list',
+                                { 'input--list--compact': editDealProductNoMatches || (editDeal.product_id && !editDealProductSearch) }
+                              ]"
+                              :size="editDealProductNoMatches ? 1 : 8"
+                              @change="syncEditDealProductSearch"
                             >
-                              {{ getDealSlotTypeLabel(st) }}
-                            </option>
-                          </select>
+                              <option value="">— не выбрано —</option>
+                              <option v-for="g in filteredEditDealProducts" :key="g.product_id" :value="g.product_id">
+                                {{ g.title }}
+                              </option>
+                            </select>
+                            <button
+                              v-if="editDeal.product_id"
+                              class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                              type="button"
+                              aria-label="Очистить товар"
+                              title="Очистить товар"
+                              @click="clearEditDealProduct"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M6 6l12 12M18 6l-12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                          <div
+                            v-if="dealEditMode !== 'view' && editDealProductNoMatches"
+                            class="quick-create quick-create--product-empty"
+                          >
+                            <div class="quick-create__title">Быстро создать товар</div>
+                            <input v-model.trim="quickEditProduct.title" class="input input--compact" placeholder="Название товара" />
+                            <div class="check-list check-list--compact">
+                              <label v-for="p in platforms" :key="`qe-${p.code}`" class="check-item">
+                                <input type="checkbox" :value="p.code" v-model="quickEditProduct.platform_codes" />
+                                <span>{{ p.name }} ({{ p.code }})</span>
+                              </label>
+                            </div>
+                            <div class="quick-create__actions">
+                              <button
+                                class="ghost ghost--small"
+                                type="button"
+                                :disabled="quickEditProductLoading"
+                                @click="createQuickProduct('edit')"
+                              >
+                                <span v-if="quickEditProductLoading" class="spinner spinner--small"></span>
+                                Создать
+                              </button>
+                              <span v-if="quickEditProductError" class="bad">{{ quickEditProductError }}</span>
+                            </div>
+                          </div>
                         </label>
+                        <div v-if="editDeal.deal_type_code === 'rental'" class="deal-form__double">
+                          <label
+                            v-if="dealEditMode === 'view' || dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length"
+                            class="field"
+                          >
+                            <span class="label">Тип слота</span>
+                            <input
+                              v-if="dealEditMode === 'view'"
+                              class="input"
+                              :value="getSlotTypeLabel(editDeal.slot_type_code)"
+                              readonly
+                            />
+                            <select
+                              v-else
+                              v-model="editDeal.slot_type_code"
+                              class="input input--select"
+                              :disabled="!editDeal.product_id || dealSlotAvailabilityLoadingEdit"
+                            >
+                              <option value="">{{ !editDeal.product_id ? 'Сначала выберите товар' : (dealSlotAvailabilityLoadingEdit ? '(формируется список)' : '— не выбрано —') }}</option>
+                              <option
+                                v-for="st in getDealSlotTypeOptions('edit')"
+                                :key="st.code"
+                                :value="st.code"
+                                :disabled="!st.supported"
+                              >
+                                {{ getDealSlotTypeLabel(st) }}
+                              </option>
+                            </select>
+                          </label>
+                          <label class="field">
+                            <span class="label">Ответственный</span>
+                            <input
+                              v-if="dealEditMode === 'view'"
+                              class="input"
+                              :value="editDealResponsible || '— не выбрано —'"
+                              readonly
+                            />
+                            <select v-else v-model="editDealResponsible" class="input input--select">
+                              <option value="">— не выбрано —</option>
+                              <option
+                                v-for="responsibleName in responsibleUserOptions"
+                                :key="`edit-rental-responsible-${responsibleName}`"
+                                :value="responsibleName"
+                              >
+                                {{ responsibleName }}
+                              </option>
+                            </select>
+                          </label>
+                        </div>
                         <label v-if="editDeal.deal_type_code === 'rental'" class="field">
                           <span
                             v-if="dealEditMode === 'view' || dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length || editDeal.account_id"
@@ -167,6 +377,18 @@
                             </tbody>
                           </table>
                           <p v-else class="muted">Пока нет назначенных слотов.</p>
+                        </div>
+                        <div v-if="editDeal.deal_type_code === 'rental'" class="field field--comment-collapsible">
+                          <button class="comment-toggle" type="button" @click="editDealCommentOpen = !editDealCommentOpen">
+                            {{ editDealCommentOpen || editDeal.notes ? 'Комментарий' : '+ Комментарий' }}
+                          </button>
+                          <textarea
+                            v-if="editDealCommentOpen || editDeal.notes"
+                            v-model.trim="editDeal.notes"
+                            class="input input--textarea input--textarea--compact"
+                            :rows="getCompactNotesRows(editDeal.notes)"
+                            :readonly="dealEditMode === 'view'"
+                          />
                         </div>
                         <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-status-row">
                           <label class="field">
@@ -327,35 +549,6 @@
                             />
                           </label>
                         </div>
-                        <label v-else class="field">
-                          <span class="label">Покупатель</span>
-                          <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
-                        </label>
-                        <label v-if="editDeal.deal_type_code !== 'sale'" class="field">
-                          <span class="label">Источник</span>
-                          <input
-                            v-if="dealEditMode === 'view'"
-                            class="input"
-                            :value="getSourceLabelById(editDeal.source_id)"
-                            readonly
-                          />
-                          <select v-else v-model.number="editDeal.source_id" class="input input--select">
-                            <option value="">— не выбрано —</option>
-                            <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">
-                              {{ s.name }} ({{ s.code }})
-                            </option>
-                          </select>
-                        </label>
-                        <label v-if="editDeal.deal_type_code === 'rental'" class="field">
-                          <span class="label">Дата</span>
-                          <input
-                            v-model="editDeal.purchase_at"
-                            class="input"
-                            type="date"
-                            :max="maxDate"
-                            :readonly="dealEditMode === 'view'"
-                          />
-                        </label>
                         <label v-if="editDeal.deal_type_code === 'sale'" class="field">
                           <span class="label">Ссылка на товар</span>
                           <input
@@ -365,135 +558,12 @@
                             :readonly="dealEditMode === 'view'"
                           />
                         </label>
-                        <label v-if="editDeal.deal_type_code !== 'sale'" class="field">
-                          <span class="label">Сумма</span>
-                          <input
-                            v-model.number="editDeal.price"
-                            class="input"
-                            type="number"
-                            min="0"
-                            :max="maxPrice"
-                            @input="editDeal.price = clampPrice(editDeal.price)"
-                            :readonly="dealEditMode === 'view'"
-                          />
-                        </label>
-                        <label v-if="editDeal.deal_type_code !== 'sale'" class="field">
-                          <span class="label">Статус</span>
-                          <input
-                            v-if="dealEditMode === 'view'"
-                            class="input"
-                            :value="getFlowStatusLabel(editDeal.flow_status_code)"
-                            readonly
-                          />
-                          <select v-else v-model="editDeal.flow_status_code" class="input input--select">
-                            <option value="">— не выбрано —</option>
-                            <option v-for="s in editFlowStatusOptions" :key="s.code" :value="s.code">
-                              {{ s.name }}
-                            </option>
-                          </select>
-                        </label>
                         <label v-if="editDeal.deal_type_code === 'sale'" class="field">
                           <span class="label">Комментарий</span>
                           <textarea
                             v-model.trim="editDeal.notes"
                             class="input input--textarea input--textarea--compact"
                             :rows="getCompactNotesRows(editDeal.notes)"
-                            :readonly="dealEditMode === 'view'"
-                          />
-                        </label>
-                      </div>
-                      <div v-if="editDeal.deal_type_code !== 'sale'" class="deal-form__col deal-form__col--right">
-                        <label
-                          v-if="editDeal.deal_type_code === 'rental'"
-                          class="field field--product"
-                          :class="{ 'field--product-selected': Boolean(editDeal.product_id) && !editDealProductSearch }"
-                        >
-                          <span class="label">Товар</span>
-                          <input
-                            v-if="dealEditMode === 'view'"
-                            class="input"
-                            :value="getProductLabelById(editDeal.product_id)"
-                            readonly
-                          />
-                          <div v-else-if="!editDeal.product_id" class="input input--compact input--search input--search-row">
-                            <input
-                              v-model.trim="editDealProductSearch"
-                              class="input--search-field"
-                              placeholder="поиск товара"
-                              @input="onEditDealProductSearch"
-                            />
-                          </div>
-                          <div
-                            v-if="dealEditMode !== 'view'"
-                            class="input--select-wrap"
-                            :class="{ 'input--select-wrap--selected': Boolean(editDeal.product_id) && !editDealProductSearch }"
-                          >
-                            <input
-                              v-if="editDeal.product_id && !editDealProductSearch"
-                              class="input"
-                              :value="getProductLabelById(editDeal.product_id)"
-                              readonly
-                            />
-                            <select
-                              v-else-if="!editDealProductNoMatches"
-                              v-model.number="editDeal.product_id"
-                              :class="[
-                                'input input--select input--list',
-                                { 'input--list--compact': editDealProductNoMatches || (editDeal.product_id && !editDealProductSearch) }
-                              ]"
-                              :size="editDealProductNoMatches ? 1 : 8"
-                              @change="syncEditDealProductSearch"
-                            >
-                              <option value="">— не выбрано —</option>
-                              <option v-for="g in filteredEditDealProducts" :key="g.product_id" :value="g.product_id">
-                                {{ g.title }}
-                              </option>
-                            </select>
-                            <button
-                              v-if="editDeal.product_id"
-                              class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
-                              type="button"
-                              aria-label="Очистить товар"
-                              title="Очистить товар"
-                              @click="clearEditDealProduct"
-                            >
-                              <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <path d="M6 6l12 12M18 6l-12 12" />
-                              </svg>
-                            </button>
-                          </div>
-                          <div
-                            v-if="dealEditMode !== 'view' && editDealProductNoMatches"
-                            class="quick-create quick-create--product-empty"
-                          >
-                            <div class="quick-create__title">Быстро создать товар</div>
-                            <input v-model.trim="quickEditProduct.title" class="input input--compact" placeholder="Название товара" />
-                            <div class="check-list check-list--compact">
-                              <label v-for="p in platforms" :key="`qe-${p.code}`" class="check-item">
-                                <input type="checkbox" :value="p.code" v-model="quickEditProduct.platform_codes" />
-                                <span>{{ p.name }} ({{ p.code }})</span>
-                              </label>
-                            </div>
-                            <div class="quick-create__actions">
-                              <button
-                                class="ghost ghost--small"
-                                type="button"
-                                :disabled="quickEditProductLoading"
-                                @click="createQuickProduct('edit')"
-                              >
-                                <span v-if="quickEditProductLoading" class="spinner spinner--small"></span>
-                                Создать
-                              </button>
-                              <span v-if="quickEditProductError" class="bad">{{ quickEditProductError }}</span>
-                            </div>
-                          </div>
-                        </label>
-                        <label class="field">
-                          <span class="label">Комментарий</span>
-                          <textarea
-                            v-model.trim="editDeal.notes"
-                            class="input input--textarea input--textarea--tall"
-                            :rows="getNotesRows(editDeal.notes)"
                             :readonly="dealEditMode === 'view'"
                           />
                         </label>
@@ -796,6 +866,16 @@
                           </table>
                           <p v-else class="muted">Пока нет назначенных слотов.</p>
                         </div>
+                        <div v-if="newDeal.deal_type_code === 'sale' || newDeal.deal_type_code === 'rental'" class="field">
+                          <span class="label">Возврат</span>
+                          <label class="check-item">
+                            <input
+                              v-model="newDeal.is_refund"
+                              type="checkbox"
+                            />
+                            <span>Произвести возврат</span>
+                          </label>
+                        </div>
                         <div v-if="newDeal.deal_type_code === 'rental'" class="field field--comment-collapsible">
                           <button class="comment-toggle" type="button" @click="newDealCommentOpen = !newDealCommentOpen">
                             {{ newDealCommentOpen || newDeal.notes ? 'Комментарий' : '+ Комментарий' }}
@@ -921,7 +1001,6 @@ const {
   regions,
   getSourceLabelById,
   sourcesByCode,
-  maxDate,
   maxPrice,
   clampPrice,
   getFlowStatusLabel,
@@ -937,7 +1016,6 @@ const {
   quickEditProductLoading,
   createQuickProduct,
   quickEditProductError,
-  getNotesRows,
   dealError,
   dealOk,
   newDeal,
@@ -965,6 +1043,7 @@ const {
   dealAccountAssignmentsLoadingNew,
   dealAccountAssignmentsNew,
   newDealCommentOpen,
+  editDealCommentOpen,
   getCompactNotesRows,
 } = toRefs(ctx)
 

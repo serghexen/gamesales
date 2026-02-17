@@ -95,8 +95,8 @@ export function useDealsActions({
       slots_used: dealTypeCode === 'rental' ? 1 : 0,
       notes: deal.notes || null,
       flow_status_code: nextFlowStatus,
-      // Признак возврата отправляем только для продаж, для остальных типов не трогаем поле.
-      is_refund: dealTypeCode === 'sale' ? Boolean(deal.is_refund) : null,
+      // Признак возврата поддерживаем для продажи и шеринга, остальные типы не трогаем.
+      is_refund: (dealTypeCode === 'sale' || dealTypeCode === 'rental') ? Boolean(deal.is_refund) : null,
     }
     // Системные даты передаем только для завершенных сделок (иначе backend отклонит запрос).
     if (deal?.deal_id && String(nextFlowStatus || '').trim().toLowerCase() === 'completed') {
@@ -115,7 +115,10 @@ export function useDealsActions({
     const draftSave = isDraftSave(saveAsDraft)
     if (!draftSave && !deal.customer_nickname) return 'Укажите покупателя'
     if (deal.deal_type_code === 'rental' && !draftSave) {
-      if (!deal.account_id || !deal.product_id) return 'Для шеринга укажите аккаунт и товар'
+      // Проверяем в нормализованном виде, чтобы не отправлять в API пустые/невалидные id.
+      const accountId = normalizeOptionalInt(deal.account_id)
+      const productId = normalizeOptionalInt(deal.product_id)
+      if (!accountId || !productId) return 'Для шеринга укажите аккаунт и товар'
       if (!deal.slot_type_code) return 'Для шеринга выберите тип слота'
     }
     if (deal.deal_type_code === 'sale' && !draftSave) {
@@ -205,7 +208,7 @@ export function useDealsActions({
       ? 'draft'
       : (editDeal.flow_status_code || null)
     // Для возврата проверяем право проведения заранее, чтобы не ждать ответ сервера.
-    const triesCompleteRefund = editDeal.deal_type_code === 'sale'
+    const triesCompleteRefund = (editDeal.deal_type_code === 'sale' || editDeal.deal_type_code === 'rental')
       && Boolean(editDeal.is_refund)
       && nextFlowStatus === 'completed'
       && !editDeal.completed_at
@@ -363,13 +366,13 @@ export function useDealsActions({
     return completedOk
   }
 
-  // Возвращает завершенную продажу в "pending", включает признак возврата и передает владельцу.
+  // Возвращает завершенную продажу/шеринг в "pending", включает признак возврата и передает владельцу.
   async function markDealReturned(deal) {
     if (!deal?.deal_id) return
     dealError.value = null
     dealOk.value = null
     // Дублируем клиентскую проверку, чтобы не отправлять лишний запрос.
-    if (deal.deal_type_code !== 'sale' || deal.is_refund) return
+    if ((deal.deal_type_code !== 'sale' && deal.deal_type_code !== 'rental') || deal.is_refund) return
     if (dealCompletingId) dealCompletingId.value = deal.deal_id
     dealSaving.value = true
     try {

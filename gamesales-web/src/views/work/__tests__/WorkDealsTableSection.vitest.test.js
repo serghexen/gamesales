@@ -101,6 +101,34 @@ describe('WorkDealsTableSection', () => {
     expect(markDealReturned).toHaveBeenCalledTimes(1)
   })
 
+  it('shows return action for completed non-refund rental', async () => {
+    const markDealReturned = vi.fn()
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        dealShowCompleted: true,
+        markDealReturned,
+        sortedDeals: [
+          {
+            deal_id: 2,
+            deal_type: 'Шеринг',
+            deal_type_code: 'rental',
+            customer_nickname: 'Покупатель',
+            region_code: 'RU',
+            purchase_at: '2026-02-11 10:00',
+            created_at: '2026-02-11 09:00',
+            completed_at: '2026-02-11 11:00',
+            flow_status: 'Завершен',
+            responsible_username: 'manager',
+            is_refund: false,
+          },
+        ],
+      }),
+    })
+
+    await wrapper.find('button.mini-btn--danger').trigger('click')
+    expect(markDealReturned).toHaveBeenCalledTimes(1)
+  })
+
   it('calls completion action from complete button in pending list', async () => {
     const markDealCompleted = vi.fn()
     const wrapper = mount(WorkDealsTableSection, {

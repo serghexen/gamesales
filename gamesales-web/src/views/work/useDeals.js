@@ -108,6 +108,8 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
       // Нормализуем ответ в product-first поля для единого контракта UI.
       dealItems.value = (res?.items || []).map((item) => ({
         ...item,
+        // Поддерживаем старые ответы API, где товар мог приходить как game_id.
+        product_id: item?.product_id ?? item?.game_id ?? null,
         product_title: item?.product_title || '',
         product_short_title: item?.product_short_title || '',
         product_link: item?.product_link || '',

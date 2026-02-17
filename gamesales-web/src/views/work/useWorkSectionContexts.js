@@ -195,6 +195,7 @@ export function useWorkSectionContexts({
   dealAccountAssignmentsLoadingNew,
   dealAccountAssignmentsNew,
   newDealCommentOpen,
+  editDealCommentOpen,
   getCompactNotesRows,
   catalogsError,
   catalogsOk,
@@ -488,6 +489,7 @@ export function useWorkSectionContexts({
     dealAccountAssignmentsLoadingNew,
     dealAccountAssignmentsNew,
     newDealCommentOpen,
+    editDealCommentOpen,
     getCompactNotesRows,
   })
 
