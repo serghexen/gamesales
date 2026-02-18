@@ -381,10 +381,49 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(len(res.json()), 1)
             self.assertEqual(res.json()[0]["account_id"], 7)
 
-    # Негейм-товар не должен использоваться для слотов.
-    def test_slot_availability_for_deal_rejects_non_game_product(self):
+    # Для подписки список аккаунтов для шеринга тоже должен возвращаться.
+    def test_list_accounts_for_deal_supports_subscription_product(self):
         script = [
             {"one": ("subscription", False)},
+            {
+                "all": [
+                    (
+                        9,
+                        "RU",
+                        "active",
+                        "subacc",
+                        "gmail.com",
+                        "2024-02-01",
+                        "notes",
+                        ["ps5"],
+                        "ps5",
+                        2,
+                        0,
+                        2,
+                    )
+                ]
+            },
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/for-deal?product_id=88&slot_type_code=ps5_p1",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(len(res.json()), 1)
+            self.assertEqual(res.json()[0]["account_id"], 9)
+
+    # Для подписки endpoint доступности слотов тоже должен работать.
+    def test_slot_availability_for_deal_supports_subscription_product(self):
+        script = [
+            {"one": ("subscription", False)},
+            {"all": [("ps5_p1", True)]},
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
@@ -397,7 +436,8 @@ class AccountsEndpointsTests(unittest.TestCase):
                     "/accounts/for-deal/availability?product_id=88",
                     headers=self._auth_headers(role="manager"),
                 )
-            self.assertEqual(res.status_code, 400)
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json()[0]["slot_type_code"], "ps5_p1")
 
     # Новый endpoint по товару должен возвращать назначения слотов с product-полями.
     def test_list_product_slot_assignments_success(self):
@@ -607,6 +647,29 @@ class AccountsEndpointsTests(unittest.TestCase):
                     "/accounts/7/products",
                     headers=self._auth_headers(role="admin"),
                     json={"product_ids": [55]},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json()["ok"], True)
+
+    # Привязка товаров аккаунта должна принимать подписки как обычный товар.
+    def test_set_account_products_supports_subscription_type(self):
+        script = [
+            {"one": (1,)},
+            {"all": [(88, "subscription", False)]},
+            {"rowcount": 1},
+            {"rowcount": 1},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/accounts/7/products",
+                    headers=self._auth_headers(role="admin"),
+                    json={"product_ids": [88]},
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json()["ok"], True)

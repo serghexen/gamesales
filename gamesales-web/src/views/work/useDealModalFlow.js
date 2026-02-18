@@ -70,6 +70,7 @@ export function useDealModalFlow({
       source_id: newDeal.source_id,
       region_code: newDeal.region_code,
       slot_type_code: newDeal.slot_type_code,
+      reserve_key: newDeal.reserve_key,
       price: newDeal.price,
       purchase_cost: newDeal.purchase_cost,
       login: newDeal.login,
@@ -99,6 +100,7 @@ export function useDealModalFlow({
     editDeal.source_id = deal.source_id || ''
     editDeal.region_code = deal.region_code || ''
     editDeal.slot_type_code = deal.slot_type_code || ''
+    editDeal.reserve_key = deal.reserve_key || ''
     editDeal.price = Number(deal.price || 0)
     editDeal.purchase_cost = Number(deal.purchase_cost || 0)
     editDeal.login = deal.login || ''
@@ -128,6 +130,7 @@ export function useDealModalFlow({
     editDeal.source_id = ''
     editDeal.region_code = ''
     editDeal.slot_type_code = ''
+    editDeal.reserve_key = ''
     editDeal.price = 0
     editDeal.purchase_cost = 0
     editDeal.login = ''
@@ -198,6 +201,7 @@ export function useDealModalFlow({
       source_id: '',
       region_code: '',
       slot_type_code: '',
+      reserve_key: '',
       price: 0,
       purchase_cost: 0,
       login: '',
@@ -218,6 +222,7 @@ export function useDealModalFlow({
       source_id: newDeal.source_id,
       region_code: newDeal.region_code,
       slot_type_code: newDeal.slot_type_code,
+      reserve_key: newDeal.reserve_key,
       price: newDeal.price,
       purchase_cost: newDeal.purchase_cost,
       login: newDeal.login,
@@ -239,6 +244,7 @@ export function useDealModalFlow({
       source_id: editDeal.source_id,
       region_code: editDeal.region_code,
       slot_type_code: editDeal.slot_type_code,
+      reserve_key: editDeal.reserve_key,
       price: editDeal.price,
       purchase_cost: editDeal.purchase_cost,
       login: editDeal.login,
@@ -268,6 +274,7 @@ export function useDealModalFlow({
     newDeal.source_id = ''
     newDeal.region_code = ''
     newDeal.slot_type_code = ''
+    newDeal.reserve_key = ''
     newDeal.price = 0
     newDeal.purchase_cost = 0
     newDeal.login = ''
@@ -336,6 +343,7 @@ export function useDealModalFlow({
       source_id: deal.source_id || '',
       region_code: deal.region_code || '',
       slot_type_code: deal.slot_type_code || '',
+      reserve_key: deal.reserve_key || '',
       price: Number(deal.price || 0),
       purchase_cost: Number(deal.purchase_cost || 0),
       login: deal.login || '',

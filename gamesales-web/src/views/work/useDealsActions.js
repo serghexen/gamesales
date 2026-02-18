@@ -71,7 +71,7 @@ export function useDealsActions({
   }
 
   // Собирает payload для create/update в едином формате, чтобы не дублировать маппинг полей.
-  function buildDealPayload(deal, responsible, saveAsDraft = false) {
+  function buildDealPayload(deal, responsible, saveAsDraft = false, { allowRefundForSaleAndRental = true } = {}) {
     const dealTypeCode = deal.deal_type_code
     const draftSave = isDraftSave(saveAsDraft)
     const nextFlowStatus = draftSave ? 'draft' : (deal.flow_status_code || null)
@@ -86,6 +86,7 @@ export function useDealsActions({
       source_id: normalizeOptionalInt(deal.source_id),
       region_code: deal.region_code || null,
       slot_type_code: dealTypeCode === 'rental' ? (deal.slot_type_code || null) : null,
+      reserve_key: dealTypeCode === 'rental' ? (deal.reserve_key || null) : null,
       price: deal.price || 0,
       purchase_cost: deal.purchase_cost || 0,
       login: deal.login || null,
@@ -95,8 +96,10 @@ export function useDealsActions({
       slots_used: dealTypeCode === 'rental' ? 1 : 0,
       notes: deal.notes || null,
       flow_status_code: nextFlowStatus,
-      // Признак возврата поддерживаем для продажи и шеринга, остальные типы не трогаем.
-      is_refund: (dealTypeCode === 'sale' || dealTypeCode === 'rental') ? Boolean(deal.is_refund) : null,
+      // Для create продажи/шеринга принудительно отключаем возврат: его выставляют через статусы.
+      is_refund: (dealTypeCode === 'sale' || dealTypeCode === 'rental')
+        ? (allowRefundForSaleAndRental ? Boolean(deal.is_refund) : false)
+        : null,
     }
     // Системные даты передаем только для завершенных сделок (иначе backend отклонит запрос).
     if (deal?.deal_id && String(nextFlowStatus || '').trim().toLowerCase() === 'completed') {
@@ -111,9 +114,10 @@ export function useDealsActions({
   }
 
   // Проверяет обязательные поля. Для черновика сделки допускаем пустые поля.
-  function validateDealBeforeSave(deal, { saveAsDraft = false } = {}) {
+  function validateDealBeforeSave(deal, { saveAsDraft = false, isUpdate = false } = {}) {
     const draftSave = isDraftSave(saveAsDraft)
-    if (!draftSave && !deal.customer_nickname) return 'Укажите покупателя'
+    // Для update не блокируем правку по отсутствующему покупателю в старых сделках.
+    if (!draftSave && !isUpdate && !deal.customer_nickname) return 'Укажите покупателя'
     if (deal.deal_type_code === 'rental' && !draftSave) {
       // Проверяем в нормализованном виде, чтобы не отправлять в API пустые/невалидные id.
       const accountId = normalizeOptionalInt(deal.account_id)
@@ -135,6 +139,7 @@ export function useDealsActions({
     const validationError = validateDealBeforeSave(newDeal, { saveAsDraft })
     if (validationError) {
       dealError.value = validationError
+      if (typeof showDealWarning === 'function') showDealWarning(validationError)
       return
     }
     dealLoading.value = true
@@ -143,7 +148,7 @@ export function useDealsActions({
     try {
       await apiPost(
         '/deals',
-        buildDealPayload(newDeal, newDealResponsible, saveAsDraft),
+        buildDealPayload(newDeal, newDealResponsible, saveAsDraft, { allowRefundForSaleAndRental: false }),
         { token: auth.state.token }
       )
       createdOk = true
@@ -199,9 +204,10 @@ export function useDealsActions({
     dealError.value = null
     dealOk.value = null
     if (!editDeal.deal_id) return
-    const validationError = validateDealBeforeSave(editDeal, { saveAsDraft })
+    const validationError = validateDealBeforeSave(editDeal, { saveAsDraft, isUpdate: true })
     if (validationError) {
       dealError.value = validationError
+      if (typeof showDealWarning === 'function') showDealWarning(validationError)
       return
     }
     const nextFlowStatus = isDraftSave(saveAsDraft)

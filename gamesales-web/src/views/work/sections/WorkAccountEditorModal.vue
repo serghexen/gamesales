@@ -10,7 +10,7 @@
                         v-if="accountModalMode === 'edit' && accountEditMode === 'edit'"
                         class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
                         @click="updateAccount"
-                        :disabled="accountsLoading"
+                        :disabled="accountBusy"
                         aria-label="Сохранить изменения"
                         title="Сохранить изменения"
                       >
@@ -24,7 +24,7 @@
                         v-if="accountModalMode === 'create'"
                         class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
                         @click="createAccount"
-                        :disabled="accountsLoading"
+                        :disabled="accountBusy"
                         aria-label="Создать аккаунт"
                         title="Создать аккаунт"
                       >
@@ -72,26 +72,14 @@
                       </button>
                     </div>
                   </div>
-                  <div class="modal__body" :class="{ 'modal__body--locked': accountsLoading }">
-                    <div v-if="accountsLoading" class="modal__body-overlay">
+                  <div class="modal__body" :class="{ 'modal__body--locked': accountBusy }">
+                    <div v-if="accountBusy" class="modal__body-overlay">
                       <div class="loader-wrap loader-wrap--compact">
-                        <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
-                          <div class="wheel"></div>
-                          <div class="hamster">
-                            <div class="hamster__body">
-                              <div class="hamster__head">
-                                <div class="hamster__ear"></div>
-                                <div class="hamster__eye"></div>
-                                <div class="hamster__nose"></div>
-                              </div>
-                              <div class="hamster__limb hamster__limb--fr"></div>
-                              <div class="hamster__limb hamster__limb--fl"></div>
-                              <div class="hamster__limb hamster__limb--br"></div>
-                              <div class="hamster__limb hamster__limb--bl"></div>
-                              <div class="hamster__tail"></div>
-                            </div>
-                          </div>
-                          <div class="spoke"></div>
+                        <div class="newtons-cradle" aria-label="Loading" role="img">
+                          <div class="newtons-cradle__dot"></div>
+                          <div class="newtons-cradle__dot"></div>
+                          <div class="newtons-cradle__dot"></div>
+                          <div class="newtons-cradle__dot"></div>
                         </div>
                         <p class="muted">Загрузка…</p>
                       </div>
@@ -178,13 +166,35 @@
                           {{ editAccountReserveOpen || editAccount.reserve_text ? 'Резерв' : '+ Резерв' }}
                         </button>
                         <textarea
-                          v-if="editAccountReserveOpen || editAccount.reserve_text"
+                          v-if="accountEditMode !== 'view' && (editAccountReserveOpen || editAccount.reserve_text)"
                           v-model.trim="editAccount.reserve_text"
                           class="input input--textarea input--textarea--compact"
                           :rows="getCompactNotesRows(editAccount.reserve_text)"
                           placeholder="mkn4N5 6uGjMm ..."
-                          :readonly="accountEditMode === 'view'"
                         />
+                        <div v-else-if="editAccountReserveOpen || editAccount.reserve_text" class="field field--full account-reserve-list">
+                          <div
+                            v-for="(reserveValue, idx) in editReserveRows"
+                            :key="`edit-reserve-${idx}`"
+                            class="account-reserve-row"
+                          >
+                            <div class="account-reserve-row__meta">
+                              <span class="label account-reserve-row__label">Резерв {{ idx + 1 }}</span>
+                              <span
+                                v-if="isReserveUsedByIndex(idx)"
+                                class="account-reserve-row__badge"
+                              >
+                                использован
+                              </span>
+                            </div>
+                            <input
+                              class="input input--compact"
+                              :value="reserveValue"
+                              placeholder="код резерва"
+                              readonly
+                            />
+                          </div>
+                        </div>
                       </div>
                       <div class="field field--full">
                         <span class="label account-products-title">Товары (необязательно)</span>
@@ -455,6 +465,7 @@ const props = defineProps([
   'toggleAccountEditMode',
   'updateAccount',
   'accountsLoading',
+  'accountSaving',
   'createAccount',
   'deleteAccount',
   'accountProductsLoading',
@@ -500,6 +511,9 @@ const editAccountProductSearchModel = computed({
   set: (value) => props.setEditAccountProductSearch(value),
 })
 
+// Блокируем форму при загрузке или сохранении, чтобы пользователь видел единый индикатор.
+const accountBusy = computed(() => Boolean(props.accountsLoading || props.accountSaving))
+
 const editAccountProductTypeModel = computed({
   get: () => props.editAccountProductType,
   set: (value) => props.setEditAccountProductType(value),
@@ -530,6 +544,7 @@ const newAccountReserveOpen = ref(false)
 const newAccountCommentOpen = ref(false)
 const editAccountReserveOpen = ref(false)
 const editAccountCommentOpen = ref(false)
+const editReserveRows = ref([''])
 
 // Приводит подпись типа товара к короткому читаемому виду для списка чекбоксов.
 const getProductTypeLabel = (typeCode) => (String(typeCode || '').toLowerCase() === 'subscription' ? 'подписка' : 'игра')
@@ -541,6 +556,45 @@ const getCompactNotesRows = (value) => {
   return Math.max(2, Math.min(6, Math.ceil(text.length / 110)))
 }
 
+// Разбивает строку резервов по пробелам, чтобы показывать их отдельными полями.
+const getReserveRows = (value) => {
+  const rows = String(value || '')
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+  return rows.length ? rows : ['']
+}
+
+// Нормализует ключ резерва к формату reserveN, чтобы сравнение работало стабильно.
+const normalizeReserveKey = (value) => {
+  const raw = String(value || '').trim().toLowerCase()
+  if (!/^reserve\d+$/.test(raw)) return ''
+  return `reserve${Number(raw.replace('reserve', ''))}`
+}
+
+// Собирает использованные резервы по сделкам аккаунта (шеринг).
+const usedReserveKeys = computed(() => {
+  const deals = Array.isArray(props.accountDeals) ? props.accountDeals : []
+  const keys = new Set()
+  deals.forEach((deal) => {
+    if (String(deal?.deal_type_code || '').toLowerCase() !== 'rental') return
+    const key = normalizeReserveKey(deal?.reserve_key)
+    if (key) keys.add(key)
+  })
+  return keys
+})
+
+// Проверяет, используется ли резерв с индексом (reserve1/reserve2/...).
+const isReserveUsedByIndex = (index) => {
+  const key = normalizeReserveKey(`reserve${Number(index) + 1}`)
+  return key ? usedReserveKeys.value.has(key) : false
+}
+
+// Синхронизирует локальные строки резервов с полем reserve_text из формы.
+const syncReserveRows = () => {
+  editReserveRows.value = getReserveRows(props.editAccount?.reserve_text || '')
+}
+
 // Синхронизирует состояние сворачиваемых полей по содержимому при каждом открытии модалки.
 const syncCollapsiblePanels = () => {
   const isOpen = Boolean(props.editAccount?.open)
@@ -549,6 +603,7 @@ const syncCollapsiblePanels = () => {
     newAccountCommentOpen.value = false
     editAccountReserveOpen.value = false
     editAccountCommentOpen.value = false
+    editReserveRows.value = ['']
     return
   }
   const isCreate = props.accountModalMode === 'create'
@@ -559,10 +614,11 @@ const syncCollapsiblePanels = () => {
     editAccountReserveOpen.value = Boolean(String(props.editAccount?.reserve_text || '').trim())
     editAccountCommentOpen.value = Boolean(String(props.editAccount?.notes || '').trim())
   }
+  syncReserveRows()
 }
 
 watch(
-  () => [props.editAccount?.open, props.accountModalMode, props.editAccount?.account_id],
+  () => [props.editAccount?.open, props.accountModalMode, props.editAccount?.account_id, props.accountEditMode, props.editAccount?.reserve_text],
   () => syncCollapsiblePanels(),
   { immediate: true },
 )

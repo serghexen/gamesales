@@ -48,6 +48,7 @@ class DealCreate(BaseModel):
     region_code: Optional[str] = None
     platform_code: Optional[str] = None
     slot_type_code: Optional[str] = None
+    reserve_key: Optional[str] = None
     price: float = 0
     purchase_cost: float = 0
     product_link: Optional[str] = None
@@ -78,6 +79,7 @@ class DealUpdate(BaseModel):
     region_code: Optional[str] = None
     platform_code: Optional[str] = None
     slot_type_code: Optional[str] = None
+    reserve_key: Optional[str] = None
     price: Optional[float] = None
     purchase_cost: Optional[float] = None
     product_link: Optional[str] = None
@@ -113,6 +115,7 @@ class DealListItem(BaseModel):
     product_short_title: Optional[str] = None
     platform_code: Optional[str]
     slot_type_code: Optional[str] = None
+    reserve_key: Optional[str] = None
     customer_nickname: Optional[str]
     login: Optional[str] = None
     password: Optional[str] = None

@@ -366,7 +366,7 @@ def build_db_helpers(
             FROM app.account_assets aa
             JOIN app.product_platforms pp ON pp.product_id = aa.product_id
             JOIN app.platforms p ON p.platform_id = pp.platform_id
-            WHERE aa.account_id=%s AND aa.asset_type_code='game'
+            WHERE aa.account_id=%s
             ORDER BY p.code
             """,
             (account_id,),
@@ -381,7 +381,7 @@ def build_db_helpers(
             FROM app.account_assets aa
             JOIN app.product_platforms pp ON pp.product_id = aa.product_id
             JOIN app.platforms p ON p.platform_id = pp.platform_id
-            WHERE aa.account_id=%s AND aa.asset_type_code='game' AND p.code='ps4'
+            WHERE aa.account_id=%s AND p.code='ps4'
             LIMIT 1
             """,
             (account_id,),
@@ -400,9 +400,9 @@ def build_db_helpers(
 
     def ensure_account_allows_slot_type(conn, account_id: int, slot_type_code: str):
         slot_type = get_slot_type(conn, slot_type_code)
-        platform_code = slot_type[1]
-        if platform_code == "ps4" and not account_has_ps4(conn, account_id):
-            raise HTTPException(400, "Account does not support PS4 slot type")
+        # Используем универсальную модель слотов: доступность определяется slot_type и свободными местами.
+        # Legacy-проверку "есть ли PS4-игры на аккаунте" не применяем, чтобы не блокировать подписки и mixed-кейсы.
+        _ = account_id
         return slot_type
 
     def get_account_slot_free(conn, account_id: int, slot_type_code: str) -> int:

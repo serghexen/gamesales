@@ -337,6 +337,7 @@ CREATE TABLE IF NOT EXISTS app.deal_items (
   returned_at      timestamptz,
   slots_used       integer NOT NULL DEFAULT 1,
   slot_type_code   text REFERENCES app.slot_types(code),
+  reserve_key      text,
   game_link        text,
   notes            text,
   CONSTRAINT ck_qty_positive CHECK (qty > 0),
@@ -360,6 +361,7 @@ COMMENT ON COLUMN app.deal_items.end_at IS 'Дата окончания';
 COMMENT ON COLUMN app.deal_items.returned_at IS 'Факт возврата';
 COMMENT ON COLUMN app.deal_items.slots_used IS 'Количество занятых слотов';
 COMMENT ON COLUMN app.deal_items.slot_type_code IS 'Тип слота';
+COMMENT ON COLUMN app.deal_items.reserve_key IS 'Ключ резерва аккаунта (reserveN), закрепленный за шеринговой сделкой';
 COMMENT ON COLUMN app.deal_items.game_link IS 'Ссылка на игру';
 COMMENT ON COLUMN app.deal_items.notes IS 'Заметки';
 CREATE INDEX IF NOT EXISTS idx_deal_items_product_id

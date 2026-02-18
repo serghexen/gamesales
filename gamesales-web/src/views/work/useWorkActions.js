@@ -3,6 +3,7 @@ export function useWorkActions({
   apiGet,
   apiPost,
   mapApiError,
+  requestDealConfirm,
   loadDeals,
   loadAccounts,
   loadProducts,
@@ -126,7 +127,16 @@ export function useWorkActions({
   // Снимает слот у покупателя и обновляет связанные данные на форме.
   async function releaseSlotAssignment(assignmentId) {
     if (!assignmentId) return
-    if (!window.confirm('Снять слот у покупателя?')) return
+    // Показываем единое оформление подтверждения для операций со слотами.
+    const accepted = typeof requestDealConfirm === 'function'
+      ? await requestDealConfirm({
+        title: 'Подтверждение',
+        message: 'Снять слот у покупателя?',
+        confirmText: 'Снять',
+        cancelText: 'Отмена',
+      })
+      : window.confirm('Снять слот у покупателя?')
+    if (!accepted) return
     accountSlotReleaseLoading.value = true
     try {
       await apiPost(`/slot-assignments/${assignmentId}/release`, {}, { token: auth.state.token })

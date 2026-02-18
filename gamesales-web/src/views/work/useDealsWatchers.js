@@ -3,6 +3,7 @@ import { watch } from 'vue'
 export function useDealsWatchers({
   newDeal,
   editDeal,
+  productsAll,
   dealInitLock,
   dealSlotAutoAssign,
   accountSlotStatusNew,
@@ -17,6 +18,14 @@ export function useDealsWatchers({
   loadDealAccountAssignments,
   loadDealSlotAvailability,
 }) {
+  // Возвращает тип товара по id, чтобы ветвить поведение для игр и подписок.
+  function getProductTypeCode(productId) {
+    if (!productId) return ''
+    const list = Array.isArray(productsAll?.value) ? productsAll.value : []
+    const found = list.find((item) => Number(item?.product_id || 0) === Number(productId))
+    return String(found?.type_code || '').trim().toLowerCase()
+  }
+
   watch(
     () => [newDeal.product_id, newDeal.slot_type_code],
     () => {
@@ -53,8 +62,11 @@ export function useDealsWatchers({
     () => newDeal.product_id,
     (val, prev) => {
       if (val === prev) return
+      const productType = getProductTypeCode(val)
       newDeal.account_id = ''
-      newDeal.slot_type_code = ''
+      newDeal.reserve_key = ''
+      // Для подписок оставляем выбранный тип слота, потому что там сценарий slot -> product.
+      if (productType !== 'subscription') newDeal.slot_type_code = ''
       accountSlotStatusNew.value = []
       dealAccountAssignmentsNew.value = []
       dealSlotAvailabilityNew.value = {}
@@ -67,8 +79,11 @@ export function useDealsWatchers({
     (val, prev) => {
       if (!editDeal.open || dealInitLock.value) return
       if (val === prev) return
+      const productType = getProductTypeCode(val)
       editDeal.account_id = ''
-      editDeal.slot_type_code = ''
+      editDeal.reserve_key = ''
+      // Для подписок сохраняем слот, чтобы не ломать порядок выбора в форме.
+      if (productType !== 'subscription') editDeal.slot_type_code = ''
       accountSlotStatusEdit.value = []
       dealAccountAssignmentsEdit.value = []
       dealSlotAvailabilityEdit.value = {}
@@ -80,6 +95,7 @@ export function useDealsWatchers({
     () => newDeal.account_id,
     (val) => {
       if (!val) {
+        newDeal.reserve_key = ''
         accountSlotStatusNew.value = []
         dealAccountAssignmentsNew.value = []
       }
@@ -91,6 +107,7 @@ export function useDealsWatchers({
     (val, prev) => {
       if (!editDeal.open || dealInitLock.value) return
       if (!val) {
+        editDeal.reserve_key = ''
         accountSlotStatusEdit.value = []
         dealAccountAssignmentsEdit.value = []
         return
@@ -107,11 +124,13 @@ export function useDealsWatchers({
       if (dealSlotAutoAssign.value || val === prev) return
       if (!val) {
         newDeal.account_id = ''
+        newDeal.reserve_key = ''
         accountSlotStatusNew.value = []
         dealAccountAssignmentsNew.value = []
         return
       }
       newDeal.account_id = ''
+      newDeal.reserve_key = ''
       accountSlotStatusNew.value = []
       dealAccountAssignmentsNew.value = []
     }
@@ -124,11 +143,13 @@ export function useDealsWatchers({
       if (dealSlotAutoAssign.value || val === prev) return
       if (!val) {
         editDeal.account_id = ''
+        editDeal.reserve_key = ''
         accountSlotStatusEdit.value = []
         dealAccountAssignmentsEdit.value = []
         return
       }
       editDeal.account_id = ''
+      editDeal.reserve_key = ''
       accountSlotStatusEdit.value = []
       dealAccountAssignmentsEdit.value = []
     }

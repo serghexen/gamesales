@@ -359,8 +359,84 @@
   padding: 8px;
 }
 
+.work-page .deal-form .quick-create--plain {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .work-page .deal-form .quick-create--product-empty {
-  margin-top: 6px;
+  margin-top: 0;
+}
+
+.work-page .deal-form .quick-create--product-empty.quick-create--collapsed {
+  align-self: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  gap: 0;
+}
+
+.work-page .deal-form .quick-create--product-empty.quick-create--collapsed .comment-toggle {
+  justify-self: stretch;
+  width: 100%;
+  text-align: left;
+}
+
+.work-page .deal-form .quick-create--product-empty .quick-create__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.work-page .deal-form .quick-create--product-empty .quick-create__header .comment-toggle {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.work-page .deal-form .quick-create--account .quick-create__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.work-page .deal-form .quick-create--account .quick-create__header .comment-toggle {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.work-page .deal-form .quick-create--product-empty .check-list--platform-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  max-height: none;
+  overflow: visible;
+  padding: 6px 8px;
+}
+
+.work-page .deal-form .quick-create--product-empty .check-list--platform-row .check-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.work-page .deal-form .quick-create--account .check-list--platform-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  max-height: none;
+  overflow: visible;
+  padding: 6px 8px;
+}
+
+.work-page .deal-form .quick-create--account .check-list--platform-row .check-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .work-page .deal-form .quick-create .loader-wrap--compact {
@@ -419,9 +495,181 @@
   justify-self: stretch;
 }
 
+.work-page .deal-form .field--sharing-product-list {
+  align-content: stretch;
+}
+
+.work-page .deal-form .field--sharing-product-list--collapsed-empty {
+  align-content: start;
+}
+
+.work-page .deal-form .field--sharing-product-list--collapsed-empty .quick-create--product-empty.quick-create--collapsed {
+  margin-top: 0;
+}
+
+.work-page .deal-form .field--sharing-product-list--expanded-empty {
+  align-content: start;
+}
+
+.work-page .deal-form .field--sharing-product-list--expanded-empty .quick-create--product-empty {
+  align-self: start;
+  margin-top: 0;
+}
+
+.work-page .deal-form .field--sharing-product-list .input--select-wrap {
+  height: 100%;
+}
+
+.work-page .deal-form .field--sharing-product-list--selected .input--select-wrap {
+  height: auto;
+}
+
+.work-page .deal-form .field--sharing-account {
+  width: 100%;
+  max-width: 100%;
+}
+
+.work-page .deal-form .deal-form__account-details {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed var(--input-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
+}
+
+.work-page .deal-form .deal-form__account-details-head {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.work-page .form--compact .account-reserve-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 8px 12px;
+  align-items: start;
+}
+
+.work-page .form--compact .account-reserve-bulk {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+}
+
+.work-page .form--compact .account-reserve-bulk__row {
+  display: grid;
+  grid-template-columns: minmax(220px, 420px) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.work-page .form--compact .account-reserve-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  max-width: 280px;
+}
+
+.work-page .form--compact .account-reserve-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.work-page .form--compact .account-reserve-row__label {
+  margin: 0;
+}
+
+.work-page .form--compact .account-reserve-row__badge {
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, #ff6b6b 45%, var(--input-border));
+  color: #ffb3b3;
+  background: color-mix(in srgb, #ff6b6b 14%, transparent);
+}
+
+.work-page .form--compact .account-reserve-row .input {
+  max-width: 280px;
+}
+
+.work-page .form--compact .account-reserve-list__actions {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+
+@media (max-width: 900px) {
+  .work-page .form--compact .account-reserve-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .work-page .form--compact .account-reserve-bulk__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .work-page .form--compact .account-reserve-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.work-page .deal-form .deal-form__rental-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.work-page .deal-form .deal-form__rental-main {
+  grid-column: 1 / span 2;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.work-page .deal-form .deal-form__rental-side {
+  grid-column: 3;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.work-page .deal-form .deal-form__rental-main .field--sharing-account {
+  width: 100%;
+  max-width: 100%;
+}
+
+.work-page .deal-form .table-row--slot-release {
+  cursor: pointer;
+}
+
+.work-page .deal-form .table-row--slot-release:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
 @media (max-width: 720px) {
   .work-page .deal-product-filters {
     grid-template-columns: 1fr;
+  }
+
+  .work-page .deal-form .field--sharing-account {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .work-page .deal-form .deal-form__rental-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .work-page .deal-form .deal-form__rental-main,
+  .work-page .deal-form .deal-form__rental-side {
+    grid-column: 1;
   }
 }
 

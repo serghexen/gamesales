@@ -23,6 +23,7 @@ function createDeps(overrides = {}) {
       source_id: 10,
       region_code: 'RU',
       slot_type_code: '',
+      reserve_key: '',
       price: 100,
       purchase_cost: 50,
       login: 'deal-login',
@@ -43,6 +44,7 @@ function createDeps(overrides = {}) {
       source_id: 10,
       region_code: 'RU',
       slot_type_code: '',
+      reserve_key: '',
       price: 100,
       purchase_cost: 50,
       login: 'edit-login',
@@ -118,6 +120,35 @@ describe('useDealsActions', () => {
 
     expect(deps.apiPost).not.toHaveBeenCalled()
     expect(deps.dealError.value).toBe('Укажите источник')
+  })
+
+  it('createDeal forces is_refund=false for sale', async () => {
+    const deps = createDeps()
+    deps.newDeal.deal_type_code = 'sale'
+    deps.newDeal.is_refund = true
+    const { createDeal } = useDealsActions(deps)
+
+    await createDeal()
+
+    expect(deps.apiPost).toHaveBeenCalledTimes(1)
+    expect(deps.apiPost.mock.calls[0][1].is_refund).toBe(false)
+  })
+
+  it('createDeal forces is_refund=false for rental', async () => {
+    const deps = createDeps()
+    deps.newDeal.deal_type_code = 'rental'
+    deps.newDeal.account_id = 15
+    deps.newDeal.product_id = 56
+    deps.newDeal.slot_type_code = 'share'
+    deps.newDeal.reserve_key = 'reserve1'
+    deps.newDeal.is_refund = true
+    const { createDeal } = useDealsActions(deps)
+
+    await createDeal()
+
+    expect(deps.apiPost).toHaveBeenCalledTimes(1)
+    expect(deps.apiPost.mock.calls[0][1].is_refund).toBe(false)
+    expect(deps.apiPost.mock.calls[0][1].reserve_key).toBe('reserve1')
   })
 
   it('createDealDraft allows empty required sale fields and sends draft status', async () => {

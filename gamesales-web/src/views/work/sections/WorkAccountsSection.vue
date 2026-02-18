@@ -131,6 +131,7 @@
         :toggle-account-edit-mode="ctx.toggleAccountEditMode"
         :update-account="ctx.updateAccount"
         :accounts-loading="ctx.accountsLoading"
+        :account-saving="ctx.accountSaving"
         :create-account="ctx.createAccount"
         :delete-account="ctx.deleteAccount"
         :account-products-loading="ctx.accountProductsLoading"

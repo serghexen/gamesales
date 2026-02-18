@@ -1902,6 +1902,12 @@
   gap: 8px;
 }
 
+.work-page .deal-form__stack {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
 .work-page .deal-form__quad {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1975,7 +1981,7 @@
 }
 
 .work-page .deal-form__triple--rental-top {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.85fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .work-page .deal-form__full {

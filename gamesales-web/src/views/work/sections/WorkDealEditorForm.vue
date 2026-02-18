@@ -48,7 +48,7 @@
                             </select>
                           </label>
                         </div>
-                        <div v-if="editDeal.deal_type_code === 'rental' && (dealEditMode !== 'view' || editDeal.is_refund)" class="field">
+                        <div v-if="editDeal.deal_type_code === 'rental' && !isEditDealPendingFlow && (dealEditMode !== 'view' || editDeal.is_refund)" class="field">
                           <span class="label">Возврат</span>
                           <input
                             v-if="dealEditMode === 'view'"
@@ -65,63 +65,159 @@
                             <span>Произвести возврат</span>
                           </label>
                         </div>
-                        <div
-                          v-if="editDeal.deal_type_code === 'rental'"
-                          class="deal-form__triple deal-form__triple--rental-top"
-                        >
-                          <label class="field">
-                            <span class="label">Источник</span>
-                            <input
-                              v-if="dealEditMode === 'view'"
-                              class="input"
-                              :value="getSourceLabelById(editDeal.source_id)"
-                              readonly
-                            />
-                            <select v-else v-model.number="editDeal.source_id" class="input input--select">
-                              <option value="">— не выбрано —</option>
-                              <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">
-                                {{ s.name }} ({{ s.code }})
-                              </option>
-                            </select>
-                          </label>
-                          <label class="field">
-                            <span class="label">Номер заявки</span>
-                            <input v-model.trim="editDeal.order_number" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
-                          </label>
-                          <label class="field">
-                            <span class="label">Покупатель</span>
-                            <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
-                          </label>
-                          <label class="field">
-                            <span class="label">Сумма</span>
-                            <input
-                              v-model.number="editDeal.price"
-                              class="input"
-                              type="number"
-                              min="0"
-                              :max="maxPrice"
-                              @input="editDeal.price = clampPrice(editDeal.price)"
-                              :readonly="dealEditMode === 'view'"
-                            />
-                          </label>
-                        </div>
-                        <label
-                          v-if="editDeal.deal_type_code === 'rental'"
-                          class="field field--product"
-                        >
-                          <input
-                            v-if="dealEditMode === 'view'"
-                            class="input"
-                            :value="getProductLabelById(editDeal.product_id)"
-                            readonly
-                          />
-                          <div
-                            v-if="dealEditMode !== 'view'"
-                            class="deal-product-filters field--full"
-                          >
+                        <div v-if="editDeal.deal_type_code === 'rental'" class="deal-form__rental-layout">
+                          <div class="deal-form__rental-main">
+                            <div class="deal-form__double">
+                              <label class="field">
+                                <span class="label">Источник</span>
+                                <input
+                                  v-if="dealEditMode === 'view'"
+                                  class="input"
+                                  :value="getSourceLabelById(editDeal.source_id)"
+                                  readonly
+                                />
+                                <select v-else v-model.number="editDeal.source_id" class="input input--select">
+                                  <option value="">— не выбрано —</option>
+                                  <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">
+                                    {{ s.name }} ({{ s.code }})
+                                  </option>
+                                </select>
+                              </label>
+                              <label class="field">
+                                <span class="label">Номер заявки</span>
+                                <input v-model.trim="editDeal.order_number" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
+                              </label>
+                            </div>
+                            <div class="deal-form__double">
+                              <label class="field">
+                                <span class="label">Покупатель</span>
+                                <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
+                              </label>
+                              <label class="field">
+                                <span class="label">Сумма</span>
+                                <input
+                                  v-model.number="editDeal.price"
+                                  class="input"
+                                  type="number"
+                                  min="0"
+                                  :max="maxPrice"
+                                  @input="editDeal.price = clampPrice(editDeal.price)"
+                                  :readonly="dealEditMode === 'view'"
+                                />
+                              </label>
+                            </div>
                             <label class="field">
-                              <span class="label">Поиск</span>
-                              <div class="input input--search input--search-row">
+                              <span class="label">Ответственный</span>
+                              <input
+                                v-if="dealEditMode === 'view'"
+                                class="input"
+                                :value="editDealResponsible || '— не выбрано —'"
+                                readonly
+                              />
+                              <select v-else v-model="editDealResponsible" class="input input--select">
+                                <option value="">— не выбрано —</option>
+                                <option
+                                  v-for="responsibleName in responsibleUserOptions"
+                                  :key="`edit-rental-responsible-${responsibleName}`"
+                                  :value="responsibleName"
+                                >
+                                  {{ responsibleName }}
+                                </option>
+                              </select>
+                            </label>
+                            <label class="field field--sharing-account">
+                              <span
+                                v-if="dealEditMode === 'view' || dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length || editDeal.account_id"
+                                class="label"
+                              >
+                                Аккаунт
+                              </span>
+                              <input
+                                v-if="dealEditMode === 'view'"
+                                class="input"
+                                :value="getAccountLabelById(editDeal.account_id)"
+                                readonly
+                              />
+                              <select
+                                v-else-if="dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length || editDeal.account_id"
+                                v-model.number="editDeal.account_id"
+                                class="input input--select"
+                                :disabled="!editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForProductLoading"
+                              >
+                                <option value="">
+                                  {{ !editDeal.product_id ? 'Сначала выберите товар' : (!editDeal.slot_type_code ? 'Сначала выберите слот' : (dealAccountsForProductLoading ? '(формируется список)' : '— не выбрано —')) }}
+                                </option>
+                                <option v-for="a in dealAccountsForEdit" :key="a.account_id" :value="a.account_id">
+                                  {{ a.login_full || a.account_id }}
+                                </option>
+                              </select>
+                            </label>
+                            <div class="field field--comment-collapsible">
+                              <button class="comment-toggle" type="button" @click="editDealCommentOpen = !editDealCommentOpen">
+                                {{ editDealCommentOpen || editDeal.notes ? 'Комментарий' : '+ Комментарий' }}
+                              </button>
+                              <textarea
+                                v-if="editDealCommentOpen || editDeal.notes"
+                                v-model.trim="editDeal.notes"
+                                class="input input--textarea input--textarea--compact"
+                                :rows="getCompactNotesRows(editDeal.notes)"
+                                :readonly="dealEditMode === 'view'"
+                              />
+                            </div>
+                          </div>
+                          <div class="deal-form__rental-side">
+                            <div class="deal-form__double">
+                              <label class="field">
+                                <span class="label">Тип товара</span>
+                                <input
+                                  v-if="dealEditMode === 'view'"
+                                  class="input"
+                                  :value="selectedEditDealProductTypeLabel"
+                                  readonly
+                                />
+                                <select v-else v-model="editDealProductTypeFilter" class="input input--select">
+                                  <option value="game">Игра</option>
+                                  <option value="subscription">Подписка</option>
+                                </select>
+                              </label>
+                              <label
+                                v-if="dealEditMode === 'view' || isEditRentalSubscriptionMode || dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length"
+                                class="field"
+                              >
+                                <span class="label">Тип слота</span>
+                                <input
+                                  v-if="dealEditMode === 'view'"
+                                  class="input"
+                                  :value="getSlotTypeLabel(editDeal.slot_type_code)"
+                                  readonly
+                                />
+                                <select
+                                  v-else
+                                  v-model="editDeal.slot_type_code"
+                                  class="input input--select"
+                                  :disabled="(!isEditRentalSubscriptionMode && !editDeal.product_id) || dealSlotAvailabilityLoadingEdit"
+                                >
+                                  <option value="">{{ (!isEditRentalSubscriptionMode && !editDeal.product_id) ? 'Сначала выберите товар' : (dealSlotAvailabilityLoadingEdit ? '(формируется список)' : '— не выбрано —') }}</option>
+                                  <option
+                                    v-for="st in getSlotTypeOptionsForDeal('edit')"
+                                    :key="st.code"
+                                    :value="st.code"
+                                    :disabled="st.supported === false"
+                                  >
+                                    {{ getDealSlotTypeLabel(st) }}
+                                  </option>
+                                </select>
+                              </label>
+                            </div>
+                            <label class="field">
+                              <span class="label">{{ showEditDealProductSearch ? 'Поиск' : 'Товар' }}</span>
+                              <input
+                                v-if="dealEditMode === 'view'"
+                                class="input"
+                                :value="getProductLabelById(editDeal.product_id)"
+                                readonly
+                              />
+                              <div v-else-if="showEditDealProductSearch" class="input input--search-row">
                                 <input
                                   v-model.trim="editDealProductSearch"
                                   class="input--search-field"
@@ -129,273 +225,162 @@
                                   @input="onEditDealProductSearch"
                                 />
                               </div>
-                            </label>
-                            <label class="field">
-                              <span class="label">Тип товара</span>
-                              <select v-model="editDealProductTypeFilter" class="input input--select">
-                                <option value="all">Все</option>
-                                <option value="game">Игра</option>
-                                <option value="subscription">Подписка</option>
-                              </select>
-                            </label>
-                          </div>
-                          <div
-                            v-if="dealEditMode !== 'view'"
-                            class="input--select-wrap"
-                          >
-                            <select
-                              v-if="!editDealProductNoMatches"
-                              v-model.number="editDeal.product_id"
-                              :class="[
-                                'input input--select input--list',
-                                { 'input--list--compact': editDeal.product_id && !editDealProductSearch }
-                              ]"
-                              :size="editDeal.product_id && !editDealProductSearch ? 1 : 8"
-                              @change="syncEditDealProductSearch"
-                            >
-                              <option value="">— не выбрано —</option>
-                              <option v-for="g in filteredEditDealProductsByType" :key="g.product_id" :value="g.product_id">
-                                {{ g.title }}
-                              </option>
-                            </select>
-                            <button
-                              v-if="editDeal.product_id"
-                              class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
-                              type="button"
-                              aria-label="Очистить товар"
-                              title="Очистить товар"
-                              @click="clearEditDealProduct"
-                            >
-                              <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <path d="M6 6l12 12M18 6l-12 12" />
-                              </svg>
-                            </button>
-                          </div>
-                          <div
-                            v-if="dealEditMode !== 'view' && editDealProductNoMatches"
-                            class="quick-create quick-create--product-empty"
-                          >
-                            <div class="quick-create__title">Быстро создать товар</div>
-                            <input v-model.trim="quickEditProduct.title" class="input input--compact" placeholder="Название товара" />
-                            <div class="check-list check-list--compact">
-                              <label v-for="p in platforms" :key="`qe-${p.code}`" class="check-item">
-                                <input type="checkbox" :value="p.code" v-model="quickEditProduct.platform_codes" />
-                                <span>{{ p.name }} ({{ p.code }})</span>
-                              </label>
-                            </div>
-                            <div class="quick-create__actions">
-                              <button
-                                class="ghost ghost--small"
-                                type="button"
-                                :disabled="quickEditProductLoading"
-                                @click="createQuickProduct('edit')"
-                              >
-                                <span v-if="quickEditProductLoading" class="spinner spinner--small"></span>
-                                Создать
-                              </button>
-                              <span v-if="quickEditProductError" class="bad">{{ quickEditProductError }}</span>
-                            </div>
-                          </div>
-                        </label>
-                        <div v-if="editDeal.deal_type_code === 'rental'" class="deal-form__double">
-                          <label
-                            v-if="dealEditMode === 'view' || dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length"
-                            class="field"
-                          >
-                            <span class="label">Тип слота</span>
-                            <input
-                              v-if="dealEditMode === 'view'"
-                              class="input"
-                              :value="getSlotTypeLabel(editDeal.slot_type_code)"
-                              readonly
-                            />
-                            <select
-                              v-else
-                              v-model="editDeal.slot_type_code"
-                              class="input input--select"
-                              :disabled="!editDeal.product_id || dealSlotAvailabilityLoadingEdit"
-                            >
-                              <option value="">{{ !editDeal.product_id ? 'Сначала выберите товар' : (dealSlotAvailabilityLoadingEdit ? '(формируется список)' : '— не выбрано —') }}</option>
-                              <option
-                                v-for="st in getDealSlotTypeOptions('edit')"
-                                :key="st.code"
-                                :value="st.code"
-                                :disabled="!st.supported"
-                              >
-                                {{ getDealSlotTypeLabel(st) }}
-                              </option>
-                            </select>
-                          </label>
-                          <label class="field">
-                            <span class="label">Ответственный</span>
-                            <input
-                              v-if="dealEditMode === 'view'"
-                              class="input"
-                              :value="editDealResponsible || '— не выбрано —'"
-                              readonly
-                            />
-                            <select v-else v-model="editDealResponsible" class="input input--select">
-                              <option value="">— не выбрано —</option>
-                              <option
-                                v-for="responsibleName in responsibleUserOptions"
-                                :key="`edit-rental-responsible-${responsibleName}`"
-                                :value="responsibleName"
-                              >
-                                {{ responsibleName }}
-                              </option>
-                            </select>
-                          </label>
-                        </div>
-                        <label v-if="editDeal.deal_type_code === 'rental'" class="field">
-                          <span
-                            v-if="dealEditMode === 'view' || dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length || editDeal.account_id"
-                            class="label"
-                          >
-                            Аккаунт
-                          </span>
-                          <input
-                            v-if="dealEditMode === 'view'"
-                            class="input"
-                            :value="getAccountLabelById(editDeal.account_id)"
-                            readonly
-                          />
-                          <select
-                            v-else-if="dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length || editDeal.account_id"
-                            v-model.number="editDeal.account_id"
-                            class="input input--select"
-                            :disabled="!editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForProductLoading"
-                          >
-                            <option value="">
-                              {{ !editDeal.product_id ? 'Сначала выберите товар' : (!editDeal.slot_type_code ? 'Сначала выберите слот' : (dealAccountsForProductLoading ? '(формируется список)' : '— не выбрано —')) }}
-                            </option>
-                            <option v-for="a in dealAccountsForEdit" :key="a.account_id" :value="a.account_id">
-                              {{ a.login_full || a.account_id }}
-                            </option>
-                          </select>
-                          <div
-                            v-if="dealEditMode !== 'view' && !dealAccountsForProductLoading && editDeal.product_id && editDeal.slot_type_code && !editDeal.account_id && !isDealSlotTypeUnsupported('edit') && !hasFreeDealSlots('edit')"
-                            class="quick-create"
-                          >
-                            <div class="quick-create__title">
-                              {{ hasAnyProductAssignmentsEdit ? 'Нет свободных слотов — можно снять занятый' : 'Нет аккаунтов с товаром' }}
-                            </div>
-                            <div v-if="hasAnyProductAssignmentsEdit && dealGameAssignmentsLoadingEdit" class="loader-wrap loader-wrap--compact">
-                              <div class="newtons-cradle" aria-label="Loading" role="img">
-                                <div class="newtons-cradle__dot"></div>
-                                <div class="newtons-cradle__dot"></div>
-                                <div class="newtons-cradle__dot"></div>
-                                <div class="newtons-cradle__dot"></div>
+                              <div v-else-if="dealEditMode !== 'view'" class="input--select-wrap">
+                                <input
+                                  class="input"
+                                  :value="editDeal.product_id
+                                    ? getProductLabelById(editDeal.product_id)
+                                    : (isEditRentalSubscriptionMode && !editDeal.slot_type_code ? 'Сначала выберите слот' : '— не выбрано —')"
+                                  readonly
+                                />
+                                <button
+                                  v-if="editDeal.product_id"
+                                  class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                  type="button"
+                                  aria-label="Очистить товар"
+                                  title="Очистить товар"
+                                  @click="clearEditDealProduct"
+                                >
+                                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M6 6l12 12M18 6l-12 12" />
+                                  </svg>
+                                </button>
                               </div>
-                            </div>
-                            <div v-else-if="hasAnyProductAssignmentsEdit && dealProductAssignmentsForSelectedSlotEdit.length" class="quick-create__table-scroll">
-                              <table class="table table--compact table--dense">
-                                <thead>
-                                  <tr>
-                                    <th>Аккаунт</th>
-                                    <th>Слот</th>
-                                    <th>Покупатель</th>
-                                    <th class="cell--tight"></th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  <tr v-for="s in dealProductAssignmentsForSelectedSlotEdit" :key="s.assignment_id">
-                                    <td>{{ getAccountLabelById(s.account_id) }}</td>
-                                    <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
-                                    <td>{{ s.customer_nickname || '—' }}</td>
-                                    <td class="cell--tight">
-                                      <button
-                                        v-if="!s.released_at"
-                                        class="ghost ghost--small"
-                                        type="button"
-                                        :disabled="accountSlotReleaseLoading"
-                                        @click="releaseSlotFromDeal(s, 'edit')"
-                                      >
-                                        Снять
-                                      </button>
-                                    </td>
-                                  </tr>
-                                </tbody>
-                              </table>
-                            </div>
-                            <p v-else-if="hasAnyProductAssignmentsEdit" class="muted">Нет активных слотов по товару.</p>
-                            <div class="quick-create__title">Быстро создать аккаунт</div>
-                            <input v-model.trim="quickEditAccount.login_name" class="input input--compact" placeholder="Логин" />
-                            <select v-model="quickEditAccount.domain_code" class="input input--select input--compact">
-                              <option value="">— домен —</option>
-                              <option v-for="d in domains" :key="`qe-d-${d.code}`" :value="d.code">
-                                {{ d.name }} ({{ d.code }})
-                              </option>
-                            </select>
-                            <div class="check-list check-list--compact">
-                              <label v-for="p in platforms" :key="`qe-p-${p.code}`" class="check-item">
-                                <input type="checkbox" :value="p.code" v-model="quickEditAccount.platform_codes" />
-                                <span>{{ p.name }} ({{ p.code }})</span>
+                            </label>
+                            <label
+                              v-if="dealEditMode !== 'view' && showEditDealProductSearch"
+                              :class="[
+                                'field field--product field--sharing-product-list',
+                                {
+                                  'field--sharing-product-list--selected': !!editDeal.product_id,
+                                  'field--sharing-product-list--collapsed-empty': showEditDealProductNoMatches && !editQuickProductOpen,
+                                  'field--sharing-product-list--expanded-empty': showEditDealProductNoMatches && editQuickProductOpen,
+                                }
+                              ]"
+                            >
+                              <div class="input--select-wrap">
+                                <select
+                                  v-if="!showEditDealProductNoMatches"
+                                  v-model.number="editDeal.product_id"
+                                  :class="[
+                                    'input input--select input--list input--list--product-short',
+                                    {
+                                      'input--list--sharing-height': !editDeal.product_id,
+                                      'input--list--compact': !!editDeal.product_id,
+                                    }
+                                  ]"
+                                  :size="editDeal.product_id ? 1 : 3"
+                                  :disabled="isEditRentalSubscriptionMode && !editDeal.slot_type_code"
+                                  @change="syncEditDealProductSearch"
+                                >
+                                  <option value="">
+                                    {{ isEditRentalSubscriptionMode && !editDeal.slot_type_code ? 'Сначала выберите слот' : '— не выбрано —' }}
+                                  </option>
+                                  <option v-for="g in filteredEditDealProductsByType" :key="g.product_id" :value="g.product_id">
+                                    {{ g.title }}
+                                  </option>
+                                </select>
+                                <button
+                                  v-if="editDeal.product_id"
+                                  class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                  type="button"
+                                  aria-label="Очистить товар"
+                                  title="Очистить товар"
+                                  @click="clearEditDealProduct"
+                                >
+                                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M6 6l12 12M18 6l-12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                              <div
+                                v-if="showEditDealProductNoMatches"
+                                :class="[
+                                  'quick-create quick-create--product-empty',
+                                  { 'quick-create--collapsed': !editQuickProductOpen }
+                                ]"
+                              >
+                                <div class="quick-create__header">
+                                  <button class="comment-toggle" type="button" @click="editQuickProductOpen = !editQuickProductOpen">
+                                    {{ editQuickProductOpen ? 'Быстрое создание товара' : '+ Быстрое создание товара' }}
+                                  </button>
+                                  <button
+                                    v-if="editQuickProductOpen"
+                                    class="ghost ghost--small"
+                                    type="button"
+                                    :disabled="quickEditProductLoading"
+                                    @click="createQuickProduct('edit')"
+                                  >
+                                    <span v-if="quickEditProductLoading" class="spinner spinner--small"></span>
+                                    Создать
+                                  </button>
+                                </div>
+                                <template v-if="editQuickProductOpen">
+                                  <input v-model.trim="quickEditProduct.title" class="input input--compact" placeholder="Название товара" />
+                                  <div class="check-list check-list--compact check-list--platform-row">
+                                    <label v-for="p in platforms" :key="`qe-${p.code}`" class="check-item">
+                                      <input type="checkbox" :value="p.code" v-model="quickEditProduct.platform_codes" />
+                                      <span>{{ p.name }} ({{ p.code }})</span>
+                                    </label>
+                                  </div>
+                                  <span v-if="quickEditProductError" class="bad">{{ quickEditProductError }}</span>
+                                </template>
+                              </div>
+                            </label>
+                            <div v-if="editDeal.account_id" class="deal-form__account-details">
+                              <div class="deal-form__account-details-head">Данные аккаунта</div>
+                              <label class="field">
+                                <span class="label">Логин</span>
+                                <input class="input" :value="getAccountLabelById(editDeal.account_id)" readonly />
+                              </label>
+                              <label class="field">
+                                <span class="label">Пароль</span>
+                                <input class="input" :value="getAccountPasswordById(editDeal.account_id)" readonly />
+                              </label>
+                              <label class="field">
+                                <span class="label">Резерв</span>
+                                <input class="input" :value="getDealReserveLabel(editDeal.account_id, editDeal.reserve_key, editDeal.deal_id)" readonly />
                               </label>
                             </div>
-                            <div class="quick-create__actions">
-                              <button
-                                class="ghost ghost--small"
-                                type="button"
-                                :disabled="quickEditAccountLoading"
-                                @click="createQuickAccount('edit')"
-                              >
-                                <span v-if="quickEditAccountLoading" class="spinner spinner--small"></span>
-                                Создать
-                              </button>
-                              <span v-if="quickEditAccountError" class="bad">{{ quickEditAccountError }}</span>
+                            <div
+                              v-if="dealEditMode !== 'view' && !dealAccountsForProductLoading && editDeal.product_id && editDeal.slot_type_code && !editDeal.account_id && !isDealSlotTypeUnsupported('edit') && (isEditRentalSubscriptionMode || !hasFreeDealSlots('edit'))"
+                              class="quick-create quick-create--account"
+                            >
+                              <div class="quick-create__header">
+                                <button class="comment-toggle" type="button" @click="editQuickAccountOpen = !editQuickAccountOpen">
+                                  {{ editQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
+                                </button>
+                                <button
+                                  v-if="editQuickAccountOpen"
+                                  class="ghost ghost--small"
+                                  type="button"
+                                  :disabled="quickEditAccountLoading"
+                                  @click="createQuickAccount('edit')"
+                                >
+                                  <span v-if="quickEditAccountLoading" class="spinner spinner--small"></span>
+                                  Создать
+                                </button>
+                              </div>
+                              <template v-if="editQuickAccountOpen">
+                                <div class="deal-form__double">
+                                  <input v-model.trim="quickEditAccount.login_name" class="input input--compact" placeholder="Логин" />
+                                  <select v-model="quickEditAccount.domain_code" class="input input--select input--compact">
+                                    <option value="">— домен —</option>
+                                    <option v-for="d in domains" :key="`qe-d-${d.code}`" :value="d.code">
+                                      {{ d.name }} ({{ d.code }})
+                                    </option>
+                                  </select>
+                                </div>
+                                <div class="check-list check-list--compact check-list--platform-row">
+                                  <label v-for="p in platforms" :key="`qe-p-${p.code}`" class="check-item">
+                                    <input type="checkbox" :value="p.code" v-model="quickEditAccount.platform_codes" />
+                                    <span>{{ p.name }} ({{ p.code }})</span>
+                                  </label>
+                                </div>
+                                <span v-if="quickEditAccountError" class="bad">{{ quickEditAccountError }}</span>
+                              </template>
                             </div>
                           </div>
-                        </label>
-                        <div v-if="editDeal.deal_type_code === 'rental' && editDeal.account_id && accountSlotStatusEdit.length" class="slot-status">
-                          <div class="slot-status__title">Слоты</div>
-                          <div class="slot-status__list">
-                            <div v-for="s in getSortedSlotStatus(accountSlotStatusEdit)" :key="s.slot_type_code" class="slot-status__row">
-                              <span class="slot-status__name">{{ slotTypes.find((t) => t.code === s.slot_type_code)?.name || s.slot_type_code }}</span>
-                              <span class="slot-status__value">{{ s.occupied }}/{{ s.capacity }}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div v-if="editDeal.deal_type_code === 'rental' && editDeal.account_id" class="field field--full">
-                          <span class="label">Слоты аккаунта (занято)</span>
-                          <div v-if="dealAccountAssignmentsLoadingEdit" class="loader-wrap loader-wrap--compact">
-                            <div class="newtons-cradle" aria-label="Loading" role="img">
-                              <div class="newtons-cradle__dot"></div>
-                              <div class="newtons-cradle__dot"></div>
-                              <div class="newtons-cradle__dot"></div>
-                              <div class="newtons-cradle__dot"></div>
-                            </div>
-                          </div>
-                          <table v-else-if="dealAccountAssignmentsEdit.filter((s) => !s.released_at).length" class="table table--compact table--dense">
-                            <thead>
-                              <tr>
-                                <th>Слот</th>
-                                <th>Товар</th>
-                                <th>Покупатель</th>
-                                <th>Назначено</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <tr v-for="s in dealAccountAssignmentsEdit.filter((s) => !s.released_at)" :key="s.assignment_id">
-                                <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
-                                <td>{{ s.product_title || '—' }}</td>
-                                <td>{{ s.customer_nickname || '—' }}</td>
-                                <td>{{ formatDateTimeMinutes(s.assigned_at) }}</td>
-                              </tr>
-                            </tbody>
-                          </table>
-                          <p v-else class="muted">Пока нет назначенных слотов.</p>
-                        </div>
-                        <div v-if="editDeal.deal_type_code === 'rental'" class="field field--comment-collapsible">
-                          <button class="comment-toggle" type="button" @click="editDealCommentOpen = !editDealCommentOpen">
-                            {{ editDealCommentOpen || editDeal.notes ? 'Комментарий' : '+ Комментарий' }}
-                          </button>
-                          <textarea
-                            v-if="editDealCommentOpen || editDeal.notes"
-                            v-model.trim="editDeal.notes"
-                            class="input input--textarea input--textarea--compact"
-                            :rows="getCompactNotesRows(editDeal.notes)"
-                            :readonly="dealEditMode === 'view'"
-                          />
                         </div>
                         <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-status-row">
                           <label class="field">
@@ -444,7 +429,7 @@
                             </select>
                           </label>
                         </div>
-                        <div v-if="editDeal.deal_type_code === 'sale' && (dealEditMode !== 'view' || editDeal.is_refund)" class="field">
+                        <div v-if="editDeal.deal_type_code === 'sale' && !isEditDealPendingFlow && (dealEditMode !== 'view' || editDeal.is_refund)" class="field">
                           <span class="label">Возврат</span>
                           <input
                             v-if="dealEditMode === 'view'"
@@ -584,11 +569,8 @@
                     <div v-else class="form deal-form" :class="{ 'deal-form--sale': newDeal.deal_type_code === 'sale' || newDeal.deal_type_code === 'rental' }">
                       <div class="deal-form__col deal-form__col--left">
                         <div
-                          class="deal-form__triple"
-                          :class="{
-                            'deal-form__triple--sale-top': newDeal.deal_type_code === 'sale',
-                            'deal-form__triple--rental-top': newDeal.deal_type_code === 'rental',
-                          }"
+                          v-if="newDeal.deal_type_code === 'sale'"
+                          class="deal-form__triple deal-form__triple--sale-top"
                         >
                           <label class="field">
                             <span class="label">Источник</span>
@@ -603,10 +585,6 @@
                             <span class="label">{{ newDeal.deal_type_code === 'rental' ? 'Номер заявки' : 'Номер заказа' }}</span>
                             <input v-model.trim="newDeal.order_number" class="input" placeholder="-" />
                           </label>
-                          <label v-if="newDeal.deal_type_code !== 'sale'" class="field">
-                            <span class="label">Покупатель</span>
-                            <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="-" />
-                          </label>
                           <label v-if="newDeal.deal_type_code === 'sale'" class="field">
                             <span class="label">Ответственный</span>
                             <select v-model="newDealResponsible" class="input input--select">
@@ -620,129 +598,55 @@
                               </option>
                             </select>
                           </label>
-                          <label v-if="newDeal.deal_type_code === 'rental'" class="field">
-                            <span class="label">Сумма</span>
-                            <input
-                              v-model.number="newDeal.price"
-                              class="input"
-                              type="number"
-                              min="0"
-                              :max="maxPrice"
-                              @input="newDeal.price = clampPrice(newDeal.price)"
-                            />
-                          </label>
                         </div>
-                        <label
-                          v-if="newDeal.deal_type_code === 'rental'"
-                          class="field field--product"
-                        >
-                          <div class="deal-product-filters field--full">
-                            <label class="field">
-                              <span class="label">Поиск</span>
-                              <div class="input input--search input--search-row">
-                                <input
-                                  v-model.trim="newDealProductSearch"
-                                  class="input--search-field"
-                                  placeholder="поиск товара"
-                                  @input="onNewDealProductSearch"
-                                />
-                              </div>
-                            </label>
-                            <label class="field">
-                              <span class="label">Тип товара</span>
-                              <select v-model="newDealProductTypeFilter" class="input input--select">
-                                <option value="all">Все</option>
-                                <option value="game">Игра</option>
-                                <option value="subscription">Подписка</option>
-                              </select>
-                            </label>
-                          </div>
-                          <div class="input--select-wrap">
-                            <select
-                              v-if="!newDealProductNoMatches"
-                              v-model.number="newDeal.product_id"
-                              class="input input--select input--list input--list--product-short"
-                              :size="3"
-                              @change="syncNewDealProductSearch"
-                            >
-                              <option value="">— не выбрано —</option>
-                              <option v-for="g in filteredNewDealProductsByType" :key="g.product_id" :value="g.product_id">
-                                {{ g.title }}
-                              </option>
-                            </select>
-                            <button
-                              v-if="newDeal.product_id"
-                              class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
-                              type="button"
-                              aria-label="Очистить товар"
-                              title="Очистить товар"
-                              @click="clearNewDealProduct"
-                            >
-                              <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <path d="M6 6l12 12M18 6l-12 12" />
-                              </svg>
-                            </button>
-                          </div>
-                          <div
-                            v-if="newDealProductNoMatches"
-                            class="quick-create quick-create--product-empty"
-                          >
-                            <div class="quick-create__title">Быстро создать товар</div>
-                            <input v-model.trim="quickNewProduct.title" class="input input--compact" placeholder="Название товара" />
-                            <div class="check-list check-list--compact">
-                              <label v-for="p in platforms" :key="`qn-${p.code}`" class="check-item">
-                                <input type="checkbox" :value="p.code" v-model="quickNewProduct.platform_codes" />
-                                <span>{{ p.name }} ({{ p.code }})</span>
+                        <div v-if="newDeal.deal_type_code === 'rental'" class="deal-form__rental-layout">
+                          <div class="deal-form__rental-main">
+                            <div class="deal-form__double">
+                              <label class="field">
+                                <span class="label">Источник</span>
+                                <select v-model.number="newDeal.source_id" class="input input--select">
+                                  <option value="">— не выбрано —</option>
+                                  <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">
+                                    {{ s.name }} ({{ s.code }})
+                                  </option>
+                                </select>
+                              </label>
+                              <label class="field">
+                                <span class="label">Номер заявки</span>
+                                <input v-model.trim="newDeal.order_number" class="input" placeholder="-" />
                               </label>
                             </div>
-                            <div class="quick-create__actions">
-                              <button
-                                class="ghost ghost--small"
-                                type="button"
-                                :disabled="quickNewProductLoading"
-                                @click="createQuickProduct('new')"
-                              >
-                                <span v-if="quickNewProductLoading" class="spinner spinner--small"></span>
-                                Создать
-                              </button>
-                              <span v-if="quickNewProductError" class="bad">{{ quickNewProductError }}</span>
+                            <div class="deal-form__double">
+                              <label class="field">
+                                <span class="label">Покупатель</span>
+                                <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="-" />
+                              </label>
+                              <label class="field">
+                                <span class="label">Сумма</span>
+                                <input
+                                  v-model.number="newDeal.price"
+                                  class="input"
+                                  type="number"
+                                  min="0"
+                                  :max="maxPrice"
+                                  @input="newDeal.price = clampPrice(newDeal.price)"
+                                />
+                              </label>
                             </div>
-                          </div>
-                        </label>
-                        <div v-if="newDeal.deal_type_code === 'rental'" class="deal-form__double">
-                          <label class="field">
-                            <span class="label">Тип слота</span>
-                            <select
-                              v-model="newDeal.slot_type_code"
-                              class="input input--select"
-                              :disabled="!newDeal.product_id || dealSlotAvailabilityLoadingNew"
-                            >
-                              <option value="">{{ !newDeal.product_id ? 'Сначала выберите товар' : (dealSlotAvailabilityLoadingNew ? '(формируется список)' : '— не выбрано —') }}</option>
-                              <option
-                                v-for="st in getDealSlotTypeOptions('new')"
-                                :key="st.code"
-                                :value="st.code"
-                                :disabled="!st.supported"
-                              >
-                                {{ getDealSlotTypeLabel(st) }}
-                              </option>
-                            </select>
-                          </label>
-                          <label class="field">
-                            <span class="label">Ответственный</span>
-                            <select v-model="newDealResponsible" class="input input--select">
-                              <option value="">— не выбрано —</option>
-                              <option
-                                v-for="responsibleName in responsibleUserOptions"
-                                :key="`new-rental-responsible-${responsibleName}`"
-                                :value="responsibleName"
-                              >
-                                {{ responsibleName }}
-                              </option>
-                            </select>
-                          </label>
-                        </div>
-                        <label v-if="newDeal.deal_type_code === 'rental'" class="field">
+                            <label class="field">
+                              <span class="label">Ответственный</span>
+                              <select v-model="newDealResponsible" class="input input--select">
+                                <option value="">— не выбрано —</option>
+                                <option
+                                  v-for="responsibleName in responsibleUserOptions"
+                                  :key="`new-rental-responsible-${responsibleName}`"
+                                  :value="responsibleName"
+                                >
+                                  {{ responsibleName }}
+                                </option>
+                              </select>
+                            </label>
+                            <label class="field field--sharing-account">
                           <span
                             v-if="dealAccountsForProductLoading || !newDeal.product_id || !newDeal.slot_type_code || isDealSlotTypeUnsupported('new') || dealAccountsForNew.length || newDeal.account_id"
                             class="label"
@@ -763,13 +667,13 @@
                             </option>
                           </select>
                           <div
-                            v-if="!dealAccountsForProductLoading && newDeal.product_id && newDeal.slot_type_code && !newDeal.account_id && !isDealSlotTypeUnsupported('new') && !hasFreeDealSlots('new')"
-                            class="quick-create"
+                            v-if="!dealAccountsForProductLoading && newDeal.product_id && newDeal.slot_type_code && !newDeal.account_id && !isDealSlotTypeUnsupported('new') && (isNewRentalSubscriptionMode || !hasFreeDealSlots('new'))"
+                            :class="[
+                              'quick-create',
+                              { 'quick-create--plain': isNewRentalSubscriptionMode || !hasAnyProductAssignmentsNew || !dealProductAssignmentsForSelectedSlotNew.length }
+                            ]"
                           >
-                            <div class="quick-create__title">
-                              {{ hasAnyProductAssignmentsNew ? 'Нет свободных слотов — можно снять занятый' : 'Нет аккаунтов с товаром' }}
-                            </div>
-                            <div v-if="hasAnyProductAssignmentsNew && dealGameAssignmentsLoadingNew" class="loader-wrap loader-wrap--compact">
+                            <div v-if="!isNewRentalSubscriptionMode && hasAnyProductAssignmentsNew && dealGameAssignmentsLoadingNew" class="loader-wrap loader-wrap--compact">
                               <div class="newtons-cradle" aria-label="Loading" role="img">
                                 <div class="newtons-cradle__dot"></div>
                                 <div class="newtons-cradle__dot"></div>
@@ -777,124 +681,238 @@
                                 <div class="newtons-cradle__dot"></div>
                               </div>
                             </div>
-                            <div v-else-if="hasAnyProductAssignmentsNew && dealProductAssignmentsForSelectedSlotNew.length" class="quick-create__table-scroll">
+                            <div v-else-if="!isNewRentalSubscriptionMode && hasAnyProductAssignmentsNew && dealProductAssignmentsForSelectedSlotNew.length" class="quick-create__table-scroll">
+                              <div class="quick-create__title">Список занятых слотов</div>
                               <table class="table table--compact table--dense">
                                 <thead>
                                   <tr>
                                     <th>Аккаунт</th>
                                     <th>Слот</th>
                                     <th>Покупатель</th>
-                                    <th class="cell--tight"></th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  <tr v-for="s in dealProductAssignmentsForSelectedSlotNew" :key="s.assignment_id">
+                                  <tr
+                                    v-for="s in dealProductAssignmentsForSelectedSlotNew"
+                                    :key="s.assignment_id"
+                                    class="table-row--slot-release"
+                                    @click="releaseSlotFromDeal(s, 'new')"
+                                  >
                                     <td>{{ getAccountLabelById(s.account_id) }}</td>
                                     <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
                                     <td>{{ s.customer_nickname || '—' }}</td>
-                                    <td class="cell--tight">
-                                      <button
-                                        v-if="!s.released_at"
-                                        class="ghost ghost--small"
-                                        type="button"
-                                        :disabled="accountSlotReleaseLoading"
-                                        @click="releaseSlotFromDeal(s, 'new')"
-                                      >
-                                        Снять
-                                      </button>
-                                    </td>
                                   </tr>
                                 </tbody>
                               </table>
                             </div>
-                            <p v-else-if="hasAnyProductAssignmentsNew" class="muted">Нет активных слотов по товару.</p>
-                            <div class="quick-create__title">Быстро создать аккаунт</div>
-                            <input v-model.trim="quickNewAccount.login_name" class="input input--compact" placeholder="Логин" />
-                            <select v-model="quickNewAccount.domain_code" class="input input--select input--compact">
-                              <option value="">— домен —</option>
-                              <option v-for="d in domains" :key="`qn-d-${d.code}`" :value="d.code">
-                                {{ d.name }} ({{ d.code }})
-                              </option>
-                            </select>
-                            <div class="check-list check-list--compact">
-                              <label v-for="p in platforms" :key="`qn-p-${p.code}`" class="check-item">
-                                <input type="checkbox" :value="p.code" v-model="quickNewAccount.platform_codes" />
-                                <span>{{ p.name }} ({{ p.code }})</span>
-                              </label>
-                            </div>
-                            <div class="quick-create__actions">
-                              <button
-                                class="ghost ghost--small"
-                                type="button"
-                                :disabled="quickNewAccountLoading"
-                                @click="createQuickAccount('new')"
-                              >
-                                <span v-if="quickNewAccountLoading" class="spinner spinner--small"></span>
-                                Создать
-                              </button>
-                              <span v-if="quickNewAccountError" class="bad">{{ quickNewAccountError }}</span>
-                            </div>
                           </div>
                         </label>
-                        <div v-if="newDeal.deal_type_code === 'rental' && newDeal.account_id && accountSlotStatusNew.length" class="slot-status">
-                          <div class="slot-status__title">Слоты</div>
-                          <div class="slot-status__list">
-                            <div v-for="s in getSortedSlotStatus(accountSlotStatusNew)" :key="s.slot_type_code" class="slot-status__row">
-                              <span class="slot-status__name">{{ slotTypes.find((t) => t.code === s.slot_type_code)?.name || s.slot_type_code }}</span>
-                              <span class="slot-status__value">{{ s.occupied }}/{{ s.capacity }}</span>
+                            <div class="field field--comment-collapsible">
+                              <button class="comment-toggle" type="button" @click="newDealCommentOpen = !newDealCommentOpen">
+                                {{ newDealCommentOpen || newDeal.notes ? 'Комментарий' : '+ Комментарий' }}
+                              </button>
+                              <textarea
+                                v-if="newDealCommentOpen || newDeal.notes"
+                                v-model.trim="newDeal.notes"
+                                class="input input--textarea input--textarea--compact"
+                                :rows="getCompactNotesRows(newDeal.notes)"
+                              />
                             </div>
                           </div>
-                        </div>
-                        <div v-if="newDeal.deal_type_code === 'rental' && newDeal.account_id" class="field field--full">
-                          <span class="label">Слоты аккаунта (занято)</span>
-                          <div v-if="dealAccountAssignmentsLoadingNew" class="loader-wrap loader-wrap--compact">
-                            <div class="newtons-cradle" aria-label="Loading" role="img">
-                              <div class="newtons-cradle__dot"></div>
-                              <div class="newtons-cradle__dot"></div>
-                              <div class="newtons-cradle__dot"></div>
-                              <div class="newtons-cradle__dot"></div>
+                          <div class="deal-form__rental-side">
+                            <div class="deal-form__double">
+                              <label class="field">
+                                <span class="label">Тип товара</span>
+                                <select v-model="newDealProductTypeFilter" class="input input--select">
+                                  <option value="game">Игра</option>
+                                  <option value="subscription">Подписка</option>
+                                </select>
+                              </label>
+                              <label class="field">
+                                <span class="label">Тип слота</span>
+                                <select
+                                  v-model="newDeal.slot_type_code"
+                                  class="input input--select"
+                                  :disabled="(!isNewRentalSubscriptionMode && !newDeal.product_id) || dealSlotAvailabilityLoadingNew"
+                                >
+                                  <option value="">{{ (!isNewRentalSubscriptionMode && !newDeal.product_id) ? 'Сначала выберите товар' : (dealSlotAvailabilityLoadingNew ? '(формируется список)' : '— не выбрано —') }}</option>
+                                  <option
+                                    v-for="st in getSlotTypeOptionsForDeal('new')"
+                                    :key="st.code"
+                                    :value="st.code"
+                                    :disabled="st.supported === false"
+                                  >
+                                    {{ getDealSlotTypeLabel(st) }}
+                                  </option>
+                                </select>
+                              </label>
+                            </div>
+                            <label class="field">
+                              <span class="label">{{ showNewDealProductSearch ? 'Поиск' : 'Товар' }}</span>
+                              <div v-if="showNewDealProductSearch" class="input input--search-row">
+                                <input
+                                  v-model.trim="newDealProductSearch"
+                                  class="input--search-field"
+                                  placeholder="поиск товара"
+                                  @input="onNewDealProductSearch"
+                                />
+                              </div>
+                              <div v-else class="input--select-wrap">
+                                <input
+                                  class="input"
+                                  :value="newDeal.product_id
+                                    ? getProductLabelById(newDeal.product_id)
+                                    : (isNewRentalSubscriptionMode && !newDeal.slot_type_code ? 'Сначала выберите слот' : '— не выбрано —')"
+                                  readonly
+                                />
+                                <button
+                                  v-if="newDeal.product_id"
+                                  class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                  type="button"
+                                  aria-label="Очистить товар"
+                                  title="Очистить товар"
+                                  @click="clearNewDealProduct"
+                                >
+                                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M6 6l12 12M18 6l-12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </label>
+                            <label
+                              v-if="showNewDealProductSearch"
+                              :class="[
+                                'field field--product field--sharing-product-list',
+                                {
+                                  'field--sharing-product-list--selected': !!newDeal.product_id,
+                                  'field--sharing-product-list--collapsed-empty': showNewDealProductNoMatches && !newQuickProductOpen,
+                                  'field--sharing-product-list--expanded-empty': showNewDealProductNoMatches && newQuickProductOpen,
+                                }
+                              ]"
+                            >
+                              <div class="input--select-wrap">
+                                <select
+                                  v-if="!showNewDealProductNoMatches"
+                                  v-model.number="newDeal.product_id"
+                                  :class="[
+                                    'input input--select input--list input--list--product-short',
+                                    {
+                                      'input--list--sharing-height': !newDeal.product_id,
+                                      'input--list--compact': !!newDeal.product_id,
+                                    }
+                                  ]"
+                                  :size="newDeal.product_id ? 1 : 3"
+                                  :disabled="isNewRentalSubscriptionMode && !newDeal.slot_type_code"
+                                  @change="syncNewDealProductSearch"
+                                >
+                                  <option value="">
+                                    {{ isNewRentalSubscriptionMode && !newDeal.slot_type_code ? 'Сначала выберите слот' : '— не выбрано —' }}
+                                  </option>
+                                  <option v-for="g in filteredNewDealProductsByType" :key="g.product_id" :value="g.product_id">
+                                    {{ g.title }}
+                                  </option>
+                                </select>
+                                <button
+                                  v-if="newDeal.product_id"
+                                  class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                  type="button"
+                                  aria-label="Очистить товар"
+                                  title="Очистить товар"
+                                  @click="clearNewDealProduct"
+                                >
+                                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M6 6l12 12M18 6l-12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                              <div
+                                v-if="showNewDealProductNoMatches"
+                                :class="[
+                                  'quick-create quick-create--product-empty',
+                                  { 'quick-create--collapsed': !newQuickProductOpen }
+                                ]"
+                              >
+                                <div class="quick-create__header">
+                                  <button class="comment-toggle" type="button" @click="newQuickProductOpen = !newQuickProductOpen">
+                                    {{ newQuickProductOpen ? 'Быстрое создание товара' : '+ Быстрое создание товара' }}
+                                  </button>
+                                  <button
+                                    v-if="newQuickProductOpen"
+                                    class="ghost ghost--small"
+                                    type="button"
+                                    :disabled="quickNewProductLoading"
+                                    @click="createQuickProduct('new')"
+                                  >
+                                    <span v-if="quickNewProductLoading" class="spinner spinner--small"></span>
+                                    Создать
+                                  </button>
+                                </div>
+                                <template v-if="newQuickProductOpen">
+                                  <input v-model.trim="quickNewProduct.title" class="input input--compact" placeholder="Название товара" />
+                                  <div class="check-list check-list--compact check-list--platform-row">
+                                    <label v-for="p in platforms" :key="`qn-${p.code}`" class="check-item">
+                                      <input type="checkbox" :value="p.code" v-model="quickNewProduct.platform_codes" />
+                                      <span>{{ p.name }} ({{ p.code }})</span>
+                                    </label>
+                                  </div>
+                                  <span v-if="quickNewProductError" class="bad">{{ quickNewProductError }}</span>
+                                </template>
+                              </div>
+                            </label>
+                            <div v-if="newDeal.account_id" class="deal-form__account-details">
+                              <div class="deal-form__account-details-head">Данные аккаунта</div>
+                              <label class="field">
+                                <span class="label">Логин</span>
+                                <input class="input" :value="getAccountLabelById(newDeal.account_id)" readonly />
+                              </label>
+                              <label class="field">
+                                <span class="label">Пароль</span>
+                                <input class="input" :value="getAccountPasswordById(newDeal.account_id)" readonly />
+                              </label>
+                              <label class="field">
+                                <span class="label">Резерв</span>
+                                <input class="input" :value="getDealReserveLabel(newDeal.account_id, newDeal.reserve_key)" readonly />
+                              </label>
+                            </div>
+                            <div
+                              v-if="!dealAccountsForProductLoading && newDeal.product_id && newDeal.slot_type_code && !newDeal.account_id && !isDealSlotTypeUnsupported('new') && (isNewRentalSubscriptionMode || !hasFreeDealSlots('new'))"
+                              class="quick-create quick-create--account"
+                            >
+                              <div class="quick-create__header">
+                                <button class="comment-toggle" type="button" @click="newQuickAccountOpen = !newQuickAccountOpen">
+                                  {{ newQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
+                                </button>
+                                <button
+                                  v-if="newQuickAccountOpen"
+                                  class="ghost ghost--small"
+                                  type="button"
+                                  :disabled="quickNewAccountLoading"
+                                  @click="createQuickAccount('new')"
+                                >
+                                  <span v-if="quickNewAccountLoading" class="spinner spinner--small"></span>
+                                  Создать
+                                </button>
+                              </div>
+                              <template v-if="newQuickAccountOpen">
+                                <div class="deal-form__double">
+                                  <input v-model.trim="quickNewAccount.login_name" class="input input--compact" placeholder="Логин" />
+                                  <select v-model="quickNewAccount.domain_code" class="input input--select input--compact">
+                                    <option value="">— домен —</option>
+                                    <option v-for="d in domains" :key="`qn-d-${d.code}`" :value="d.code">
+                                      {{ d.name }} ({{ d.code }})
+                                    </option>
+                                  </select>
+                                </div>
+                                <div class="check-list check-list--compact check-list--platform-row">
+                                  <label v-for="p in platforms" :key="`qn-p-${p.code}`" class="check-item">
+                                    <input type="checkbox" :value="p.code" v-model="quickNewAccount.platform_codes" />
+                                    <span>{{ p.name }} ({{ p.code }})</span>
+                                  </label>
+                                </div>
+                                <span v-if="quickNewAccountError" class="bad">{{ quickNewAccountError }}</span>
+                              </template>
                             </div>
                           </div>
-                          <table v-else-if="dealAccountAssignmentsNew.filter((s) => !s.released_at).length" class="table table--compact table--dense">
-                            <thead>
-                              <tr>
-                                <th>Слот</th>
-                                <th>Товар</th>
-                                <th>Покупатель</th>
-                                <th>Назначено</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <tr v-for="s in dealAccountAssignmentsNew.filter((s) => !s.released_at)" :key="s.assignment_id">
-                                <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
-                                <td>{{ s.product_title || '—' }}</td>
-                                <td>{{ s.customer_nickname || '—' }}</td>
-                                <td>{{ formatDateTimeMinutes(s.assigned_at) }}</td>
-                              </tr>
-                            </tbody>
-                          </table>
-                          <p v-else class="muted">Пока нет назначенных слотов.</p>
-                        </div>
-                        <div v-if="newDeal.deal_type_code === 'sale' || newDeal.deal_type_code === 'rental'" class="field">
-                          <span class="label">Возврат</span>
-                          <label class="check-item">
-                            <input
-                              v-model="newDeal.is_refund"
-                              type="checkbox"
-                            />
-                            <span>Произвести возврат</span>
-                          </label>
-                        </div>
-                        <div v-if="newDeal.deal_type_code === 'rental'" class="field field--comment-collapsible">
-                          <button class="comment-toggle" type="button" @click="newDealCommentOpen = !newDealCommentOpen">
-                            {{ newDealCommentOpen || newDeal.notes ? 'Комментарий' : '+ Комментарий' }}
-                          </button>
-                          <textarea
-                            v-if="newDealCommentOpen || newDeal.notes"
-                            v-model.trim="newDeal.notes"
-                            class="input input--textarea input--textarea--compact"
-                            :rows="getCompactNotesRows(newDeal.notes)"
-                          />
                         </div>
                         <div v-if="newDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-auth">
                           <label class="field">
@@ -988,11 +1006,13 @@ const {
   getDealSlotTypeOptions,
   getDealSlotTypeLabel,
   getAccountLabelById,
+  getAccountSecret,
+  getReserveSecretEntries,
+  sortedDeals,
   hasFreeDealSlots,
-  hasAnyProductAssignmentsEdit,
-  dealGameAssignmentsLoadingEdit,
-  dealProductAssignmentsForSelectedSlotEdit,
-  accountSlotReleaseLoading,
+  hasAnyProductAssignmentsNew,
+  dealGameAssignmentsLoadingNew,
+  dealProductAssignmentsForSelectedSlotNew,
   releaseSlotFromDeal,
   quickEditAccount,
   domains,
@@ -1000,11 +1020,7 @@ const {
   quickEditAccountLoading,
   createQuickAccount,
   quickEditAccountError,
-  accountSlotStatusEdit,
   slotTypes,
-  getSortedSlotStatus,
-  dealAccountAssignmentsLoadingEdit,
-  dealAccountAssignmentsEdit,
   formatDateTimeMinutes,
   getRegionLabel,
   regions,
@@ -1042,49 +1058,329 @@ const {
   quickNewProductError,
   dealSlotAvailabilityLoadingNew,
   dealAccountsForNew,
-  hasAnyProductAssignmentsNew,
-  dealGameAssignmentsLoadingNew,
-  dealProductAssignmentsForSelectedSlotNew,
   quickNewAccount,
   quickNewAccountLoading,
   quickNewAccountError,
-  accountSlotStatusNew,
-  dealAccountAssignmentsLoadingNew,
-  dealAccountAssignmentsNew,
   newDealCommentOpen,
   editDealCommentOpen,
   getCompactNotesRows,
 } = toRefs(ctx)
 
-const editDealProductTypeFilter = ref('all')
-const newDealProductTypeFilter = ref('all')
+const editDealProductTypeFilter = ref('game')
+const newDealProductTypeFilter = ref('game')
+const editQuickProductOpen = ref(false)
+const editQuickAccountOpen = ref(false)
+const newQuickProductOpen = ref(false)
+const newQuickAccountOpen = ref(false)
+
+const isEditRentalSubscriptionMode = computed(() => {
+  return editDeal.value?.deal_type_code === 'rental' && editDealProductTypeFilter.value === 'subscription'
+})
+
+const isNewRentalSubscriptionMode = computed(() => {
+  return newDeal.value?.deal_type_code === 'rental' && newDealProductTypeFilter.value === 'subscription'
+})
+
+const showEditDealProductSearch = computed(() => {
+  if (editDeal.value?.deal_type_code === 'rental' && editDealProductTypeFilter.value === 'subscription') {
+    // Для подписок поиск показываем только после выбора слота и до выбора товара.
+    return !!editDeal.value?.slot_type_code && !editDeal.value?.product_id
+  }
+  // Для игр прячем поиск после выбора товара, чтобы форма не занимала лишнее место.
+  return !(editDeal.value?.deal_type_code === 'rental'
+    && editDealProductTypeFilter.value === 'game'
+    && Boolean(editDeal.value?.product_id))
+})
+
+const showNewDealProductSearch = computed(() => {
+  if (newDeal.value?.deal_type_code === 'rental' && newDealProductTypeFilter.value === 'subscription') {
+    // В создании подписки логика такая же: слот -> поиск/список -> выбранный товар.
+    return !!newDeal.value?.slot_type_code && !newDeal.value?.product_id
+  }
+  // После сброса товара поиск снова показываем, чтобы можно было выбрать другую игру.
+  return !(newDeal.value?.deal_type_code === 'rental'
+    && newDealProductTypeFilter.value === 'game'
+    && Boolean(newDeal.value?.product_id))
+})
+
+// Определяет тип выбранного товара в редактировании, чтобы в режиме просмотра показать его как текст.
+const selectedEditDealProductTypeLabel = computed(() => {
+  const selectedId = Number(editDeal.value?.product_id || 0)
+  if (!selectedId) return '— не выбрано —'
+  const list = filteredEditDealProducts.value || []
+  const found = list.find((item) => Number(item?.product_id || 0) === selectedId)
+  const typeCode = String(found?.type_code || '').toLowerCase()
+  if (typeCode === 'game') return 'Игра'
+  if (typeCode === 'subscription') return 'Подписка'
+  return '— не выбрано —'
+})
+
+// Определяет тип товара у выбранной позиции в редактируемой сделке.
+function getSelectedEditDealProductTypeCode() {
+  const selectedId = Number(editDeal.value?.product_id || 0)
+  if (!selectedId) return ''
+  const list = filteredEditDealProducts.value || []
+  const found = list.find((item) => Number(item?.product_id || 0) === selectedId)
+  return String(found?.type_code || '').toLowerCase()
+}
+
+// Синхронизирует фильтр типа в редактировании с фактически выбранным товаром сделки.
+function syncEditProductTypeFilterFromSelectedProduct() {
+  if (!editDeal.value?.open || editDeal.value?.deal_type_code !== 'rental') return
+  if (!editDeal.value?.product_id) return
+  const currentProductTypeCode = getSelectedEditDealProductTypeCode()
+  if (!currentProductTypeCode) return
+  if (currentProductTypeCode === 'subscription') {
+    editDealProductTypeFilter.value = 'subscription'
+  } else if (currentProductTypeCode === 'game') {
+    editDealProductTypeFilter.value = 'game'
+  }
+}
+
+// Проверяет совместимость товара и типа слота по платформе.
+function isProductSlotCompatible(product, slotTypeCode) {
+  if (!slotTypeCode) return false
+  const slot = (slotTypes.value || []).find((item) => item?.code === slotTypeCode)
+  if (!slot?.platform_code) return true
+  const platforms = Array.isArray(product?.platform_codes)
+    ? product.platform_codes.map((code) => String(code || '').toLowerCase())
+    : []
+  if (!platforms.length) return true
+  if (platforms.includes('ps4')) return true
+  if (platforms.includes('ps5')) return String(slot.platform_code || '').toLowerCase() === 'ps5'
+  return true
+}
 
 // Фильтрует товары в редактировании сделки по выбранному типу.
 const filteredEditDealProductsByType = computed(() => {
-  if (!editDealProductTypeFilter.value || editDealProductTypeFilter.value === 'all') return filteredEditDealProducts.value
-  return (filteredEditDealProducts.value || []).filter((item) => item?.type_code === editDealProductTypeFilter.value)
+  const list = filteredEditDealProducts.value || []
+  if (!editDealProductTypeFilter.value) return list
+  const typed = list.filter((item) => item?.type_code === editDealProductTypeFilter.value)
+  // Для подписок даем выбирать товар только после выбора слота.
+  if (!isEditRentalSubscriptionMode.value) return typed
+  if (!editDeal.value?.slot_type_code) return []
+  return typed.filter((item) => isProductSlotCompatible(item, editDeal.value.slot_type_code))
 })
 
 // Фильтрует товары в создании сделки по выбранному типу.
 const filteredNewDealProductsByType = computed(() => {
-  if (!newDealProductTypeFilter.value || newDealProductTypeFilter.value === 'all') return filteredNewDealProducts.value
-  return (filteredNewDealProducts.value || []).filter((item) => item?.type_code === newDealProductTypeFilter.value)
+  const list = filteredNewDealProducts.value || []
+  // В шеринге по умолчанию показываем игры, чтобы список сразу был целевым.
+  if (!newDealProductTypeFilter.value) return list
+  const typed = list.filter((item) => item?.type_code === newDealProductTypeFilter.value)
+  // Для подписок сначала выбираем слот, затем товар.
+  if (!isNewRentalSubscriptionMode.value) return typed
+  if (!newDeal.value?.slot_type_code) return []
+  return typed.filter((item) => isProductSlotCompatible(item, newDeal.value.slot_type_code))
 })
+
+const showEditDealProductNoMatches = computed(() => {
+  // В режиме подписок без слота блок "не найдено" не показываем: товар пока недоступен для выбора.
+  if (isEditRentalSubscriptionMode.value && !editDeal.value?.slot_type_code) return false
+  if (isEditRentalSubscriptionMode.value) return false
+  return Boolean(editDealProductNoMatches.value)
+})
+
+const showNewDealProductNoMatches = computed(() => {
+  // Для подписок не показываем быстрый create товара, он рассчитан на игры.
+  if (isNewRentalSubscriptionMode.value && !newDeal.value?.slot_type_code) return false
+  if (isNewRentalSubscriptionMode.value) return false
+  return Boolean(newDealProductNoMatches.value)
+})
+
+// Возвращает пароль аккаунта для блока под выбранным аккаунтом в форме сделки.
+function getAccountPasswordById(accountId) {
+  if (!accountId) return '—'
+  const value = String(getAccountSecret.value?.(accountId) || '').trim()
+  return value || '—'
+}
+
+// Приводит ключ резерва к формату reserveN для стабильного сравнения.
+function normalizeReserveKey(value) {
+  const raw = String(value || '').trim().toLowerCase()
+  if (!/^reserve\d+$/.test(raw)) return ''
+  return `reserve${Number(raw.replace('reserve', ''))}`
+}
+
+// Собирает занятые ключи резервов по аккаунту из уже загруженных сделок.
+function getUsedReserveKeysByAccount(accountId, currentDealId = null) {
+  const targetId = Number(accountId || 0)
+  if (!targetId) return new Set()
+  const currentId = Number(currentDealId || 0)
+  const items = Array.isArray(sortedDeals.value) ? sortedDeals.value : []
+  const used = new Set()
+  for (const deal of items) {
+    if (String(deal?.deal_type_code || '').toLowerCase() !== 'rental') continue
+    if (String(deal?.status_code || '').toLowerCase() === 'cancelled') continue
+    if (Number(deal?.account_id || 0) !== targetId) continue
+    if (currentId && Number(deal?.deal_id || 0) === currentId) continue
+    const normalizedKey = normalizeReserveKey(deal?.reserve_key)
+    if (normalizedKey) used.add(normalizedKey)
+  }
+  return used
+}
+
+// Возвращает список резервов аккаунта и признак, занят ли каждый резерв.
+function getAccountReserveEntriesForDeal(accountId, currentDealId = null) {
+  const entries = Array.isArray(getReserveSecretEntries.value?.(accountId))
+    ? getReserveSecretEntries.value(accountId)
+    : []
+  const used = getUsedReserveKeysByAccount(accountId, currentDealId)
+  return entries.map((item) => {
+    const normalizedKey = normalizeReserveKey(item?.key)
+    return {
+      key: normalizedKey,
+      value: String(item?.value || '').trim(),
+      used: normalizedKey ? used.has(normalizedKey) : false,
+    }
+  })
+}
+
+// Выбирает первый свободный резерв из уже загруженных данных.
+function pickFirstFreeReserveKey(accountId, currentDealId = null) {
+  const entries = getAccountReserveEntriesForDeal(accountId, currentDealId)
+  const free = entries.find((item) => item.key && !item.used)
+  return free?.key || ''
+}
+
+// Возвращает строку для отображения резерва в блоке выбранного аккаунта.
+function getDealReserveLabel(accountId, reserveKey, currentDealId = null) {
+  if (!accountId) return '—'
+  const normalizedKey = normalizeReserveKey(reserveKey)
+  const entries = getAccountReserveEntriesForDeal(accountId, currentDealId)
+  if (!entries.length) return '—'
+  const fallbackKey = normalizedKey || pickFirstFreeReserveKey(accountId, currentDealId)
+  const selected = entries.find((item) => item.key === fallbackKey) || entries[0]
+  if (!selected?.value) return '—'
+  return selected.used ? `${selected.value} (использован)` : selected.value
+}
+
+// Возвращает список слотов для формы; у подписки до выбора товара даем полный список.
+function getSlotTypeOptionsForDeal(target) {
+  const isEdit = target === 'edit'
+  const subscriptionMode = isEdit ? isEditRentalSubscriptionMode.value : isNewRentalSubscriptionMode.value
+  const productId = isEdit ? editDeal.value?.product_id : newDeal.value?.product_id
+  if (subscriptionMode && !productId) {
+    return (slotTypes.value || []).map((item) => ({
+      code: item.code,
+      name: item.name,
+      supported: true,
+    }))
+  }
+  return getDealSlotTypeOptions.value(target)
+}
 
 // Сбрасывает фильтр типа при новом открытии редактирования, чтобы не прятать товары.
 watch(() => editDeal.value?.open, (isOpen) => {
-  if (isOpen) editDealProductTypeFilter.value = 'all'
+  if (!isOpen) return
+  // При открытии редактирования сбрасываем состояние раскрытых блоков быстрого создания.
+  const currentProductTypeCode = getSelectedEditDealProductTypeCode()
+  editDealProductTypeFilter.value = currentProductTypeCode === 'subscription' ? 'subscription' : 'game'
+  editQuickProductOpen.value = false
+  editQuickAccountOpen.value = false
 })
 
-// Сбрасывает фильтр типа при открытии создания шеринга, чтобы список был полным.
+watch(
+  () => [editDeal.value?.open, editDeal.value?.product_id, filteredEditDealProducts.value?.length],
+  () => {
+    // Повторно синхронизируем тип после загрузки/обновления списка товаров.
+    syncEditProductTypeFilterFromSelectedProduct()
+  }
+)
+
+watch(
+  () => dealEditMode.value,
+  (mode) => {
+    if (mode !== 'edit') return
+    // При входе в редактирование всегда выравниваем фильтр с типом выбранного товара.
+    syncEditProductTypeFilterFromSelectedProduct()
+  }
+)
+
+// При открытии создания шеринга возвращает фильтр к "Игра", чтобы форма была предсказуемой.
 watch(() => newDeal.value?.deal_type_code, (dealTypeCode) => {
-  if (dealTypeCode === 'rental') newDealProductTypeFilter.value = 'all'
+  if (dealTypeCode !== 'rental') return
+  // Для новой шеринговой сделки открываем форму в базовом состоянии с закрытым quick-create.
+  newDealProductTypeFilter.value = 'game'
+  newQuickProductOpen.value = false
+  newQuickAccountOpen.value = false
+})
+
+watch(() => editDealProductTypeFilter.value, (typeCode, prev) => {
+  if (!editDeal.value?.open || editDeal.value?.deal_type_code !== 'rental') return
+  // В режиме просмотра фильтр обновляется автоматически, без сброса текущего выбора сделки.
+  if (dealEditMode.value !== 'edit') return
+  if (typeCode === prev) return
+  // Если фильтр уже совпадает с типом выбранного товара, значит это автосинхронизация — ничего не сбрасываем.
+  const selectedTypeCode = getSelectedEditDealProductTypeCode()
+  if (selectedTypeCode && selectedTypeCode === typeCode) return
+  // При переключении в подписки очищаем связку товар/аккаунт: выбор снова идет от слота.
+  if (typeCode === 'subscription') {
+    editDeal.value.product_id = ''
+    editDeal.value.account_id = ''
+    editDealProductSearch.value = ''
+  }
+})
+
+watch(() => newDealProductTypeFilter.value, (typeCode, prev) => {
+  if (newDeal.value?.deal_type_code !== 'rental') return
+  if (typeCode === prev) return
+  // Для подписок сбрасываем товар и аккаунт, чтобы начать выбор с типа слота.
+  if (typeCode === 'subscription') {
+    newDeal.value.product_id = ''
+    newDeal.value.account_id = ''
+    newDealProductSearch.value = ''
+  }
+})
+
+watch(() => editDeal.value?.slot_type_code, (slotTypeCode, prev) => {
+  if (!editDeal.value?.open || !isEditRentalSubscriptionMode.value) return
+  if (slotTypeCode === prev) return
+  // Смена слота в подписках требует заново выбрать товар и аккаунт.
+  editDeal.value.product_id = ''
+  editDeal.value.account_id = ''
+  editDealProductSearch.value = ''
+})
+
+watch(() => newDeal.value?.slot_type_code, (slotTypeCode, prev) => {
+  if (!isNewRentalSubscriptionMode.value) return
+  if (slotTypeCode === prev) return
+  // В создании подписки смена слота также пересобирает выбор товара.
+  newDeal.value.product_id = ''
+  newDeal.value.account_id = ''
+  newDealProductSearch.value = ''
+})
+
+watch(() => newDeal.value?.account_id, (accountId) => {
+  if (newDeal.value?.deal_type_code !== 'rental') return
+  if (!accountId) {
+    newDeal.value.reserve_key = ''
+    return
+  }
+  // При выборе аккаунта подставляем первый свободный резерв, если он доступен.
+  newDeal.value.reserve_key = pickFirstFreeReserveKey(accountId)
+})
+
+watch(() => editDeal.value?.account_id, (accountId) => {
+  if (!editDeal.value?.open || editDeal.value?.deal_type_code !== 'rental') return
+  if (!accountId) {
+    editDeal.value.reserve_key = ''
+    return
+  }
+  const currentKey = normalizeReserveKey(editDeal.value?.reserve_key)
+  if (currentKey) return
+  // В редактировании подбираем резерв только когда в сделке еще нет ключа.
+  editDeal.value.reserve_key = pickFirstFreeReserveKey(accountId, editDeal.value?.deal_id)
+})
+
+const isEditDealPendingFlow = computed(() => {
+  // Используем единый признак pending, чтобы скрывать возврат в форме.
+  return String(editDeal.value?.flow_status_code || '').trim().toLowerCase() === 'pending'
 })
 
 const canEditRefundFlag = computed(() => {
-  // Признак возврата можно менять в ожидании всем, а в завершенных только admin/owner.
-  const status = String(editDeal.value?.flow_status_code || '').toLowerCase()
-  if (status === 'pending') return true
+  // Возврат в форме меняем только у завершенных сделок для admin/owner.
+  const status = String(editDeal.value?.flow_status_code || '').trim().toLowerCase()
   return status === 'completed' && Boolean(allowCompletedDealEdit?.value)
 })
 
@@ -1096,7 +1392,7 @@ const canEditSystemDates = computed(() => {
 
 const refundEditBlockedReason = computed(() => {
   // Подсказываем причину блокировки, чтобы было понятно почему чекбокс недоступен.
-  return canEditRefundFlag.value ? '' : 'Признак можно менять только в статусе В ожидании (или в Завершено для admin/owner)'
+  return canEditRefundFlag.value ? '' : 'Признак можно менять только у завершенной сделки (для admin/owner)'
 })
 
 const editFlowStatusOptions = computed(() => {

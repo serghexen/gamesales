@@ -79,6 +79,23 @@ export function useAccountsFlow({
     return reserves.join(' ')
   }
 
+  // Возвращает резервы аккаунта как список пар key/value, отсортированных по номеру reserveN.
+  function getReserveSecretEntries(accountId) {
+    const list = accountSecrets.value[accountId] || []
+    return list
+      .filter((s) => /^reserve\d+$/i.test(String(s.secret_key || '').trim()))
+      .map((s) => ({
+        key: String(s.secret_key || '').trim().toLowerCase(),
+        value: s.secret_value_b64 ? decodeSecret(s.secret_value_b64).trim() : '',
+      }))
+      .filter((item) => item.value)
+      .sort((a, b) => {
+        const aNum = Number(String(a.key).replace('reserve', '')) || 0
+        const bNum = Number(String(b.key).replace('reserve', '')) || 0
+        return aNum - bNum
+      })
+  }
+
   // Достает код/секрет для входа (2FA/код).
   function getAuthSecret(accountId) {
     const list = accountSecrets.value[accountId] || []
@@ -646,6 +663,7 @@ export function useAccountsFlow({
     getEmailSecret,
     getAccountSecret,
     getReserveSecrets,
+    getReserveSecretEntries,
     getAuthSecret,
     loadAccountSecrets,
     loadAccountProducts,

@@ -12,6 +12,7 @@ function createHarness() {
     mapApiError: (m) => m || 'error',
     isSlotTypeSupportedForProduct: () => true,
     slotTypes: ref([]),
+    productsAll: ref([{ product_id: 55, type_code: 'game' }]),
     accountsAll: ref([]),
     editDeal: reactive({ product_id: '', account_id: '', region_code: '' }),
     newDeal: reactive({ product_id: 55, account_id: '', region_code: 'RU', slot_type_code: 'ps5_p1' }),
@@ -101,5 +102,53 @@ describe('useDealsFlow', () => {
 
     expect(h.apiGet).not.toHaveBeenCalledWith('/accounts/8/products', { token: 'token-1' })
     expect(h.apiPut).not.toHaveBeenCalled()
+  })
+
+  it('createQuickAccount skips account-products attach for subscription', async () => {
+    const h = createHarness()
+    h.productsAll.value = [{ product_id: 55, type_code: 'subscription' }]
+    h.apiPost.mockResolvedValueOnce({ account_id: 9 })
+
+    await h.createQuickAccount('new')
+
+    expect(h.apiGet).not.toHaveBeenCalledWith('/accounts/9/products', { token: 'token-1' })
+    expect(h.apiPut).not.toHaveBeenCalledWith('/accounts/9/products', expect.anything(), { token: 'token-1' })
+  })
+
+  it('loadDealAccountsForProduct uses /accounts/for-deal for subscription', async () => {
+    const h = createHarness()
+    h.productsAll.value = [{ product_id: 55, type_code: 'subscription' }]
+    h.apiGet.mockImplementation(async (url) => {
+      if (url === '/accounts/for-deal?product_id=55&slot_type_code=ps5_p1') {
+        return [
+          { account_id: 7, login_full: 'a@x', platform_codes: ['ps5'] },
+        ]
+      }
+      return []
+    })
+
+    await h.loadDealAccountsForProduct('new')
+
+    expect(h.apiGet).toHaveBeenCalledWith('/accounts/for-deal?product_id=55&slot_type_code=ps5_p1', { token: 'token-1' })
+    expect(h.dealAccountsForProductNew.value).toEqual([
+      { account_id: 7, login_full: 'a@x', platform_codes: ['ps5'] },
+    ])
+  })
+
+  it('loadDealSlotAvailability avoids availability endpoint for subscription', async () => {
+    const h = createHarness()
+    h.productsAll.value = [{ product_id: 55, type_code: 'subscription' }]
+    h.slotTypes.value = [
+      { code: 'ps5_p1' },
+      { code: 'ps4_p1' },
+    ]
+
+    await h.loadDealSlotAvailability('new')
+
+    expect(h.apiGet).not.toHaveBeenCalledWith('/accounts/for-deal/availability?product_id=55', { token: 'token-1' })
+    expect(h.dealSlotAvailabilityNew.value).toEqual({
+      ps5_p1: { hasFree: true },
+      ps4_p1: { hasFree: true },
+    })
   })
 })

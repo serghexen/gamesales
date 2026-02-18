@@ -6,8 +6,10 @@ export function useDealsFlow({
   apiPost,
   apiPut,
   mapApiError,
+  requestDealConfirm,
   isSlotTypeSupportedForProduct,
   slotTypes,
+  productsAll,
   accountsAll,
   editDeal,
   newDeal,
@@ -57,6 +59,14 @@ export function useDealsFlow({
     const deal = isEdit ? editDeal : newDeal
     const directProductId = Number(deal?.product_id || 0) || null
     return { productId: directProductId }
+  }
+
+  // Определяет, относится ли выбранный товар к подпискам.
+  function isSubscriptionProduct(productId) {
+    if (!productId) return false
+    const list = Array.isArray(productsAll?.value) ? productsAll.value : []
+    const found = list.find((item) => Number(item?.product_id || 0) === Number(productId))
+    return String(found?.type_code || '').trim().toLowerCase() === 'subscription'
   }
 
   // Быстрое создание товара типа "игра" прямо из формы сделки.
@@ -124,6 +134,7 @@ export function useDealsFlow({
     }
     dealAccountsForProductLoading.value = true
     try {
+      // Список аккаунтов всегда берем из общего for-deal, чтобы учитывались реальные привязки товара к аккаунту.
       const params = new URLSearchParams()
       params.set('product_id', String(productId))
       if (slotTypeCode) params.set('slot_type_code', slotTypeCode)
@@ -224,6 +235,15 @@ export function useDealsFlow({
       else dealSlotAvailabilityNew.value = {}
       return
     }
+    if (isSubscriptionProduct(productId)) {
+      // Для подписок считаем слоты доступными по умолчанию и не дергаем game-only эндпоинт.
+      const availabilityMap = Object.fromEntries(
+        (slotTypes.value || []).map((item) => [item.code, { hasFree: true }])
+      )
+      if (isEdit) dealSlotAvailabilityEdit.value = availabilityMap
+      else dealSlotAvailabilityNew.value = availabilityMap
+      return
+    }
     const loading = isEdit ? dealSlotAvailabilityLoadingEdit : dealSlotAvailabilityLoadingNew
     loading.value = true
     try {
@@ -275,7 +295,16 @@ export function useDealsFlow({
 
   async function releaseSlotFromDeal(item, target) {
     if (!item?.assignment_id) return
-    if (!window.confirm('Снять слот у покупателя?')) return
+    // Для снятия слота используем фирменное подтверждение вместо системного confirm.
+    const accepted = typeof requestDealConfirm === 'function'
+      ? await requestDealConfirm({
+        title: 'Подтверждение',
+        message: 'Снять слот у покупателя?',
+        confirmText: 'Снять',
+        cancelText: 'Отмена',
+      })
+      : window.confirm('Снять слот у покупателя?')
+    if (!accepted) return
     accountSlotReleaseLoading.value = true
     try {
       await apiPost(`/slot-assignments/${item.assignment_id}/release`, {}, { token: auth.state.token })
@@ -341,7 +370,8 @@ export function useDealsFlow({
       await loadAccountsAll()
       const selectedRefs = resolveSelectedDealRefs(target)
       const selectedProductId = selectedRefs.productId
-      if (created?.account_id && selectedProductId) {
+      // Для подписок не используем game-only привязки account_assets, чтобы не получать 400 от API.
+      if (created?.account_id && selectedProductId && !isSubscriptionProduct(selectedProductId)) {
         try {
           // Работаем только с product-привязками аккаунта.
           const existingProducts = await apiGet(`/accounts/${created.account_id}/products`, { token: auth.state.token })

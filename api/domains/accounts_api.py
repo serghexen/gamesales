@@ -43,8 +43,8 @@ def mount_accounts_routes(
     require_role,
     get_current_user,
 ):
-    # Валидирует product для слотов: только активный товар типа game.
-    def ensure_slot_game_product(conn, product_id: Optional[int]) -> None:
+    # Валидирует товар для слотов: поддерживаем игры и подписки.
+    def ensure_slot_product_supported(conn, product_id: Optional[int]) -> None:
         if product_id is None:
             raise HTTPException(400, "product_id is required")
         row = q1(
@@ -62,13 +62,13 @@ def mount_accounts_routes(
         is_archived = bool(row[1]) if row[1] is not None else False
         if is_archived:
             raise HTTPException(400, f"Product is archived: {product_id}")
-        if type_code != "game":
-            raise HTTPException(400, "slot availability supports only products with type game")
+        if type_code not in {"game", "subscription"}:
+            raise HTTPException(400, "slot availability supports only products with type game or subscription")
 
-    # Валидирует список product_ids для привязки к аккаунту.
-    def resolve_asset_links(conn, payload: AccountProductsIn) -> List[int]:
+    # Валидирует список product_ids для привязки к аккаунту (игры и подписки).
+    def resolve_asset_links(conn, payload: AccountProductsIn) -> List[tuple[int, str]]:
         product_ids = list({int(p) for p in (payload.product_ids or [])})
-        valid_links: List[int] = []
+        valid_links: List[tuple[int, str]] = []
         if product_ids:
             rows = qall(
                 conn,
@@ -88,11 +88,18 @@ def mount_accounts_routes(
                 is_archived = bool(row[2]) if row[2] is not None else False
                 if is_archived:
                     raise HTTPException(400, f"Product is archived: {product_id}")
-                if type_code != "game":
-                    raise HTTPException(400, "account assets support only products with type game")
-                valid_links.append(product_id)
+                if type_code not in {"game", "subscription"}:
+                    raise HTTPException(400, "account assets support only products with type game or subscription")
+                valid_links.append((product_id, type_code))
             # Сохраняем порядок без дублей.
-            return list(dict.fromkeys(valid_links))
+            out: List[tuple[int, str]] = []
+            seen: set[int] = set()
+            for product_id, type_code in valid_links:
+                if product_id in seen:
+                    continue
+                seen.add(product_id)
+                out.append((product_id, type_code))
+            return out
         return []
 
     @app.get("/accounts", response_model=AccountListOut)
@@ -659,7 +666,7 @@ def mount_accounts_routes(
         with psycopg.connect(DB_DSN) as conn:
             # Эндпоинт strict product-first: работаем только по product_id.
             selected_product_id = int(product_id)
-            ensure_slot_game_product(conn, selected_product_id)
+            ensure_slot_product_supported(conn, selected_product_id)
 
             rows = qall(
                 conn,
@@ -673,7 +680,7 @@ def mount_accounts_routes(
                   JOIN app.products pr ON pr.product_id = aa.product_id
                   JOIN app.product_platforms pp ON pp.product_id = pr.product_id
                   JOIN app.platforms p ON p.platform_id = pp.platform_id
-                  WHERE aa.asset_type_code = 'game'
+                  WHERE aa.asset_type_code IN ('game', 'subscription')
                   GROUP BY aa.account_id
                 ),
                 base AS (
@@ -695,7 +702,7 @@ def mount_accounts_routes(
                   LEFT JOIN account_platforms ap ON ap.account_id = a.account_id
                   JOIN app.account_assets aa
                     ON aa.account_id = a.account_id
-                   AND aa.asset_type_code = 'game'
+                   AND aa.asset_type_code IN ('game', 'subscription')
                    AND aa.product_id = %s
                   WHERE a.status_code <> 'archived'
                     AND EXISTS (
@@ -767,7 +774,7 @@ def mount_accounts_routes(
         with psycopg.connect(DB_DSN) as conn:
             # Эндпоинт strict product-first: работаем только по product_id.
             selected_product_id = int(product_id)
-            ensure_slot_game_product(conn, selected_product_id)
+            ensure_slot_product_supported(conn, selected_product_id)
 
             rows = qall(
                 conn,
@@ -780,7 +787,7 @@ def mount_accounts_routes(
                   JOIN app.products pr ON pr.product_id = aa.product_id
                   JOIN app.product_platforms pp ON pp.product_id = pr.product_id
                   JOIN app.platforms p ON p.platform_id = pp.platform_id
-                  WHERE aa.asset_type_code = 'game'
+                  WHERE aa.asset_type_code IN ('game', 'subscription')
                   GROUP BY aa.account_id
                 ),
                 base_accounts AS (
@@ -788,7 +795,7 @@ def mount_accounts_routes(
                   FROM app.accounts a
                   JOIN app.account_assets aa
                     ON aa.account_id = a.account_id
-                   AND aa.asset_type_code = 'game'
+                   AND aa.asset_type_code IN ('game', 'subscription')
                    AND aa.product_id = %s
                   WHERE a.status_code <> 'archived'
                 )
@@ -820,7 +827,7 @@ def mount_accounts_routes(
             valid_links = resolve_asset_links(conn, payload)
             exec1(
                 conn,
-                "DELETE FROM app.account_assets WHERE account_id=%s AND asset_type_code='game'",
+                "DELETE FROM app.account_assets WHERE account_id=%s AND asset_type_code IN ('game', 'subscription')",
                 (account_id,),
             )
             if valid_links:
@@ -828,9 +835,9 @@ def mount_accounts_routes(
                     cur.executemany(
                         """
                         INSERT INTO app.account_assets(account_id, product_id, asset_type_code)
-                        VALUES (%s, %s, 'game')
+                        VALUES (%s, %s, %s)
                         """,
-                        [(account_id, product_id) for product_id in valid_links],
+                        [(account_id, product_id, type_code) for (product_id, type_code) in valid_links],
                     )
             conn.commit()
         return {"ok": True}

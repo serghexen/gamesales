@@ -39,6 +39,88 @@ def mount_deals_routes(
         normalized = (value or "").strip()
         return normalized or None
 
+    # Нормализует ключ резерва к формату reserveN; если значение невалидно, возвращает None.
+    def normalize_reserve_key(value: Optional[str]) -> Optional[str]:
+        raw = (value or "").strip().lower()
+        if not raw:
+            return None
+        if not raw.startswith("reserve"):
+            return None
+        suffix = raw.replace("reserve", "", 1).strip()
+        if not suffix.isdigit():
+            return None
+        return f"reserve{int(suffix)}"
+
+    # Возвращает резервы аккаунта в виде пар (reserve_key, decoded_value), отсортированные по номеру.
+    def list_account_reserves(conn, account_id: int):
+        rows = qall(
+            conn,
+            """
+            SELECT secret_key, secret_value
+            FROM app.account_secrets
+            WHERE account_id=%s
+              AND secret_key LIKE 'reserve%%'
+            ORDER BY secret_key
+            """,
+            (account_id,),
+        )
+        parsed = []
+        for secret_key, secret_value in rows:
+            key = normalize_reserve_key(secret_key)
+            if not key:
+                continue
+            # В БД секреты уже хранятся в base64; пустые значения резервами не считаем.
+            value = str(secret_value or "").strip()
+            if not value:
+                continue
+            parsed.append((key, value))
+        parsed.sort(key=lambda item: int(item[0].replace("reserve", "", 1)))
+        return parsed
+
+    # Возвращает множество уже занятых reserve_key по аккаунту в rental-сделках.
+    def get_used_reserve_keys(conn, account_id: int, *, exclude_deal_id: Optional[int] = None):
+        if exclude_deal_id is None:
+            rows = qall(
+                conn,
+                """
+                SELECT DISTINCT di.reserve_key
+                FROM app.deal_items di
+                JOIN app.deals d ON d.deal_id = di.deal_id
+                WHERE d.deal_type_code='rental'
+                  AND di.account_id=%s
+                  AND di.reserve_key IS NOT NULL
+                  AND d.status_code <> 'cancelled'
+                """,
+                (account_id,),
+            )
+        else:
+            rows = qall(
+                conn,
+                """
+                SELECT DISTINCT di.reserve_key
+                FROM app.deal_items di
+                JOIN app.deals d ON d.deal_id = di.deal_id
+                WHERE d.deal_type_code='rental'
+                  AND di.account_id=%s
+                  AND di.reserve_key IS NOT NULL
+                  AND d.status_code <> 'cancelled'
+                  AND d.deal_id <> %s
+                """,
+                (account_id, exclude_deal_id),
+            )
+        return {normalize_reserve_key(row[0]) for row in rows if normalize_reserve_key(row[0])}
+
+    # Выбирает первый свободный резерв аккаунта; если свободных нет, возвращает None.
+    def pick_first_free_reserve_key(conn, account_id: int, *, exclude_deal_id: Optional[int] = None) -> Optional[str]:
+        reserves = list_account_reserves(conn, account_id)
+        if not reserves:
+            return None
+        used_keys = get_used_reserve_keys(conn, account_id, exclude_deal_id=exclude_deal_id)
+        for reserve_key, _ in reserves:
+            if reserve_key not in used_keys:
+                return reserve_key
+        return None
+
     # Проверяет привилегии пользователя для операций с завершенными/возвратными сделками.
     def has_completed_deal_access(user) -> bool:
         role = (getattr(user, "role", "") or "").strip().lower()
@@ -162,8 +244,8 @@ def mount_deals_routes(
         is_archived = bool(row[1]) if row[1] is not None else False
         if is_archived:
             raise HTTPException(400, f"Product is archived: {product_id}")
-        if for_rental and type_code != "game":
-            raise HTTPException(400, "rental supports only products with type game")
+        if for_rental and type_code not in {"game", "subscription"}:
+            raise HTTPException(400, "rental supports only products with type game or subscription")
         return None
 
     @app.post("/rentals")
@@ -373,6 +455,16 @@ def mount_deals_routes(
                 free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
                 if free < 1:
                     raise HTTPException(409, "Not enough free slots for selected slot type")
+
+            selected_reserve_key = None
+            if deal_type == "rental" and payload.account_id:
+                # Для шеринга резерв закрепляем сразу при создании, чтобы не выдавать его второй раз.
+                normalized_payload_reserve = normalize_reserve_key(payload.reserve_key)
+                if normalized_payload_reserve:
+                    used_keys = get_used_reserve_keys(conn, payload.account_id)
+                    selected_reserve_key = normalized_payload_reserve if normalized_payload_reserve not in used_keys else None
+                if selected_reserve_key is None:
+                    selected_reserve_key = pick_first_free_reserve_key(conn, payload.account_id)
     
             deal_row = q1(conn, """
                 INSERT INTO app.deals(
@@ -389,33 +481,33 @@ def mount_deals_routes(
                 row_item = q1(conn, """
                     INSERT INTO app.deal_items(
                       deal_id, account_id, product_id, platform_id,
-                      qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link
+                      qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, slot_type_code, reserve_key, notes, game_link
                     )
                     VALUES (
                       %s, %s, %s, %s,
-                      1, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s
+                      1, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     RETURNING deal_item_id
                 """, (
                     deal_id, payload.account_id, payload.product_id, platform_id,
                     payload.price, payload.purchase_cost, payload.purchase_at, payload.start_at, payload.end_at,
-                    1, payload.slot_type_code, payload.notes, product_link
+                    1, payload.slot_type_code, selected_reserve_key, payload.notes, product_link
                 ))
             else:
                 row_item = q1(conn, """
                     INSERT INTO app.deal_items(
                       deal_id, account_id, product_id, platform_id,
-                      qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link
+                      qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, slot_type_code, reserve_key, notes, game_link
                     )
                     VALUES (
                       %s, %s, %s, %s,
-                      1, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s
+                      1, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     RETURNING deal_item_id
                 """, (
                     deal_id, payload.account_id, payload.product_id, platform_id,
                     payload.price, payload.purchase_cost, payload.purchase_at, payload.start_at, payload.end_at,
-                    0, payload.slot_type_code, payload.notes, product_link
+                    0, payload.slot_type_code, None, payload.notes, product_link
                 ))
             deal_item_id = int(row_item[0])
             if deal_type == "rental" and not rental_is_draft:
@@ -488,6 +580,7 @@ def mount_deals_routes(
                   di.end_at,
                   di.slots_used,
                   di.slot_type_code,
+                  di.reserve_key,
                   di.notes,
                   di.game_link,
                   di.returned_at
@@ -504,12 +597,13 @@ def mount_deals_routes(
     
             if len(row) >= 22:
                 current_type, status_code, flow_status_code, current_lock_version, region_id, customer_id, total_amount, order_number, responsible_username, deal_item_id, \
-                    account_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link, returned_at = row
+                    account_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, reserve_key, notes, game_link, returned_at = row
             else:
                 # Поддерживаем старый формат строки (без lock_version) в тестовых моках.
                 current_type, status_code, flow_status_code, region_id, customer_id, total_amount, order_number, responsible_username, deal_item_id, \
                     account_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link, returned_at = row
                 current_lock_version = 1
+                reserve_key = None
             # Проверяем версию записи, чтобы не перезаписать чужие правки при одновременном редактировании.
             expected_lock_version = payload.lock_version
             # Для обратной совместимости допускаем старые клиенты без lock_version.
@@ -562,13 +656,12 @@ def mount_deals_routes(
                 region_id = get_region_id(conn, payload.region_code)
     
             new_slot_type_code = payload.slot_type_code if payload.slot_type_code is not None else slot_type_code
+            new_reserve_key = normalize_reserve_key(payload.reserve_key) if payload.reserve_key is not None else normalize_reserve_key(reserve_key)
             new_platform_id = platform_id
-            slot_type_platform = None
             if deal_type == "rental" and not rental_is_draft:
                 if not new_slot_type_code:
                     raise HTTPException(400, "slot_type_code is required for rental")
                 slot_type = get_slot_type(conn, new_slot_type_code)
-                slot_type_platform = slot_type[1]
                 new_platform_id = get_platform_id(conn, slot_type[1])
     
             # customer update
@@ -632,6 +725,7 @@ def mount_deals_routes(
                 new_account_id = None
                 new_platform_id = None
                 new_slot_type_code = None
+                new_reserve_key = None
                 # Для черновика продажи допускаем пустой регион.
                 if new_flow_status != "draft" and region_id is None:
                     raise HTTPException(400, "region_code is required for sale")
@@ -656,9 +750,9 @@ def mount_deals_routes(
                 if not new_account_id:
                     raise HTTPException(400, "account_id is required for rental")
                 ensure_account_exists(conn, new_account_id)
-                # Проверяем поддержку PS4 по product-first привязкам аккаунта.
-                if slot_type_platform == "ps4" and not account_has_ps4(conn, new_account_id):
-                    raise HTTPException(400, "Account does not support PS4 slot type")
+                # Проверяем, что аккаунт действительно поддерживает выбранный тип слота.
+                # Это универсальная проверка и для игр, и для подписок.
+                ensure_account_allows_slot_type(conn, new_account_id, new_slot_type_code)
                 free = get_account_slot_free(conn, new_account_id, new_slot_type_code)
                 row_assign = q1(
                     conn,
@@ -673,6 +767,12 @@ def mount_deals_routes(
                 free_adjusted = free + (1 if same_assignment else 0)
                 if free_adjusted < 1:
                     raise HTTPException(409, "Not enough free slots for selected slot type")
+                # Для rental резерв должен быть уникален в рамках аккаунта: выбираем первый свободный.
+                used_keys = get_used_reserve_keys(conn, new_account_id, exclude_deal_id=deal_id)
+                if new_reserve_key in used_keys:
+                    new_reserve_key = None
+                if not new_reserve_key:
+                    new_reserve_key = pick_first_free_reserve_key(conn, new_account_id, exclude_deal_id=deal_id)
     
             completed_at_changed = flow_status_code != new_flow_status
             completed_at_value = None
@@ -743,6 +843,7 @@ def mount_deals_routes(
                         returned_at=%s,
                         slots_used=%s,
                         slot_type_code=%s,
+                        reserve_key=%s,
                         notes=%s,
                         game_link=%s
                     WHERE deal_item_id=%s
@@ -759,6 +860,7 @@ def mount_deals_routes(
                         new_returned_at,
                         new_slots_used,
                         new_slot_type_code,
+                        new_reserve_key,
                         new_notes,
                         new_product_link,
                         deal_item_id,
@@ -780,6 +882,7 @@ def mount_deals_routes(
                         returned_at=%s,
                         slots_used=%s,
                         slot_type_code=%s,
+                        reserve_key=%s,
                         notes=%s,
                         game_link=%s
                     WHERE deal_item_id=%s
@@ -796,6 +899,7 @@ def mount_deals_routes(
                         new_returned_at,
                         new_slots_used,
                         new_slot_type_code,
+                        new_reserve_key,
                         new_notes,
                         new_product_link,
                         deal_item_id,
@@ -1077,6 +1181,7 @@ def mount_deals_routes(
                   d.completed_at,
                   di.slots_used,
                   di.slot_type_code,
+                  di.reserve_key,
                   di.notes,
                   di.game_link as product_link,
                   (di.returned_at IS NOT NULL) as is_refund,
@@ -1118,10 +1223,19 @@ def mount_deals_routes(
             completed_at = r[24]
             slots_used = r[25]
             slot_type_code = r[26]
-            notes = r[27]
-            product_link = r[28]
-            is_refund = bool(r[29])
-            lock_version = int((r[30] if len(r) > 30 else 1) or 1)
+            if len(r) > 31:
+                reserve_key = r[27]
+                notes = r[28]
+                product_link = r[29]
+                is_refund = bool(r[30])
+                lock_version = int((r[31] if len(r) > 31 else 1) or 1)
+            else:
+                # Поддерживаем старые тестовые строки без reserve_key.
+                reserve_key = None
+                notes = r[27]
+                product_link = r[28]
+                is_refund = bool(r[29])
+                lock_version = int((r[30] if len(r) > 30 else 1) or 1)
             items.append(
                 DealListItem(
                     deal_id=r[0],
@@ -1151,6 +1265,7 @@ def mount_deals_routes(
                     completed_at=completed_at,
                     slots_used=slots_used,
                     slot_type_code=slot_type_code,
+                    reserve_key=reserve_key,
                     notes=notes,
                     product_link=product_link,
                     is_refund=is_refund,

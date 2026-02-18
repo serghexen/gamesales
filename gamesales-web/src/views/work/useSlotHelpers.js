@@ -135,6 +135,14 @@ export function useSlotHelpers({
     return codes.map((c) => String(c).toLowerCase())
   }
 
+  // Проверяет, что в форме выбрана подписка, чтобы не показывать статус "заняты".
+  const isSubscriptionDeal = (target) => {
+    const isEdit = target === 'edit'
+    const productId = isEdit ? editDeal.product_id : newDeal.product_id
+    const product = getProductById(productId)
+    return String(product?.type_code || '').trim().toLowerCase() === 'subscription'
+  }
+
   const isSlotTypeSupportedForProduct = (slotTypeCode, productId) => {
     if (!slotTypeCode || !productId) return false
     const type = slotTypes.value.find((t) => t.code === slotTypeCode)
@@ -178,9 +186,11 @@ export function useSlotHelpers({
     const isEdit = target === 'edit'
     const availability = isEdit ? dealSlotAvailabilityEdit.value : dealSlotAvailabilityNew.value
     const hasAssignments = isEdit ? hasAssignmentsEdit.value : hasAssignmentsNew.value
+    const subscriptionDeal = isSubscriptionDeal(target)
     return (slotTypes.value || []).map((t) => {
       const supported = isSlotTypeSupportedForDeal(t.code, target)
-      const hasFree = availability?.[t.code]?.hasFree
+      // Для подписок считаем слоты свободными по умолчанию и не показываем "заняты".
+      const hasFree = subscriptionDeal ? true : availability?.[t.code]?.hasFree
       const noAccounts = supported && hasFree === false && !hasAssignments
       return { code: t.code, name: t.name, platform_code: t.platform_code, supported, hasFree, noAccounts }
     })
@@ -206,6 +216,8 @@ export function useSlotHelpers({
 
   // Проверка: есть ли свободные слоты под текущий тип.
   const hasFreeDealSlots = (target) => {
+    // Для подписок не блокируем сценарий выбора, даже если availability вернул пусто.
+    if (isSubscriptionDeal(target)) return true
     const isEdit = target === 'edit'
     const slotTypeCode = isEdit ? editDeal.slot_type_code : newDeal.slot_type_code
     if (!slotTypeCode) return false

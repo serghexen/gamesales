@@ -40,6 +40,20 @@
               </svg>
             </button>
             <button
+              v-if="showCreateDraft"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--draft"
+              type="button"
+              aria-label="Создать дубль"
+              title="Создать дубль"
+              @click="onCreateDraft"
+              :disabled="actionsDisabled"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2" />
+                <path d="M9 12h6m-6 4h6" />
+              </svg>
+            </button>
+            <button
               v-if="showCreate"
               class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
               type="button"
@@ -52,20 +66,6 @@
                 <path d="M4 4h12l4 4v12H4z" />
                 <path d="M7 4v6h8V4" />
                 <path d="M7 20v-6h10v6" />
-              </svg>
-            </button>
-            <button
-              v-if="showCreateDraft"
-              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--draft"
-              type="button"
-              aria-label="Создать черновик"
-              title="Создать черновик"
-              @click="onCreateDraft"
-              :disabled="actionsDisabled"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2" />
-                <path d="M9 12h6m-6 4h6" />
               </svg>
             </button>
             <button
