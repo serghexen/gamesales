@@ -44,6 +44,7 @@ function buildCtx(overrides = {}) {
     markDealReturned: () => {},
     dealSaving: false,
     dealCompletingId: null,
+    dealsRealtimeAnimationTick: 0,
     dealTotal: 0,
     dealPageSize: 20,
     setDealPage: () => {},
@@ -75,5 +76,29 @@ describe('WorkDealsSection', () => {
     expect(wrapper.text()).not.toContain('Обновляем список сделок…')
     expect(wrapper.find('.wheel-and-hamster').exists()).toBe(false)
     expect(wrapper.find('.table-stub').exists()).toBe(true)
+  })
+
+  it('shows pager only when total exceeds page size', () => {
+    const baseStubs = {
+      WorkDealsHeader: { template: '<div class="header-stub" />' },
+      WorkDealFilterChips: { template: '<div class="chips-stub" />' },
+      WorkDealsTableSection: { template: '<div class="table-stub" />' },
+    }
+
+    const hiddenWrapper = mount(WorkDealsSection, {
+      props: {
+        ctx: buildCtx({ dealTotal: 20, dealPageSize: 20 }),
+      },
+      global: { stubs: baseStubs },
+    })
+    expect(hiddenWrapper.find('.pager').exists()).toBe(false)
+
+    const visibleWrapper = mount(WorkDealsSection, {
+      props: {
+        ctx: buildCtx({ dealTotal: 21, dealPageSize: 20 }),
+      },
+      global: { stubs: baseStubs },
+    })
+    expect(visibleWrapper.find('.pager').exists()).toBe(true)
   })
 })

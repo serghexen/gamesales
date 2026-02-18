@@ -42,6 +42,7 @@ function buildProps(overrides = {}) {
     markDealReturned: () => {},
     dealSaving: false,
     dealCompletingId: null,
+    realtimeAnimationTick: 0,
     ...overrides,
   }
 }
@@ -256,11 +257,35 @@ describe('WorkDealsTableSection', () => {
         { deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
         { deal_id: 2, deal_type: 'Продажа', customer_nickname: 'B', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
       ],
+      realtimeAnimationTick: 1,
     })
     await nextTick()
 
     const rows = wrapper.findAll('tbody tr')
     expect(rows[1].classes()).toContain('deal-row-flip-in')
+  })
+
+  it('does not animate rows when list changed without websocket tick', async () => {
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        sortedDeals: [
+          { deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+        ],
+        realtimeAnimationTick: 0,
+      }),
+    })
+
+    await wrapper.setProps({
+      sortedDeals: [
+        { deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+        { deal_id: 2, deal_type: 'Продажа', customer_nickname: 'B', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+      ],
+      realtimeAnimationTick: 0,
+    })
+    await nextTick()
+
+    const rows = wrapper.findAll('tbody tr')
+    expect(rows[1].classes()).not.toContain('deal-row-flip-in')
   })
 
   it('animates removed row and blocks click while it disappears', async () => {
@@ -280,6 +305,7 @@ describe('WorkDealsTableSection', () => {
       sortedDeals: [
         { deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
       ],
+      realtimeAnimationTick: 1,
     })
     await nextTick()
 

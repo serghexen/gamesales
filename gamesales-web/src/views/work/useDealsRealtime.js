@@ -82,9 +82,11 @@ export function useDealsRealtime({
   loadDeals,
   wsState: externalWsState = null,
   editingByDealId: externalEditingByDealId = null,
+  realtimeAnimationTick: externalRealtimeAnimationTick = null,
 }) {
   const wsState = externalWsState || ref('offline')
   const editingByDealId = externalEditingByDealId || ref({})
+  const realtimeAnimationTick = externalRealtimeAnimationTick || ref(0)
   let ws = null
   let reconnectTimer = null
   let reloadTimer = null
@@ -94,6 +96,11 @@ export function useDealsRealtime({
   let editHeartbeatTimer = null
 
   const canApplyReloadNow = () => activeTab.value === 'deals' && !showDealForm.value && !editDeal.open
+
+  // Помечает следующее обновление списка как websocket-обновление для анимации строк.
+  const markRealtimeAnimation = () => {
+    realtimeAnimationTick.value += 1
+  }
 
   // Отправляет событие редактирования сделки на backend по активному websocket.
   const sendEditingEvent = (eventType, dealId) => {
@@ -150,6 +157,8 @@ export function useDealsRealtime({
     if (reloadTimer) clearTimeout(reloadTimer)
     reloadTimer = setTimeout(() => {
       reloadTimer = null
+      // Перед перезагрузкой отмечаем, что изменения пришли из realtime-канала.
+      markRealtimeAnimation()
       loadDeals(dealPage.value)
     }, 250)
   }
@@ -274,5 +283,6 @@ export function useDealsRealtime({
   return {
     wsState,
     editingByDealId,
+    realtimeAnimationTick,
   }
 }

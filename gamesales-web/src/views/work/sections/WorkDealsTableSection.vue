@@ -430,6 +430,7 @@ const knownDealsById = ref({})
 const rowEnterTimers = new Map()
 const rowLeaveTimers = new Map()
 const knownDealIds = ref([])
+const handledRealtimeTick = ref(0)
 const { getColumnStyle, startResize } = useResizableTableColumns({
   tableRef: tableEl,
   storageKey: 'work.deals.columns.v1',
@@ -473,6 +474,7 @@ const props = defineProps({
   markDealReturned: { type: Function, required: true },
   dealSaving: { type: Boolean, required: true },
   dealCompletingId: { type: [Number, null], default: null },
+  realtimeAnimationTick: { type: Number, default: 0 },
 })
 
 const emptyColspan = computed(() => 7)
@@ -487,6 +489,9 @@ const animatedDeals = computed(() => {
 watch(
   () => props.sortedDeals,
   (nextDeals) => {
+    // Анимации строк запускаем только когда список обновился после websocket-события.
+    const allowRealtimeAnimation = Number(props.realtimeAnimationTick || 0) !== Number(handledRealtimeTick.value || 0)
+    handledRealtimeTick.value = Number(props.realtimeAnimationTick || 0)
     const deals = Array.isArray(nextDeals) ? nextDeals : []
     const currentIds = deals.map((deal) => deal?.deal_id).filter(Boolean)
     const nextCache = { ...knownDealsById.value }
@@ -505,6 +510,19 @@ watch(
     const incoming = currentIds.filter((id) => !previous.has(id))
     const currentSet = new Set(currentIds)
     const removed = knownDealIds.value.filter((id) => !currentSet.has(id))
+
+    if (!allowRealtimeAnimation) {
+      // Для обычных обновлений (фильтры/переключения вкладок) отключаем визуальные эффекты.
+      highlightedDealRows.value = {}
+      removingDealRows.value = {}
+      removingDeals.value = []
+      for (const timer of rowEnterTimers.values()) clearTimeout(timer)
+      for (const timer of rowLeaveTimers.values()) clearTimeout(timer)
+      rowEnterTimers.clear()
+      rowLeaveTimers.clear()
+      knownDealIds.value = currentIds
+      return
+    }
 
     for (const id of incoming) {
       // Если строка вернулась до конца анимации удаления, отменяем удаление.

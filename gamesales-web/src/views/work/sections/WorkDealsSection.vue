@@ -53,9 +53,10 @@
         :mark-deal-returned="ctx.markDealReturned"
         :deal-saving="ctx.dealSaving"
         :deal-completing-id="ctx.dealCompletingId"
+        :realtime-animation-tick="ctx.dealsRealtimeAnimationTick"
       />
 
-      <div v-if="ctx.dealTotal > 0" class="pager">
+      <div v-if="ctx.dealTotal > ctx.dealPageSize" class="pager">
         <span class="muted">Всего: {{ ctx.dealTotal }}</span>
         <label class="pager__size">
           <span class="muted">Показывать</span>

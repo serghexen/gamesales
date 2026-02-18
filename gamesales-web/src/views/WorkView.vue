@@ -390,6 +390,7 @@ const setActiveDealFilter = (value) => {
 const dealsBootstrapped = ref(false)
 const dealsRealtimeStatus = ref('offline')
 const dealEditingByDealId = ref({})
+const dealsRealtimeAnimationTick = ref(0)
 
 // Нормализует роль из сессии, чтобы проверки прав не зависели от регистра и вариантов названия.
 function normalizeRole(value) {
@@ -1976,6 +1977,7 @@ const {
   isAdmin,
   dealsRealtimeStatus,
   dealEditingByDealId,
+  dealsRealtimeAnimationTick,
   currentUsername: computed(() => String(auth.state.user || '')),
   responsibleNameByUsername,
   showDealWarning,
@@ -2367,6 +2369,7 @@ useDealsRealtime({
   loadDeals,
   wsState: dealsRealtimeStatus,
   editingByDealId: dealEditingByDealId,
+  realtimeAnimationTick: dealsRealtimeAnimationTick,
 })
 
 </script>
