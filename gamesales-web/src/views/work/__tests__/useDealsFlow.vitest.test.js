@@ -50,6 +50,10 @@ function createHarness() {
     quickEditAccountError: ref(''),
     newDealProductSearch: ref(''),
     editDealProductSearch: ref(''),
+    subscriptionFreeProductIdsNew: ref([]),
+    subscriptionFreeProductIdsEdit: ref([]),
+    subscriptionFreeProductIdsLoadingNew: ref(false),
+    subscriptionFreeProductIdsLoadingEdit: ref(false),
     loadProductsAll: vi.fn(),
     loadAccountsAll: vi.fn().mockResolvedValue(undefined),
   }
@@ -150,5 +154,23 @@ describe('useDealsFlow', () => {
       ps5_p1: { hasFree: true },
       ps4_p1: { hasFree: true },
     })
+  })
+
+  it('loadSubscriptionFreeProductIds returns only subscriptions with free selected slot', async () => {
+    const h = createHarness()
+    h.productsAll.value = [
+      { product_id: 55, type_code: 'subscription' },
+      { product_id: 56, type_code: 'subscription' },
+      { product_id: 57, type_code: 'game' },
+    ]
+    h.apiGet.mockResolvedValueOnce([55])
+
+    await h.loadSubscriptionFreeProductIds('new', 'ps5_p1')
+
+    expect(h.apiGet).toHaveBeenCalledWith(
+      '/products/subscriptions/free-by-slot?slot_type_code=ps5_p1',
+      { token: 'token-1' },
+    )
+    expect(h.subscriptionFreeProductIdsNew.value).toEqual([55])
   })
 })

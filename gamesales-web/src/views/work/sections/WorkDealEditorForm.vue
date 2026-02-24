@@ -1033,6 +1033,8 @@ const {
   editDealProductSearch,
   onEditDealProductSearch,
   filteredEditDealProducts,
+  subscriptionFreeProductIdsEdit,
+  subscriptionFreeProductIdsLoadingEdit,
   syncEditDealProductSearch,
   getProductLabelById,
   editDealProductNoMatches,
@@ -1050,6 +1052,8 @@ const {
   newDealProductSearch,
   onNewDealProductSearch,
   filteredNewDealProducts,
+  subscriptionFreeProductIdsNew,
+  subscriptionFreeProductIdsLoadingNew,
   newDealProductNoMatches,
   syncNewDealProductSearch,
   clearNewDealProduct,
@@ -1151,6 +1155,16 @@ function isProductSlotCompatible(product, slotTypeCode) {
   return true
 }
 
+// Проверяет, есть ли в подписке свободный выбранный слот по предзагруженной карте id.
+function hasFreeSubscriptionSlotByProductId(productId, target) {
+  const id = Number(productId || 0)
+  if (!id) return false
+  const ids = target === 'edit'
+    ? (subscriptionFreeProductIdsEdit.value || [])
+    : (subscriptionFreeProductIdsNew.value || [])
+  return ids.includes(id)
+}
+
 // Фильтрует товары в редактировании сделки по выбранному типу.
 const filteredEditDealProductsByType = computed(() => {
   const list = filteredEditDealProducts.value || []
@@ -1159,7 +1173,12 @@ const filteredEditDealProductsByType = computed(() => {
   // Для подписок даем выбирать товар только после выбора слота.
   if (!isEditRentalSubscriptionMode.value) return typed
   if (!editDeal.value?.slot_type_code) return []
-  return typed.filter((item) => isProductSlotCompatible(item, editDeal.value.slot_type_code))
+  if (subscriptionFreeProductIdsLoadingEdit.value) return []
+  // Для подписок оставляем только позиции, где выбранный слот действительно свободен.
+  return typed.filter((item) => {
+    if (!isProductSlotCompatible(item, editDeal.value.slot_type_code)) return false
+    return hasFreeSubscriptionSlotByProductId(item?.product_id, 'edit')
+  })
 })
 
 // Фильтрует товары в создании сделки по выбранному типу.
@@ -1171,7 +1190,12 @@ const filteredNewDealProductsByType = computed(() => {
   // Для подписок сначала выбираем слот, затем товар.
   if (!isNewRentalSubscriptionMode.value) return typed
   if (!newDeal.value?.slot_type_code) return []
-  return typed.filter((item) => isProductSlotCompatible(item, newDeal.value.slot_type_code))
+  if (subscriptionFreeProductIdsLoadingNew.value) return []
+  // В создании подписки применяем тот же фильтр по свободному слоту.
+  return typed.filter((item) => {
+    if (!isProductSlotCompatible(item, newDeal.value.slot_type_code)) return false
+    return hasFreeSubscriptionSlotByProductId(item?.product_id, 'new')
+  })
 })
 
 const showEditDealProductNoMatches = computed(() => {

@@ -1004,6 +1004,10 @@ const quickNewAccountLoading = ref(false)
 const quickEditAccountLoading = ref(false)
 const quickNewAccountError = ref('')
 const quickEditAccountError = ref('')
+const subscriptionFreeProductIdsNew = ref([])
+const subscriptionFreeProductIdsEdit = ref([])
+const subscriptionFreeProductIdsLoadingNew = ref(false)
+const subscriptionFreeProductIdsLoadingEdit = ref(false)
 const dealQuickAccountBusy = computed(() => quickNewAccountLoading.value || quickEditAccountLoading.value)
 const dealQuickProductBusy = computed(() => quickNewProductLoading.value || quickEditProductLoading.value)
 const {
@@ -1225,6 +1229,7 @@ const {
   loadDealAccountAssignments,
   loadDealProductAssignments,
   loadDealSlotAvailability,
+  loadSubscriptionFreeProductIds,
   releaseSlotFromDeal,
 } = useDealsFlow({
   auth,
@@ -1274,6 +1279,10 @@ const {
   quickEditAccountError,
   newDealProductSearch,
   editDealProductSearch,
+  subscriptionFreeProductIdsNew,
+  subscriptionFreeProductIdsEdit,
+  subscriptionFreeProductIdsLoadingNew,
+  subscriptionFreeProductIdsLoadingEdit,
   loadProductsAll,
   loadAccountsAll,
 })
@@ -2075,6 +2084,8 @@ const {
   editDealProductSearch,
   onEditDealProductSearch,
   filteredEditDealProducts,
+  subscriptionFreeProductIdsEdit,
+  subscriptionFreeProductIdsLoadingEdit,
   syncEditDealProductSearch,
   getProductLabelById,
   editDealProductNoMatches,
@@ -2093,6 +2104,8 @@ const {
   newDealProductSearch,
   onNewDealProductSearch,
   filteredNewDealProducts,
+  subscriptionFreeProductIdsNew,
+  subscriptionFreeProductIdsLoadingNew,
   newDealProductNoMatches,
   syncNewDealProductSearch,
   clearNewDealProduct,
@@ -2367,6 +2380,7 @@ useDealsWatchers({
   loadAccountSlotStatus,
   loadDealAccountAssignments,
   loadDealSlotAvailability,
+  loadSubscriptionFreeProductIds,
 })
 
 // Подключает realtime-обновления списка сделок через WebSocket.

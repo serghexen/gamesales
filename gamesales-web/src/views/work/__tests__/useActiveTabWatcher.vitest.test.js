@@ -93,4 +93,70 @@ describe('useActiveTabWatcher', () => {
     expect(h.dealFilters.responsible_q).toBe('')
     expect(h.loadDeals).not.toHaveBeenCalled()
   })
+
+  it('does not close opened deal modal after first async bootstrap resolves', async () => {
+    let resolveDeals
+    let resolveAccounts
+    const loadDeals = vi.fn().mockImplementation(() => new Promise((resolve) => { resolveDeals = resolve }))
+    const loadAccountsAll = vi.fn().mockImplementation(() => new Promise((resolve) => { resolveAccounts = resolve }))
+    const showDealForm = ref(false)
+
+    useActiveTabWatcher({
+      activeTab: ref('deals'),
+      isAdmin: ref(false),
+      dealFilters: reactive({ responsible_q: 'Иван' }),
+      defaultDealsResponsibleFilter: ref('Иван'),
+      mustPrefillDealsResponsible: ref(true),
+      showUserForm: ref(false),
+      showProductForm: ref(false),
+      showProductFilters: ref(false),
+      showDealForm,
+      showAccountFilters: ref(false),
+      activeProductFilter: ref(''),
+      activeAccountFilter: ref(''),
+      editProduct: reactive({ open: false }),
+      pwdOk: ref(false),
+      showPwdForm: ref(false),
+      catalogsLoadedOnce: ref(true),
+      domainsLoadedOnce: ref(true),
+      sourcesLoadedOnce: ref(true),
+      slotTypesLoadedOnce: ref(true),
+      accountsAllLoadedOnce: ref(false),
+      productsAllLoadedOnce: ref(true),
+      dealsBootstrapped: ref(false),
+      platforms: ref([]),
+      regions: ref([]),
+      domains: ref([]),
+      sources: ref([]),
+      slotTypes: ref([]),
+      products: ref([]),
+      productsAll: ref([]),
+      accountsAll: ref([]),
+      productsPage: ref(1),
+      accountsPage: ref(1),
+      checkApi: vi.fn(),
+      loadUsers: vi.fn().mockResolvedValue(undefined),
+      loadCatalogs: vi.fn().mockResolvedValue(undefined),
+      loadDomains: vi.fn().mockResolvedValue(undefined),
+      loadSources: vi.fn().mockResolvedValue(undefined),
+      loadSlotTypes: vi.fn().mockResolvedValue(undefined),
+      loadProducts: vi.fn().mockResolvedValue(undefined),
+      loadProductsAll: vi.fn().mockResolvedValue(undefined),
+      loadAccounts: vi.fn().mockResolvedValue(undefined),
+      loadAccountsAll,
+      loadDeals,
+      loadTelegramStatus: vi.fn().mockResolvedValue(undefined),
+      startTelegramPolling: vi.fn(),
+      stopTelegramPolling: vi.fn(),
+    })
+
+    await Promise.resolve()
+    showDealForm.value = true
+    resolveDeals?.()
+    resolveAccounts?.()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(showDealForm.value).toBe(true)
+  })
 })

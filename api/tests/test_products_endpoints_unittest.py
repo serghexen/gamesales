@@ -129,6 +129,42 @@ class ProductsEndpointsTests(unittest.TestCase):
             self.assertEqual(body[0]["platform_code"], "ps4")
             self.assertEqual(body[1]["platform_code"], "ps5")
 
+    def test_list_subscription_products_with_free_slot_success(self):
+        script = [
+            {"one": ("ps5",)},
+            {"all": [(77,), (88,)]},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/products/subscriptions/free-by-slot?slot_type_code=ps5_p1",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), [77, 88])
+
+    def test_list_subscription_products_with_free_slot_unknown_slot(self):
+        script = [
+            {"one": None},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/products/subscriptions/free-by-slot?slot_type_code=missing_slot",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 400)
+
     def test_create_subscription_product_success(self):
         script = [
             {"one": (1,)},  # product type exists

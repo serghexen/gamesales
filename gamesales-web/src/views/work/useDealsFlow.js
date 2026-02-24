@@ -47,6 +47,10 @@ export function useDealsFlow({
   quickEditAccountError,
   newDealProductSearch,
   editDealProductSearch,
+  subscriptionFreeProductIdsNew,
+  subscriptionFreeProductIdsEdit,
+  subscriptionFreeProductIdsLoadingNew,
+  subscriptionFreeProductIdsLoadingEdit,
   loadProductsAll,
   loadAccountsAll,
 }) {
@@ -67,6 +71,39 @@ export function useDealsFlow({
     const list = Array.isArray(productsAll?.value) ? productsAll.value : []
     const found = list.find((item) => Number(item?.product_id || 0) === Number(productId))
     return String(found?.type_code || '').trim().toLowerCase() === 'subscription'
+  }
+
+  // Собирает id подписок, где выбранный слот действительно свободен.
+  async function loadSubscriptionFreeProductIds(target, slotTypeCode) {
+    const isEdit = target === 'edit'
+    const listRef = isEdit ? subscriptionFreeProductIdsEdit : subscriptionFreeProductIdsNew
+    const loadingRef = isEdit ? subscriptionFreeProductIdsLoadingEdit : subscriptionFreeProductIdsLoadingNew
+    const normalizedSlotTypeCode = String(slotTypeCode || '').trim()
+    if (!normalizedSlotTypeCode) {
+      listRef.value = []
+      loadingRef.value = false
+      return
+    }
+    const subscriptionProducts = (productsAll.value || []).filter((item) => String(item?.type_code || '').trim().toLowerCase() === 'subscription')
+    if (!subscriptionProducts.length) {
+      listRef.value = []
+      loadingRef.value = false
+      return
+    }
+    loadingRef.value = true
+    try {
+      // Берем с backend готовый список id, чтобы не слать запрос на каждую подписку.
+      const data = await apiGet(
+        `/products/subscriptions/free-by-slot?slot_type_code=${encodeURIComponent(normalizedSlotTypeCode)}`,
+        { token: auth.state.token }
+      )
+      const ids = Array.isArray(data) ? data.map((item) => Number(item || 0)).filter(Boolean) : []
+      listRef.value = ids
+    } catch {
+      listRef.value = []
+    } finally {
+      loadingRef.value = false
+    }
   }
 
   // Быстрое создание товара типа "игра" прямо из формы сделки.
@@ -445,6 +482,7 @@ export function useDealsFlow({
     loadDealAccountAssignments,
     loadDealProductAssignments,
     loadDealSlotAvailability,
+    loadSubscriptionFreeProductIds,
     releaseSlotFromDeal,
   }
 }

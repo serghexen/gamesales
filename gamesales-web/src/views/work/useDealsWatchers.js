@@ -17,6 +17,7 @@ export function useDealsWatchers({
   loadAccountSlotStatus,
   loadDealAccountAssignments,
   loadDealSlotAvailability,
+  loadSubscriptionFreeProductIds,
 }) {
   // Возвращает тип товара по id, чтобы ветвить поведение для игр и подписок.
   function getProductTypeCode(productId) {
@@ -122,6 +123,8 @@ export function useDealsWatchers({
     () => newDeal.slot_type_code,
     (val, prev) => {
       if (dealSlotAutoAssign.value || val === prev) return
+      // При смене слота пересчитываем только подписки с реально свободным слотом.
+      loadSubscriptionFreeProductIds('new', val)
       if (!val) {
         newDeal.account_id = ''
         newDeal.reserve_key = ''
@@ -141,6 +144,8 @@ export function useDealsWatchers({
     (val, prev) => {
       if (!editDeal.open || dealInitLock.value) return
       if (dealSlotAutoAssign.value || val === prev) return
+      // Для редактирования обновляем тот же список подписок под выбранный слот.
+      loadSubscriptionFreeProductIds('edit', val)
       if (!val) {
         editDeal.account_id = ''
         editDeal.reserve_key = ''
@@ -152,6 +157,15 @@ export function useDealsWatchers({
       editDeal.reserve_key = ''
       accountSlotStatusEdit.value = []
       dealAccountAssignmentsEdit.value = []
+    }
+  )
+
+  watch(
+    () => productsAll.value?.length || 0,
+    () => {
+      // Когда справочник товаров догрузился, пересобираем фильтр подписок под текущие слоты.
+      loadSubscriptionFreeProductIds('new', newDeal.slot_type_code)
+      if (editDeal.open) loadSubscriptionFreeProductIds('edit', editDeal.slot_type_code)
     }
   )
 }

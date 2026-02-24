@@ -64,6 +64,11 @@ export function useActiveTabWatcher({
       return
     }
     if (tab === 'products') {
+      // Сбрасываем состояние сразу при входе на вкладку, чтобы асинхронная загрузка не закрывала модалки позже.
+      showProductForm.value = false
+      showProductFilters.value = false
+      activeProductFilter.value = ''
+      editProduct.open = false
       if (!catalogsLoadedOnce.value && (!platforms.value.length || !regions.value.length)) {
         await loadCatalogs()
         if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
@@ -76,13 +81,12 @@ export function useActiveTabWatcher({
         await loadProductsAll()
         if (productsAll.value.length) productsAllLoadedOnce.value = true
       }
-      showProductForm.value = false
-      showProductFilters.value = false
-      activeProductFilter.value = ''
-      editProduct.open = false
       return
     }
     if (tab === 'accounts') {
+      // Фильтры сбрасываем до await, чтобы избежать гонки с действиями пользователя.
+      showAccountFilters.value = false
+      activeAccountFilter.value = ''
       if (!catalogsLoadedOnce.value && (!platforms.value.length || !regions.value.length)) {
         await loadCatalogs()
         if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
@@ -101,11 +105,11 @@ export function useActiveTabWatcher({
       }
       accountsPage.value = 1
       await loadAccounts()
-      showAccountFilters.value = false
-      activeAccountFilter.value = ''
       return
     }
     if (tab === 'deals') {
+      // Флаг формы сбрасываем сразу при входе, чтобы первый bootstrap не закрывал форму постфактум.
+      showDealForm.value = false
       const needResponsiblePrefill = typeof mustPrefillDealsResponsible === 'object' && mustPrefillDealsResponsible
         ? Boolean(mustPrefillDealsResponsible.value)
         : Boolean(mustPrefillDealsResponsible)
@@ -155,7 +159,6 @@ export function useActiveTabWatcher({
       }
       await Promise.all(tasks)
       dealsBootstrapped.value = true
-      showDealForm.value = false
       return
     }
     if (tab === 'analytics') {
@@ -193,8 +196,9 @@ export function useActiveTabWatcher({
       return
     }
     if (tab === 'users' && isAdmin.value) {
-      await loadUsers()
+      // Закрываем модалку до загрузки списка, чтобы не ловить закрытие после await.
       showUserForm.value = false
+      await loadUsers()
     }
   }, { immediate: true })
 }

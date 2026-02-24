@@ -24,6 +24,64 @@ def mount_products_routes(
     SlotTypeOut,
     UserOut,
 ):
+    @app.get("/products/subscriptions/free-by-slot", response_model=List[int])
+    def list_subscription_products_with_free_slot(
+        slot_type_code: str,
+        user: UserOut = Depends(get_current_user),
+    ):
+        # Возвращает id подписок, где есть хотя бы один аккаунт со свободным выбранным слотом.
+        normalized_slot_type_code = str(slot_type_code or "").strip()
+        if not normalized_slot_type_code:
+            raise HTTPException(400, "slot_type_code is required")
+
+        with psycopg.connect(DB_DSN) as conn:
+            slot_row = q1(
+                conn,
+                "SELECT platform_code FROM app.slot_types WHERE code=%s",
+                (normalized_slot_type_code,),
+            )
+            if not slot_row:
+                raise HTTPException(400, f"Unknown slot_type_code: {normalized_slot_type_code}")
+            slot_platform = str(slot_row[0] or "").strip().lower()
+
+            rows = qall(
+                conn,
+                """
+                WITH account_platforms AS (
+                  SELECT
+                    aa.account_id,
+                    BOOL_OR(p.code = 'ps4') AS has_ps4
+                  FROM app.account_assets aa
+                  JOIN app.products pr ON pr.product_id = aa.product_id
+                  JOIN app.product_platforms pp ON pp.product_id = pr.product_id
+                  JOIN app.platforms p ON p.platform_id = pp.platform_id
+                  WHERE aa.asset_type_code IN ('game', 'subscription')
+                  GROUP BY aa.account_id
+                )
+                SELECT DISTINCT p.product_id
+                FROM app.products p
+                WHERE p.is_archived IS NOT TRUE
+                  AND lower(p.type_code) = 'subscription'
+                  AND EXISTS (
+                    SELECT 1
+                    FROM app.account_assets aa
+                    JOIN app.accounts a ON a.account_id = aa.account_id
+                    JOIN app.v_account_slot_status ss
+                      ON ss.account_id = a.account_id
+                     AND ss.slot_type_code = %s
+                    LEFT JOIN account_platforms ap ON ap.account_id = a.account_id
+                    WHERE aa.product_id = p.product_id
+                      AND aa.asset_type_code IN ('game', 'subscription')
+                      AND a.status_code <> 'archived'
+                      AND ss.free > 0
+                      AND (COALESCE(ap.has_ps4, false) OR %s = 'ps5')
+                  )
+                ORDER BY p.product_id
+                """,
+                (normalized_slot_type_code, slot_platform),
+            )
+        return [int(row[0]) for row in rows]
+
     @app.get("/slot-types", response_model=List[SlotTypeOut])
     def list_slot_types(user: UserOut = Depends(get_current_user)):
         # Возвращает справочник типов слотов для модалки сделок.

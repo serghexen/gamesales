@@ -24,6 +24,7 @@ function createHarness() {
     loadAccountSlotStatus: vi.fn(),
     loadDealAccountAssignments: vi.fn(),
     loadDealSlotAvailability: vi.fn(),
+    loadSubscriptionFreeProductIds: vi.fn(),
   }
 
   useDealsWatchers(deps)
@@ -65,5 +66,14 @@ describe('useDealsWatchers', () => {
     expect(h.editDeal.account_id).toBe('')
     expect(h.editDeal.reserve_key).toBe('')
     expect(h.loadDealSlotAvailability).toHaveBeenCalledWith('edit')
+  })
+
+  it('rebuilds subscription free-products list when slot changes', async () => {
+    const h = createHarness()
+
+    h.newDeal.slot_type_code = 'ps5_p2'
+    await nextTick()
+
+    expect(h.loadSubscriptionFreeProductIds).toHaveBeenCalledWith('new', 'ps5_p2')
   })
 })
