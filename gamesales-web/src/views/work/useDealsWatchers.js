@@ -18,6 +18,7 @@ export function useDealsWatchers({
   loadDealAccountAssignments,
   loadDealSlotAvailability,
   loadSubscriptionFreeProductIds,
+  ensureAccountSecretsLoaded,
 }) {
   // Возвращает тип товара по id, чтобы ветвить поведение для игр и подписок.
   function getProductTypeCode(productId) {
@@ -46,6 +47,8 @@ export function useDealsWatchers({
   watch(
     () => newDeal.account_id,
     () => {
+      // При выборе аккаунта догружаем его секреты для блока "Данные аккаунта".
+      ensureAccountSecretsLoaded(newDeal.account_id)
       loadAccountSlotStatus('new')
       loadDealAccountAssignments('new')
     }
@@ -54,6 +57,8 @@ export function useDealsWatchers({
   watch(
     () => editDeal.account_id,
     () => {
+      // Для редактирования сделки подтягиваем секреты выбранного аккаунта тем же способом.
+      ensureAccountSecretsLoaded(editDeal.account_id)
       if (editDeal.open) loadAccountSlotStatus('edit')
       if (editDeal.open) loadDealAccountAssignments('edit')
     }

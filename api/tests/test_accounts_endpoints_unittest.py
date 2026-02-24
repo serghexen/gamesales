@@ -183,15 +183,38 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(body["status"], "active")
             self.assertEqual(body["login_full"], "acc1@gmail.com")
 
-    # Обновление аккаунта доступно только админу.
-    def test_update_account_forbidden_for_manager(self):
+    # Обновление аккаунта доступно менеджеру.
+    def test_update_account_allowed_for_manager(self):
+        script = [
+            {"one": ("login1", 3, 2, "active", "2024-01-10", "old")},  # current
+            {"rowcount": 1},  # update
+            {"one": (5, "RU", "active", "login1", "gmail.com", "2024-01-10", "x")},  # result row
+            {"all": []},  # get_account_platform_slots
+            {"all": []},  # get_account_slot_status
+        ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
             with self._client() as client:
                 res = client.put("/accounts/5", headers=self._auth_headers(role="manager"), json={"notes": "x"})
+            self.assertEqual(res.status_code, 200)
+
+    # Менеджер не может менять статус аккаунта.
+    def test_update_account_forbidden_status_change_for_manager(self):
+        script = [
+            {"one": ("login1", 3, 2, "active", "2024-01-10", "old")},  # current
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put("/accounts/5", headers=self._auth_headers(role="manager"), json={"status_code": "archived"})
             self.assertEqual(res.status_code, 403)
 
     # Обновление аккаунта должно вернуть актуальную карточку.
@@ -248,10 +271,15 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json()["secret_value_b64"], "c2VjcmV0")
 
-    # Менеджер не должен управлять секретами аккаунта.
-    def test_upsert_account_secret_forbidden_for_manager(self):
+    # Менеджеру разрешено управлять секретами аккаунта.
+    def test_upsert_account_secret_allowed_for_manager(self):
+        script = [
+            {"one": ("pwd", "c2VjcmV0", "2026-02-09T00:00:00Z")},
+            {"one": ("pwd", "c2VjcmV0", "2026-02-09T00:00:00Z")},
+        ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -261,7 +289,7 @@ class AccountsEndpointsTests(unittest.TestCase):
                     headers=self._auth_headers(role="manager"),
                     json={"secret_key": "pwd", "secret_value": "secret"},
                 )
-            self.assertEqual(res.status_code, 403)
+            self.assertEqual(res.status_code, 200)
 
     # Проверяем новый безопасный сценарий: доступность слотов по product_id.
     def test_slot_availability_for_deal_supports_product_id(self):
@@ -623,6 +651,29 @@ class AccountsEndpointsTests(unittest.TestCase):
                 res = client.put(
                     "/accounts/7/products",
                     headers=self._auth_headers(role="admin"),
+                    json={"product_ids": [55]},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json()["ok"], True)
+
+    # Менеджеру также разрешено обновлять привязки товаров аккаунта.
+    def test_set_account_products_allowed_for_manager(self):
+        script = [
+            {"one": (1,)},
+            {"all": [(55, "game", False)]},
+            {"rowcount": 1},
+            {"rowcount": 1},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/accounts/7/products",
+                    headers=self._auth_headers(role="manager"),
                     json={"product_ids": [55]},
                 )
             self.assertEqual(res.status_code, 200)

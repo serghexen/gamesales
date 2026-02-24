@@ -25,6 +25,7 @@ function createHarness() {
     loadDealAccountAssignments: vi.fn(),
     loadDealSlotAvailability: vi.fn(),
     loadSubscriptionFreeProductIds: vi.fn(),
+    ensureAccountSecretsLoaded: vi.fn(),
   }
 
   useDealsWatchers(deps)
@@ -75,5 +76,14 @@ describe('useDealsWatchers', () => {
     await nextTick()
 
     expect(h.loadSubscriptionFreeProductIds).toHaveBeenCalledWith('new', 'ps5_p2')
+  })
+
+  it('loads account secrets when editing account changes', async () => {
+    const h = createHarness()
+
+    h.editDeal.account_id = 99
+    await nextTick()
+
+    expect(h.ensureAccountSecretsLoaded).toHaveBeenCalledWith(99)
   })
 })

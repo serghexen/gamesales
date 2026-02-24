@@ -130,6 +130,26 @@ export function useAccountsFlow({
     }
   }
 
+  // Догружает секреты для одного аккаунта, если их еще нет в локальном кеше.
+  async function ensureAccountSecretsLoaded(accountId) {
+    const targetId = Number(accountId || 0)
+    if (!targetId) return
+    if (Object.prototype.hasOwnProperty.call(accountSecrets.value || {}, targetId)) return
+    try {
+      const secrets = await apiGet(`/accounts/${targetId}/secrets`, { token: auth.state.token })
+      accountSecrets.value = {
+        ...(accountSecrets.value || {}),
+        [targetId]: secrets || [],
+      }
+    } catch {
+      // Даже при ошибке фиксируем пустой список, чтобы не спамить повторными запросами.
+      accountSecrets.value = {
+        ...(accountSecrets.value || {}),
+        [targetId]: [],
+      }
+    }
+  }
+
   // Загружает товары, привязанные к аккаунту.
   async function loadAccountProducts(accountId) {
     accountProductsLoading.value = true
@@ -666,6 +686,7 @@ export function useAccountsFlow({
     getReserveSecretEntries,
     getAuthSecret,
     loadAccountSecrets,
+    ensureAccountSecretsLoaded,
     loadAccountProducts,
     loadAccounts,
     loadAccountsAll,

@@ -1163,6 +1163,7 @@ const {
   getAccountSecret,
   getReserveSecrets,
   getReserveSecretEntries,
+  ensureAccountSecretsLoaded,
   loadAccounts,
   loadAccountsAll: loadAccountsAllFromAccountsFlow,
   startEditAccount,
@@ -2381,6 +2382,7 @@ useDealsWatchers({
   loadDealAccountAssignments,
   loadDealSlotAvailability,
   loadSubscriptionFreeProductIds,
+  ensureAccountSecretsLoaded,
 })
 
 // Подключает realtime-обновления списка сделок через WebSocket.
