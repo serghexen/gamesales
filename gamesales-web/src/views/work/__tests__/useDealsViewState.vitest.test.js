@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { reactive, ref } from 'vue'
 
 import { useDealsViewState } from '../useDealsViewState.js'
@@ -15,7 +15,8 @@ function createHarness() {
   const dealAccountsForProductNew = ref([{ account_id: 10 }])
   const dealAccountsForProductEdit = ref([{ account_id: 20 }])
   const dealGameAssignmentsNew = ref([
-    { slot_type_code: 'full', released_at: null },
+    { assignment_id: 1, slot_type_code: 'full', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
+    { assignment_id: 2, slot_type_code: 'full', released_at: null, assigned_at: '2025-12-15T00:00:00Z' },
     { slot_type_code: 'full', released_at: '2026-01-01' },
   ])
   const dealGameAssignmentsEdit = ref([
@@ -44,6 +45,11 @@ function createHarness() {
 }
 
 describe('useDealsViewState', () => {
+  afterEach(() => {
+    // Возвращаем реальные таймеры после тестов с фиксированной датой.
+    vi.useRealTimers()
+  })
+
   it('filters games by search and selected game fallback', () => {
     const h = createHarness()
     h.newDealProductSearch.value = 'god'
@@ -69,13 +75,15 @@ describe('useDealsViewState', () => {
     expect(h.state.dealAccountsForNew.value).toEqual([{ account_id: 10 }])
   })
 
-  it('filters assignments by slot and released flag', () => {
+  it('filters assignments by slot, released flag and 3-month duplicate rule', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-25T00:00:00Z'))
     const h = createHarness()
     h.newDeal.slot_type_code = 'full'
     h.editDeal.slot_type_code = 'share'
 
     expect(h.state.dealProductAssignmentsForSelectedSlotNew.value).toEqual([
-      { slot_type_code: 'full', released_at: null },
+      { assignment_id: 1, slot_type_code: 'full', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
     ])
     expect(h.state.dealProductAssignmentsForSelectedSlotEdit.value).toEqual([
       { slot_type_code: 'share', released_at: null },

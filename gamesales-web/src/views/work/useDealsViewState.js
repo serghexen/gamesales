@@ -11,6 +11,17 @@ export function useDealsViewState({
   dealGameAssignmentsNew: dealProductAssignmentsNew,
   dealGameAssignmentsEdit: dealProductAssignmentsEdit,
 }) {
+  // Проверяет, можно ли показывать слот в списке "снять и занять" (не раньше 3 месяцев с момента занятия).
+  function canUseAssignmentForDuplicateFlow(assignment) {
+    const assignedAtRaw = String(assignment?.assigned_at || '').trim()
+    if (!assignedAtRaw) return false
+    const assignedAt = new Date(assignedAtRaw)
+    if (Number.isNaN(assignedAt.getTime())) return false
+    const threshold = new Date()
+    threshold.setMonth(threshold.getMonth() - 3)
+    return assignedAt.getTime() <= threshold.getTime()
+  }
+
   // Поиск товаров для формы создания сделки.
   const filteredNewDealProducts = computed(() => {
     const list = productsAll.value || []
@@ -54,7 +65,11 @@ export function useDealsViewState({
   // Назначения по выбранному типу слота для новой сделки.
   const dealProductAssignmentsForSelectedSlotNew = computed(() => {
     if (!newDeal.slot_type_code) return []
-    return (dealProductAssignmentsNew.value || []).filter((s) => !s.released_at && s.slot_type_code === newDeal.slot_type_code)
+    return (dealProductAssignmentsNew.value || []).filter((s) => {
+      return !s.released_at
+        && s.slot_type_code === newDeal.slot_type_code
+        && canUseAssignmentForDuplicateFlow(s)
+    })
   })
 
   // Назначения по выбранному типу слота для редактируемой сделки.

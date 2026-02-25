@@ -137,12 +137,13 @@ describe('WorkDealEditorForm template', () => {
       .toBeLessThan(source.indexOf('<span class="label">Пароль</span>'))
   })
 
-  it('hides refund field in pending status and keeps it only for non-pending flows', () => {
+  it('hides refund field in pending and draft statuses and keeps it only for other flows', () => {
     const source = readTemplateSource()
 
     expect(source).toContain("editDeal.deal_type_code === 'rental' && !isEditDealPendingFlow")
     expect(source).toContain("editDeal.deal_type_code === 'sale' && !isEditDealPendingFlow")
     expect(source).toContain("const isEditDealPendingFlow = computed(() => {")
+    expect(source).toContain("return status === 'pending' || status === 'draft'")
     expect(source).toContain("status === 'completed' && Boolean(allowCompletedDealEdit?.value)")
   })
 })

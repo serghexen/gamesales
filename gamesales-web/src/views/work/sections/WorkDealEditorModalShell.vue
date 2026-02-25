@@ -43,8 +43,8 @@
               v-if="showCreateDraft"
               class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--draft"
               type="button"
-              aria-label="Создать дубль"
-              title="Создать дубль"
+              aria-label="Создать черновик"
+              title="Создать черновик"
               @click="onCreateDraft"
               :disabled="actionsDisabled"
             >

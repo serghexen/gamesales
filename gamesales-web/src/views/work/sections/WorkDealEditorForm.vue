@@ -1398,8 +1398,9 @@ watch(() => editDeal.value?.account_id, (accountId) => {
 })
 
 const isEditDealPendingFlow = computed(() => {
-  // Используем единый признак pending, чтобы скрывать возврат в форме.
-  return String(editDeal.value?.flow_status_code || '').trim().toLowerCase() === 'pending'
+  // Для pending/draft скрываем возврат в форме: возврат проводится только отдельной кнопкой из таблицы.
+  const status = String(editDeal.value?.flow_status_code || '').trim().toLowerCase()
+  return status === 'pending' || status === 'draft'
 })
 
 const canEditRefundFlag = computed(() => {
