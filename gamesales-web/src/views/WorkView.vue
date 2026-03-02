@@ -175,6 +175,7 @@ import { useSlotHelpers } from './work/useSlotHelpers'
 import { useWorkFilters } from './work/useWorkFilters'
 import { useDealModalFlow } from './work/useDealModalFlow'
 import { useUserProfileFlow } from './work/useUserProfileFlow'
+import { useManagersLoad } from './work/useManagersLoad'
 import { useWorkActions } from './work/useWorkActions'
 import { useWorkUiHelpers } from './work/useWorkUiHelpers'
 import { createDeferredCall } from './work/deferredCall'
@@ -1415,6 +1416,24 @@ const {
   requestUnsavedConfirm,
 })
 
+// Виджет дашборда: онлайн-менеджеры и заявки "в ожидании" за текущий день.
+const {
+  managersLoadItems,
+  managersLoadOnlineCount,
+  managersLoadDate,
+  managersLoadTimezone,
+  managersLoadLoading,
+  managersLoadError,
+  refreshManagersWorkload,
+  startManagersWorkloadPolling,
+  stopManagersWorkloadPolling,
+} = useManagersLoad({
+  auth,
+  apiGet,
+  apiPost,
+  mapApiError,
+})
+
 // Контекст верхней панели: вкладки, пользователь и кнопка выхода.
 const topBarCtx = asCtx({
   userRoleName: topBarUserName,
@@ -1431,6 +1450,13 @@ const dashboardSectionCtx = asCtx({
   apiOk,
   loading,
   checkApi,
+  managersLoadItems,
+  managersLoadOnlineCount,
+  managersLoadDate,
+  managersLoadTimezone,
+  managersLoadLoading,
+  managersLoadError,
+  refreshManagersWorkload,
 })
 
 // Импорт/валидация/отмена для игр, аккаунтов и слотов.
@@ -2291,6 +2317,7 @@ useWorkLifecycle({
   stopGameImportStatusPolling: stopProductImportStatusPolling,
   stopAccountImportStatusPolling,
   stopSlotImportStatusPolling,
+  stopManagersWorkloadPolling,
   stopTelegramPolling,
   revokeTelegramMediaUrls,
   onModalDrag,
@@ -2332,6 +2359,8 @@ useActiveTabWatcher({
   productsPage,
   accountsPage,
   checkApi,
+  startManagersWorkloadPolling,
+  stopManagersWorkloadPolling,
   loadUsers,
   loadCatalogs,
   loadDomains,

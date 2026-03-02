@@ -34,6 +34,8 @@ export function useActiveTabWatcher({
   productsPage,
   accountsPage,
   checkApi,
+  startManagersWorkloadPolling,
+  stopManagersWorkloadPolling,
   loadUsers,
   loadCatalogs,
   loadDomains,
@@ -50,12 +52,17 @@ export function useActiveTabWatcher({
 }) {
   // Главный watcher вкладок: подгружает данные только для активного раздела.
   watch(activeTab, async (tab) => {
+    if (tab !== 'dashboard') {
+      // При выходе с дашборда сразу отключаем polling нагрузки менеджеров.
+      stopManagersWorkloadPolling()
+    }
     if (tab !== 'telegram') {
       // Если ушли с Telegram, сразу останавливаем опрос.
       stopTelegramPolling()
     }
     if (tab === 'dashboard') {
       checkApi()
+      startManagersWorkloadPolling()
       return
     }
     if (tab === 'profile') {

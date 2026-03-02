@@ -3,8 +3,8 @@ import { ref, reactive } from 'vue'
 
 import { useActiveTabWatcher } from '../useActiveTabWatcher.js'
 
-function createHarness({ role = 'manager', responsible = '', preset = '' } = {}) {
-  const activeTab = ref('deals')
+function createHarness({ role = 'manager', responsible = '', preset = '', tab = 'deals' } = {}) {
+  const activeTab = ref(tab)
   const isAdmin = ref(role === 'admin')
   const dealFilters = reactive({
     responsible_q: preset,
@@ -12,6 +12,8 @@ function createHarness({ role = 'manager', responsible = '', preset = '' } = {})
   const defaultDealsResponsibleFilter = ref(responsible)
 
   const loadDeals = vi.fn().mockResolvedValue(undefined)
+  const startManagersWorkloadPolling = vi.fn()
+  const stopManagersWorkloadPolling = vi.fn()
 
   useActiveTabWatcher({
     activeTab,
@@ -47,6 +49,8 @@ function createHarness({ role = 'manager', responsible = '', preset = '' } = {})
     productsPage: ref(1),
     accountsPage: ref(1),
     checkApi: vi.fn(),
+    startManagersWorkloadPolling,
+    stopManagersWorkloadPolling,
     loadUsers: vi.fn().mockResolvedValue(undefined),
     loadCatalogs: vi.fn().mockResolvedValue(undefined),
     loadDomains: vi.fn().mockResolvedValue(undefined),
@@ -62,7 +66,7 @@ function createHarness({ role = 'manager', responsible = '', preset = '' } = {})
     stopTelegramPolling: vi.fn(),
   })
 
-  return { dealFilters, loadDeals }
+  return { dealFilters, loadDeals, startManagersWorkloadPolling, stopManagersWorkloadPolling }
 }
 
 describe('useActiveTabWatcher', () => {
@@ -135,6 +139,8 @@ describe('useActiveTabWatcher', () => {
       productsPage: ref(1),
       accountsPage: ref(1),
       checkApi: vi.fn(),
+      startManagersWorkloadPolling: vi.fn(),
+      stopManagersWorkloadPolling: vi.fn(),
       loadUsers: vi.fn().mockResolvedValue(undefined),
       loadCatalogs: vi.fn().mockResolvedValue(undefined),
       loadDomains: vi.fn().mockResolvedValue(undefined),
@@ -158,5 +164,12 @@ describe('useActiveTabWatcher', () => {
     await Promise.resolve()
 
     expect(showDealForm.value).toBe(true)
+  })
+
+  it('starts managers polling on dashboard tab', async () => {
+    const h = createHarness({ role: 'admin', tab: 'dashboard' })
+    await Promise.resolve()
+    expect(h.startManagersWorkloadPolling).toHaveBeenCalledTimes(1)
+    expect(h.stopManagersWorkloadPolling).not.toHaveBeenCalled()
   })
 })

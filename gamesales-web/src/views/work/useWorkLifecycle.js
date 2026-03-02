@@ -9,6 +9,7 @@ export function useWorkLifecycle({
   stopGameImportStatusPolling,
   stopAccountImportStatusPolling,
   stopSlotImportStatusPolling,
+  stopManagersWorkloadPolling,
   stopTelegramPolling,
   revokeTelegramMediaUrls,
   onModalDrag,
@@ -29,6 +30,7 @@ export function useWorkLifecycle({
     stopGameImportStatusPolling()
     stopAccountImportStatusPolling()
     stopSlotImportStatusPolling()
+    stopManagersWorkloadPolling()
     stopTelegramPolling()
     revokeTelegramMediaUrls()
     window.removeEventListener('mousemove', onModalDrag)

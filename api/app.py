@@ -270,6 +270,7 @@ from domains.deals_ws import build_deals_events, mount_deals_ws_routes
 from domains.telegram_api import mount_telegram_routes
 from domains.imports_models import ImportReportIn
 from domains.analytics_api import mount_analytics_routes
+from domains.dashboard_api import mount_dashboard_routes
 from domains.products_api import mount_products_routes
 from domains.products_import_api import mount_products_import_routes
 from domains.accounts_import_api import mount_accounts_import_routes
@@ -849,10 +850,19 @@ mount_deals_ws_routes(
 )
 
 mount_analytics_routes(
+  app,
+  DB_DSN=DB_DSN,
+  get_current_user=get_current_user,
+  q1=q1,
+  qall=qall,
+  psycopg=pooled_psycopg,
+)
+
+mount_dashboard_routes(
     app,
     DB_DSN=DB_DSN,
-    get_current_user=get_current_user,
-    q1=q1,
-    qall=qall,
     psycopg=pooled_psycopg,
+    qall=qall,
+    get_current_user=get_current_user,
+    redis_url=_REDIS_URL,
 )
