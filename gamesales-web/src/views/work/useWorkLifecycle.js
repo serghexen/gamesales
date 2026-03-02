@@ -6,6 +6,8 @@ export function useWorkLifecycle({
   route,
   isAdmin,
   loadUsers,
+  refreshManagersWorkload,
+  cleanupManagersRealtimeRefresh,
   startPresenceHeartbeatPolling,
   stopGameImportStatusPolling,
   stopAccountImportStatusPolling,
@@ -27,6 +29,8 @@ export function useWorkLifecycle({
       await loadUsers()
     }
     startPresenceHeartbeatPolling()
+    // Делаем первичную загрузку блока "Сделок в работе" сразу после входа на экран.
+    await refreshManagersWorkload()
   })
 
   onBeforeUnmount(() => {
@@ -36,6 +40,7 @@ export function useWorkLifecycle({
     stopManagersWorkloadPolling()
     stopPresenceHeartbeatPolling()
     stopTelegramPolling()
+    cleanupManagersRealtimeRefresh()
     revokeTelegramMediaUrls()
     window.removeEventListener('mousemove', onModalDrag)
     window.removeEventListener('mouseup', stopModalDrag)

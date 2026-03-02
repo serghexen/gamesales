@@ -709,13 +709,38 @@
 
 .work-page .tab:hover {
   background: var(--tab-hover-bg);
+  border-color: rgba(255, 255, 255, 0.32);
   color: var(--tab-hover-text);
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 8px 16px rgba(7, 12, 26, 0.3);
+}
+
+.work-page .tab:hover::after {
+  opacity: 1;
+}
+
+.work-page .tab:focus-visible {
+  outline: none;
+  border-color: rgba(62, 232, 181, 0.6);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 0 0 2px rgba(62, 232, 181, 0.22),
+    0 8px 16px rgba(7, 12, 26, 0.28);
 }
 
 .work-page .tab.active {
   background: var(--tab-active-bg);
-  border-color: var(--stroke);
+  border-color: rgba(255, 255, 255, 0.26);
   color: var(--tab-active-text);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 8px 18px rgba(6, 10, 20, 0.26);
+}
+
+.work-page .tab.active::after {
+  opacity: 0.34;
 }
 
 .work-page button {

@@ -1,4 +1,33 @@
 @media (max-width: 980px) {
+  .work-page .top {
+    align-items: flex-start;
+  }
+
+  .work-page .actions {
+    align-items: flex-start;
+  }
+
+  .work-page .actions__main {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .work-page .tabs--right {
+    margin-left: 0;
+  }
+
+  .work-page .tab-workload {
+    width: 100%;
+    overflow-x: auto;
+    max-width: none;
+    padding-bottom: 2px;
+    margin-left: 0;
+  }
+
+  .work-page .tab-workload::before {
+    display: none;
+  }
+
   .work-page .hero {
     flex-direction: column;
     align-items: flex-start;

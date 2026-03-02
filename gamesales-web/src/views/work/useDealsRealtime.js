@@ -80,6 +80,7 @@ export function useDealsRealtime({
   dealEditMode,
   showDealForm,
   loadDeals,
+  onDealEvent = null,
   wsState: externalWsState = null,
   editingByDealId: externalEditingByDealId = null,
   realtimeAnimationTick: externalRealtimeAnimationTick = null,
@@ -94,6 +95,14 @@ export function useDealsRealtime({
   let pendingRefresh = false
   let editingDealId = null
   let editHeartbeatTimer = null
+  const hasExternalDealEventHook = typeof onDealEvent === 'function'
+
+  // Определяет, нужно ли держать websocket активным в текущем состоянии экрана.
+  const shouldKeepSocket = () => {
+    const token = auth?.state?.token
+    if (!token) return false
+    return activeTab.value === 'deals' || hasExternalDealEventHook
+  }
 
   const canApplyReloadNow = () => activeTab.value === 'deals' && !showDealForm.value && !editDeal.open
 
@@ -191,7 +200,7 @@ export function useDealsRealtime({
 
   // Поднимает websocket для вкладки сделок и поддерживает reconnect при обрывах.
   const connect = () => {
-    if (activeTab.value !== 'deals') return
+    if (!shouldKeepSocket()) return
     const token = auth?.state?.token
     const url = buildDealsWsUrl(API_BASE, token)
     if (!url || ws) return
@@ -213,6 +222,14 @@ export function useDealsRealtime({
         return
       }
       if (!payload?.event) return
+      // Пробрасываем событие наружу, чтобы другие виджеты могли обновляться по этому же WS-каналу.
+      if (typeof onDealEvent === 'function') {
+        try {
+          onDealEvent(payload)
+        } catch {
+          // Ошибка внешнего обработчика не должна ломать основной realtime-поток.
+        }
+      }
       editingByDealId.value = applyDealEditingRealtimeEvent(editingByDealId.value, payload)
       if (payload.event === 'connected') return
       if (canApplyReloadNow()) {
@@ -223,7 +240,7 @@ export function useDealsRealtime({
     }
     ws.onclose = () => {
       ws = null
-      if (activeTab.value !== 'deals') return
+      if (!shouldKeepSocket()) return
       wsState.value = 'reconnecting'
       const delay = RECONNECT_DELAYS_MS[Math.min(reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)]
       reconnectAttempt += 1
@@ -241,7 +258,7 @@ export function useDealsRealtime({
   watch(
     [activeTab, () => auth?.state?.token],
     ([tab, token]) => {
-      if (tab === 'deals' && token) {
+      if (token && (tab === 'deals' || hasExternalDealEventHook)) {
         connect()
         return
       }

@@ -392,6 +392,10 @@ const dealsBootstrapped = ref(false)
 const dealsRealtimeStatus = ref('offline')
 const dealEditingByDealId = ref({})
 const dealsRealtimeAnimationTick = ref(0)
+let managersRealtimeRefreshTimer = null
+let managersRealtimeRefreshQueued = false
+let managersRealtimeRefreshLastAt = 0
+const MANAGERS_REALTIME_REFRESH_MIN_MS = 1000
 
 // Нормализует роль из сессии, чтобы проверки прав не зависели от регистра и вариантов названия.
 function normalizeRole(value) {
@@ -435,10 +439,10 @@ const currentUserResponsibleName = computed(() => {
 })
 
 const topBarUserName = computed(() => {
-  // В шапке показываем имя пользователя, а не роль.
-  const byName = String(currentUserResponsibleName.value || '').trim()
-  if (byName) return byName
-  return String(auth.state.user || '').trim()
+  // В шапке всегда показываем логин из токена, чтобы исключить подмену отображаемого имени.
+  const byUsername = String(auth.state.user || '').trim()
+  if (byUsername) return byUsername
+  return String(currentUserResponsibleName.value || '').trim()
 })
 
 const defaultDealsResponsibleFilter = computed(() => {
@@ -448,6 +452,40 @@ const defaultDealsResponsibleFilter = computed(() => {
   // Фильтруем строго по name, без fallback на username.
   return String(currentUserResponsibleName.value || '').trim()
 })
+
+// Выполняет фактическое обновление блока менеджеров и сбрасывает внутренние флаги coalescing.
+function runManagersRealtimeRefresh() {
+  managersRealtimeRefreshQueued = false
+  managersRealtimeRefreshTimer = null
+  managersRealtimeRefreshLastAt = Date.now()
+  refreshManagersWorkload()
+}
+
+// Перезагружает блок менеджеров по WS-событиям сделок не чаще заданного интервала.
+function scheduleManagersRealtimeRefresh() {
+  managersRealtimeRefreshQueued = true
+  const elapsed = Date.now() - managersRealtimeRefreshLastAt
+  if (!managersRealtimeRefreshTimer && elapsed >= MANAGERS_REALTIME_REFRESH_MIN_MS) {
+    runManagersRealtimeRefresh()
+    return
+  }
+  if (managersRealtimeRefreshTimer) return
+  const waitMs = Math.max(50, MANAGERS_REALTIME_REFRESH_MIN_MS - elapsed)
+  managersRealtimeRefreshTimer = setTimeout(() => {
+    if (!managersRealtimeRefreshQueued) {
+      managersRealtimeRefreshTimer = null
+      return
+    }
+    runManagersRealtimeRefresh()
+  }, waitMs)
+}
+
+// Реагируем только на события, которые меняют состав/статус сделок.
+function handleDealsRealtimeEvent(payload) {
+  const eventType = String(payload?.event || '').trim().toLowerCase()
+  if (eventType !== 'deal_created' && eventType !== 'deal_updated' && eventType !== 'deal_deleted') return
+  scheduleManagersRealtimeRefresh()
+}
 
 const responsibleUserOptions = computed(() => {
   // Строит список ответственных и скрывает admin/owner для остальных пользователей.
@@ -594,7 +632,7 @@ const mustPrefillDealsResponsible = computed(() => {
   return role === 'manager' || role === 'operator'
 })
 const showUsersTab = false
-const showDashboard = true
+const showDashboard = false
 
 const dealModalTitle = computed(() => {
   if (showDealForm.value) {
@@ -1425,7 +1463,6 @@ const {
   managersLoadLoading,
   managersLoadError,
   refreshManagersWorkload,
-  startManagersWorkloadPolling,
   stopManagersWorkloadPolling,
   startPresenceHeartbeatPolling,
   stopPresenceHeartbeatPolling,
@@ -1445,6 +1482,9 @@ const topBarCtx = asCtx({
   showChatsTab,
   showUsersTab,
   showDashboard,
+  managersLoadItems,
+  managersLoadOnlineCount,
+  managersLoadLoading,
   onLogout,
 })
 
@@ -2317,6 +2357,14 @@ useWorkLifecycle({
   route,
   isAdmin,
   loadUsers,
+  refreshManagersWorkload,
+  cleanupManagersRealtimeRefresh: () => {
+    if (managersRealtimeRefreshTimer) {
+      clearTimeout(managersRealtimeRefreshTimer)
+      managersRealtimeRefreshTimer = null
+    }
+    managersRealtimeRefreshQueued = false
+  },
   startPresenceHeartbeatPolling,
   stopGameImportStatusPolling: stopProductImportStatusPolling,
   stopAccountImportStatusPolling,
@@ -2364,8 +2412,6 @@ useActiveTabWatcher({
   productsPage,
   accountsPage,
   checkApi,
-  startManagersWorkloadPolling,
-  stopManagersWorkloadPolling,
   loadUsers,
   loadCatalogs,
   loadDomains,
@@ -2428,6 +2474,7 @@ useDealsRealtime({
   dealEditMode,
   showDealForm,
   loadDeals,
+  onDealEvent: handleDealsRealtimeEvent,
   wsState: dealsRealtimeStatus,
   editingByDealId: dealEditingByDealId,
   realtimeAnimationTick: dealsRealtimeAnimationTick,

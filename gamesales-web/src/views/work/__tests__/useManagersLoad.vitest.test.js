@@ -53,4 +53,27 @@ describe('useManagersLoad', () => {
     expect(apiPost).toHaveBeenCalled()
     expect(apiGet).toHaveBeenCalled()
   })
+
+  it('sends presence heartbeat every 5 seconds', async () => {
+    const apiGet = vi.fn().mockResolvedValue({ online_count: 0, items: [] })
+    const apiPost = vi.fn().mockResolvedValue({ ok: true })
+    const h = useManagersLoad({
+      auth: { state: { token: 'token-1' } },
+      apiGet,
+      apiPost,
+      mapApiError: (msg) => msg || 'err',
+    })
+
+    h.startPresenceHeartbeatPolling()
+    await Promise.resolve()
+    expect(apiPost).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(apiPost).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(apiPost).toHaveBeenCalledTimes(3)
+
+    h.stopPresenceHeartbeatPolling()
+  })
 })

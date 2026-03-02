@@ -1,7 +1,9 @@
 import { ref } from 'vue'
 
-const MANAGERS_LOAD_POLL_MS = 30_000
-const PRESENCE_HEARTBEAT_POLL_MS = 25_000
+const MANAGERS_LOAD_POLL_MS = 5_000
+const MANAGERS_LOAD_POLL_BG_MS = 20_000
+const PRESENCE_HEARTBEAT_POLL_MS = 5_000
+const PRESENCE_HEARTBEAT_POLL_BG_MS = 20_000
 
 export function useManagersLoad({ auth, apiGet, apiPost, mapApiError }) {
   const managersLoadItems = ref([])
@@ -15,6 +17,44 @@ export function useManagersLoad({ auth, apiGet, apiPost, mapApiError }) {
   let requestInFlight = false
   let heartbeatTimer = null
   let heartbeatInFlight = false
+  let visibilityBound = false
+
+  // Возвращает интервал опроса для активной/фоновой вкладки.
+  function resolvePollInterval(activeMs, backgroundMs) {
+    if (typeof document === 'undefined') return activeMs
+    return document.hidden ? backgroundMs : activeMs
+  }
+
+  // Перезапускает интервалы при смене видимости вкладки, чтобы снизить фоновую нагрузку.
+  function handleVisibilityChange() {
+    if (pollingTimer) {
+      clearInterval(pollingTimer)
+      pollingTimer = setInterval(() => {
+        refreshManagersWorkload()
+      }, resolvePollInterval(MANAGERS_LOAD_POLL_MS, MANAGERS_LOAD_POLL_BG_MS))
+    }
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer)
+      heartbeatTimer = setInterval(() => {
+        sendManagersHeartbeat()
+      }, resolvePollInterval(PRESENCE_HEARTBEAT_POLL_MS, PRESENCE_HEARTBEAT_POLL_BG_MS))
+    }
+  }
+
+  // Подписывает на visibilitychange только когда есть хотя бы один активный таймер.
+  function ensureVisibilitySubscription() {
+    if (visibilityBound || typeof document === 'undefined') return
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    visibilityBound = true
+  }
+
+  // Снимает подписку, когда polling и heartbeat остановлены.
+  function releaseVisibilitySubscription() {
+    if (!visibilityBound || typeof document === 'undefined') return
+    if (pollingTimer || heartbeatTimer) return
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+    visibilityBound = false
+  }
 
   // Отправляет heartbeat в backend, чтобы текущий пользователь оставался в списке онлайн.
   async function sendManagersHeartbeat() {
@@ -60,10 +100,11 @@ export function useManagersLoad({ auth, apiGet, apiPost, mapApiError }) {
   // Запускает регулярное обновление виджета нагрузки менеджеров на дашборде.
   function startManagersWorkloadPolling() {
     if (pollingTimer) return
+    ensureVisibilitySubscription()
     refreshManagersWorkload()
     pollingTimer = setInterval(() => {
       refreshManagersWorkload()
-    }, MANAGERS_LOAD_POLL_MS)
+    }, resolvePollInterval(MANAGERS_LOAD_POLL_MS, MANAGERS_LOAD_POLL_BG_MS))
   }
 
   // Останавливает polling при уходе с дашборда или размонтировании экрана.
@@ -71,15 +112,17 @@ export function useManagersLoad({ auth, apiGet, apiPost, mapApiError }) {
     if (!pollingTimer) return
     clearInterval(pollingTimer)
     pollingTimer = null
+    releaseVisibilitySubscription()
   }
 
   // Держит online-присутствие активным на любой вкладке рабочего экрана.
   function startPresenceHeartbeatPolling() {
     if (heartbeatTimer) return
+    ensureVisibilitySubscription()
     sendManagersHeartbeat()
     heartbeatTimer = setInterval(() => {
       sendManagersHeartbeat()
-    }, PRESENCE_HEARTBEAT_POLL_MS)
+    }, resolvePollInterval(PRESENCE_HEARTBEAT_POLL_MS, PRESENCE_HEARTBEAT_POLL_BG_MS))
   }
 
   // Останавливает heartbeat при выходе со страницы/разлогине.
@@ -87,6 +130,7 @@ export function useManagersLoad({ auth, apiGet, apiPost, mapApiError }) {
     if (!heartbeatTimer) return
     clearInterval(heartbeatTimer)
     heartbeatTimer = null
+    releaseVisibilitySubscription()
   }
 
   return {

@@ -7,6 +7,8 @@ from fastapi import Depends
 
 
 PRESENCE_KEY_PREFIX = "app.presence.user:"
+PRESENCE_INDEX_KEY = "app.presence.index"
+PRESENCE_META_HASH_KEY = "app.presence.meta"
 PRESENCE_TTL_SECONDS = 90
 MSK_TZ_NAME = "Europe/Moscow"
 
@@ -29,23 +31,39 @@ def mount_dashboard_routes(
         role = str(getattr(user, "role", "") or "").strip()
         if not username:
             return
+        now_utc = datetime.now(timezone.utc)
         payload = {
             "username": username,
             "role": role,
-            "seen_at": datetime.now(timezone.utc).isoformat(),
+            "seen_at": now_utc.isoformat(),
         }
-        redis_client.set(
-            f"{PRESENCE_KEY_PREFIX}{username.lower()}",
-            json.dumps(payload, ensure_ascii=True),
-            ex=PRESENCE_TTL_SECONDS,
-        )
+        member = username.lower()
+        # Если Redis недоступен, не роняем endpoint: presence временно не обновится, но API продолжит работать.
+        try:
+            # Пишем метаданные в HASH и обновляем индекс пинга в ZSET.
+            redis_client.hset(PRESENCE_META_HASH_KEY, member, json.dumps(payload, ensure_ascii=True))
+            redis_client.zadd(PRESENCE_INDEX_KEY, {member: now_utc.timestamp()})
+        except Exception:
+            return
 
     # Собирает из Redis активных менеджеров и их timestamp последнего пинга.
     def load_online_managers_from_presence():
         online = {}
-        pattern = f"{PRESENCE_KEY_PREFIX}*"
-        for key in redis_client.scan_iter(match=pattern):
-            raw = redis_client.get(key)
+        now_ts = datetime.now(timezone.utc).timestamp()
+        min_alive_ts = now_ts - PRESENCE_TTL_SECONDS
+        try:
+            # Чистим индекс и hash-метаданные от старых записей, чтобы presence не рос бесконечно.
+            stale_members = redis_client.zrangebyscore(PRESENCE_INDEX_KEY, "-inf", min_alive_ts)
+            redis_client.zremrangebyscore(PRESENCE_INDEX_KEY, "-inf", min_alive_ts)
+            if stale_members:
+                redis_client.hdel(PRESENCE_META_HASH_KEY, *stale_members)
+            members = redis_client.zrangebyscore(PRESENCE_INDEX_KEY, min_alive_ts, "+inf")
+            if not members:
+                return online
+            payloads = redis_client.hmget(PRESENCE_META_HASH_KEY, members)
+        except Exception:
+            return online
+        for member, raw in zip(members, payloads):
             if not raw:
                 continue
             try:
@@ -109,14 +127,21 @@ def mount_dashboard_routes(
                 FROM app.users u
                 LEFT JOIN (
                   SELECT
-                    lower(d.responsible_username) AS responsible_username,
-                    COUNT(*)::int AS pending_count
+                    lower(match_u.username) AS manager_username,
+                    COUNT(DISTINCT d.deal_id)::int AS pending_count
                   FROM app.deals d
+                  LEFT JOIN app.deal_items di ON di.deal_id = d.deal_id
+                  JOIN app.users match_u
+                    ON lower(match_u.role_code) = 'manager'
+                   AND (
+                     lower(match_u.username) = lower(COALESCE(d.responsible_username, ''))
+                     OR lower(COALESCE(match_u.name, '')) = lower(COALESCE(d.responsible_username, ''))
+                   )
                   WHERE d.flow_status_code = 'pending'
-                    AND d.created_at >= %s
-                    AND d.created_at < %s
-                  GROUP BY lower(d.responsible_username)
-                ) work ON work.responsible_username = lower(u.username)
+                    AND COALESCE(di.purchase_at, d.created_at) >= %s
+                    AND COALESCE(di.purchase_at, d.created_at) < %s
+                  GROUP BY lower(match_u.username)
+                ) work ON work.manager_username = lower(u.username)
                 WHERE lower(u.role_code) = 'manager'
                   AND lower(u.username) = ANY(%s)
                 ORDER BY COALESCE(work.pending_count, 0) DESC, u.username ASC

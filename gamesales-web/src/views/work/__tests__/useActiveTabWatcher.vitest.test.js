@@ -12,8 +12,6 @@ function createHarness({ role = 'manager', responsible = '', preset = '', tab = 
   const defaultDealsResponsibleFilter = ref(responsible)
 
   const loadDeals = vi.fn().mockResolvedValue(undefined)
-  const startManagersWorkloadPolling = vi.fn()
-  const stopManagersWorkloadPolling = vi.fn()
 
   useActiveTabWatcher({
     activeTab,
@@ -49,8 +47,6 @@ function createHarness({ role = 'manager', responsible = '', preset = '', tab = 
     productsPage: ref(1),
     accountsPage: ref(1),
     checkApi: vi.fn(),
-    startManagersWorkloadPolling,
-    stopManagersWorkloadPolling,
     loadUsers: vi.fn().mockResolvedValue(undefined),
     loadCatalogs: vi.fn().mockResolvedValue(undefined),
     loadDomains: vi.fn().mockResolvedValue(undefined),
@@ -66,7 +62,7 @@ function createHarness({ role = 'manager', responsible = '', preset = '', tab = 
     stopTelegramPolling: vi.fn(),
   })
 
-  return { dealFilters, loadDeals, startManagersWorkloadPolling, stopManagersWorkloadPolling }
+  return { dealFilters, loadDeals }
 }
 
 describe('useActiveTabWatcher', () => {
@@ -140,7 +136,6 @@ describe('useActiveTabWatcher', () => {
       accountsPage: ref(1),
       checkApi: vi.fn(),
       startManagersWorkloadPolling: vi.fn(),
-      stopManagersWorkloadPolling: vi.fn(),
       loadUsers: vi.fn().mockResolvedValue(undefined),
       loadCatalogs: vi.fn().mockResolvedValue(undefined),
       loadDomains: vi.fn().mockResolvedValue(undefined),
@@ -166,10 +161,4 @@ describe('useActiveTabWatcher', () => {
     expect(showDealForm.value).toBe(true)
   })
 
-  it('starts managers polling on dashboard tab', async () => {
-    const h = createHarness({ role: 'admin', tab: 'dashboard' })
-    await Promise.resolve()
-    expect(h.startManagersWorkloadPolling).toHaveBeenCalledTimes(1)
-    expect(h.stopManagersWorkloadPolling).not.toHaveBeenCalled()
-  })
 })
