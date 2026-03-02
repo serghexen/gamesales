@@ -89,7 +89,7 @@ services:
     image: redis:7-alpine
     container_name: gamesales-redis
     restart: unless-stopped
-    command: ["redis-server", "--replicaof", "no", "one"]
+    command: ["redis-server"]
     ports:
       - "6379:6379"
     mem_limit: 120m

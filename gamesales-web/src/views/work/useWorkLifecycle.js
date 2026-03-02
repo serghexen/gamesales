@@ -6,10 +6,12 @@ export function useWorkLifecycle({
   route,
   isAdmin,
   loadUsers,
+  startPresenceHeartbeatPolling,
   stopGameImportStatusPolling,
   stopAccountImportStatusPolling,
   stopSlotImportStatusPolling,
   stopManagersWorkloadPolling,
+  stopPresenceHeartbeatPolling,
   stopTelegramPolling,
   revokeTelegramMediaUrls,
   onModalDrag,
@@ -24,6 +26,7 @@ export function useWorkLifecycle({
     if (isAdmin.value) {
       await loadUsers()
     }
+    startPresenceHeartbeatPolling()
   })
 
   onBeforeUnmount(() => {
@@ -31,6 +34,7 @@ export function useWorkLifecycle({
     stopAccountImportStatusPolling()
     stopSlotImportStatusPolling()
     stopManagersWorkloadPolling()
+    stopPresenceHeartbeatPolling()
     stopTelegramPolling()
     revokeTelegramMediaUrls()
     window.removeEventListener('mousemove', onModalDrag)

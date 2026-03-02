@@ -11,6 +11,14 @@
 
     <div class="actions">
       <nav class="tabs">
+        <router-link
+          v-if="showDashboard"
+          class="tab"
+          :class="{ active: activeTab === 'dashboard' }"
+          :to="{ name: 'work', query: { ...routeQuery, tab: 'dashboard' } }"
+        >
+          Дашборд
+        </router-link>
         <router-link class="tab" :class="{ active: activeTab === 'deals' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'deals' } }">
           Сделки
         </router-link>
@@ -111,5 +119,6 @@ const routeQuery = computed(() => unref(props.ctx.routeQuery) || {})
 const isAdmin = computed(() => unref(props.ctx.isAdmin))
 const showChatsTab = computed(() => unref(props.ctx.showChatsTab))
 const showUsersTab = computed(() => unref(props.ctx.showUsersTab))
+const showDashboard = computed(() => unref(props.ctx.showDashboard))
 const userRoleName = computed(() => unref(props.ctx.userRoleName))
 </script>

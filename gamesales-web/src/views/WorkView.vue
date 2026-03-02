@@ -594,7 +594,7 @@ const mustPrefillDealsResponsible = computed(() => {
   return role === 'manager' || role === 'operator'
 })
 const showUsersTab = false
-const showDashboard = false
+const showDashboard = true
 
 const dealModalTitle = computed(() => {
   if (showDealForm.value) {
@@ -1427,6 +1427,8 @@ const {
   refreshManagersWorkload,
   startManagersWorkloadPolling,
   stopManagersWorkloadPolling,
+  startPresenceHeartbeatPolling,
+  stopPresenceHeartbeatPolling,
 } = useManagersLoad({
   auth,
   apiGet,
@@ -1442,6 +1444,7 @@ const topBarCtx = asCtx({
   isAdmin,
   showChatsTab,
   showUsersTab,
+  showDashboard,
   onLogout,
 })
 
@@ -2314,10 +2317,12 @@ useWorkLifecycle({
   route,
   isAdmin,
   loadUsers,
+  startPresenceHeartbeatPolling,
   stopGameImportStatusPolling: stopProductImportStatusPolling,
   stopAccountImportStatusPolling,
   stopSlotImportStatusPolling,
   stopManagersWorkloadPolling,
+  stopPresenceHeartbeatPolling,
   stopTelegramPolling,
   revokeTelegramMediaUrls,
   onModalDrag,

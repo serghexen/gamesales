@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 
 const MANAGERS_LOAD_POLL_MS = 30_000
+const PRESENCE_HEARTBEAT_POLL_MS = 25_000
 
 export function useManagersLoad({ auth, apiGet, apiPost, mapApiError }) {
   const managersLoadItems = ref([])
@@ -12,13 +13,19 @@ export function useManagersLoad({ auth, apiGet, apiPost, mapApiError }) {
 
   let pollingTimer = null
   let requestInFlight = false
+  let heartbeatTimer = null
+  let heartbeatInFlight = false
 
   // Отправляет heartbeat в backend, чтобы текущий пользователь оставался в списке онлайн.
   async function sendManagersHeartbeat() {
+    if (heartbeatInFlight) return
+    heartbeatInFlight = true
     try {
       await apiPost('/presence/heartbeat', {}, { token: auth.state.token })
     } catch {
       // Ошибку heartbeat не показываем отдельно, ее отразит основной запрос нагрузки.
+    } finally {
+      heartbeatInFlight = false
     }
   }
 
@@ -66,6 +73,22 @@ export function useManagersLoad({ auth, apiGet, apiPost, mapApiError }) {
     pollingTimer = null
   }
 
+  // Держит online-присутствие активным на любой вкладке рабочего экрана.
+  function startPresenceHeartbeatPolling() {
+    if (heartbeatTimer) return
+    sendManagersHeartbeat()
+    heartbeatTimer = setInterval(() => {
+      sendManagersHeartbeat()
+    }, PRESENCE_HEARTBEAT_POLL_MS)
+  }
+
+  // Останавливает heartbeat при выходе со страницы/разлогине.
+  function stopPresenceHeartbeatPolling() {
+    if (!heartbeatTimer) return
+    clearInterval(heartbeatTimer)
+    heartbeatTimer = null
+  }
+
   return {
     managersLoadItems,
     managersLoadOnlineCount,
@@ -76,5 +99,7 @@ export function useManagersLoad({ auth, apiGet, apiPost, mapApiError }) {
     refreshManagersWorkload,
     startManagersWorkloadPolling,
     stopManagersWorkloadPolling,
+    startPresenceHeartbeatPolling,
+    stopPresenceHeartbeatPolling,
   }
 }
