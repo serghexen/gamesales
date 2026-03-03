@@ -48,8 +48,6 @@ export function useDealsActions({
 
   // Определяет конфликт версий сделки, когда запись уже изменил другой пользователь.
   function isDealVersionConflict(error) {
-    const status = Number(error?.status || 0)
-    if (status === 409) return true
     const text = String(error?.message || '').toLowerCase()
     return text.includes('deal was modified by another user')
       || text.includes('lock_version')

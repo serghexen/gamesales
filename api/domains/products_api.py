@@ -124,10 +124,8 @@ def mount_products_routes(
         )
         if not row:
             return None
-        # Платформы читаем через нейтральную связку product_platforms.
-        platform_codes = []
-        if str(row[1] or "").strip().lower() == "game":
-            platform_codes = get_game_platform_codes(conn, int(row[0]))
+        # Платформы читаем через нейтральную связку product_platforms для всех типов товара.
+        platform_codes = get_game_platform_codes(conn, int(row[0]))
         return ProductOut(
             product_id=int(row[0]),
             type_code=row[1],
@@ -395,6 +393,8 @@ def mount_products_routes(
                     ),
                 )
             elif type_code == "subscription":
+                platform_codes = normalize_platform_codes(payload.platform_codes)
+                platform_ids = [get_platform_id(conn, code) for code in platform_codes] if platform_codes else []
                 product_row = q1(
                     conn,
                     """
@@ -414,6 +414,13 @@ def mount_products_routes(
                     """,
                     (product_id, payload.provider, payload.billing_period, payload.subscription_notes),
                 )
+                if platform_ids:
+                    # Для подписок тоже сохраняем платформы в общей связке product_platforms.
+                    with conn.cursor() as cur:
+                        cur.executemany(
+                            "INSERT INTO app.product_platforms(product_id, platform_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                            [(product_id, pid) for pid in platform_ids],
+                        )
             else:
                 product_row = q1(
                     conn,
@@ -516,6 +523,7 @@ def mount_products_routes(
                 new_provider = payload.provider if payload.provider is not None else row[8]
                 new_billing_period = payload.billing_period if payload.billing_period is not None else row[9]
                 new_notes = payload.subscription_notes if payload.subscription_notes is not None else row[10]
+                platform_codes = normalize_platform_codes(payload.platform_codes) if payload.platform_codes is not None else None
                 exec1(
                     conn,
                     """
@@ -528,6 +536,16 @@ def mount_products_routes(
                     """,
                     (product_id, new_provider, new_billing_period, new_notes),
                 )
+                if platform_codes is not None:
+                    # При явном обновлении платформ подписки пересобираем связи так же, как для игр.
+                    exec1(conn, "DELETE FROM app.product_platforms WHERE product_id=%s", (product_id,))
+                    if platform_codes:
+                        platform_ids = [get_platform_id(conn, code) for code in platform_codes]
+                        with conn.cursor() as cur:
+                            cur.executemany(
+                                "INSERT INTO app.product_platforms(product_id, platform_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                                [(product_id, pid) for pid in platform_ids],
+                            )
 
             conn.commit()
             item = load_product(conn, product_id)

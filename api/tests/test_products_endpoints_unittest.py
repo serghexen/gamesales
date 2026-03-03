@@ -27,6 +27,10 @@ class _ScriptedCursor:
         self._current = self._script.pop(0)
         self.rowcount = int(self._current.get("rowcount", 0))
 
+    def executemany(self, sql, seq_of_params):
+        for params in seq_of_params:
+            self.execute(sql, params)
+
     def fetchone(self):
         if not self._current:
             return None
@@ -187,7 +191,8 @@ class ProductsEndpointsTests(unittest.TestCase):
                     "month",
                     "base",
                 )
-            },
+            },  # load_product row
+            {"all": []},  # load_product platform_codes
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
@@ -212,6 +217,65 @@ class ProductsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json()["product_id"], 77)
             self.assertEqual(res.json()["type_code"], "subscription")
+            self.assertEqual(res.json()["platform_codes"], [])
+
+    def test_update_subscription_product_saves_platform_codes(self):
+        script = [
+            {
+                "one": (
+                    "subscription",  # type_code
+                    "PS Plus",  # title
+                    "PLUS",  # short_title
+                    10,  # region_id
+                    None,  # gp.link
+                    None,  # gp.text_lang
+                    None,  # gp.audio_lang
+                    None,  # gp.vr_support
+                    "sony",  # sp.provider
+                    "month",  # sp.billing_period
+                    "base",  # sp.notes
+                )
+            },  # select existing product
+            {"rowcount": 1},  # update app.products
+            {"rowcount": 1},  # upsert subscription_products
+            {"rowcount": 1},  # delete old product_platforms
+            {"one": (5,)},  # platform_id for ps5
+            {"rowcount": 1},  # insert app.product_platforms via executemany
+            {
+                "one": (
+                    77,
+                    "subscription",
+                    "PS Plus",
+                    "PLUS",
+                    "RU",
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    "sony",
+                    "month",
+                    "base",
+                )
+            },  # load_product row
+            {"all": [("ps5",)]},  # load_product platform_codes
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/products/77",
+                    headers=self._auth_headers(role="manager"),
+                    json={"platform_codes": ["ps5"]},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json()["product_id"], 77)
+            self.assertEqual(res.json()["type_code"], "subscription")
+            self.assertEqual(res.json()["platform_codes"], ["ps5"])
 
 if __name__ == "__main__":
     unittest.main()

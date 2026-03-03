@@ -197,6 +197,7 @@ import WorkCatalogsSection from './work/sections/WorkCatalogsSection.vue'
 import WorkTelegramSection from './work/sections/WorkTelegramSection.vue'
 import WorkTopBar from './work/sections/WorkTopBar.vue'
 import WorkNsGiftSection from './work/sections/WorkNsGiftSection.vue'
+import './work/styles/work-bundle.css'
 
 const router = useRouter()
 const route = useRoute()
@@ -2792,5 +2793,3 @@ useDealsRealtime({
 })
 
 </script>
-
-<style src="./work/styles/work-bundle.css"></style>

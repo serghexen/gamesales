@@ -348,6 +348,20 @@ describe('useDealsActions', () => {
     expect(deps.dealError.value).toBe('deal was modified by another user')
   })
 
+  it('does not show version warning for non-lock 409 errors during updateDeal', async () => {
+    const conflict = new Error('order_number must be unique for market source')
+    conflict.status = 409
+    const deps = createDeps({
+      apiPut: vi.fn().mockRejectedValue(conflict),
+    })
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.showDealWarning).not.toHaveBeenCalled()
+    expect(deps.dealError.value).toBe('order_number must be unique for market source')
+  })
+
   it('shows warning on version conflict during markDealCompleted', async () => {
     const conflict = new Error('deal was modified by another user')
     conflict.status = 409

@@ -740,12 +740,7 @@ class DealsEndpointsTests(unittest.TestCase):
         script = [
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
-            {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
-            {"one": (2,)},  # get_platform_id
-            {"one": ("game", False)},  # product lookup
-            {"one": (1,)},  # ensure_account_exists
-            {"one": (0,)},  # get_account_slot_free
-            {"one": (7, "ps5_p1")},  # current assignment for free_adjusted
+            {"one": (55,)},  # current product_id from deal_item
             {"rowcount": 1},  # update deals
             {"rowcount": 1},  # update deal_items
             {"one": (900, 7, "ps5_p1", 5, 55)},  # assignment details
@@ -761,6 +756,54 @@ class DealsEndpointsTests(unittest.TestCase):
                     "/deals/77",
                     headers=self._auth_headers(role="manager"),
                     json={"deal_type_code": "rental", "slot_type_code": "ps5_p1", "account_id": 7, "product_id": 55},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
+
+    # При смене только ответственного у rental не проверяем емкость слотов повторно.
+    def test_update_deal_rental_responsible_only_skips_slot_capacity_check(self):
+        current_row = (
+            "rental",
+            "confirmed",
+            "pending",
+            10,
+            5,
+            500.0,
+            "A-100",
+            "admin",
+            77,
+            7,
+            2,
+            500.0,
+            100.0,
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+            None,
+            None,
+            1,
+            "ps5_p1",
+            "note",
+            None,
+            None,
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+            {"one": (55,)},  # current product_id from deal_item
+            {"rowcount": 1},  # update deals
+            {"rowcount": 1},  # update deal_items
+            {"one": (900, 7, "ps5_p1", 5, 55)},  # assignment details
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="manager"),
+                    json={"responsible_username": "other_manager"},
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
@@ -1157,6 +1200,7 @@ class DealsEndpointsTests(unittest.TestCase):
         script = [
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
+            {"one": (55,)},  # current product_id from deal_item
             {"one": (1,)},  # flow_status lookup
             {"rowcount": 1},  # update deals
             {"rowcount": 1},  # update deal_items

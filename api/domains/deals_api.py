@@ -625,8 +625,8 @@ def mount_deals_routes(
             if deal_type not in ("sale", "rental"):
                 raise HTTPException(400, "deal_type_code must be sale or rental")
             current_product_id = None
-            if deal_type == "rental" and payload.product_id is None:
-                # Для частичных update берем текущий product_id из deal_item, чтобы не требовать повторного выбора товара.
+            if deal_type == "rental":
+                # Для rental всегда читаем текущий product_id, чтобы отличать реальные изменения от сохранения без правок.
                 product_row = q1(conn, "SELECT product_id FROM app.deal_items WHERE deal_item_id=%s", (deal_item_id,))
                 current_product_id = int(product_row[0]) if product_row and product_row[0] is not None else None
             # Для update используем переданный product_id, а если его нет — сохраняем текущий.
@@ -661,8 +661,11 @@ def mount_deals_routes(
             if deal_type == "rental" and not rental_is_draft:
                 if not new_slot_type_code:
                     raise HTTPException(400, "slot_type_code is required for rental")
-                slot_type = get_slot_type(conn, new_slot_type_code)
-                new_platform_id = get_platform_id(conn, slot_type[1])
+                # Платформу пересчитываем только при фактической смене типа слота.
+                slot_type_changed = payload.slot_type_code is not None and (new_slot_type_code or "") != (slot_type_code or "")
+                if slot_type_changed:
+                    slot_type = get_slot_type(conn, new_slot_type_code)
+                    new_platform_id = get_platform_id(conn, slot_type[1])
     
             # customer update
             cust_nickname = payload.customer_nickname
@@ -684,6 +687,7 @@ def mount_deals_routes(
                 else game_link
             )
             new_order_number = order_number if payload.order_number is None else ((payload.order_number or "").strip() or None)
+            current_order_number = ((order_number or "").strip() or None)
             if payload.responsible_username is None:
                 new_responsible_username = responsible_username
             else:
@@ -691,8 +695,8 @@ def mount_deals_routes(
                 if normalized_responsible == "current_user":
                     normalized_responsible = user.username
                 new_responsible_username = normalized_responsible or None
-            # Для update проверяем правило только если пользователь менял номер заказа или источник.
-            if (payload.order_number is not None or payload.source_id is not None) and new_order_number:
+            # Для update проверяем уникальность market-заказа только если реально поменяли order_number.
+            if new_order_number and new_order_number != current_order_number:
                 customer_row = q1(conn, "SELECT source_id FROM app.customers WHERE customer_id=%s", (customer_id,))
                 customer_source_id = int(customer_row[0]) if customer_row and customer_row[0] is not None else None
                 validate_market_order_number_unique(conn, customer_source_id, new_order_number, exclude_deal_id=deal_id)
@@ -735,9 +739,26 @@ def mount_deals_routes(
             if deal_type == "rental":
                 new_slots_used = 0 if rental_is_draft else 1
             validate_date_range(new_start_at, new_end_at, "end_at")
+
+            # Проверку доступности слотов запускаем только когда меняются слотные поля rental-сделки.
+            should_recheck_rental_slot_capacity = False
+            if deal_type == "rental" and not rental_is_draft:
+                current_account_normalized = int(account_id) if account_id is not None else None
+                new_account_normalized = int(new_account_id) if new_account_id is not None else None
+                current_product_normalized = int(current_product_id) if current_product_id is not None else None
+                new_product_normalized = int(new_product_id) if new_product_id is not None else None
+                flow_from_draft = str(flow_status_code or "").strip().lower() == "draft"
+                flow_to_non_draft = str(new_flow_status or "").strip().lower() != "draft"
+                product_changed = payload.product_id is not None and new_product_normalized != current_product_normalized
+                should_recheck_rental_slot_capacity = (
+                    (payload.account_id is not None and new_account_normalized != current_account_normalized)
+                    or (payload.slot_type_code is not None and (new_slot_type_code or "") != (slot_type_code or ""))
+                    or product_changed
+                    or (flow_from_draft and flow_to_non_draft)
+                )
     
             # check slots for rental
-            if deal_type == "rental" and not rental_is_draft:
+            if deal_type == "rental" and not rental_is_draft and should_recheck_rental_slot_capacity:
                 # Для rental валидируем продукт в product-first режиме.
                 if new_product_id is None:
                     raise HTTPException(400, "product_id is required for rental")
