@@ -8,6 +8,7 @@ function buildCtx(overrides = {}) {
   // Собираем минимальный контекст профиля для проверки видимости секции пользователей.
   return {
     isAdmin: false,
+    routeQuery: {},
     usersSectionCtx: {},
     openPwdModal: vi.fn(),
     showPwdForm: false,
@@ -33,6 +34,10 @@ describe('WorkProfileSection', () => {
       global: {
         stubs: {
           teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a class="analytics-link"><slot /></a>',
+          },
           WorkUsersSection: {
             template: '<div class="users-stub">Users section</div>',
           },
@@ -41,6 +46,7 @@ describe('WorkProfileSection', () => {
     })
 
     expect(wrapper.find('.users-stub').exists()).toBe(true)
+    expect(wrapper.find('.analytics-link').text()).toContain('Аналитика')
   })
 
   it('hides users section for non-admin', () => {
@@ -51,6 +57,10 @@ describe('WorkProfileSection', () => {
       global: {
         stubs: {
           teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a class="analytics-link"><slot /></a>',
+          },
           WorkUsersSection: {
             template: '<div class="users-stub">Users section</div>',
           },
@@ -59,5 +69,6 @@ describe('WorkProfileSection', () => {
     })
 
     expect(wrapper.find('.users-stub').exists()).toBe(false)
+    expect(wrapper.find('.analytics-link').exists()).toBe(false)
   })
 })

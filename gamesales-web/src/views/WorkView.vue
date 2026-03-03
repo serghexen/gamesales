@@ -2644,6 +2644,7 @@ const usersSectionCtx = asCtx({
 // Контекст вкладки профиля: смена пароля и встраивание списка пользователей.
 const profileSectionCtx = asCtx({
   isAdmin,
+  routeQuery: computed(() => route.query || {}),
   openPwdModal,
   showPwdForm,
   closePwdModal,

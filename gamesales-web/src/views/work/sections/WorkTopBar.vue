@@ -26,9 +26,6 @@
           <router-link class="tab" :class="{ active: activeTab === 'products' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'products' } }">
             Товары
           </router-link>
-          <router-link class="tab" :class="{ active: activeTab === 'ns-gift' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'ns-gift' } }">
-            NS Gift
-          </router-link>
           <router-link
             v-if="isAdmin"
             class="tab"
@@ -36,6 +33,9 @@
             :to="{ name: 'work', query: { ...routeQuery, tab: 'catalogs' } }"
           >
             Справочники
+          </router-link>
+          <router-link class="tab" :class="{ active: activeTab === 'ns-gift' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'ns-gift' } }">
+            NS Gift
           </router-link>
           <router-link
             v-if="showChatsTab"
@@ -45,20 +45,6 @@
           >
             Чаты
             <span class="tab__badge" aria-hidden="true"></span>
-          </router-link>
-          <router-link
-            v-if="isAdmin"
-            class="tab"
-            :class="{ active: activeTab === 'analytics' }"
-            :to="{ name: 'work', query: { ...routeQuery, tab: 'analytics' } }"
-          >
-            Аналитика
-            <span class="tab__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
-                <path d="M6 10V8a6 6 0 1 1 12 0v2" />
-                <rect x="5" y="10" width="14" height="10" rx="2" />
-              </svg>
-            </span>
           </router-link>
           <router-link
             v-if="isAdmin && showUsersTab"

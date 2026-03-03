@@ -220,10 +220,13 @@
 }
 
 .work-page .tab-workload__dot {
+  display: inline-block;
+  flex: 0 0 auto;
   width: 6px;
   height: 6px;
   border-radius: 50%;
   margin-right: 6px;
+  vertical-align: middle;
   background: rgba(176, 189, 212, 0.45);
   box-shadow: 0 0 0 2px rgba(176, 189, 212, 0.1);
 }
@@ -240,17 +243,17 @@
 
 @keyframes workload-online-pulse {
   0% {
-    transform: translateY(-50%) scale(1);
+    transform: scale(1);
     box-shadow: 0 0 0 2px rgba(78, 226, 135, 0.18);
     opacity: 0.95;
   }
   50% {
-    transform: translateY(-50%) scale(1.1);
+    transform: scale(1.1);
     box-shadow: 0 0 0 4px rgba(78, 226, 135, 0.1);
     opacity: 1;
   }
   100% {
-    transform: translateY(-50%) scale(1);
+    transform: scale(1);
     box-shadow: 0 0 0 2px rgba(78, 226, 135, 0.18);
     opacity: 0.95;
   }
