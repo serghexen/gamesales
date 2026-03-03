@@ -27,6 +27,11 @@
           :ctx="productsSectionCtx"
         />
 
+        <WorkNsGiftSection
+          v-if="activeTab === 'ns-gift'"
+          :ctx="nsGiftSectionCtx"
+        />
+
 
         <WorkTelegramSection
           v-if="activeTab === 'telegram'"
@@ -191,6 +196,7 @@ import WorkDealsArea from './work/sections/WorkDealsArea.vue'
 import WorkCatalogsSection from './work/sections/WorkCatalogsSection.vue'
 import WorkTelegramSection from './work/sections/WorkTelegramSection.vue'
 import WorkTopBar from './work/sections/WorkTopBar.vue'
+import WorkNsGiftSection from './work/sections/WorkNsGiftSection.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -439,10 +445,10 @@ const currentUserResponsibleName = computed(() => {
 })
 
 const topBarUserName = computed(() => {
-  // В шапке всегда показываем логин из токена, чтобы исключить подмену отображаемого имени.
-  const byUsername = String(auth.state.user || '').trim()
-  if (byUsername) return byUsername
-  return String(currentUserResponsibleName.value || '').trim()
+  // В шапке показываем человекочитаемое имя пользователя, а логин используем как fallback.
+  const byName = String(currentUserResponsibleName.value || '').trim()
+  if (byName) return byName
+  return String(auth.state.user || '').trim()
 })
 
 const defaultDealsResponsibleFilter = computed(() => {
@@ -771,6 +777,26 @@ const products = ref([])
 const productsAll = ref([])
 const productsTotal = ref(0)
 const productsLoading = ref(false)
+const nsGiftLoading = ref(false)
+const nsGiftError = ref('')
+const nsGiftOk = ref('')
+const nsGiftBalance = ref(0)
+const nsGiftCategories = ref([])
+const nsGiftSelectedCategory = ref('')
+const nsGiftSelectedCategoryId = ref(null)
+const nsGiftServices = ref([])
+const nsGiftServicesLoading = ref(false)
+const nsGiftServicesSearch = ref('')
+const nsGiftSteamMode = ref(false)
+const nsGiftSteamLogin = ref('')
+const nsGiftSteamAmount = ref('1')
+const nsGiftSteamCurrencyRate = ref({
+  date: '',
+  rubUsd: 0,
+  kztUsd: 0,
+  uahUsd: 0,
+})
+const nsGiftSteamRateLoading = ref(false)
 const editProductState = reactive({
   open: false,
   product_id: null,
@@ -1197,6 +1223,255 @@ const {
   requestUnsavedConfirm,
   requestDealConfirm,
 })
+
+function clearNsGiftMessages() {
+  // Сбрасываем прошлые сообщения перед новым запросом к NS Gift.
+  nsGiftError.value = ''
+  nsGiftOk.value = ''
+}
+
+function normalizeNsGiftCategories(payload) {
+  // Нормализует категории из API в единый формат { category_id, name }.
+  if (!Array.isArray(payload)) return []
+  return payload
+    .map((item) => {
+      if (item && typeof item === 'object') {
+        return {
+          category_id: Number.isFinite(Number(item?.category_id)) ? Number(item.category_id) : null,
+          name: String(item?.name || '').trim(),
+        }
+      }
+      return {
+        category_id: null,
+        name: String(item || '').trim(),
+      }
+    })
+    .filter((item) => item.name)
+    .filter((item) => {
+      // Убираем спец-категорию Steam Games | CIS, т.к. для нее есть отдельная форма.
+      return String(item?.name || '').trim().toLowerCase() !== 'steam games | cis'
+    })
+}
+
+function normalizeNsGiftServices(payload) {
+  // Нормализует список услуг NS Gift для таблицы.
+  if (!Array.isArray(payload)) return []
+  return payload
+    .map((item) => {
+      // Берем имя и остаток из корневых полей или из raw, чтобы покрыть оба формата ответа.
+      const raw = item && typeof item === 'object' ? item.raw : null
+      const title = String(item?.service_name || item?.title || raw?.service_name || '').trim()
+      const inStockValue = Number(item?.in_stock ?? raw?.in_stock ?? 0)
+      return {
+        service_id: Number(item?.service_id || 0),
+        title,
+        price: Number(item?.price || 0),
+        // Принудительно используем USD, потому что у провайдера сейчас приходит некорректная валюта.
+        currency: 'USD',
+        in_stock: Number.isFinite(inStockValue) ? inStockValue : 0,
+      }
+    })
+    .filter((item) => item.service_id > 0)
+}
+
+function readNsGiftNumber(value, fallback = 0) {
+  // Преобразует строку/число вида "76.93" или "76,93" в number.
+  const text = String(value ?? '').trim().replace(',', '.')
+  const parsed = Number(text)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function normalizeNsGiftSteamCurrencyRate(payload) {
+  // Нормализует ответ /steam/get_currency_rate в удобный для UI формат.
+  const data = payload && typeof payload === 'object' ? payload : {}
+  return {
+    date: String(data?.date || ''),
+    rubUsd: readNsGiftNumber(data?.['rub/usd'], 0),
+    kztUsd: readNsGiftNumber(data?.['kzt/usd'], 0),
+    uahUsd: readNsGiftNumber(data?.['uah/usd'], 0),
+  }
+}
+
+function clearNsGiftSteamData() {
+  // Сбрасывает данные Steam-формы при выходе из категории 68.
+  nsGiftSteamCurrencyRate.value = { date: '', rubUsd: 0, kztUsd: 0, uahUsd: 0 }
+}
+
+function resetNsGiftSteamFormFields() {
+  // Полностью очищает поля Steam-формы при сворачивании.
+  nsGiftSteamLogin.value = ''
+  nsGiftSteamAmount.value = '1'
+  clearNsGiftSteamData()
+}
+
+async function toggleNsGiftSteamMode() {
+  // Переключает Steam-форму по кнопке: открыть/закрыть.
+  if (nsGiftSteamMode.value) {
+    nsGiftSteamMode.value = false
+    resetNsGiftSteamFormFields()
+    return
+  }
+  nsGiftSteamMode.value = true
+  await loadNsGiftSteamCurrencyRate()
+}
+
+async function loadNsGiftSteamCurrencyRate() {
+  // Загружает курсы валют Steam для специальной формы category_id=68.
+  nsGiftSteamRateLoading.value = true
+  try {
+    const data = await apiGet('/integrations/ns-gift/steam/currency-rate', { token: auth.state.token })
+    nsGiftSteamCurrencyRate.value = normalizeNsGiftSteamCurrencyRate(data)
+  } catch (err) {
+    nsGiftError.value = mapApiError(err?.message || 'Не удалось загрузить курсы Steam')
+  } finally {
+    nsGiftSteamRateLoading.value = false
+  }
+}
+
+async function loadNsGiftBalance() {
+  // Загружает баланс NS Gift и обновляет поле в компактной форме.
+  clearNsGiftMessages()
+  nsGiftLoading.value = true
+  try {
+    const data = await apiGet('/integrations/ns-gift/balance', { token: auth.state.token })
+    nsGiftBalance.value = Number(data?.balance || 0)
+  } catch (err) {
+    nsGiftError.value = mapApiError(err?.message || 'Не удалось загрузить баланс NS Gift')
+  } finally {
+    nsGiftLoading.value = false
+  }
+}
+
+async function loadNsGiftCategories() {
+  // Загружает категории NS Gift для выпадающего списка с поиском.
+  clearNsGiftMessages()
+  nsGiftLoading.value = true
+  try {
+    const data = await apiGet('/integrations/ns-gift/categories', { token: auth.state.token })
+    const categories = normalizeNsGiftCategories(data)
+    nsGiftCategories.value = categories
+    if (nsGiftSelectedCategory.value) {
+      const selected = categories.find((item) => item.name === nsGiftSelectedCategory.value)
+      nsGiftSelectedCategoryId.value = selected?.category_id ?? null
+    }
+    nsGiftOk.value = `Загружено категорий: ${categories.length}`
+    if (nsGiftSelectedCategoryId.value) {
+      await loadNsGiftServicesByCategory()
+    }
+  } catch (err) {
+    nsGiftError.value = mapApiError(err?.message || 'Не удалось загрузить категории NS Gift')
+  } finally {
+    nsGiftLoading.value = false
+  }
+}
+
+async function reloadNsGiftData() {
+  // Обновляет баланс и список категорий одним действием из вкладки NS Gift.
+  clearNsGiftMessages()
+  nsGiftLoading.value = true
+  try {
+    const [balanceData, categoriesData] = await Promise.all([
+      apiGet('/integrations/ns-gift/balance', { token: auth.state.token }),
+      apiGet('/integrations/ns-gift/categories', { token: auth.state.token }),
+    ])
+    nsGiftBalance.value = Number(balanceData?.balance || 0)
+    const categories = normalizeNsGiftCategories(categoriesData)
+    nsGiftCategories.value = categories
+    if (nsGiftSelectedCategory.value) {
+      const selected = categories.find((item) => item.name === nsGiftSelectedCategory.value)
+      nsGiftSelectedCategoryId.value = selected?.category_id ?? null
+    }
+    nsGiftOk.value = `Категорий: ${categories.length}`
+    if (nsGiftSelectedCategoryId.value) {
+      await loadNsGiftServicesByCategory()
+    }
+  } catch (err) {
+    nsGiftError.value = mapApiError(err?.message || 'Не удалось обновить данные NS Gift')
+  } finally {
+    nsGiftLoading.value = false
+  }
+}
+
+async function loadNsGiftServicesByCategory() {
+  // Загружает услуги NS Gift по выбранной категории.
+  const categoryId = Number(nsGiftSelectedCategoryId.value || 0)
+  if (!Number.isFinite(categoryId) || categoryId <= 0) {
+    nsGiftServices.value = []
+    clearNsGiftSteamData()
+    return
+  }
+  nsGiftSteamMode.value = false
+  clearNsGiftSteamData()
+  // Перед новой загрузкой убираем старую ошибку, чтобы не показывать устаревший текст.
+  nsGiftError.value = ''
+  nsGiftServicesLoading.value = true
+  try {
+    const data = await apiGet(`/integrations/ns-gift/services?category_id=${categoryId}`, { token: auth.state.token })
+    nsGiftServices.value = normalizeNsGiftServices(data?.items)
+  } catch (err) {
+    const rawMessage = String(err?.message || '')
+    // Для 500 по категории скрываем ошибку в UI и просто показываем пустой список.
+    if (/\b500\b/.test(rawMessage)) {
+      nsGiftServices.value = []
+      nsGiftError.value = ''
+      return
+    }
+    nsGiftError.value = mapApiError(err?.message || 'Не удалось загрузить услуги NS Gift')
+    nsGiftServices.value = []
+  } finally {
+    nsGiftServicesLoading.value = false
+  }
+}
+
+function setNsGiftSelectedCategoryFromEvent(event) {
+  // Сохраняет выбранную категорию из поля с автопоиском.
+  const value = String(event?.target?.value || '').trim()
+  nsGiftSelectedCategory.value = value
+  const selected = nsGiftCategories.value.find((item) => item?.name === value)
+  nsGiftSelectedCategoryId.value = selected?.category_id ?? null
+  nsGiftSteamMode.value = false
+  if (!selected) {
+    nsGiftServices.value = []
+    resetNsGiftSteamFormFields()
+  }
+}
+
+function selectNsGiftCategoryText(value) {
+  // По клику на плашку подставляем текст в строку поиска, без выбора конкретной категории.
+  const text = String(value || '').trim()
+  nsGiftSelectedCategory.value = text
+  nsGiftSelectedCategoryId.value = null
+  nsGiftSteamMode.value = false
+  nsGiftServices.value = []
+  resetNsGiftSteamFormFields()
+}
+
+function selectNsGiftCategoryOption(value) {
+  // Явно выбирает категорию из выпадающего списка и сохраняет её id.
+  const text = String(value || '').trim()
+  nsGiftSelectedCategory.value = text
+  const selected = nsGiftCategories.value.find((item) => item?.name === text)
+  nsGiftSelectedCategoryId.value = selected?.category_id ?? null
+  nsGiftSteamMode.value = false
+  if (!selected) resetNsGiftSteamFormFields()
+  void loadNsGiftServicesByCategory()
+}
+
+function setNsGiftServicesSearchFromEvent(event) {
+  // Обновляет строку поиска для фильтрации таблицы услуг.
+  nsGiftServicesSearch.value = String(event?.target?.value || '').trim()
+}
+
+function setNsGiftSteamLoginFromEvent(event) {
+  // Сохраняет логин Steam для отдельной формы категории 68.
+  nsGiftSteamLogin.value = String(event?.target?.value || '').trim()
+}
+
+function setNsGiftSteamAmountFromEvent(event) {
+  // Сохраняет дробный amount для локального расчета по курсам.
+  const raw = String(event?.target?.value || '').trim().replace(',', '.')
+  nsGiftSteamAmount.value = raw
+}
 
 const {
   getAccountSecret,
@@ -2283,6 +2558,37 @@ const productsSectionCtx = asCtx({
   productEditorModalCtx,
 })
 
+// Контекст вкладки NS Gift: баланс и выбор категории.
+const nsGiftSectionCtx = asCtx({
+  loading: nsGiftLoading,
+  error: nsGiftError,
+  ok: nsGiftOk,
+  balance: nsGiftBalance,
+  categories: nsGiftCategories,
+  selectedCategory: nsGiftSelectedCategory,
+  selectedCategoryId: nsGiftSelectedCategoryId,
+  steamMode: nsGiftSteamMode,
+  services: nsGiftServices,
+  servicesLoading: nsGiftServicesLoading,
+  servicesSearch: nsGiftServicesSearch,
+  steamLogin: nsGiftSteamLogin,
+  steamAmount: nsGiftSteamAmount,
+  steamCurrencyRate: nsGiftSteamCurrencyRate,
+  steamLoading: nsGiftSteamRateLoading,
+  loadNsGiftBalance,
+  loadNsGiftCategories,
+  reloadNsGiftData,
+  activateSteamMode: toggleNsGiftSteamMode,
+  toggleSteamMode: toggleNsGiftSteamMode,
+  loadServicesByCategory: loadNsGiftServicesByCategory,
+  setSelectedCategoryFromEvent: setNsGiftSelectedCategoryFromEvent,
+  selectCategoryText: selectNsGiftCategoryText,
+  selectCategoryOption: selectNsGiftCategoryOption,
+  setServicesSearchFromEvent: setNsGiftServicesSearchFromEvent,
+  setSteamLoginFromEvent: setNsGiftSteamLoginFromEvent,
+  setSteamAmountFromEvent: setNsGiftSteamAmountFromEvent,
+})
+
 // Контекст вкладки сделок: список + модалка редактирования сделки.
 const dealsAreaCtx = asCtx({
   dealsSectionCtx,
@@ -2391,6 +2697,8 @@ useActiveTabWatcher({
   showAccountFilters,
   activeProductFilter,
   activeAccountFilter,
+  nsGiftOk,
+  nsGiftError,
   editProduct,
   pwdOk,
   showPwdForm,
@@ -2422,6 +2730,9 @@ useActiveTabWatcher({
   loadAccounts,
   loadAccountsAll,
   loadDeals,
+  loadNsGiftBalance,
+  loadNsGiftCategories,
+  reloadNsGiftData,
   loadTelegramStatus,
   startTelegramPolling,
   stopTelegramPolling,
@@ -2482,12 +2793,4 @@ useDealsRealtime({
 
 </script>
 
-<style src="./work/styles/work-core.css"></style>
-<style src="./work/styles/work-analytics.css"></style>
-<style src="./work/styles/work-deals.css"></style>
-<style src="./work/styles/work-telegram.css"></style>
-<style src="./work/styles/work-accounts.css"></style>
-<style src="./work/styles/work-ui.css"></style>
-<style src="./work/styles/work-forms.css"></style>
-<style src="./work/styles/work-table.css"></style>
-<style src="./work/styles/work-responsive.css"></style>
+<style src="./work/styles/work-bundle.css"></style>

@@ -12,6 +12,9 @@ function createHarness({ role = 'manager', responsible = '', preset = '', tab = 
   const defaultDealsResponsibleFilter = ref(responsible)
 
   const loadDeals = vi.fn().mockResolvedValue(undefined)
+  const loadNsGiftBalance = vi.fn().mockResolvedValue(undefined)
+  const loadNsGiftCategories = vi.fn().mockResolvedValue(undefined)
+  const reloadNsGiftData = vi.fn().mockResolvedValue(undefined)
 
   useActiveTabWatcher({
     activeTab,
@@ -26,6 +29,8 @@ function createHarness({ role = 'manager', responsible = '', preset = '', tab = 
     showAccountFilters: ref(false),
     activeProductFilter: ref(''),
     activeAccountFilter: ref(''),
+    nsGiftOk: ref(''),
+    nsGiftError: ref(''),
     editProduct: reactive({ open: false }),
     pwdOk: ref(false),
     showPwdForm: ref(false),
@@ -57,12 +62,15 @@ function createHarness({ role = 'manager', responsible = '', preset = '', tab = 
     loadAccounts: vi.fn().mockResolvedValue(undefined),
     loadAccountsAll: vi.fn().mockResolvedValue(undefined),
     loadDeals,
+    loadNsGiftBalance,
+    loadNsGiftCategories,
+    reloadNsGiftData,
     loadTelegramStatus: vi.fn().mockResolvedValue(undefined),
     startTelegramPolling: vi.fn(),
     stopTelegramPolling: vi.fn(),
   })
 
-  return { dealFilters, loadDeals }
+  return { dealFilters, loadDeals, loadNsGiftBalance, loadNsGiftCategories, reloadNsGiftData }
 }
 
 describe('useActiveTabWatcher', () => {
@@ -114,6 +122,8 @@ describe('useActiveTabWatcher', () => {
       showAccountFilters: ref(false),
       activeProductFilter: ref(''),
       activeAccountFilter: ref(''),
+      nsGiftOk: ref(''),
+      nsGiftError: ref(''),
       editProduct: reactive({ open: false }),
       pwdOk: ref(false),
       showPwdForm: ref(false),
@@ -146,6 +156,9 @@ describe('useActiveTabWatcher', () => {
       loadAccounts: vi.fn().mockResolvedValue(undefined),
       loadAccountsAll,
       loadDeals,
+      loadNsGiftBalance: vi.fn().mockResolvedValue(undefined),
+      loadNsGiftCategories: vi.fn().mockResolvedValue(undefined),
+      reloadNsGiftData: vi.fn().mockResolvedValue(undefined),
       loadTelegramStatus: vi.fn().mockResolvedValue(undefined),
       startTelegramPolling: vi.fn(),
       stopTelegramPolling: vi.fn(),
@@ -159,6 +172,14 @@ describe('useActiveTabWatcher', () => {
     await Promise.resolve()
 
     expect(showDealForm.value).toBe(true)
+  })
+
+  it('loads NS Gift data on ns-gift tab', async () => {
+    const h = createHarness({ tab: 'ns-gift' })
+    await Promise.resolve()
+    expect(h.reloadNsGiftData).toHaveBeenCalledTimes(1)
+    expect(h.loadNsGiftBalance).not.toHaveBeenCalled()
+    expect(h.loadNsGiftCategories).not.toHaveBeenCalled()
   })
 
 })

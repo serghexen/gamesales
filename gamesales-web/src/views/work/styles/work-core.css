@@ -232,10 +232,29 @@
   transform: translateY(-50%);
   background: #4ee287;
   box-shadow: 0 0 0 2px rgba(78, 226, 135, 0.18);
+  animation: workload-online-pulse 2.2s ease-in-out infinite;
 }
 
 .work-page .tab-workload__count {
   color: #f2f7ff;
+}
+
+@keyframes workload-online-pulse {
+  0% {
+    transform: translateY(-50%) scale(1);
+    box-shadow: 0 0 0 2px rgba(78, 226, 135, 0.18);
+    opacity: 0.95;
+  }
+  50% {
+    transform: translateY(-50%) scale(1.1);
+    box-shadow: 0 0 0 4px rgba(78, 226, 135, 0.1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-50%) scale(1);
+    box-shadow: 0 0 0 2px rgba(78, 226, 135, 0.18);
+    opacity: 0.95;
+  }
 }
 
 .work-page .top-role {

@@ -13,6 +13,8 @@ export function useActiveTabWatcher({
   showAccountFilters,
   activeProductFilter,
   activeAccountFilter,
+  nsGiftOk,
+  nsGiftError,
   editProduct,
   pwdOk,
   showPwdForm,
@@ -44,6 +46,9 @@ export function useActiveTabWatcher({
   loadAccounts,
   loadAccountsAll,
   loadDeals,
+  loadNsGiftBalance,
+  loadNsGiftCategories,
+  reloadNsGiftData,
   loadTelegramStatus,
   startTelegramPolling,
   stopTelegramPolling,
@@ -174,6 +179,15 @@ export function useActiveTabWatcher({
         }))
       }
       await Promise.all(tasks)
+      return
+    }
+    if (tab === 'ns-gift') {
+      // При открытии вкладки очищаем прошлые сообщения и загружаем свежие данные.
+      nsGiftOk.value = ''
+      nsGiftError.value = ''
+      await (typeof reloadNsGiftData === 'function'
+        ? reloadNsGiftData()
+        : Promise.all([loadNsGiftBalance(), loadNsGiftCategories()]))
       return
     }
     if (tab === 'telegram') {

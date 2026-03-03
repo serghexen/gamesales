@@ -26,6 +26,9 @@
           <router-link class="tab" :class="{ active: activeTab === 'products' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'products' } }">
             Товары
           </router-link>
+          <router-link class="tab" :class="{ active: activeTab === 'ns-gift' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'ns-gift' } }">
+            NS Gift
+          </router-link>
           <router-link
             v-if="isAdmin"
             class="tab"

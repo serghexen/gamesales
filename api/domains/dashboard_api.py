@@ -11,6 +11,7 @@ PRESENCE_INDEX_KEY = "app.presence.index"
 PRESENCE_META_HASH_KEY = "app.presence.meta"
 PRESENCE_TTL_SECONDS = 90
 MSK_TZ_NAME = "Europe/Moscow"
+WORKLOAD_ROLE_CODES = ("manager", "operator")
 
 
 def mount_dashboard_routes(
@@ -46,7 +47,7 @@ def mount_dashboard_routes(
         except Exception:
             return
 
-    # Собирает из Redis активных менеджеров и их timestamp последнего пинга.
+    # Собирает из Redis активных менеджеров/операторов и их timestamp последнего пинга.
     def load_online_managers_from_presence():
         online = {}
         now_ts = datetime.now(timezone.utc).timestamp()
@@ -73,7 +74,7 @@ def mount_dashboard_routes(
             username = str(payload.get("username") or "").strip()
             role = str(payload.get("role") or "").strip().lower()
             seen_at = str(payload.get("seen_at") or "").strip()
-            if not username or role != "manager":
+            if not username or role not in WORKLOAD_ROLE_CODES:
                 continue
             online[username.lower()] = {
                 "username": username,
@@ -132,7 +133,7 @@ def mount_dashboard_routes(
                   FROM app.deals d
                   LEFT JOIN app.deal_items di ON di.deal_id = d.deal_id
                   JOIN app.users match_u
-                    ON lower(match_u.role_code) = 'manager'
+                    ON lower(match_u.role_code) IN ('manager', 'operator')
                    AND (
                      lower(match_u.username) = lower(COALESCE(d.responsible_username, ''))
                      OR lower(COALESCE(match_u.name, '')) = lower(COALESCE(d.responsible_username, ''))
@@ -142,7 +143,7 @@ def mount_dashboard_routes(
                     AND COALESCE(di.purchase_at, d.created_at) < %s
                   GROUP BY lower(match_u.username)
                 ) work ON work.manager_username = lower(u.username)
-                WHERE lower(u.role_code) = 'manager'
+                WHERE lower(u.role_code) IN ('manager', 'operator')
                   AND lower(u.username) = ANY(%s)
                 ORDER BY COALESCE(work.pending_count, 0) DESC, u.username ASC
                 """,

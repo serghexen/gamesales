@@ -277,6 +277,7 @@ from domains.accounts_import_api import mount_accounts_import_routes
 from domains.catalogs_api import mount_catalogs_routes
 from domains.auth_api import mount_auth_routes
 from domains.slots_import_api import mount_slots_import_routes
+from domains.ns_gift_api import mount_ns_gift_routes
 from domains.import_jobs import build_import_jobs
 from domains.import_report_utils import build_import_report_xlsx
 from domains.import_parsers import build_import_parsers
@@ -285,6 +286,7 @@ from domains.telegram_sync import build_telegram_sync_service
 from domains.auth_service import build_auth_service
 from domains.db_helpers import build_db_helpers
 from domains.games_lookup_service import build_games_lookup_service
+from domains.ns_gift_service import build_ns_gift_service
 
 class ProductCreate(BaseModel):
     type_code: str
@@ -416,6 +418,36 @@ class SourceUpdate(BaseModel):
 class NameUpdate(BaseModel):
     name: str
 
+class NsGiftServiceOut(BaseModel):
+    service_id: int
+    title: str
+    category: str
+    price: float
+    currency: str
+    min_quantity: float = 1.0
+    max_quantity: float = 1.0
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+class NsGiftServiceListOut(BaseModel):
+    total: int
+    items: list[NsGiftServiceOut]
+
+class NsGiftBalanceOut(BaseModel):
+    balance: float
+    currency: str = "RUB"
+
+class NsGiftOrderIn(BaseModel):
+    service_id: int
+    quantity: float = 1.0
+    data: str = ""
+    auto_pay: bool = True
+
+class NsGiftOrderOut(BaseModel):
+    custom_id: str
+    auto_pay: bool
+    created: dict[str, Any] = Field(default_factory=dict)
+    paid: dict[str, Any] = Field(default_factory=dict)
+
 # ----------------------------
 # DB helpers
 # ----------------------------
@@ -512,6 +544,13 @@ _QUEUE_API_KEY = os.getenv("QUEUE_API_KEY", "")
 _REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 _TELEGRAM_API_URL = os.getenv("TELEGRAM_API_URL", "")
 _TELEGRAM_API_KEY = os.getenv("TELEGRAM_API_KEY", "")
+_NS_GIFT_API_URL = os.getenv("NS_GIFT_API_URL", "https://api.ns.gifts")
+_NS_GIFT_LOGIN = os.getenv("NS_GIFT_LOGIN", "")
+_NS_GIFT_PASSWORD = os.getenv("NS_GIFT_PASSWORD", "")
+_NS_GIFT_TIMEOUT_SEC = int(os.getenv("NS_GIFT_TIMEOUT_SEC", "20") or "20")
+_NS_GIFT_SSL_VERIFY = str(os.getenv("NS_GIFT_SSL_VERIFY", "true") or "true").strip().lower() in ("1", "true", "yes", "on")
+_NS_GIFT_CA_CERT_PATH = os.getenv("NS_GIFT_CA_CERT_PATH", "")
+_NS_GIFT_USER_AGENT = os.getenv("NS_GIFT_USER_AGENT", "Mozilla/5.0 (compatible; GameSalesBot/1.0)")
 TELEGRAM_DIALOGS_SYNC_LIMIT = int(os.getenv("TELEGRAM_DIALOGS_SYNC_LIMIT", "0") or "0")
 TELEGRAM_DIALOGS_SYNC_BATCH = int(os.getenv("TELEGRAM_DIALOGS_SYNC_BATCH", "100") or "100")
 TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC = int(os.getenv("TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC", "45") or "45")
@@ -610,6 +649,41 @@ ensure_admin_user = auth_service.ensure_admin_user
 create_access_token = auth_service.create_access_token
 get_current_user = auth_service.get_current_user
 require_role = auth_service.require_role
+
+ns_gift_service = build_ns_gift_service(
+    HTTPException=HTTPException,
+    ns_gift_api_url=_NS_GIFT_API_URL,
+    ns_gift_login=_NS_GIFT_LOGIN,
+    ns_gift_password=_NS_GIFT_PASSWORD,
+    timeout_sec=_NS_GIFT_TIMEOUT_SEC,
+    ssl_verify=_NS_GIFT_SSL_VERIFY,
+    ca_cert_path=_NS_GIFT_CA_CERT_PATH,
+    user_agent=_NS_GIFT_USER_AGENT,
+)
+
+def ns_gift_get_balance():
+    # Проксируем вызов через объект сервиса, чтобы в тестах можно было мокать методы.
+    return ns_gift_service.get_balance()
+
+def ns_gift_get_categories():
+    # Проксируем загрузку категорий NS Gift.
+    return ns_gift_service.get_categories()
+
+def ns_gift_get_services(category_id: Optional[int] = None):
+    # Проксируем загрузку каталога NS Gift.
+    return ns_gift_service.get_services(category_id)
+
+def ns_gift_get_steam_currency_rate():
+    # Проксируем загрузку курсов валют Steam.
+    return ns_gift_service.get_steam_currency_rate()
+
+def ns_gift_get_steam_amount(amount: float):
+    # Проксируем расчет суммы Steam по amount.
+    return ns_gift_service.get_steam_amount(amount)
+
+def ns_gift_create_order_and_pay(service_id: int, quantity: float, data: str, auto_pay: bool):
+    # Проксируем оформление заказа для единообразного вызова из роутов.
+    return ns_gift_service.create_order_and_pay(service_id, quantity, data, auto_pay)
 
 def b64_encode(value: str | bytes | memoryview) -> str:
     # Кодирует строку или байтовый blob в base64 для отдачи в API.
@@ -865,4 +939,20 @@ mount_dashboard_routes(
     qall=qall,
     get_current_user=get_current_user,
     redis_url=_REDIS_URL,
+)
+
+mount_ns_gift_routes(
+    app,
+    get_current_user=get_current_user,
+    UserOut=UserOut,
+    NsGiftBalanceOut=NsGiftBalanceOut,
+    NsGiftServiceListOut=NsGiftServiceListOut,
+    NsGiftOrderIn=NsGiftOrderIn,
+    NsGiftOrderOut=NsGiftOrderOut,
+    ns_gift_get_balance=ns_gift_get_balance,
+    ns_gift_get_categories=ns_gift_get_categories,
+    ns_gift_get_services=ns_gift_get_services,
+    ns_gift_get_steam_currency_rate=ns_gift_get_steam_currency_rate,
+    ns_gift_get_steam_amount=ns_gift_get_steam_amount,
+    ns_gift_create_order_and_pay=ns_gift_create_order_and_pay,
 )

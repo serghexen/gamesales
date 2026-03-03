@@ -126,6 +126,38 @@ class DashboardEndpointsTests(unittest.TestCase):
         self.assertIn("COALESCE(di.purchase_at, d.created_at)", sql_text)
         self.assertIn("lower(COALESCE(match_u.name, '')) = lower(COALESCE(d.responsible_username, ''))", sql_text)
 
+    # Оператор должен попадать в блок "Сделок в работе" наравне с менеджером.
+    def test_managers_load_includes_operator_role(self):
+        app = FastAPI()
+        fake_redis = _FakeRedis()
+        sql_collector = []
+
+        def fake_qall(_conn, sql, params=None):
+            sql_collector.append((sql, params))
+            return [("operator1", "Оператор", 2)]
+
+        with patch("api.domains.dashboard_api.redis.Redis.from_url", return_value=fake_redis):
+            mount_dashboard_routes(
+                app,
+                DB_DSN="postgresql://test",
+                psycopg=_FakePsycopg(),
+                qall=fake_qall,
+                get_current_user=lambda: SimpleNamespace(username="operator1", role="operator"),
+                redis_url="redis://local",
+            )
+
+            with TestClient(app) as client:
+                res = client.get("/dashboard/managers-load")
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["online_count"], 1)
+        self.assertEqual(body["items"][0]["username"], "operator1")
+        self.assertEqual(body["items"][0]["pending_count"], 2)
+        self.assertTrue(sql_collector, "SQL query was not executed")
+        sql_text = sql_collector[0][0]
+        self.assertIn("lower(u.role_code) IN ('manager', 'operator')", sql_text)
+
 
 if __name__ == "__main__":
     unittest.main()
