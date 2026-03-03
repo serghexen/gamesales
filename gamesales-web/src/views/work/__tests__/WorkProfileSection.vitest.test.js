@@ -46,7 +46,9 @@ describe('WorkProfileSection', () => {
     })
 
     expect(wrapper.find('.users-stub').exists()).toBe(true)
-    expect(wrapper.find('.analytics-link').text()).toContain('Аналитика')
+    expect(wrapper.findAll('.analytics-link')).toHaveLength(2)
+    expect(wrapper.text()).toContain('Аналитика')
+    expect(wrapper.text()).toContain('Справочники')
   })
 
   it('hides users section for non-admin', () => {

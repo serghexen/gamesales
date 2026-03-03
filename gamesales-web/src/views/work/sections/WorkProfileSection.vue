@@ -1,13 +1,20 @@
 <template>
   <section class="panel panel--wide">
     <div class="panel__body">
-      <div v-if="ctx.isAdmin" class="toolbar-actions">
+      <div v-if="ctx.isAdmin" class="tabs profile-admin-links">
         <!-- Переносим вход в аналитику в профиль админа, чтобы не держать вкладку в шапке. -->
         <router-link
-          class="btn"
+          class="tab"
           :to="{ name: 'work', query: { ...routeQuery, tab: 'analytics' } }"
         >
           Аналитика
+        </router-link>
+        <!-- Переносим справочники в профиль админа, чтобы разгрузить шапку. -->
+        <router-link
+          class="tab"
+          :to="{ name: 'work', query: { ...routeQuery, tab: 'catalogs' } }"
+        >
+          Справочники
         </router-link>
       </div>
       <WorkUsersSection v-if="ctx.isAdmin" :ctx="ctx.usersSectionCtx" />
