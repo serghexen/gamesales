@@ -69,7 +69,7 @@ export function useManagersLoad({ auth, apiGet, apiPost, mapApiError }) {
     }
   }
 
-  // Загружает список онлайн-менеджеров и их количество заявок "в ожидании" за текущий день.
+  // Загружает всех менеджеров/операторов и их количество заявок "в ожидании".
   async function loadManagersWorkload() {
     if (requestInFlight) return
     requestInFlight = true

@@ -93,8 +93,8 @@ class _FakePsycopg:
 
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
 class DashboardEndpointsTests(unittest.TestCase):
-    # Проверяем, что нагрузка считается по purchase_at/created_at и связывается с менеджером по имени/логину.
-    def test_managers_load_uses_purchase_date_and_matches_manager_name(self):
+    # Проверяем, что нагрузка по pending считается без ограничения по дате и маппится по имени/логину.
+    def test_managers_load_counts_all_pending_and_matches_manager_name(self):
         app = FastAPI()
         fake_redis = _FakeRedis()
         sql_collector = []
@@ -121,9 +121,10 @@ class DashboardEndpointsTests(unittest.TestCase):
         self.assertEqual(body["online_count"], 1)
         self.assertEqual(body["items"][0]["username"], "dmitry")
         self.assertEqual(body["items"][0]["pending_count"], 1)
+        self.assertTrue(body["items"][0]["is_online"])
         self.assertTrue(sql_collector, "SQL query was not executed")
         sql_text = sql_collector[0][0]
-        self.assertIn("COALESCE(di.purchase_at, d.created_at)", sql_text)
+        self.assertNotIn("COALESCE(di.purchase_at, d.created_at) >=", sql_text)
         self.assertIn("lower(COALESCE(match_u.name, '')) = lower(COALESCE(d.responsible_username, ''))", sql_text)
 
     # Оператор должен попадать в блок "Сделок в работе" наравне с менеджером.
@@ -154,9 +155,41 @@ class DashboardEndpointsTests(unittest.TestCase):
         self.assertEqual(body["online_count"], 1)
         self.assertEqual(body["items"][0]["username"], "operator1")
         self.assertEqual(body["items"][0]["pending_count"], 2)
+        self.assertTrue(body["items"][0]["is_online"])
         self.assertTrue(sql_collector, "SQL query was not executed")
         sql_text = sql_collector[0][0]
         self.assertIn("lower(u.role_code) IN ('manager', 'operator')", sql_text)
+
+    # В ответе должны быть и офлайн менеджеры/операторы, онлайн отмечаем отдельным флагом.
+    def test_managers_load_returns_all_roles_with_online_flag(self):
+        app = FastAPI()
+        fake_redis = _FakeRedis()
+
+        def fake_qall(_conn, _sql, params=None):
+            _ = params
+            return [("dmitry", "Дмитрий", 3), ("lera", "Лера", 1)]
+
+        with patch("api.domains.dashboard_api.redis.Redis.from_url", return_value=fake_redis):
+            mount_dashboard_routes(
+                app,
+                DB_DSN="postgresql://test",
+                psycopg=_FakePsycopg(),
+                qall=fake_qall,
+                get_current_user=lambda: SimpleNamespace(username="dmitry", role="manager"),
+                redis_url="redis://local",
+            )
+
+            with TestClient(app) as client:
+                res = client.get("/dashboard/managers-load")
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["online_count"], 1)
+        self.assertEqual(len(body["items"]), 2)
+        self.assertEqual(body["items"][0]["username"], "dmitry")
+        self.assertTrue(body["items"][0]["is_online"])
+        self.assertEqual(body["items"][1]["username"], "lera")
+        self.assertFalse(body["items"][1]["is_online"])
 
 
 if __name__ == "__main__":

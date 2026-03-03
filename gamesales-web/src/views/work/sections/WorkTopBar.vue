@@ -59,21 +59,7 @@
                 <rect x="5" y="10" width="14" height="10" rx="2" />
               </svg>
             </span>
-        </router-link>
-        <div class="tab-workload">
-          <span class="tab-workload__title">Сделок в работе:</span>
-          <div class="tab-workload__line">
-            <span
-              v-for="item in managerLoadPreview"
-              :key="`manager-load-${item.username}`"
-              class="tab-workload__item"
-            >
-              <span class="tab-workload__name">{{ item.title }}</span>
-              <span class="tab-workload__sep"> - </span>
-              <span class="tab-workload__count">{{ item.pendingCount }}</span>
-            </span>
-          </div>
-        </div>
+          </router-link>
           <router-link
             v-if="isAdmin && showUsersTab"
             class="tab"
@@ -83,6 +69,21 @@
             Пользователи
           </router-link>
         </nav>
+        <div class="tab-workload">
+          <span class="tab-workload__title">Сделок в работе:</span>
+          <div class="tab-workload__line">
+            <span
+              v-for="item in managerLoadPreview"
+              :key="`manager-load-${item.username}`"
+              class="tab-workload__item"
+            >
+              <span class="tab-workload__dot" :class="{ 'is-online': item.isOnline }" aria-hidden="true"></span>
+              <span class="tab-workload__name">{{ item.title }}</span>
+              <span class="tab-workload__sep"> - </span>
+              <span class="tab-workload__count">{{ item.pendingCount }}</span>
+            </span>
+          </div>
+        </div>
         <div class="tabs tabs--right">
           <span v-if="userRoleName" class="top-role">{{ userRoleName }}</span>
           <router-link
@@ -138,15 +139,16 @@ const showUsersTab = computed(() => unref(props.ctx.showUsersTab))
 const showDashboard = computed(() => unref(props.ctx.showDashboard))
 const userRoleName = computed(() => unref(props.ctx.userRoleName))
 const managerLoadPreview = computed(() => {
-  // Показываем короткий список менеджеров в работе прямо в строке вкладок.
+  // Показываем полный список менеджеров/операторов и онлайн-флаг для индикатора в шапке.
   const raw = unref(props.ctx.managersLoadItems) || []
-  return (Array.isArray(raw) ? raw : []).slice(0, 4).map((item) => {
+  return (Array.isArray(raw) ? raw : []).map((item) => {
     const username = String(item?.username || '').trim()
     const name = String(item?.name || '').trim()
     const pendingCount = Number(item?.pending_count || 0)
     return {
       username,
       pendingCount,
+      isOnline: Boolean(item?.is_online),
       title: name || username || 'Менеджер',
     }
   })

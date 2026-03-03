@@ -1730,7 +1730,7 @@ const {
   requestUnsavedConfirm,
 })
 
-// Виджет дашборда: онлайн-менеджеры и заявки "в ожидании" за текущий день.
+// Виджет дашборда: менеджеры/операторы с количеством заявок в ожидании и online-статусом.
 const {
   managersLoadItems,
   managersLoadOnlineCount,
