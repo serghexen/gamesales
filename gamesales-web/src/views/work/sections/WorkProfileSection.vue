@@ -1,8 +1,9 @@
 <template>
   <section class="panel panel--wide">
     <div class="panel__body">
-      <div v-if="ctx.canManageRolePermissions" class="tabs profile-admin-links">
+      <div v-if="showAdminTabs" class="tabs profile-admin-links">
         <router-link
+          v-if="ctx.canViewUsersSection"
           class="tab"
           :class="{ active: !rolePermissionsFormOpen }"
           :to="{ name: 'work', query: { ...routeQuery, tab: 'profile', admin_panel: undefined } }"
@@ -10,6 +11,7 @@
           Пользователи
         </router-link>
         <button
+          v-if="ctx.canManageRolePermissions"
           class="tab profile-role-permissions__toggle"
           :class="{ active: rolePermissionsFormOpen }"
           type="button"
@@ -20,6 +22,7 @@
         </button>
         <!-- Переносим вход в аналитику в профиль админа, чтобы не держать вкладку в шапке. -->
         <router-link
+          v-if="ctx.canViewAnalyticsSection"
           class="tab"
           :to="{ name: 'work', query: { ...routeQuery, tab: 'analytics', admin_panel: undefined } }"
         >
@@ -27,6 +30,7 @@
         </router-link>
         <!-- Переносим справочники в профиль админа, чтобы разгрузить шапку. -->
         <router-link
+          v-if="ctx.canViewCatalogsSection"
           class="tab"
           :to="{ name: 'work', query: { ...routeQuery, tab: 'catalogs', admin_panel: undefined } }"
         >
@@ -108,6 +112,12 @@ const props = defineProps({
   ctx: { type: Object, required: true },
 })
 const rolePermissionsFormOpen = ref(false)
+const showAdminTabs = computed(() => Boolean(
+  props.ctx.canViewUsersSection
+  || props.ctx.canManageRolePermissions
+  || props.ctx.canViewAnalyticsSection
+  || props.ctx.canViewCatalogsSection,
+))
 
 // Сохраняем текущие query-параметры при переходе в аналитику из профиля.
 const routeQuery = computed(() => unref(props.ctx.routeQuery) || {})

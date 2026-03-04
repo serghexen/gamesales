@@ -4,6 +4,7 @@ export function useUserProfileFlow({
   auth,
   router,
   isAdmin,
+  canViewUsersSection,
   apiGet,
   apiPost,
   mapApiError,
@@ -52,9 +53,10 @@ export function useUserProfileFlow({
     }
   }
 
-  // Загружает роли и список пользователей (только для админа).
+  // Загружает роли и список пользователей для ролей с правом users.
   async function loadUsers() {
-    if (!isAdmin.value) return
+    const canViewUsers = canViewUsersSection?.value ?? isAdmin?.value
+    if (!canViewUsers) return
     userLoading.value = true
     userError.value = null
     try {

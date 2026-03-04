@@ -1,17 +1,26 @@
 <template>
   <section class="panel panel--wide">
-    <div v-if="canManageRolePermissions" class="panel__body">
+    <div v-if="showAdminTabs" class="panel__body">
       <div class="tabs profile-admin-links">
-        <router-link class="tab" :to="{ name: 'work', query: { ...routeQuery, tab: 'profile', admin_panel: undefined } }">
+        <router-link
+          v-if="canViewUsersSection"
+          class="tab"
+          :to="{ name: 'work', query: { ...routeQuery, tab: 'profile', admin_panel: undefined } }"
+        >
           Пользователи
         </router-link>
-        <router-link class="tab" :class="{ active: activeTab === 'profile' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'profile', admin_panel: 'access' } }">
+        <router-link
+          v-if="canManageRolePermissions"
+          class="tab"
+          :class="{ active: activeTab === 'profile' }"
+          :to="{ name: 'work', query: { ...routeQuery, tab: 'profile', admin_panel: 'access' } }"
+        >
           Доступы
         </router-link>
-        <router-link class="tab" :class="{ active: activeTab === 'analytics' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'analytics', admin_panel: undefined } }">
+        <router-link v-if="canViewAnalyticsSection" class="tab" :class="{ active: activeTab === 'analytics' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'analytics', admin_panel: undefined } }">
           Аналитика
         </router-link>
-        <router-link class="tab" :class="{ active: activeTab === 'catalogs' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'catalogs', admin_panel: undefined } }">
+        <router-link v-if="canViewCatalogsSection" class="tab" :class="{ active: activeTab === 'catalogs' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'catalogs', admin_panel: undefined } }">
           Справочники
         </router-link>
       </div>
@@ -338,5 +347,14 @@ const props = defineProps({
 // Держим состояние роутера и вкладок, чтобы стабильно переключаться внутри админ-блока.
 const activeTab = computed(() => String(unref(props.ctx.activeTab) || ''))
 const routeQuery = computed(() => unref(props.ctx.routeQuery) || {})
+const canViewUsersSection = computed(() => Boolean(unref(props.ctx.canViewUsersSection)))
 const canManageRolePermissions = computed(() => Boolean(unref(props.ctx.canManageRolePermissions)))
+const canViewAnalyticsSection = computed(() => Boolean(unref(props.ctx.canViewAnalyticsSection)))
+const canViewCatalogsSection = computed(() => Boolean(unref(props.ctx.canViewCatalogsSection)))
+const showAdminTabs = computed(() => (
+  canViewUsersSection.value
+  || canManageRolePermissions.value
+  || canViewAnalyticsSection.value
+  || canViewCatalogsSection.value
+))
 </script>

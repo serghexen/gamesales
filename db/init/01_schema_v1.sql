@@ -638,13 +638,14 @@ VALUES
   ('accounts', 'Аккаунты', 20),
   ('products', 'Товары', 30),
   ('ns-gift', 'NS Gift', 40),
-  ('telegram', 'Чаты', 50),
-  ('analytics', 'Аналитика', 60),
-  ('catalogs', 'Справочники', 70),
-  ('users', 'Пользователи', 80),
-  ('profile', 'Профиль', 90),
-  ('dashboard', 'Дашборд', 100)
-ON CONFLICT (section_code) DO NOTHING;
+  ('analytics', 'Аналитика', 50),
+  ('catalogs', 'Справочники', 60),
+  ('users', 'Пользователи', 70),
+  ('dashboard', 'Дашборд', 80),
+  ('telegram', 'Чаты', 90)
+ON CONFLICT (section_code) DO UPDATE
+SET section_name = EXCLUDED.section_name,
+    sort_order = EXCLUDED.sort_order;
 
 INSERT INTO app.role_ui_sections(role_code, section_code, can_view, updated_by)
 SELECT

@@ -4,7 +4,7 @@ export function useWorkLifecycle({
   auth,
   router,
   route,
-  isAdmin,
+  canViewUsersSection,
   loadUsers,
   refreshManagersWorkload,
   cleanupManagersRealtimeRefresh,
@@ -25,7 +25,7 @@ export function useWorkLifecycle({
       router.replace({ name: 'login', query: { next: route.fullPath } })
       return
     }
-    if (isAdmin.value) {
+    if (canViewUsersSection?.value) {
       await loadUsers()
     }
     startPresenceHeartbeatPolling()

@@ -2,19 +2,28 @@
   <section class="panel panel--wide">
     <div class="panel__body">
       <div
-        v-if="canManageRolePermissions"
+        v-if="showAdminTabs"
         class="tabs profile-admin-links"
       >
-        <router-link class="tab" :to="{ name: 'work', query: { ...routeQuery, tab: 'profile', admin_panel: undefined } }">
+        <router-link
+          v-if="canViewUsersSection"
+          class="tab"
+          :to="{ name: 'work', query: { ...routeQuery, tab: 'profile', admin_panel: undefined } }"
+        >
           Пользователи
         </router-link>
-        <router-link class="tab" :class="{ active: activeTab === 'profile' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'profile', admin_panel: 'access' } }">
+        <router-link
+          v-if="canManageRolePermissions"
+          class="tab"
+          :class="{ active: activeTab === 'profile' }"
+          :to="{ name: 'work', query: { ...routeQuery, tab: 'profile', admin_panel: 'access' } }"
+        >
           Доступы
         </router-link>
-        <router-link class="tab" :class="{ active: activeTab === 'analytics' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'analytics', admin_panel: undefined } }">
+        <router-link v-if="canViewAnalyticsSection" class="tab" :class="{ active: activeTab === 'analytics' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'analytics', admin_panel: undefined } }">
           Аналитика
         </router-link>
-        <router-link class="tab" :class="{ active: activeTab === 'catalogs' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'catalogs', admin_panel: undefined } }">
+        <router-link v-if="canViewCatalogsSection" class="tab" :class="{ active: activeTab === 'catalogs' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'catalogs', admin_panel: undefined } }">
           Справочники
         </router-link>
       </div>
@@ -458,7 +467,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, toRefs } from 'vue'
+import { computed, reactive, ref, toRefs } from 'vue'
 
 import { useResizableTableColumns } from '../useResizableTableColumns'
 import WorkCatalogModals from './WorkCatalogModals.vue'
@@ -537,6 +546,9 @@ function startRegionsResizeByRole(event, key) {
 const {
   activeTab,
   routeQuery,
+  canViewUsersSection,
+  canViewAnalyticsSection,
+  canViewCatalogsSection,
   canManageRolePermissions,
   catalogsError,
   catalogsOk,
@@ -568,4 +580,11 @@ const {
   openEditRegion,
   isAdmin,
 } = toRefs(ctx)
+
+const showAdminTabs = computed(() => (
+  Boolean(canViewUsersSection.value)
+  || Boolean(canManageRolePermissions.value)
+  || Boolean(canViewAnalyticsSection.value)
+  || Boolean(canViewCatalogsSection.value)
+))
 </script>

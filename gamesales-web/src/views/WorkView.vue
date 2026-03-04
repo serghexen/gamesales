@@ -630,9 +630,9 @@ const activeAccountChips = computed(() => {
 })
 
 const isAdmin = computed(() => {
-  // Для admin-вкладок принимаем оба варианта кодов роли.
+  // Для административных разделов приравниваем владельца к админу.
   const role = normalizeRole(auth.state.role)
-  return role === 'admin' || role === 'administrator'
+  return role === 'admin' || role === 'administrator' || role === 'owner'
 })
 const canManageRolePermissions = computed(() => {
   // Ролевой моделью управляют владелец и администратор.
@@ -689,8 +689,8 @@ const canViewProductsSection = computed(() => canViewSection('products'))
 const canViewNsGiftSection = computed(() => canViewSection('ns-gift'))
 const canViewTelegramSection = computed(() => canViewSection('telegram'))
 const canViewAnalyticsSection = computed(() => canViewSection('analytics'))
-const canViewCatalogsSection = computed(() => isAdmin.value && canViewSection('catalogs'))
-const canViewUsersSection = computed(() => isAdmin.value && canViewSection('users'))
+const canViewCatalogsSection = computed(() => canViewSection('catalogs'))
+const canViewUsersSection = computed(() => canViewSection('users'))
 const canViewUsersTab = computed(() => showUsersTab && canViewUsersSection.value)
 const canViewProfileSection = computed(() => canViewSection('profile'))
 const canViewDashboardSection = computed(() => canViewSection('dashboard'))
@@ -1959,6 +1959,7 @@ const {
   auth,
   router,
   isAdmin,
+  canViewUsersSection,
   apiGet,
   apiPost,
   mapApiError,
@@ -2602,6 +2603,7 @@ const {
   activeTab,
   routeQuery: computed(() => route.query || {}),
   canViewProfileSection,
+  canViewUsersSection,
   canViewAnalyticsSection,
   canViewCatalogsSection,
   canManageRolePermissions,
@@ -2871,6 +2873,7 @@ const analyticsSectionCtx = asCtx({
   activeTab,
   routeQuery: computed(() => route.query || {}),
   canViewProfileSection,
+  canViewUsersSection,
   canViewAnalyticsSection,
   canViewCatalogsSection,
   canManageRolePermissions,
@@ -2952,7 +2955,7 @@ useWorkLifecycle({
   auth,
   router,
   route,
-  isAdmin,
+  canViewUsersSection,
   loadUsers,
   refreshManagersWorkload,
   cleanupManagersRealtimeRefresh: () => {
