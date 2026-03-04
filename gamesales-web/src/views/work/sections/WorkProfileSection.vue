@@ -7,6 +7,7 @@
           class="tab"
           :class="{ active: !rolePermissionsFormOpen }"
           :to="{ name: 'work', query: { ...routeQuery, tab: 'profile', admin_panel: undefined } }"
+          @click="openUsersPanel"
         >
           Пользователи
         </router-link>
@@ -16,7 +17,7 @@
           :class="{ active: rolePermissionsFormOpen }"
           type="button"
           :disabled="ctx.rolePermissionsLoading || ctx.rolePermissionsSaving"
-          @click="toggleRolePermissionsForm"
+          @click="openRolePermissionsForm"
         >
           Доступы
         </button>
@@ -123,15 +124,19 @@ const showAdminTabs = computed(() => Boolean(
 const routeQuery = computed(() => unref(props.ctx.routeQuery) || {})
 const accessPanelRequested = computed(() => String(routeQuery.value?.admin_panel || '').trim().toLowerCase() === 'access')
 
-// Переключает форму управления доступами внутри профиля.
-const toggleRolePermissionsForm = async () => {
-  const next = !rolePermissionsFormOpen.value
-  rolePermissionsFormOpen.value = next
-  if (!next) return
+// Открывает форму управления доступами как отдельную вкладку без toggle-поведения.
+const openRolePermissionsForm = async () => {
+  if (rolePermissionsFormOpen.value) return
+  rolePermissionsFormOpen.value = true
   // Перед показом формы подгружаем роли и права, чтобы список не открывался пустым.
   if (typeof props.ctx.ensureRolePermissionsFormDataLoaded === 'function') {
     await props.ctx.ensureRolePermissionsFormDataLoaded()
   }
+}
+
+// Возвращает профиль в режим пользователей даже если route не меняется.
+const openUsersPanel = () => {
+  rolePermissionsFormOpen.value = false
 }
 
 // При переходе из других разделов сразу открываем форму доступов по query-параметру.
