@@ -8,8 +8,23 @@ function buildCtx(overrides = {}) {
   // Собираем минимальный контекст профиля для проверки видимости секции пользователей.
   return {
     isAdmin: false,
+    canManageRolePermissions: false,
+    canViewAnalyticsSection: false,
+    canViewCatalogsSection: false,
+    canViewUsersSection: false,
     routeQuery: {},
     usersSectionCtx: {},
+    rolePermissionsRoles: [],
+    rolePermissionsRoleCode: '',
+    rolePermissionsItems: [],
+    rolePermissionsLoading: false,
+    rolePermissionsSaving: false,
+    rolePermissionsError: '',
+    rolePermissionsOk: '',
+    ensureRolePermissionsFormDataLoaded: vi.fn().mockResolvedValue(undefined),
+    setRolePermissionsRoleCode: vi.fn(),
+    setRolePermissionItem: vi.fn(),
+    saveRolePermissions: vi.fn(),
     openPwdModal: vi.fn(),
     showPwdForm: false,
     closePwdModal: vi.fn(),
@@ -29,7 +44,13 @@ describe('WorkProfileSection', () => {
   it('renders users section for admin inside profile tab', () => {
     const wrapper = mount(WorkProfileSection, {
       props: {
-        ctx: buildCtx({ isAdmin: true, usersSectionCtx: { sortedUsers: [{ username: 'admin' }] } }),
+        ctx: buildCtx({
+          isAdmin: true,
+          canViewAnalyticsSection: true,
+          canViewCatalogsSection: true,
+          canViewUsersSection: true,
+          usersSectionCtx: { sortedUsers: [{ username: 'admin' }] },
+        }),
       },
       global: {
         stubs: {
@@ -72,5 +93,39 @@ describe('WorkProfileSection', () => {
 
     expect(wrapper.find('.users-stub').exists()).toBe(false)
     expect(wrapper.find('.analytics-link').exists()).toBe(false)
+  })
+
+  it('opens role permissions form after clicking access button', async () => {
+    const ensureRolePermissionsFormDataLoaded = vi.fn().mockResolvedValue(undefined)
+    const wrapper = mount(WorkProfileSection, {
+      props: {
+        ctx: buildCtx({
+          canManageRolePermissions: true,
+          ensureRolePermissionsFormDataLoaded,
+          rolePermissionsRoles: [{ code: 'manager', name: 'Manager' }],
+          rolePermissionsRoleCode: 'manager',
+          rolePermissionsItems: [{ section_code: 'deals', section_name: 'Сделки', can_view: true }],
+        }),
+      },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a class="analytics-link"><slot /></a>',
+          },
+          WorkUsersSection: {
+            template: '<div class="users-stub">Users section</div>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Доступы')
+    expect(wrapper.find('button[aria-label="Сохранить права"]').exists()).toBe(false)
+    await wrapper.find('button.profile-role-permissions__toggle').trigger('click')
+    expect(ensureRolePermissionsFormDataLoaded).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('button[aria-label="Сохранить права"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Сделки')
   })
 })

@@ -10,27 +10,27 @@
       <div class="actions__main">
         <nav class="tabs">
           <router-link
-            v-if="showDashboard"
+            v-if="canViewDashboardSection"
             class="tab"
             :class="{ active: activeTab === 'dashboard' }"
             :to="{ name: 'work', query: { ...routeQuery, tab: 'dashboard' } }"
           >
             Дашборд
           </router-link>
-          <router-link class="tab" :class="{ active: activeTab === 'deals' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'deals' } }">
+          <router-link v-if="canViewDealsSection" class="tab" :class="{ active: activeTab === 'deals' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'deals' } }">
             Сделки
           </router-link>
-          <router-link class="tab" :class="{ active: activeTab === 'accounts' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'accounts' } }">
+          <router-link v-if="canViewAccountsSection" class="tab" :class="{ active: activeTab === 'accounts' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'accounts' } }">
             Аккаунты
           </router-link>
-          <router-link class="tab" :class="{ active: activeTab === 'products' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'products' } }">
+          <router-link v-if="canViewProductsSection" class="tab" :class="{ active: activeTab === 'products' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'products' } }">
             Товары
           </router-link>
-          <router-link class="tab" :class="{ active: activeTab === 'ns-gift' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'ns-gift' } }">
+          <router-link v-if="canViewNsGiftSection" class="tab" :class="{ active: activeTab === 'ns-gift' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'ns-gift' } }">
             NS Gift
           </router-link>
           <router-link
-            v-if="showChatsTab"
+            v-if="canViewTelegramSection"
             class="tab"
             :class="{ active: activeTab === 'telegram' }"
             :to="{ name: 'work', query: { ...routeQuery, tab: 'telegram' } }"
@@ -39,7 +39,7 @@
             <span class="tab__badge" aria-hidden="true"></span>
           </router-link>
           <router-link
-            v-if="isAdmin && showUsersTab"
+            v-if="canViewUsersSection"
             class="tab"
             :class="{ active: activeTab === 'users' }"
             :to="{ name: 'work', query: { ...routeQuery, tab: 'users' } }"
@@ -65,6 +65,7 @@
         <div class="tabs tabs--right">
           <span v-if="userRoleName" class="top-role">{{ userRoleName }}</span>
           <router-link
+            v-if="canViewProfileSection"
             class="top-profile-btn"
             :class="{ 'is-active': activeTab === 'profile' }"
             :to="{ name: 'work', query: { ...routeQuery, tab: 'profile' } }"
@@ -111,10 +112,14 @@ const props = defineProps({
 
 const activeTab = computed(() => unref(props.ctx.activeTab))
 const routeQuery = computed(() => unref(props.ctx.routeQuery) || {})
-const isAdmin = computed(() => unref(props.ctx.isAdmin))
-const showChatsTab = computed(() => unref(props.ctx.showChatsTab))
-const showUsersTab = computed(() => unref(props.ctx.showUsersTab))
-const showDashboard = computed(() => unref(props.ctx.showDashboard))
+const canViewDealsSection = computed(() => unref(props.ctx.canViewDealsSection))
+const canViewAccountsSection = computed(() => unref(props.ctx.canViewAccountsSection))
+const canViewProductsSection = computed(() => unref(props.ctx.canViewProductsSection))
+const canViewNsGiftSection = computed(() => unref(props.ctx.canViewNsGiftSection))
+const canViewTelegramSection = computed(() => unref(props.ctx.canViewTelegramSection))
+const canViewUsersSection = computed(() => unref(props.ctx.canViewUsersSection))
+const canViewProfileSection = computed(() => unref(props.ctx.canViewProfileSection))
+const canViewDashboardSection = computed(() => unref(props.ctx.canViewDashboardSection))
 const userRoleName = computed(() => unref(props.ctx.userRoleName))
 const managerLoadPreview = computed(() => {
   // Показываем полный список менеджеров/операторов и онлайн-флаг для индикатора в шапке.

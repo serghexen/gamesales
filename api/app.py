@@ -281,6 +281,7 @@ from domains.catalogs_api import mount_catalogs_routes
 from domains.auth_api import mount_auth_routes
 from domains.slots_import_api import mount_slots_import_routes
 from domains.ns_gift_api import mount_ns_gift_routes
+from domains.rbac_api import mount_rbac_routes
 from domains.import_jobs import build_import_jobs
 from domains.import_report_utils import build_import_report_xlsx
 from domains.import_parsers import build_import_parsers
@@ -958,4 +959,15 @@ mount_ns_gift_routes(
     ns_gift_get_steam_currency_rate=ns_gift_get_steam_currency_rate,
     ns_gift_get_steam_amount=ns_gift_get_steam_amount,
     ns_gift_create_order_and_pay=ns_gift_create_order_and_pay,
+)
+
+mount_rbac_routes(
+    app,
+    DB_DSN=DB_DSN,
+    psycopg=pooled_psycopg,
+    q1=q1,
+    qall=qall,
+    exec1=exec1,
+    get_current_user=get_current_user,
+    require_role=require_role,
 )

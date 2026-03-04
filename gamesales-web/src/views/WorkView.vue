@@ -12,50 +12,50 @@
         />
 
         <WorkProfileSection
-          v-if="activeTab === 'profile'"
+          v-if="canViewProfileSection && activeTab === 'profile'"
           :ctx="profileSectionCtx"
         />
 
         <WorkAccountsSection
-          v-if="activeTab === 'accounts'"
+          v-if="canViewAccountsSection && activeTab === 'accounts'"
           :ctx="accountsSectionCtx"
         />
 
 
         <WorkProductsSection
-          v-if="activeTab === 'products'"
+          v-if="canViewProductsSection && activeTab === 'products'"
           :ctx="productsSectionCtx"
         />
 
         <WorkNsGiftSection
-          v-if="activeTab === 'ns-gift'"
+          v-if="canViewNsGiftSection && activeTab === 'ns-gift'"
           :ctx="nsGiftSectionCtx"
         />
 
 
         <WorkTelegramSection
-          v-if="activeTab === 'telegram'"
+          v-if="canViewTelegramSection && activeTab === 'telegram'"
           :ctx="telegramSectionCtx"
         />
 
 
         <WorkDealsArea
-          v-if="activeTab === 'deals'"
+          v-if="canViewDealsSection && activeTab === 'deals'"
           :ctx="dealsAreaCtx"
         />
 
         <WorkCatalogsSection
-          v-if="isAdmin && activeTab === 'catalogs'"
+          v-if="canViewCatalogsSection && activeTab === 'catalogs'"
           :ctx="catalogsSectionCtx"
         />
 
         <WorkAnalyticsSection
-          v-if="activeTab === 'analytics'"
+          v-if="canViewAnalyticsSection && activeTab === 'analytics'"
           :ctx="analyticsSectionCtx"
         />
 
         <WorkUsersSection
-          v-if="isAdmin && activeTab === 'users'"
+          v-if="canViewUsersSection && activeTab === 'users'"
           :ctx="usersSectionCtx"
         />
       </main>
@@ -634,6 +634,12 @@ const isAdmin = computed(() => {
   const role = normalizeRole(auth.state.role)
   return role === 'admin' || role === 'administrator'
 })
+const canManageRolePermissions = computed(() => {
+  // Ролевой моделью управляют владелец и администратор.
+  const role = normalizeRole(auth.state.role)
+  const username = String(auth.state.user || '').trim().toLowerCase()
+  return role === 'admin' || role === 'administrator' || role === 'owner' || username === 'owner'
+})
 const mustPrefillDealsResponsible = computed(() => {
   const role = String(auth.state.role || '').trim().toLowerCase()
   return role === 'manager' || role === 'operator'
@@ -644,6 +650,206 @@ const canToggleAccountDeactivation = computed(() => {
 })
 const showUsersTab = false
 const showDashboard = false
+const showRolePermissionsPanel = computed(() => canManageRolePermissions.value)
+
+const roleSectionDefaults = {
+  privileged_only: new Set(['analytics', 'catalogs', 'users', 'dashboard']),
+}
+
+const mySectionPermissionsMap = ref({})
+const rolePermissionsRoles = ref([])
+const rolePermissionsRoleCode = ref('')
+const rolePermissionsItems = ref([])
+const rolePermissionsLoading = ref(false)
+const rolePermissionsSaving = ref(false)
+const rolePermissionsError = ref('')
+const rolePermissionsOk = ref('')
+
+// Возвращает дефолтную видимость секции, если для роли еще нет явной записи в таблице прав.
+function defaultSectionVisibilityByRole(sectionCode, roleCode) {
+  const role = normalizeRole(roleCode)
+  if (role === 'admin' || role === 'administrator' || role === 'owner') return true
+  return !roleSectionDefaults.privileged_only.has(String(sectionCode || '').trim())
+}
+
+// Проверяет доступ к разделу с учетом явной настройки роли и fallback по умолчанию.
+function canViewSection(sectionCode) {
+  const code = String(sectionCode || '').trim()
+  if (!code) return false
+  const map = mySectionPermissionsMap.value || {}
+  if (Object.prototype.hasOwnProperty.call(map, code)) {
+    return Boolean(map[code])
+  }
+  return defaultSectionVisibilityByRole(code, auth.state.role)
+}
+
+const canViewDealsSection = computed(() => canViewSection('deals'))
+const canViewAccountsSection = computed(() => canViewSection('accounts'))
+const canViewProductsSection = computed(() => canViewSection('products'))
+const canViewNsGiftSection = computed(() => canViewSection('ns-gift'))
+const canViewTelegramSection = computed(() => showChatsTab.value && canViewSection('telegram'))
+const canViewAnalyticsSection = computed(() => canViewSection('analytics'))
+const canViewCatalogsSection = computed(() => isAdmin.value && canViewSection('catalogs'))
+const canViewUsersSection = computed(() => isAdmin.value && canViewSection('users'))
+const canViewUsersTab = computed(() => showUsersTab && canViewUsersSection.value)
+const canViewProfileSection = computed(() => canViewSection('profile'))
+const canViewDashboardSection = computed(() => showDashboard && canViewSection('dashboard'))
+
+// Возвращает список вкладок, которые реально доступны пользователю в текущем UI.
+function getAllowedTabs() {
+  const tabs = []
+  if (canViewDealsSection.value) tabs.push('deals')
+  if (canViewAccountsSection.value) tabs.push('accounts')
+  if (canViewProductsSection.value) tabs.push('products')
+  if (canViewNsGiftSection.value) tabs.push('ns-gift')
+  if (canViewTelegramSection.value) tabs.push('telegram')
+  if (canViewAnalyticsSection.value) tabs.push('analytics')
+  if (canViewCatalogsSection.value) tabs.push('catalogs')
+  if (canViewUsersTab.value) tabs.push('users')
+  if (canViewProfileSection.value) tabs.push('profile')
+  if (canViewDashboardSection.value) tabs.push('dashboard')
+  return tabs
+}
+
+// Гарантирует, что активная вкладка всегда входит в доступные по текущей ролевой модели.
+function ensureAllowedActiveTab() {
+  const allowed = getAllowedTabs()
+  if (!allowed.length) return
+  if (allowed.includes(activeTab.value)) return
+  setActiveTab(allowed[0])
+}
+
+// Загружает права для текущего пользователя и строит карту section_code -> can_view.
+async function loadMySectionPermissions() {
+  if (!auth.state.token) {
+    mySectionPermissionsMap.value = {}
+    return
+  }
+  try {
+    const res = await apiGet('/rbac/my-sections', { token: auth.state.token })
+    const map = {}
+    const items = Array.isArray(res?.items) ? res.items : []
+    for (const item of items) {
+      const code = String(item?.section_code || '').trim()
+      if (!code) continue
+      map[code] = Boolean(item?.can_view)
+    }
+    mySectionPermissionsMap.value = map
+  } catch {
+    // Если RBAC временно недоступен, работаем по role-based fallback без блокировки экрана.
+    mySectionPermissionsMap.value = {}
+  }
+}
+
+// Загружает список ролей для формы управления ролевой моделью в профиле.
+async function loadRolePermissionsRoles() {
+  if (!showRolePermissionsPanel.value || !auth.state.token) {
+    rolePermissionsRoles.value = []
+    return
+  }
+  try {
+    const data = await apiGet('/user-roles', { token: auth.state.token })
+    rolePermissionsRoles.value = Array.isArray(data) ? data : []
+    if (!rolePermissionsRoleCode.value) {
+      const roleCode = String(auth.state.role || '').trim().toLowerCase()
+      const firstRole = rolePermissionsRoles.value[0]?.code || ''
+      const hasCurrentRole = rolePermissionsRoles.value.some((item) => String(item?.code || '').trim().toLowerCase() === roleCode)
+      // Если роль из токена отсутствует в списке, безопасно переключаемся на первую доступную.
+      rolePermissionsRoleCode.value = hasCurrentRole ? roleCode : firstRole
+    }
+  } catch (e) {
+    rolePermissionsError.value = mapApiError(e?.message)
+  }
+}
+
+// Загружает права выбранной роли для редактирования в профиле.
+async function loadRolePermissionsByRole(roleCode) {
+  const code = String(roleCode || '').trim()
+  if (!showRolePermissionsPanel.value || !code || !auth.state.token) {
+    rolePermissionsItems.value = []
+    return
+  }
+  rolePermissionsLoading.value = true
+  rolePermissionsError.value = ''
+  try {
+    const res = await apiGet(`/rbac/roles/${encodeURIComponent(code)}/sections`, { token: auth.state.token })
+    rolePermissionsItems.value = Array.isArray(res?.items)
+      ? res.items.map((item) => ({
+          section_code: String(item?.section_code || ''),
+          section_name: String(item?.section_name || ''),
+          can_view: Boolean(item?.can_view),
+        }))
+      : []
+  } catch (e) {
+    rolePermissionsItems.value = []
+    rolePermissionsError.value = mapApiError(e?.message)
+  } finally {
+    rolePermissionsLoading.value = false
+  }
+}
+
+// Меняет активную роль в форме ролевой модели и перезагружает настройки.
+function setRolePermissionsRoleCode(value) {
+  rolePermissionsRoleCode.value = String(value || '').trim()
+  if (rolePermissionsRoleCode.value) {
+    loadRolePermissionsByRole(rolePermissionsRoleCode.value)
+  }
+}
+
+// Обновляет локальный чекбокс видимости раздела в списке прав выбранной роли.
+function setRolePermissionItem(sectionCode, canView) {
+  const code = String(sectionCode || '').trim()
+  if (!code) return
+  rolePermissionsItems.value = rolePermissionsItems.value.map((item) => {
+    if (item.section_code !== code) return item
+    return { ...item, can_view: Boolean(canView) }
+  })
+}
+
+// Сохраняет права выбранной роли и при необходимости обновляет права текущего пользователя.
+async function saveRolePermissions() {
+  const code = String(rolePermissionsRoleCode.value || '').trim()
+  if (!showRolePermissionsPanel.value || !code) return
+  rolePermissionsSaving.value = true
+  rolePermissionsError.value = ''
+  rolePermissionsOk.value = ''
+  try {
+    const payload = {
+      items: rolePermissionsItems.value.map((item) => ({
+        section_code: String(item.section_code || ''),
+        can_view: Boolean(item.can_view),
+      })),
+    }
+    const res = await apiPut(`/rbac/roles/${encodeURIComponent(code)}/sections`, payload, { token: auth.state.token })
+    const savedItems = Array.isArray(res?.items) ? res.items : []
+    rolePermissionsItems.value = savedItems.map((item) => ({
+      section_code: String(item?.section_code || ''),
+      section_name: String(item?.section_name || ''),
+      can_view: Boolean(item?.can_view),
+    }))
+    rolePermissionsOk.value = 'Права роли сохранены'
+    if (normalizeRole(code) === normalizeRole(auth.state.role)) {
+      await loadMySectionPermissions()
+      ensureAllowedActiveTab()
+    }
+  } catch (e) {
+    rolePermissionsError.value = mapApiError(e?.message)
+  } finally {
+    rolePermissionsSaving.value = false
+  }
+}
+
+// Подгружает данные формы доступов перед показом панели, чтобы пользователь не видел "пустой экран".
+async function ensureRolePermissionsFormDataLoaded() {
+  if (!showRolePermissionsPanel.value || !auth.state.token) return
+  rolePermissionsError.value = ''
+  if (!rolePermissionsRoles.value.length) {
+    await loadRolePermissionsRoles()
+  }
+  if (rolePermissionsRoleCode.value && !rolePermissionsItems.value.length) {
+    await loadRolePermissionsByRole(rolePermissionsRoleCode.value)
+  }
+}
 
 const dealModalTitle = computed(() => {
   if (showDealForm.value) {
@@ -705,7 +911,8 @@ const activeTab = ref('deals')
 const normalizeWorkTab = (tab) => {
   // Нормализует вкладку из URL и отбрасывает невалидные значения.
   const raw = String(tab || '').trim().toLowerCase()
-  return TAB_KEYS.includes(raw) ? raw : 'deals'
+  if (!TAB_KEYS.includes(raw)) return getAllowedTabs()[0] || 'deals'
+  return raw
 }
 
 const toRouteTab = (tab) => {
@@ -732,6 +939,45 @@ watch(
     await loadResponsibleUsers()
   },
   { immediate: true },
+)
+
+watch(
+  () => auth.state.token,
+  async (token) => {
+    // После входа подгружаем права секций и держим активную вкладку в допустимом диапазоне.
+    if (!token) {
+      mySectionPermissionsMap.value = {}
+      rolePermissionsRoles.value = []
+      rolePermissionsItems.value = []
+      rolePermissionsRoleCode.value = ''
+      return
+    }
+    await loadMySectionPermissions()
+    if (showRolePermissionsPanel.value) {
+      await loadRolePermissionsRoles()
+      if (rolePermissionsRoleCode.value) {
+        await loadRolePermissionsByRole(rolePermissionsRoleCode.value)
+      }
+    }
+    ensureAllowedActiveTab()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => route.query.tab,
+  () => {
+    // Если в URL пришла недоступная вкладка, возвращаем пользователя на разрешенную.
+    ensureAllowedActiveTab()
+  },
+)
+
+watch(
+  () => JSON.stringify(mySectionPermissionsMap.value || {}),
+  () => {
+    // При обновлении карты прав синхронизируем активную вкладку с новым набором доступов.
+    ensureAllowedActiveTab()
+  },
 )
 
 watch(
@@ -1759,6 +2005,14 @@ const topBarCtx = asCtx({
   activeTab,
   routeQuery: computed(() => route.query || {}),
   isAdmin,
+  canViewDealsSection,
+  canViewAccountsSection,
+  canViewProductsSection,
+  canViewNsGiftSection,
+  canViewTelegramSection,
+  canViewUsersSection: canViewUsersTab,
+  canViewProfileSection,
+  canViewDashboardSection,
   showChatsTab,
   showUsersTab,
   showDashboard,
@@ -2649,6 +2903,10 @@ const usersSectionCtx = asCtx({
 // Контекст вкладки профиля: смена пароля и встраивание списка пользователей.
 const profileSectionCtx = asCtx({
   isAdmin,
+  canManageRolePermissions,
+  canViewAnalyticsSection,
+  canViewCatalogsSection,
+  canViewUsersSection,
   routeQuery: computed(() => route.query || {}),
   openPwdModal,
   showPwdForm,
@@ -2662,6 +2920,17 @@ const profileSectionCtx = asCtx({
   pwdOk,
   changePassword,
   usersSectionCtx,
+  rolePermissionsRoles,
+  rolePermissionsRoleCode,
+  rolePermissionsItems,
+  rolePermissionsLoading,
+  rolePermissionsSaving,
+  rolePermissionsError,
+  rolePermissionsOk,
+  ensureRolePermissionsFormDataLoaded,
+  setRolePermissionsRoleCode,
+  setRolePermissionItem,
+  saveRolePermissions,
 })
 
 useWorkLifecycle({

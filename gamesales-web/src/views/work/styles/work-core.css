@@ -267,6 +267,103 @@
   font-weight: 600;
 }
 
+.work-page .profile-role-permissions {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.work-page .profile-role-permissions__header {
+  margin-bottom: 10px;
+}
+
+.work-page .profile-role-permissions__toggle {
+  min-width: 110px;
+  justify-content: center;
+}
+
+.work-page .profile-role-permissions__form {
+  display: grid;
+  gap: 10px;
+}
+
+.work-page .profile-role-permissions .field--align-end {
+  display: flex;
+  align-items: end;
+}
+
+/* Кнопку сохранения доступов делаем 1:1 как save-кнопка в модалке Шеринг+. */
+.work-page .profile-role-permissions .profile-role-permissions__save {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  max-width: 44px;
+  min-height: 44px;
+  max-height: 44px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.38);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #fff;
+  overflow: hidden;
+  transition:
+    transform 0.3s cubic-bezier(0.23, 1, 0.32, 1),
+    box-shadow 0.3s ease,
+    border-color 0.3s ease,
+    opacity 0.2s ease;
+}
+
+.work-page .profile-role-permissions .profile-role-permissions__save::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.24), transparent);
+  transition: left 0.5s ease;
+}
+
+.work-page .profile-role-permissions .profile-role-permissions__save:hover::before {
+  left: 100%;
+}
+
+.work-page .profile-role-permissions .profile-role-permissions__save:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 9px 24px rgba(16, 185, 129, 0.52);
+  border-color: rgba(16, 185, 129, 0.38);
+}
+
+.work-page .profile-role-permissions .profile-role-permissions__save:active {
+  transform: translateY(-1px);
+}
+
+.work-page .profile-role-permissions .profile-role-permissions__save:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.work-page .profile-role-permissions .profile-role-permissions__save:disabled::before {
+  display: none;
+}
+
+.work-page .profile-role-permissions .profile-role-permissions__save svg,
+.work-page .profile-role-permissions .profile-role-permissions__save .spinner {
+  position: relative;
+  z-index: 1;
+}
+
+.work-page .profile-role-permissions .profile-role-permissions__save svg {
+  width: 15px;
+  height: 15px;
+  transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.work-page .profile-role-permissions .profile-role-permissions__save:hover svg {
+  transform: rotate(-15deg) scale(1.08);
+}
+
 .work-page .tab {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)),
