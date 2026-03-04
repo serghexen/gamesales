@@ -56,7 +56,7 @@
         :realtime-animation-tick="ctx.dealsRealtimeAnimationTick"
       />
 
-      <div v-if="ctx.dealTotal > ctx.dealPageSize" class="pager">
+      <div v-if="ctx.dealTotal > 0" class="pager">
         <span class="muted">Всего: {{ ctx.dealTotal }}</span>
         <label class="pager__size">
           <span class="muted">Показывать</span>

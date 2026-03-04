@@ -108,6 +108,7 @@ export const mapApiError = (message) => {
   if (text.includes('start_at must be between')) return 'Дата начала должна быть между 2020-01-01 и сегодня'
   if (text.includes('end_at must be between')) return 'Дата окончания должна быть между 2020-01-01 и сегодня'
   if (text.includes('end_at must be >= start_at')) return 'Дата окончания не может быть раньше даты начала'
+  if (text.includes('completed_at must be >= created_at')) return 'Дата завершения не может быть раньше даты создания'
   if (text.includes('Unknown platform_code')) return 'Неизвестная платформа'
   if (text.includes('Unknown slot_type_code')) return 'Неизвестный тип слота'
   if (text.includes('Unknown region_code')) return 'Неизвестный регион'

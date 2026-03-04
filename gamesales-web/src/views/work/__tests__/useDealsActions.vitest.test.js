@@ -229,6 +229,7 @@ describe('useDealsActions', () => {
   it('updateDeal sends manual created/completed dates for existing deal', async () => {
     const deps = createDeps()
     deps.editDeal.flow_status_code = 'completed'
+    deps.auth.state.role = 'admin'
     deps.editDeal.created_at = '2026-02-09T10:00'
     deps.editDeal.completed_at = '2026-02-09T11:30'
     const { updateDeal } = useDealsActions(deps)
@@ -240,9 +241,25 @@ describe('useDealsActions', () => {
     expect(deps.apiPut.mock.calls[0][1].completed_at).toContain('2026-02-09T')
   })
 
-  it('updateDeal does not send manual system dates for non-completed status', async () => {
+  it('updateDeal sends manual system dates for admin even in non-completed status', async () => {
     const deps = createDeps()
     deps.editDeal.flow_status_code = 'draft'
+    deps.auth.state.role = 'admin'
+    deps.editDeal.created_at = '2026-02-09T10:00'
+    deps.editDeal.completed_at = '2026-02-09T11:30'
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.apiPut).toHaveBeenCalledTimes(1)
+    expect(deps.apiPut.mock.calls[0][1].created_at).toContain('2026-02-09T')
+    expect(deps.apiPut.mock.calls[0][1].completed_at).toContain('2026-02-09T')
+  })
+
+  it('updateDeal does not send manual system dates for non-privileged role', async () => {
+    const deps = createDeps()
+    deps.editDeal.flow_status_code = 'pending'
+    deps.auth.state.role = 'manager'
     deps.editDeal.created_at = '2026-02-09T10:00'
     deps.editDeal.completed_at = '2026-02-09T11:30'
     const { updateDeal } = useDealsActions(deps)
@@ -252,6 +269,20 @@ describe('useDealsActions', () => {
     expect(deps.apiPut).toHaveBeenCalledTimes(1)
     expect(deps.apiPut.mock.calls[0][1].created_at).toBeUndefined()
     expect(deps.apiPut.mock.calls[0][1].completed_at).toBeUndefined()
+  })
+
+  it('updateDeal blocks inverted manual system dates before request', async () => {
+    const deps = createDeps()
+    deps.auth.state.role = 'admin'
+    deps.editDeal.flow_status_code = 'pending'
+    deps.editDeal.created_at = '2026-02-09T12:00'
+    deps.editDeal.completed_at = '2026-02-09T11:30'
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.apiPut).not.toHaveBeenCalled()
+    expect(deps.dealError.value).toBe('Дата завершения не может быть раньше даты создания')
   })
 
   it('updateDealDraft allows empty required sale fields and sends draft status', async () => {

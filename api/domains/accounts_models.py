@@ -32,6 +32,7 @@ class AccountUpdate(BaseModel):
     login_name: Optional[str] = None
     domain_code: Optional[str] = None
     status_code: Optional[str] = None
+    is_deactivated: Optional[bool] = None
     account_date: Optional[date] = None
     notes: Optional[str] = None
 
@@ -70,6 +71,9 @@ class AccountOut(BaseModel):
     platform_codes: Optional[List[str]] = None
     account_date: Optional[date] = None
     notes: Optional[str] = None
+    is_deactivated: bool = False
+    deactivated_at: Optional[datetime] = None
+    next_activation_at: Optional[datetime] = None
 
 
 class AccountListOut(BaseModel):

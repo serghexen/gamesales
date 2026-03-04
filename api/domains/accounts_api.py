@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import Depends, HTTPException
@@ -43,6 +43,18 @@ def mount_accounts_routes(
     require_role,
     get_current_user,
 ):
+    # Безопасно читает значение из SQL-строки по индексу, даже если тест дает укороченный кортеж.
+    def row_value(row, idx, default=None):
+        return row[idx] if row is not None and len(row) > idx else default
+
+    # Приводит datetime к UTC-aware виду для корректного сравнения сроков.
+    def to_utc_aware(value: Optional[datetime]) -> Optional[datetime]:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
     # Валидирует товар для слотов: поддерживаем игры и подписки.
     def ensure_slot_product_supported(conn, product_id: Optional[int]) -> None:
         if product_id is None:
@@ -180,7 +192,7 @@ def mount_accounts_routes(
                   JOIN app.products pr ON pr.product_id = aa.product_id
                   JOIN app.product_platforms pp ON pp.product_id = pr.product_id
                   JOIN app.platforms p ON p.platform_id = pp.platform_id
-                  WHERE aa.asset_type_code = 'game'
+                  WHERE aa.asset_type_code IN ('game', 'subscription')
                   GROUP BY aa.account_id
                 ),
                 base AS (
@@ -192,6 +204,9 @@ def mount_accounts_routes(
                     a.domain_id,
                     a.account_date,
                     a.notes,
+                    a.is_deactivated,
+                    a.deactivated_at,
+                    a.next_activation_at,
                     r.code as region_code,
                     d.name as domain_name,
                     COALESCE(array_agg(DISTINCT p_id.title ORDER BY p_id.title) FILTER (WHERE p_id.title IS NOT NULL), '{{}}'::text[]) as product_titles,
@@ -203,14 +218,14 @@ def mount_accounts_routes(
                   LEFT JOIN app.regions r ON r.region_id = a.region_id
                   LEFT JOIN app.domains d ON d.domain_id = a.domain_id
                   LEFT JOIN account_platforms ap ON ap.account_id = a.account_id
-                  LEFT JOIN app.account_assets aa ON aa.account_id = a.account_id AND aa.asset_type_code = 'game'
+                  LEFT JOIN app.account_assets aa ON aa.account_id = a.account_id AND aa.asset_type_code IN ('game', 'subscription')
                   LEFT JOIN app.products p_id ON p_id.product_id = aa.product_id
                   LEFT JOIN app.v_account_slot_status s
                     ON s.account_id = a.account_id
                    AND (COALESCE(ap.has_ps4, false) OR s.platform_code = 'ps5')
                   LEFT JOIN app.slot_types st ON st.code = s.slot_type_code
                   {where_sql}
-                  GROUP BY a.account_id, a.region_id, a.status_code, a.login_name, a.domain_id, a.account_date, a.notes, r.code, d.name, ap.platform_codes
+                  GROUP BY a.account_id, a.region_id, a.status_code, a.login_name, a.domain_id, a.account_date, a.notes, a.is_deactivated, a.deactivated_at, a.next_activation_at, r.code, d.name, ap.platform_codes
                 ),
                 filtered AS (
                   SELECT * FROM base
@@ -240,7 +255,10 @@ def mount_accounts_routes(
                   s.capacity,
                   s.occupied,
                   s.free,
-                  page.total_count
+                  page.total_count,
+                  page.is_deactivated,
+                  page.deactivated_at,
+                  page.next_activation_at
                 FROM page
                 LEFT JOIN app.v_account_slot_status s ON s.account_id = page.account_id
                 ORDER BY {sort_col} {sort_dir}, page.account_id DESC, s.slot_type_code
@@ -269,6 +287,9 @@ def mount_accounts_routes(
                     platform_codes=list(row[8] or []),
                     account_date=row[5],
                     notes=row[6],
+                    is_deactivated=bool(row_value(row, 16, False)),
+                    deactivated_at=row_value(row, 17),
+                    next_activation_at=row_value(row, 18),
                 )
                 acc_map[account_id] = acc
                 acc_list.append(acc)
@@ -288,8 +309,18 @@ def mount_accounts_routes(
     
     @app.post("/accounts", response_model=AccountOut)
     def create_account(payload: AccountCreate, user=Depends(get_current_user)):
-        if not payload.login_name or not payload.domain_code:
-            raise HTTPException(400, "login_name and domain_code are required")
+        # Для создания аккаунта требуем полный базовый набор полей карточки.
+        missing_fields = []
+        if not payload.region_code:
+            missing_fields.append("region_code")
+        if not payload.login_name:
+            missing_fields.append("login_name")
+        if not payload.domain_code:
+            missing_fields.append("domain_code")
+        if payload.account_date is None:
+            missing_fields.append("account_date")
+        if missing_fields:
+            raise HTTPException(400, f"required fields are missing: {', '.join(missing_fields)}")
         validate_date_not_future(payload.account_date, "account_date")
         with psycopg.connect(DB_DSN) as conn:
             region_id = get_region_id(conn, payload.region_code)
@@ -334,7 +365,10 @@ def mount_accounts_routes(
                 slot_status=slot_status,
                 product_titles=None,
                 account_date=payload.account_date,
-                notes=payload.notes
+                notes=payload.notes,
+                is_deactivated=False,
+                deactivated_at=None,
+                next_activation_at=None,
             )
     
     @app.put("/accounts/{account_id}", response_model=AccountOut)
@@ -348,7 +382,7 @@ def mount_accounts_routes(
             current = q1(
                 conn,
                 """
-                SELECT login_name, domain_id, region_id, status_code, account_date, notes
+                SELECT login_name, domain_id, region_id, status_code, account_date, notes, is_deactivated, deactivated_at, next_activation_at
                 FROM app.accounts
                 WHERE account_id=%s
                 """,
@@ -356,17 +390,54 @@ def mount_accounts_routes(
             )
             if not current:
                 raise HTTPException(404, "Account not found")
-    
-            region_id = get_region_id(conn, payload.region_code) if payload.region_code else current[2]
-            domain_id = get_domain_id(conn, payload.domain_code) if payload.domain_code else current[1]
 
-            new_login = payload.login_name if payload.login_name is not None else current[0]
+            current_login = row_value(current, 0, "")
+            current_domain_id = row_value(current, 1)
+            current_region_id = row_value(current, 2)
+            current_status = row_value(current, 3, "active")
+            current_account_date = row_value(current, 4)
+            current_notes = row_value(current, 5)
+            current_is_deactivated = bool(row_value(current, 6, False))
+            current_deactivated_at = row_value(current, 7)
+            current_next_activation_at = row_value(current, 8)
+            user_role = str(getattr(user, "role", "") or "").strip().lower()
+
+            region_id = get_region_id(conn, payload.region_code) if payload.region_code else current_region_id
+            domain_id = get_domain_id(conn, payload.domain_code) if payload.domain_code else current_domain_id
+
+            new_login = payload.login_name if payload.login_name is not None else current_login
             # Менеджер/оператор могут редактировать карточку, но не менять статус аккаунта.
-            if user.role != "admin" and payload.status_code is not None and payload.status_code != current[3]:
+            if user.role != "admin" and payload.status_code is not None and payload.status_code != current_status:
                 raise HTTPException(403, "Only admin can change account status")
-            new_status = payload.status_code if payload.status_code is not None else current[3]
-            new_date = payload.account_date if payload.account_date is not None else current[4]
-            new_notes = payload.notes if payload.notes is not None else current[5]
+            new_status = payload.status_code if payload.status_code is not None else current_status
+            new_date = payload.account_date if payload.account_date is not None else current_account_date
+            new_notes = payload.notes if payload.notes is not None else current_notes
+
+            # Оператору запрещаем менять флаг деактивации, но статус он видит как обычно.
+            if payload.is_deactivated is not None and user_role == "operator":
+                requested_is_deactivated = bool(payload.is_deactivated)
+                if requested_is_deactivated != current_is_deactivated:
+                    raise HTTPException(403, "Operator cannot change account deactivation flag")
+
+            # Обновляем деактивацию с правилом повторной активации не раньше чем через 183 дня.
+            requested_is_deactivated = current_is_deactivated if payload.is_deactivated is None else bool(payload.is_deactivated)
+            next_is_deactivated = requested_is_deactivated
+            next_deactivated_at = current_deactivated_at
+            next_activation_at = current_next_activation_at
+            now_utc = datetime.now(timezone.utc)
+            if requested_is_deactivated:
+                if not current_is_deactivated:
+                    next_deactivated_at = now_utc
+                    next_activation_at = now_utc + timedelta(days=183)
+                else:
+                    if next_deactivated_at is None:
+                        next_deactivated_at = now_utc
+                    if next_activation_at is None:
+                        next_activation_at = to_utc_aware(next_deactivated_at) + timedelta(days=183)
+            else:
+                # Флаг деактивации используется как визуальная пометка, без блокировок по сроку.
+                next_deactivated_at = None
+                next_activation_at = None
     
             exec1(
                 conn,
@@ -377,7 +448,10 @@ def mount_accounts_routes(
                     region_id=%s,
                     status_code=%s,
                     notes=%s,
-                    account_date=%s
+                    account_date=%s,
+                    is_deactivated=%s,
+                    deactivated_at=%s,
+                    next_activation_at=%s
                 WHERE account_id=%s
                 """,
                 (
@@ -387,6 +461,9 @@ def mount_accounts_routes(
                     new_status,
                     new_notes,
                     new_date,
+                    next_is_deactivated,
+                    next_deactivated_at,
+                    next_activation_at,
                     account_id,
                 ),
             )
@@ -402,7 +479,10 @@ def mount_accounts_routes(
                   a.login_name,
                   d.name as domain_name,
                   a.account_date,
-                  a.notes
+                  a.notes,
+                  a.is_deactivated,
+                  a.deactivated_at,
+                  a.next_activation_at
                 FROM app.accounts a
                 LEFT JOIN app.regions r ON r.region_id = a.region_id
                 LEFT JOIN app.domains d ON d.domain_id = a.domain_id
@@ -423,7 +503,10 @@ def mount_accounts_routes(
                 slot_status=slot_status,
                 product_titles=None,
                 account_date=row[5],
-                notes=row[6]
+                notes=row[6],
+                is_deactivated=bool(row_value(row, 7, False)),
+                deactivated_at=row_value(row, 8),
+                next_activation_at=row_value(row, 9),
             )
     
     @app.delete("/accounts/{account_id}")
@@ -541,7 +624,7 @@ def mount_accounts_routes(
                 LEFT JOIN app.product_platforms pp ON pp.product_id = p_id.product_id
                 LEFT JOIN app.platforms pl ON pl.platform_id = pp.platform_id
                 WHERE aa.account_id=%s
-                  AND aa.asset_type_code='game'
+                  AND aa.asset_type_code IN ('game', 'subscription')
                   AND p_id.is_archived IS NOT TRUE
                 GROUP BY
                   p_id.product_id,
@@ -754,6 +837,9 @@ def mount_accounts_routes(
                     platform_codes=list(row[7] or []),
                     account_date=row[5],
                     notes=row[6],
+                    is_deactivated=False,
+                    deactivated_at=None,
+                    next_activation_at=None,
                 )
                 acc_map[account_id] = acc
                 acc_list.append(acc)

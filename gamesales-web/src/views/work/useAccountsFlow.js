@@ -43,6 +43,19 @@ export function useAccountsFlow({
   requestDealConfirm,
   showDealWarning,
 }) {
+  // Проверяет обязательные поля при создании аккаунта и возвращает их человекочитаемые названия.
+  function getMissingCreateAccountFields() {
+    const missing = []
+    if (!String(newAccount.login_name || '').trim()) missing.push('Логин')
+    if (!String(newAccount.domain_code || '').trim()) missing.push('Домен')
+    if (!String(newAccount.region_code || '').trim()) missing.push('Регион')
+    if (!String(newAccount.account_date || '').trim()) missing.push('Дата')
+    if (!String(newAccount.account_password || '').trim()) missing.push('Пароль аккаунта')
+    if (!String(newAccount.email_password || '').trim()) missing.push('Пароль почты')
+    if (!String(newAccount.auth_code || '').trim()) missing.push('Код аутентификатора')
+    return missing
+  }
+
   let initialEditAccountSnapshot = null
   // Раскодирует base64-строку с учетом UTF-8.
   function decodeSecret(value) {
@@ -241,6 +254,10 @@ export function useAccountsFlow({
     editAccount.domain_code = a.domain_code || ''
     editAccount.region_code = a.region_code || ''
     editAccount.status_code = a.status || 'active'
+    // Сохраняем даты деактивации из API, чтобы модалка могла показать таймер до активации.
+    editAccount.is_deactivated = Boolean(a.is_deactivated)
+    editAccount.deactivated_at = a.deactivated_at || ''
+    editAccount.next_activation_at = a.next_activation_at || ''
     editAccount.notes = a.notes || ''
     editAccount.account_date = a.account_date || ''
 
@@ -272,6 +289,9 @@ export function useAccountsFlow({
         domain_code: editAccount.domain_code,
         region_code: editAccount.region_code,
         status_code: editAccount.status_code,
+        is_deactivated: editAccount.is_deactivated,
+        deactivated_at: editAccount.deactivated_at,
+        next_activation_at: editAccount.next_activation_at,
         notes: editAccount.notes,
         account_date: editAccount.account_date,
         email_password: editAccount.email_password,
@@ -324,6 +344,9 @@ export function useAccountsFlow({
       editAccount.domain_code = snapshot.domain_code || ''
       editAccount.region_code = snapshot.region_code || ''
       editAccount.status_code = snapshot.status_code || 'active'
+      editAccount.is_deactivated = Boolean(snapshot.is_deactivated)
+      editAccount.deactivated_at = snapshot.deactivated_at || ''
+      editAccount.next_activation_at = snapshot.next_activation_at || ''
       editAccount.notes = snapshot.notes || ''
       editAccount.account_date = snapshot.account_date || ''
       editAccount.email_password = snapshot.email_password || ''
@@ -358,6 +381,9 @@ export function useAccountsFlow({
       domain_code: editAccount.domain_code,
       region_code: editAccount.region_code,
       status_code: editAccount.status_code,
+      is_deactivated: editAccount.is_deactivated,
+      deactivated_at: editAccount.deactivated_at,
+      next_activation_at: editAccount.next_activation_at,
       notes: editAccount.notes,
       account_date: editAccount.account_date,
       email_password: editAccount.email_password,
@@ -376,6 +402,9 @@ export function useAccountsFlow({
     editAccount.domain_code = ''
     editAccount.region_code = ''
     editAccount.status_code = 'active'
+    editAccount.is_deactivated = false
+    editAccount.deactivated_at = ''
+    editAccount.next_activation_at = ''
     editAccount.notes = ''
     editAccount.account_date = ''
     editAccount.email_password = ''
@@ -418,8 +447,10 @@ export function useAccountsFlow({
   async function createAccount() {
     accountsError.value = null
     accountsOk.value = null
-    if (!newAccount.login_name || !newAccount.domain_code) {
-      accountsError.value = 'Укажите логин и домен'
+    // На форме создания требуем заполнение всех основных полей карточки аккаунта.
+    const missingFields = getMissingCreateAccountFields()
+    if (missingFields.length) {
+      accountsError.value = `Заполните обязательные поля: ${missingFields.join(', ')}`
       return
     }
     accountsLoading.value = true
@@ -544,6 +575,8 @@ export function useAccountsFlow({
           notes: editAccount.notes || null,
           account_date: editAccount.account_date || null,
           status_code: editAccount.status_code || 'active',
+          // Передаем флаг деактивации отдельным полем: backend сам валидирует правило 183 дней.
+          is_deactivated: Boolean(editAccount.is_deactivated),
         },
         { token: auth.state.token }
       )

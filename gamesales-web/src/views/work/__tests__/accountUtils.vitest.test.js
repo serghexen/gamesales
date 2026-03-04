@@ -20,6 +20,7 @@ describe('accountUtils', () => {
     expect(state.open).toBe(false)
     expect(state.account_id).toBeNull()
     expect(state.status_code).toBe('active')
+    expect(state.is_deactivated).toBe(false)
     expect(state.account_key).toBe('account_password')
   })
 

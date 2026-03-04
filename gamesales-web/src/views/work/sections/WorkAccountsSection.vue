@@ -121,6 +121,7 @@
 
       <WorkAccountEditorModal
         :edit-account="ctx.editAccount"
+        :can-toggle-deactivation="ctx.canToggleAccountDeactivation"
         :cancel-edit-account="ctx.cancelEditAccount"
         :modal-ref="ctx.modalRef"
         :modal-style="ctx.modalStyle"

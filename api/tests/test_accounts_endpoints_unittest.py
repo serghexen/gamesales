@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch
+from datetime import datetime, timedelta, timezone
 
 try:
     from fastapi.testclient import TestClient
@@ -132,6 +133,46 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(body["items"][0]["login_full"], "login1@gmail.com")
             self.assertEqual(len(body["items"][0]["slot_status"]), 1)
 
+    # В списке аккаунтов поле товаров должно заполняться и для подписок.
+    def test_list_accounts_includes_subscription_products(self):
+        script = [
+            {
+                "all": [
+                    (
+                        8,
+                        "RU",
+                        "active",
+                        "sub1",
+                        "gmail.com",
+                        "2024-01-10",
+                        "notes",
+                        ["PS Plus"],
+                        ["ps5"],
+                        "ps5_p1",
+                        "ps5",
+                        "single",
+                        1,
+                        0,
+                        1,
+                        1,
+                    )
+                ]
+            }
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get("/accounts", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(body["total"], 1)
+            self.assertEqual(len(body["items"]), 1)
+            self.assertEqual(body["items"][0]["product_titles"], ["PS Plus"])
+
     # Создание аккаунта должно валидировать обязательные поля.
     def test_create_account_validation_error(self):
         with (
@@ -146,6 +187,26 @@ class AccountsEndpointsTests(unittest.TestCase):
                     json={"region_code": "RU", "login_name": "", "domain_code": ""},
                 )
             self.assertEqual(res.status_code, 400)
+
+    # При создании аккаунта базовые поля карточки должны быть обязательны.
+    def test_create_account_requires_region_and_date(self):
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/accounts",
+                    headers=self._auth_headers(role="manager"),
+                    json={
+                        "login_name": "acc1",
+                        "domain_code": "gmail.com",
+                    },
+                )
+            self.assertEqual(res.status_code, 400)
+            self.assertIn("region_code", str(res.json().get("detail", "")))
+            self.assertIn("account_date", str(res.json().get("detail", "")))
 
     # Создание аккаунта должно вернуть карточку с платформами и статусом слотов.
     def test_create_account_success(self):
@@ -236,6 +297,94 @@ class AccountsEndpointsTests(unittest.TestCase):
                 res = client.put("/accounts/5", headers=self._auth_headers(role="admin"), json={"notes": "updated"})
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json()["notes"], "updated")
+
+    # Деактивация должна выставлять флаг и даты в карточке аккаунта.
+    def test_update_account_deactivation_success(self):
+        script = [
+            {"one": ("login1", 3, 2, "active", "2024-01-10", "old", False, None, None)},  # current
+            {"rowcount": 1},  # update
+            {
+                "one": (
+                    5,
+                    "RU",
+                    "active",
+                    "login1",
+                    "gmail.com",
+                    "2024-01-10",
+                    "updated",
+                    True,
+                    "2026-03-04T10:00:00Z",
+                    "2026-09-03T10:00:00Z",
+                )
+            },  # result row
+            {"all": []},  # get_account_platform_slots
+            {"all": []},  # get_account_slot_status
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/accounts/5",
+                    headers=self._auth_headers(role="manager"),
+                    json={"notes": "updated", "is_deactivated": True},
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(body["is_deactivated"], True)
+            self.assertEqual(body["deactivated_at"], "2026-03-04T10:00:00Z")
+            self.assertEqual(body["next_activation_at"], "2026-09-03T10:00:00Z")
+
+    # Повторная активация разрешена сразу: деактивация — только визуальная пометка.
+    def test_update_account_reactivate_before_timer_is_allowed(self):
+        future_date = datetime.now(timezone.utc) + timedelta(days=10)
+        script = [
+            {"one": ("login1", 3, 2, "active", "2024-01-10", "old", True, "2026-03-01T00:00:00Z", future_date)},
+            {"rowcount": 1},
+            {"one": (5, "RU", "active", "login1", "gmail.com", "2024-01-10", "old", False, None, None)},
+            {"all": []},
+            {"all": []},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/accounts/5",
+                    headers=self._auth_headers(role="manager"),
+                    json={"is_deactivated": False},
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(body["is_deactivated"], False)
+            self.assertEqual(body["deactivated_at"], None)
+            self.assertEqual(body["next_activation_at"], None)
+
+    # Оператору запрещено менять флаг деактивации аккаунта.
+    def test_update_account_operator_cannot_change_deactivation_flag(self):
+        script = [
+            {"one": ("login1", 3, 2, "active", "2024-01-10", "old", False, None, None)},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/accounts/5",
+                    headers=self._auth_headers(role="operator"),
+                    json={"is_deactivated": True},
+                )
+            self.assertEqual(res.status_code, 403)
+            self.assertIn("deactivation", str(res.json().get("detail", "")).lower())
 
     # Архивирование несуществующего аккаунта должно вернуть 404.
     def test_archive_account_not_found(self):
@@ -570,6 +719,28 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(len(res.json()), 1)
             self.assertEqual(res.json()[0]["product_id"], 55)
             self.assertEqual(res.json()[0]["platform_codes"], ["ps5"])
+
+    # Endpoint товаров аккаунта должен возвращать подписки так же, как игры.
+    def test_list_account_products_includes_subscription(self):
+        script = [
+            {"one": (1,)},
+            {"all": [(88, "subscription", "PS Plus", "PS+", "RU", ["ps5"])]},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/7/products",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(len(res.json()), 1)
+            self.assertEqual(res.json()[0]["product_id"], 88)
+            self.assertEqual(res.json()[0]["type_code"], "subscription")
 
     # Назначения слотов аккаунта должны отдавать product-поля.
     def test_list_account_slot_assignments_includes_product_fields(self):

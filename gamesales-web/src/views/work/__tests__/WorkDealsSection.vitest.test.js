@@ -78,7 +78,7 @@ describe('WorkDealsSection', () => {
     expect(wrapper.find('.table-stub').exists()).toBe(true)
   })
 
-  it('shows pager only when total exceeds page size', () => {
+  it('shows pager whenever there are deals to keep page size selector available', () => {
     const baseStubs = {
       WorkDealsHeader: { template: '<div class="header-stub" />' },
       WorkDealFilterChips: { template: '<div class="chips-stub" />' },
@@ -91,7 +91,7 @@ describe('WorkDealsSection', () => {
       },
       global: { stubs: baseStubs },
     })
-    expect(hiddenWrapper.find('.pager').exists()).toBe(false)
+    expect(hiddenWrapper.find('.pager').exists()).toBe(true)
 
     const visibleWrapper = mount(WorkDealsSection, {
       props: {
@@ -100,5 +100,13 @@ describe('WorkDealsSection', () => {
       global: { stubs: baseStubs },
     })
     expect(visibleWrapper.find('.pager').exists()).toBe(true)
+
+    const emptyWrapper = mount(WorkDealsSection, {
+      props: {
+        ctx: buildCtx({ dealTotal: 0, dealPageSize: 20 }),
+      },
+      global: { stubs: baseStubs },
+    })
+    expect(emptyWrapper.find('.pager').exists()).toBe(false)
   })
 })

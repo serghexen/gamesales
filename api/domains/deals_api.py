@@ -618,8 +618,12 @@ def mount_deals_routes(
                 raise HTTPException(403, "editing completed deal is allowed only for admin/owner")
             # Ручные правки системных дат разрешаем только для admin/owner у завершенной сделки.
             has_manual_system_dates = payload.created_at is not None or payload.completed_at is not None
-            if has_manual_system_dates and (str(flow_status_code or "").strip().lower() != "completed" or not can_edit_completed):
+            # Для admin/owner ручные даты теперь доступны в любом статусе сделки.
+            if has_manual_system_dates and not can_edit_completed:
                 raise HTTPException(403, "editing completed deal is allowed only for admin/owner")
+            # Защищаем ручные системные даты от инверсии: завершение не может быть раньше создания.
+            if payload.created_at is not None and payload.completed_at is not None and payload.completed_at < payload.created_at:
+                raise HTTPException(400, "completed_at must be >= created_at")
     
             deal_type = (payload.deal_type_code or current_type or "").strip().lower()
             if deal_type not in ("sale", "rental"):
@@ -1221,7 +1225,7 @@ def mount_deals_routes(
                 LEFT JOIN app.customers c ON c.customer_id = d.customer_id
                 LEFT JOIN app.sources src ON src.source_id = c.source_id
                 {where_sql}
-                ORDER BY d.created_at DESC
+                ORDER BY COALESCE(di.purchase_at, d.created_at) ASC, d.deal_id ASC
                 LIMIT %s OFFSET %s
             """, params + [page_size, offset])
     

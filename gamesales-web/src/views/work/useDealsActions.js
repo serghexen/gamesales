@@ -29,6 +29,11 @@ export function useDealsActions({
     return role === 'admin' || role === 'administrator' || role === 'owner'
   }
 
+  // Для ручной правки системных дат используем те же привилегии, что и для completed-операций.
+  function canEditSystemDates() {
+    return canCompleteRefund()
+  }
+
   // Приводит поле ответственного к значению, которое понимает API.
   function normalizeResponsible(value) {
     if (value === 'current_user') return auth.state.user || null
@@ -68,6 +73,19 @@ export function useDealsActions({
     return parsed.toISOString()
   }
 
+  // Проверяет системные даты при ручном редактировании: completed_at не должен быть раньше created_at.
+  function validateManualSystemDates(deal) {
+    if (!deal?.deal_id || !canEditSystemDates()) return null
+    const createdAt = normalizeOptionalDateTime(deal.created_at)
+    const completedAt = normalizeOptionalDateTime(deal.completed_at)
+    if (!createdAt || !completedAt) return null
+    const createdTs = new Date(createdAt).getTime()
+    const completedTs = new Date(completedAt).getTime()
+    if (!Number.isFinite(createdTs) || !Number.isFinite(completedTs)) return null
+    if (completedTs < createdTs) return 'Дата завершения не может быть раньше даты создания'
+    return null
+  }
+
   // Собирает payload для create/update в едином формате, чтобы не дублировать маппинг полей.
   function buildDealPayload(deal, responsible, saveAsDraft = false, { allowRefundForSaleAndRental = true } = {}) {
     const dealTypeCode = deal.deal_type_code
@@ -99,8 +117,8 @@ export function useDealsActions({
         ? (allowRefundForSaleAndRental ? Boolean(deal.is_refund) : false)
         : null,
     }
-    // Системные даты передаем только для завершенных сделок (иначе backend отклонит запрос).
-    if (deal?.deal_id && String(nextFlowStatus || '').trim().toLowerCase() === 'completed') {
+    // Для admin/owner передаем системные даты в любом статусе, если сделка уже существует.
+    if (deal?.deal_id && canEditSystemDates()) {
       payload.created_at = normalizeOptionalDateTime(deal.created_at)
       payload.completed_at = normalizeOptionalDateTime(deal.completed_at)
     }
@@ -127,6 +145,8 @@ export function useDealsActions({
       if (!deal.region_code) return 'Укажите регион'
       if (!deal.source_id) return 'Укажите источник'
     }
+    const systemDatesError = validateManualSystemDates(deal)
+    if (systemDatesError) return systemDatesError
     return null
   }
 

@@ -52,6 +52,7 @@ class AccountsModelsTests(unittest.TestCase):
         )
         first.slot_status.append({"slot_type_code": "primary", "platform_code": "ps5", "mode": "single", "capacity": 1, "occupied": 0, "free": 1})
         self.assertEqual(len(second.slot_status), 0)
+        self.assertEqual(first.is_deactivated, False)
 
 
 class DealsModelsTests(unittest.TestCase):

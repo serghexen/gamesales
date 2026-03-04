@@ -423,6 +423,7 @@ export function useWorkSectionContexts({
     editDeal,
     dealEditMode,
     allowCompletedDealEdit,
+    showDealWarning,
     getDealTypeName,
     dealAccountsForProductLoading,
     isDealSlotTypeUnsupported,

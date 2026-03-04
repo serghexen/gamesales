@@ -1067,6 +1067,7 @@ const {
   quickNewAccountError,
   newDealCommentOpen,
   editDealCommentOpen,
+  showDealWarning,
   getCompactNotesRows,
 } = toRefs(ctx)
 
@@ -1273,8 +1274,11 @@ function getDealReserveLabel(accountId, reserveKey, currentDealId = null) {
   const normalizedKey = normalizeReserveKey(reserveKey)
   const entries = getAccountReserveEntriesForDeal(accountId, currentDealId)
   if (!entries.length) return '—'
+  // Если ключ не выбран, берем только свободный резерв; занятый по умолчанию не подставляем.
   const fallbackKey = normalizedKey || pickFirstFreeReserveKey(accountId, currentDealId)
-  const selected = entries.find((item) => item.key === fallbackKey) || entries[0]
+  if (!fallbackKey) return '—'
+  const selected = entries.find((item) => item.key === fallbackKey)
+  if (!selected) return '—'
   if (!selected?.value) return '—'
   return selected.used ? `${selected.value} (использован)` : selected.value
 }
@@ -1382,7 +1386,12 @@ watch(() => newDeal.value?.account_id, (accountId) => {
     return
   }
   // При выборе аккаунта подставляем первый свободный резерв, если он доступен.
-  newDeal.value.reserve_key = pickFirstFreeReserveKey(accountId)
+  const reserveKey = pickFirstFreeReserveKey(accountId)
+  newDeal.value.reserve_key = reserveKey
+  // Если свободных резервов нет, сразу показываем стандартное предупреждение в модалке.
+  if (!reserveKey && typeof showDealWarning.value === 'function') {
+    showDealWarning.value('У выбранного аккаунта нет доступных резервов')
+  }
 })
 
 watch(() => editDeal.value?.account_id, (accountId) => {
@@ -1410,9 +1419,8 @@ const canEditRefundFlag = computed(() => {
 })
 
 const canEditSystemDates = computed(() => {
-  // Даты создания/завершения даем редактировать только admin/owner у завершенной сделки.
-  const status = String(editDeal.value?.flow_status_code || '').toLowerCase()
-  return status === 'completed' && Boolean(allowCompletedDealEdit?.value)
+  // Даты создания/завершения даем редактировать admin/owner независимо от статуса.
+  return Boolean(allowCompletedDealEdit?.value)
 })
 
 const refundEditBlockedReason = computed(() => {

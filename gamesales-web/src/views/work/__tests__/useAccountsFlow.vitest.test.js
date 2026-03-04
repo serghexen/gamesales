@@ -115,11 +115,51 @@ describe('useAccountsFlow', () => {
     h.openCreateAccountModal()
     h.newAccount.login_name = 'dup'
     h.newAccount.domain_code = 'mail.com'
+    h.newAccount.region_code = 'RU'
+    h.newAccount.account_date = '2026-03-04'
+    h.newAccount.account_password = 'acc-pass'
+    h.newAccount.email_password = 'mail-pass'
+    h.newAccount.auth_code = 'auth-code'
     h.apiPost.mockRejectedValueOnce(new Error('Account already exists'))
 
     await h.createAccount()
 
     expect(h.showDealWarning).toHaveBeenCalledWith('Данный аккаунт уже есть в базе данных')
     expect(h.accountsError.value).toBeNull()
+  })
+
+  it('createAccount requires all main fields in create form', async () => {
+    const h = createHarness()
+    h.openCreateAccountModal()
+    h.newAccount.login_name = 'user'
+    h.newAccount.domain_code = 'mail.com'
+
+    await h.createAccount()
+
+    expect(h.apiPost).not.toHaveBeenCalled()
+    expect(h.accountsError.value).toContain('Заполните обязательные поля')
+    expect(h.accountsError.value).toContain('Регион')
+    expect(h.accountsError.value).toContain('Дата')
+    expect(h.accountsError.value).toContain('Пароль аккаунта')
+    expect(h.accountsError.value).toContain('Пароль почты')
+    expect(h.accountsError.value).toContain('Код аутентификатора')
+  })
+
+  it('updateAccount sends deactivation flag to backend', async () => {
+    const h = createHarness()
+    h.editAccount.login_name = 'user'
+    h.editAccount.domain_code = 'mail.com'
+    h.editAccount.region_code = 'RU'
+    h.editAccount.is_deactivated = true
+    h.apiPut.mockResolvedValue({ ok: true })
+    h.suppressUnsavedConfirm.value = true
+
+    await h.updateAccount()
+
+    expect(h.apiPut).toHaveBeenCalledWith(
+      '/accounts/5',
+      expect.objectContaining({ is_deactivated: true }),
+      { token: 'token-1' }
+    )
   })
 })

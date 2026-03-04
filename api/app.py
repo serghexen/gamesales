@@ -28,6 +28,9 @@ def ensure_analytics_schema():
             exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS order_number text")
             exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS responsible_username text")
             exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS lock_version integer NOT NULL DEFAULT 1")
+            exec1(conn, "ALTER TABLE app.accounts ADD COLUMN IF NOT EXISTS is_deactivated boolean NOT NULL DEFAULT false")
+            exec1(conn, "ALTER TABLE app.accounts ADD COLUMN IF NOT EXISTS deactivated_at timestamptz")
+            exec1(conn, "ALTER TABLE app.accounts ADD COLUMN IF NOT EXISTS next_activation_at timestamptz")
             # Добавляем статус черновика для flow-логики, чтобы можно было сохранять неполные продажи.
             exec1(
                 conn,

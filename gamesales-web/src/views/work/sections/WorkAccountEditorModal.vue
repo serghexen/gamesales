@@ -4,7 +4,27 @@
               <div v-if="editAccount.open" class="work-page work-modal-root modal-backdrop" @click.self="cancelEditAccount">
                 <div :ref="modalRef" class="modal modal--auto modal--account-editor" :style="modalStyle">
                   <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
-                    <h3 class="account-modal-title">{{ accountModalTitle }}</h3>
+                    <div class="account-modal-head">
+                      <h3 class="account-modal-title">{{ accountModalTitle }}</h3>
+                      <label
+                        v-if="showDeactivationToggle"
+                        class="check-item account-modal-head__toggle"
+                      >
+                        <input
+                          type="checkbox"
+                          v-model="editAccount.is_deactivated"
+                          :disabled="accountBusy"
+                        />
+                        <span>Деактивирован</span>
+                      </label>
+                      <p v-if="showDeactivatedHeaderStatus" class="account-modal-status">
+                        <span class="account-modal-status__danger">Деактивирован.</span>
+                        <span>{{ deactivationViewLabel }}</span>
+                      </p>
+                      <p v-if="showDeactivatedEditStatus" class="account-modal-status account-modal-status--edit">
+                        <span>{{ deactivationViewLabel }}</span>
+                      </p>
+                    </div>
                     <div class="toolbar-actions">
                       <button
                         v-if="accountModalMode === 'edit' && accountEditMode === 'edit'"
@@ -455,6 +475,7 @@ import { computed, ref, watch } from 'vue'
 
 const props = defineProps([
   'editAccount',
+  'canToggleDeactivation',
   'cancelEditAccount',
   'modalRef',
   'modalStyle',
@@ -506,6 +527,13 @@ const props = defineProps([
   'setAccountProductType',
 ])
 
+// Галочку деактивации показываем только тем ролям, которым разрешено менять этот флаг.
+const showDeactivationToggle = computed(() => {
+  return props.accountModalMode === 'edit'
+    && props.accountEditMode === 'edit'
+    && props.canToggleDeactivation !== false
+})
+
 const editAccountProductSearchModel = computed({
   get: () => props.editAccountProductSearch,
   set: (value) => props.setEditAccountProductSearch(value),
@@ -527,6 +555,40 @@ const accountProductSearchModel = computed({
 const accountProductTypeModel = computed({
   get: () => props.accountProductType,
   set: (value) => props.setAccountProductType(value),
+})
+
+// Считает, сколько полных суток осталось до повторной активации аккаунта.
+const deactivationDaysLeft = computed(() => {
+  if (!props.editAccount?.is_deactivated) return null
+  const raw = String(props.editAccount?.next_activation_at || '').trim()
+  if (!raw) return null
+  const nextActivationAt = new Date(raw)
+  if (Number.isNaN(nextActivationAt.getTime())) return null
+  const diffMs = nextActivationAt.getTime() - Date.now()
+  if (diffMs <= 0) return 0
+  return Math.ceil(diffMs / (24 * 60 * 60 * 1000))
+})
+
+// В режиме просмотра показываем статус рядом с именем только для деактивированного аккаунта.
+const showDeactivatedHeaderStatus = computed(() => {
+  return props.accountModalMode === 'edit'
+    && props.accountEditMode === 'view'
+    && Boolean(props.editAccount?.is_deactivated)
+})
+
+// В режиме редактирования текст-подсказку показываем только когда аккаунт уже деактивирован.
+const showDeactivatedEditStatus = computed(() => {
+  return props.accountModalMode === 'edit'
+    && props.accountEditMode === 'edit'
+    && Boolean(props.editAccount?.is_deactivated)
+})
+
+// Текст статуса для формы просмотра рядом с именем аккаунта.
+const deactivationViewLabel = computed(() => {
+  const days = deactivationDaysLeft.value
+  if (days === null) return 'Повтораня деактивация: ожидание'
+  if (days <= 0) return 'Повтораня деактивация через 0 дней'
+  return `Повтораня деактивация через ${days} дней`
 })
 
 // Формирует заголовок модалки аккаунта в нужном формате.

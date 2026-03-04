@@ -25,8 +25,40 @@
 }
 
 .work-page .account-modal-title {
+  margin: 0;
+  line-height: 1.2;
   text-transform: none;
   letter-spacing: normal;
+}
+
+.work-page .account-modal-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  line-height: 1.2;
+  gap: 8px;
+}
+
+.work-page .account-modal-head__toggle {
+  margin: 0;
+}
+
+.work-page .account-modal-status {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.work-page .account-modal-status--edit {
+  margin-top: 1px;
+}
+
+.work-page .account-modal-status__danger {
+  color: #ef4444;
+  font-weight: 700;
 }
 
 .work-page .account-products-title {

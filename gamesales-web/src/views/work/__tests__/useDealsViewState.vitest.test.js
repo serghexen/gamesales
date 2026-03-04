@@ -91,4 +91,17 @@ describe('useDealsViewState', () => {
     expect(h.state.hasAnyProductAssignmentsNew.value).toBe(true)
     expect(h.state.hasAnyProductAssignmentsEdit.value).toBe(true)
   })
+
+  it('matches slot codes case-insensitively for release list', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-25T00:00:00Z'))
+    const h = createHarness()
+    h.newDeal.slot_type_code = ' FULL '
+    h.editDeal.slot_type_code = ' Share '
+
+    expect(h.state.dealProductAssignmentsForSelectedSlotNew.value.map((item) => item.assignment_id)).toEqual([1])
+    expect(h.state.dealProductAssignmentsForSelectedSlotEdit.value).toEqual([
+      { slot_type_code: 'share', released_at: null },
+    ])
+  })
 })

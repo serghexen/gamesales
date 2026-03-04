@@ -9,7 +9,8 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
   const dealPageInput = ref(1)
   const dealPageSize = ref(20)
   const dealTotal = ref(0)
-  const dealSort = ref({ key: 'date', dir: 'desc' })
+  // По умолчанию показываем сделки по дате от старых к новым, чтобы новые оказывались внизу.
+  const dealSort = ref({ key: 'date', dir: 'asc' })
 
   // Общее число страниц по текущему размеру страницы.
   const totalPages = computed(() => {

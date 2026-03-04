@@ -137,6 +137,15 @@ describe('WorkDealEditorForm template', () => {
       .toBeLessThan(source.indexOf('<span class="label">Пароль</span>'))
   })
 
+  it('shows warning when selected sharing account has no free reserve', () => {
+    const source = readTemplateSource()
+
+    expect(source).toContain("showDealWarning.value('У выбранного аккаунта нет доступных резервов')")
+    expect(source).toContain('const reserveKey = pickFirstFreeReserveKey(accountId)')
+    expect(source).toContain('newDeal.value.reserve_key = reserveKey')
+    expect(source).toContain('if (!fallbackKey) return \'—\'')
+  })
+
   it('hides refund field in pending and draft statuses and keeps it only for other flows', () => {
     const source = readTemplateSource()
 
@@ -144,6 +153,6 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain("editDeal.deal_type_code === 'sale' && !isEditDealPendingFlow")
     expect(source).toContain("const isEditDealPendingFlow = computed(() => {")
     expect(source).toContain("return status === 'pending' || status === 'draft'")
-    expect(source).toContain("status === 'completed' && Boolean(allowCompletedDealEdit?.value)")
+    expect(source).toContain("return Boolean(allowCompletedDealEdit?.value)")
   })
 })

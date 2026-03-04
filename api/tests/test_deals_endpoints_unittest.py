@@ -1038,6 +1038,102 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
 
+    # Для pending сделки admin/owner тоже могут вручную править системные даты.
+    def test_update_deal_pending_allows_manual_system_dates_for_admin(self):
+        current_row = (
+            "sale",
+            "confirmed",
+            "pending",
+            10,
+            5,
+            500.0,
+            "A-100",
+            "manager-name",
+            77,
+            None,
+            None,
+            500.0,
+            100.0,
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+            None,
+            None,
+            0,
+            None,
+            "note",
+            None,
+            None,
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+            {"rowcount": 1},  # update deals
+            {"rowcount": 1},  # update deal_items
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="admin", username="admin"),
+                    json={
+                        "created_at": "2026-02-01T10:30:00Z",
+                        "completed_at": "2026-02-01T11:30:00Z",
+                    },
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
+
+    # Даже для admin/owner completed_at не должен быть раньше created_at при ручной правке.
+    def test_update_deal_rejects_manual_system_dates_inverted_range(self):
+        current_row = (
+            "sale",
+            "confirmed",
+            "pending",
+            10,
+            5,
+            500.0,
+            "A-100",
+            "manager-name",
+            77,
+            None,
+            None,
+            500.0,
+            100.0,
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+            None,
+            None,
+            0,
+            None,
+            "note",
+            None,
+            None,
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="admin", username="admin"),
+                    json={
+                        "created_at": "2026-02-01T12:30:00Z",
+                        "completed_at": "2026-02-01T11:30:00Z",
+                    },
+                )
+            self.assertEqual(res.status_code, 400)
+            self.assertIn("completed_at must be >= created_at", str(res.json().get("detail", "")))
+
     # При установке признака возврата у продажи ответственный должен переключаться на owner.
     def test_update_deal_sale_refund_assigns_owner_responsible(self):
         current_row = (

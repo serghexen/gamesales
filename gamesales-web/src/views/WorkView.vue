@@ -638,6 +638,10 @@ const mustPrefillDealsResponsible = computed(() => {
   const role = String(auth.state.role || '').trim().toLowerCase()
   return role === 'manager' || role === 'operator'
 })
+const canToggleAccountDeactivation = computed(() => {
+  // Оператор видит статус, но не может менять признак деактивации.
+  return normalizeRole(auth.state.role) !== 'operator'
+})
 const showUsersTab = false
 const showDashboard = false
 
@@ -2164,6 +2168,7 @@ const accountsSectionCtx = asCtx({
   jumpAccountsPage,
   nextAccountsPage,
   editAccount,
+  canToggleAccountDeactivation,
   cancelEditAccount,
   accountModalMode,
   accountEditMode,

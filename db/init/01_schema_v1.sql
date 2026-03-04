@@ -183,6 +183,9 @@ CREATE TABLE IF NOT EXISTS app.accounts (
   domain_id      smallint REFERENCES app.domains(domain_id),
   region_id      smallint REFERENCES app.regions(region_id),
   status_code    text NOT NULL DEFAULT 'active' REFERENCES app.account_statuses(code),
+  is_deactivated boolean NOT NULL DEFAULT false,
+  deactivated_at timestamptz,
+  next_activation_at timestamptz,
   created_at     timestamptz NOT NULL DEFAULT now(),
   account_date   date,
   notes          text,
@@ -194,6 +197,9 @@ COMMENT ON COLUMN app.accounts.login_name IS 'Логин аккаунта (бе�
 COMMENT ON COLUMN app.accounts.domain_id IS 'Домен аккаунта';
 COMMENT ON COLUMN app.accounts.region_id IS 'Регион аккаунта';
 COMMENT ON COLUMN app.accounts.status_code IS 'Статус аккаунта';
+COMMENT ON COLUMN app.accounts.is_deactivated IS 'Признак деактивации аккаунта';
+COMMENT ON COLUMN app.accounts.deactivated_at IS 'Когда аккаунт был деактивирован';
+COMMENT ON COLUMN app.accounts.next_activation_at IS 'Когда аккаунт можно повторно активировать';
 COMMENT ON COLUMN app.accounts.created_at IS 'Дата создания аккаунта';
 COMMENT ON COLUMN app.accounts.account_date IS 'Дата аккаунта';
 COMMENT ON COLUMN app.accounts.notes IS 'Заметки';

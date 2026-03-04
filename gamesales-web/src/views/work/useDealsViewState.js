@@ -11,6 +11,11 @@ export function useDealsViewState({
   dealGameAssignmentsNew: dealProductAssignmentsNew,
   dealGameAssignmentsEdit: dealProductAssignmentsEdit,
 }) {
+  // Нормализует код слота для корректного сравнения данных из API и формы.
+  function normalizeSlotTypeCode(value) {
+    return String(value || '').trim().toLowerCase()
+  }
+
   // Проверяет, можно ли показывать слот в списке "снять и занять" (не раньше 3 месяцев с момента занятия).
   function canUseAssignmentForDuplicateFlow(assignment) {
     const assignedAtRaw = String(assignment?.assigned_at || '').trim()
@@ -65,9 +70,10 @@ export function useDealsViewState({
   // Назначения по выбранному типу слота для новой сделки.
   const dealProductAssignmentsForSelectedSlotNew = computed(() => {
     if (!newDeal.slot_type_code) return []
+    const selectedSlotType = normalizeSlotTypeCode(newDeal.slot_type_code)
     return (dealProductAssignmentsNew.value || []).filter((s) => {
       return !s.released_at
-        && s.slot_type_code === newDeal.slot_type_code
+        && normalizeSlotTypeCode(s.slot_type_code) === selectedSlotType
         && canUseAssignmentForDuplicateFlow(s)
     })
   })
@@ -75,7 +81,10 @@ export function useDealsViewState({
   // Назначения по выбранному типу слота для редактируемой сделки.
   const dealProductAssignmentsForSelectedSlotEdit = computed(() => {
     if (!editDeal.slot_type_code) return []
-    return (dealProductAssignmentsEdit.value || []).filter((s) => !s.released_at && s.slot_type_code === editDeal.slot_type_code)
+    const selectedSlotType = normalizeSlotTypeCode(editDeal.slot_type_code)
+    return (dealProductAssignmentsEdit.value || []).filter((s) => {
+      return !s.released_at && normalizeSlotTypeCode(s.slot_type_code) === selectedSlotType
+    })
   })
 
   const hasAnyProductAssignmentsNew = computed(() => (dealProductAssignmentsNew.value || []).some((s) => !s.released_at))
