@@ -1,54 +1,71 @@
 <template>
   <section class="panel panel--wide">
-    <div class="panel__head analytics-head">
-      <div>
-        <h2>Аналитика</h2>
-        <p class="muted">Продажи и шеринг (по завершенным сделкам).</p>
-      </div>
-      <div class="analytics-head__actions">
-        <button class="ghost" type="button" :disabled="ctx.analyticsLoading" @click="ctx.loadAnalytics">
-          Применить
-        </button>
-        <button class="catalog-refresh-btn" type="button" :disabled="ctx.analyticsLoading" aria-label="Обновить" title="Обновить" @click="ctx.loadAnalytics">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M20 12a8 8 0 1 1-2.3-5.7" />
-            <path d="M20 4v6h-6" />
-          </svg>
-        </button>
+    <div v-if="canManageRolePermissions" class="panel__body">
+      <div class="tabs profile-admin-links">
+        <router-link class="tab" :to="{ name: 'work', query: { ...routeQuery, tab: 'profile', admin_panel: undefined } }">
+          Пользователи
+        </router-link>
+        <router-link class="tab" :class="{ active: activeTab === 'profile' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'profile', admin_panel: 'access' } }">
+          Доступы
+        </router-link>
+        <router-link class="tab" :class="{ active: activeTab === 'analytics' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'analytics', admin_panel: undefined } }">
+          Аналитика
+        </router-link>
+        <router-link class="tab" :class="{ active: activeTab === 'catalogs' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'catalogs', admin_panel: undefined } }">
+          Справочники
+        </router-link>
       </div>
     </div>
-    <div class="panel__body">
-      <div class="analytics-filters">
-        <label class="field">
-          <span class="label">Период с</span>
-          <input v-model="ctx.analyticsFilters.date_from" class="input" type="date" :max="ctx.analyticsFilters.date_to || ctx.maxDate" />
-        </label>
-        <label class="field">
-          <span class="label">Период по</span>
-          <input v-model="ctx.analyticsFilters.date_to" class="input" type="date" :min="ctx.analyticsFilters.date_from || ctx.minDate" :max="ctx.maxDate" />
-        </label>
-        <label class="field">
-          <span class="label">Тип сделки</span>
-          <select v-model="ctx.analyticsFilters.deal_type_code" class="input input--select">
-            <option value="">Все</option>
-            <option v-for="t in ctx.dealTypeOptions" :key="t.code" :value="t.code">{{ t.name }}</option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="label">Регион</span>
-          <select v-model="ctx.analyticsFilters.region_code" class="input input--select">
-            <option value="">Все</option>
-            <option v-for="r in ctx.regions" :key="r.code" :value="r.code">{{ r.name }} ({{ r.code }})</option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="label">Источник</span>
-          <select v-model.number="ctx.analyticsFilters.source_id" class="input input--select">
-            <option value="">Все</option>
-            <option v-for="s in ctx.sourcesByCode" :key="s.source_id" :value="s.source_id">{{ s.name }} ({{ s.code }})</option>
-          </select>
-        </label>
+    <section class="panel admin-content-shell">
+      <div class="panel__head analytics-head">
+        <div>
+          <h2>Аналитика</h2>
+          <p class="muted">Продажи и шеринг (по завершенным сделкам).</p>
+        </div>
+        <div class="analytics-head__actions">
+          <button class="ghost" type="button" :disabled="ctx.analyticsLoading" @click="ctx.loadAnalytics">
+            Применить
+          </button>
+          <button class="catalog-refresh-btn" type="button" :disabled="ctx.analyticsLoading" aria-label="Обновить" title="Обновить" @click="ctx.loadAnalytics">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+              <path d="M20 4v6h-6" />
+            </svg>
+          </button>
+        </div>
       </div>
+      <div class="panel__body">
+        <div class="analytics-filters">
+          <label class="field">
+            <span class="label">Период с</span>
+            <input v-model="ctx.analyticsFilters.date_from" class="input" type="date" :max="ctx.analyticsFilters.date_to || ctx.maxDate" />
+          </label>
+          <label class="field">
+            <span class="label">Период по</span>
+            <input v-model="ctx.analyticsFilters.date_to" class="input" type="date" :min="ctx.analyticsFilters.date_from || ctx.minDate" :max="ctx.maxDate" />
+          </label>
+          <label class="field">
+            <span class="label">Тип сделки</span>
+            <select v-model="ctx.analyticsFilters.deal_type_code" class="input input--select">
+              <option value="">Все</option>
+              <option v-for="t in ctx.dealTypeOptions" :key="t.code" :value="t.code">{{ t.name }}</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="label">Регион</span>
+            <select v-model="ctx.analyticsFilters.region_code" class="input input--select">
+              <option value="">Все</option>
+              <option v-for="r in ctx.regions" :key="r.code" :value="r.code">{{ r.name }} ({{ r.code }})</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="label">Источник</span>
+            <select v-model.number="ctx.analyticsFilters.source_id" class="input input--select">
+              <option value="">Все</option>
+              <option v-for="s in ctx.sourcesByCode" :key="s.source_id" :value="s.source_id">{{ s.name }} ({{ s.code }})</option>
+            </select>
+          </label>
+        </div>
 
       <p v-if="ctx.analyticsError" class="bad">{{ ctx.analyticsError }}</p>
       <p v-if="!ctx.analyticsLoaded && !ctx.analyticsLoading" class="muted">Укажите за какой период вывести отчет.</p>
@@ -257,12 +274,13 @@
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </section>
   </section>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref, unref } from 'vue'
 
 import { useResizableTableColumns } from '../useResizableTableColumns'
 
@@ -313,7 +331,12 @@ const { getColumnStyle: getSourcesRevenueColumnStyle, startResize: startSourcesR
   ],
 })
 
-defineProps({
+const props = defineProps({
   ctx: { type: Object, required: true },
 })
+
+// Держим состояние роутера и вкладок, чтобы стабильно переключаться внутри админ-блока.
+const activeTab = computed(() => String(unref(props.ctx.activeTab) || ''))
+const routeQuery = computed(() => unref(props.ctx.routeQuery) || {})
+const canManageRolePermissions = computed(() => Boolean(unref(props.ctx.canManageRolePermissions)))
 </script>

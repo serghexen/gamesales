@@ -3,11 +3,11 @@
     <div class="shell">
       <WorkTopBar :ctx="topBarCtx" />
 
-      <WorkDashboardHero v-if="showDashboard && activeTab === 'dashboard'" :ctx="dashboardSectionCtx" />
+      <WorkDashboardHero v-if="canViewDashboardSection && activeTab === 'dashboard'" :ctx="dashboardSectionCtx" />
 
       <main class="main">
         <WorkDashboardPanel
-          v-if="showDashboard && activeTab === 'dashboard'"
+          v-if="canViewDashboardSection && activeTab === 'dashboard'"
           :ctx="dashboardSectionCtx"
         />
 
@@ -649,7 +649,7 @@ const canToggleAccountDeactivation = computed(() => {
   return normalizeRole(auth.state.role) !== 'operator'
 })
 const showUsersTab = false
-const showDashboard = false
+const showDashboard = true
 const showRolePermissionsPanel = computed(() => canManageRolePermissions.value)
 
 const roleSectionDefaults = {
@@ -687,13 +687,18 @@ const canViewDealsSection = computed(() => canViewSection('deals'))
 const canViewAccountsSection = computed(() => canViewSection('accounts'))
 const canViewProductsSection = computed(() => canViewSection('products'))
 const canViewNsGiftSection = computed(() => canViewSection('ns-gift'))
-const canViewTelegramSection = computed(() => showChatsTab.value && canViewSection('telegram'))
+const canViewTelegramSection = computed(() => canViewSection('telegram'))
 const canViewAnalyticsSection = computed(() => canViewSection('analytics'))
 const canViewCatalogsSection = computed(() => isAdmin.value && canViewSection('catalogs'))
 const canViewUsersSection = computed(() => isAdmin.value && canViewSection('users'))
 const canViewUsersTab = computed(() => showUsersTab && canViewUsersSection.value)
 const canViewProfileSection = computed(() => canViewSection('profile'))
-const canViewDashboardSection = computed(() => showDashboard && canViewSection('dashboard'))
+const canViewDashboardSection = computed(() => canViewSection('dashboard'))
+
+// Берем предзагруженные права из auth-store, чтобы не показывать лишние вкладки до первого запроса.
+mySectionPermissionsMap.value = {
+  ...(auth.state.sections && typeof auth.state.sections === 'object' ? auth.state.sections : {}),
+}
 
 // Возвращает список вкладок, которые реально доступны пользователю в текущем UI.
 function getAllowedTabs() {
@@ -725,19 +730,17 @@ async function loadMySectionPermissions() {
     mySectionPermissionsMap.value = {}
     return
   }
-  try {
-    const res = await apiGet('/rbac/my-sections', { token: auth.state.token })
-    const map = {}
-    const items = Array.isArray(res?.items) ? res.items : []
-    for (const item of items) {
-      const code = String(item?.section_code || '').trim()
-      if (!code) continue
-      map[code] = Boolean(item?.can_view)
+  // Если store умеет подгружать права, используем его как единый источник для login/work.
+  if (typeof auth.loadMySections === 'function') {
+    const loaded = await auth.loadMySections()
+    mySectionPermissionsMap.value = {
+      ...(loaded && typeof loaded === 'object' ? loaded : {}),
     }
-    mySectionPermissionsMap.value = map
-  } catch {
-    // Если RBAC временно недоступен, работаем по role-based fallback без блокировки экрана.
-    mySectionPermissionsMap.value = {}
+    return
+  }
+  // Fallback для совместимости со старым store без метода loadMySections.
+  mySectionPermissionsMap.value = {
+    ...(auth.state.sections && typeof auth.state.sections === 'object' ? auth.state.sections : {}),
   }
 }
 
@@ -1175,7 +1178,7 @@ const accountFilterDraft = reactive({
 const editAccount = reactive(createEditAccountState())
 const showProductForm = ref(false)
 const showProductFilters = ref(false)
-const showChatsTab = ref(false)
+const showChatsTab = ref(true)
 const showDealForm = ref(false)
 const activeDealFilter = ref('')
 const activeProductFilter = ref('')
@@ -2596,6 +2599,12 @@ const {
   createRegion,
   newRegion,
   isAdmin,
+  activeTab,
+  routeQuery: computed(() => route.query || {}),
+  canViewProfileSection,
+  canViewAnalyticsSection,
+  canViewCatalogsSection,
+  canManageRolePermissions,
   dealsRealtimeStatus,
   dealEditingByDealId,
   dealsRealtimeAnimationTick,
@@ -2859,6 +2868,12 @@ const dealsAreaCtx = asCtx({
 
 // Контекст вкладки аналитики: фильтры, таблицы и форматтеры.
 const analyticsSectionCtx = asCtx({
+  activeTab,
+  routeQuery: computed(() => route.query || {}),
+  canViewProfileSection,
+  canViewAnalyticsSection,
+  canViewCatalogsSection,
+  canManageRolePermissions,
   analyticsLoading,
   analyticsError,
   analyticsLoaded,

@@ -46,6 +46,7 @@ describe('WorkProfileSection', () => {
       props: {
         ctx: buildCtx({
           isAdmin: true,
+          canManageRolePermissions: true,
           canViewAnalyticsSection: true,
           canViewCatalogsSection: true,
           canViewUsersSection: true,
@@ -67,7 +68,8 @@ describe('WorkProfileSection', () => {
     })
 
     expect(wrapper.find('.users-stub').exists()).toBe(true)
-    expect(wrapper.findAll('.analytics-link')).toHaveLength(2)
+    expect(wrapper.findAll('.analytics-link')).toHaveLength(3)
+    expect(wrapper.text()).toContain('Пользователи')
     expect(wrapper.text()).toContain('Аналитика')
     expect(wrapper.text()).toContain('Справочники')
   })

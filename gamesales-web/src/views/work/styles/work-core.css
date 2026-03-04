@@ -268,9 +268,15 @@
 }
 
 .work-page .profile-role-permissions {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
+  margin-top: 12px;
+}
+
+.work-page .profile-admin-links {
+  margin-bottom: 10px;
+}
+
+.work-page .admin-content-shell {
+  margin-top: 12px;
 }
 
 .work-page .profile-role-permissions__header {
@@ -278,13 +284,28 @@
 }
 
 .work-page .profile-role-permissions__toggle {
-  min-width: 110px;
-  justify-content: center;
+  min-width: 0;
 }
 
 .work-page .profile-role-permissions__form {
   display: grid;
   gap: 10px;
+}
+
+/* В доступах показываем список без внутреннего скролла и плотнее раскладываем в колонки. */
+.work-page .check-list.check-list--role-permissions {
+  max-height: none;
+  overflow: visible;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  column-gap: 12px;
+  row-gap: 4px;
+  padding: 6px 8px;
+}
+
+.work-page .check-list.check-list--role-permissions .check-item {
+  min-height: 22px;
+  gap: 6px;
+  font-size: 12px;
 }
 
 .work-page .profile-role-permissions .field--align-end {

@@ -70,6 +70,12 @@ export function useWorkSectionContexts({
   createRegion,
   newRegion,
   isAdmin,
+  activeTab,
+  routeQuery,
+  canViewProfileSection,
+  canViewAnalyticsSection,
+  canViewCatalogsSection,
+  canManageRolePermissions,
   dealsRealtimeStatus,
   dealEditingByDealId,
   dealsRealtimeAnimationTick,
@@ -513,6 +519,12 @@ export function useWorkSectionContexts({
 
   // Контекст вкладки "Справочники".
   const catalogsSectionCtx = proxyRefs({
+    activeTab,
+    routeQuery,
+    canViewProfileSection,
+    canViewAnalyticsSection,
+    canViewCatalogsSection,
+    canManageRolePermissions,
     catalogsError,
     catalogsOk,
     catalogsLoading,

@@ -1,36 +1,56 @@
 <template>
   <section class="panel panel--wide">
-    <div class="panel__head"></div>
     <div class="panel__body">
-      <p v-if="catalogsError" class="bad">{{ catalogsError }}</p>
-      <p v-if="catalogsOk" class="ok">{{ catalogsOk }}</p>
-
-      <div v-if="catalogsLoading" class="loader-wrap loader-overlay">
-        <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
-          <div class="wheel"></div>
-          <div class="hamster">
-            <div class="hamster__body">
-              <div class="hamster__head">
-                <div class="hamster__ear"></div>
-                <div class="hamster__eye"></div>
-                <div class="hamster__nose"></div>
-              </div>
-              <div class="hamster__limb hamster__limb--fr"></div>
-              <div class="hamster__limb hamster__limb--fl"></div>
-              <div class="hamster__limb hamster__limb--br"></div>
-              <div class="hamster__limb hamster__limb--bl"></div>
-              <div class="hamster__tail"></div>
-            </div>
-          </div>
-          <div class="spoke"></div>
-        </div>
+      <div
+        v-if="canManageRolePermissions"
+        class="tabs profile-admin-links"
+      >
+        <router-link class="tab" :to="{ name: 'work', query: { ...routeQuery, tab: 'profile', admin_panel: undefined } }">
+          Пользователи
+        </router-link>
+        <router-link class="tab" :class="{ active: activeTab === 'profile' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'profile', admin_panel: 'access' } }">
+          Доступы
+        </router-link>
+        <router-link class="tab" :class="{ active: activeTab === 'analytics' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'analytics', admin_panel: undefined } }">
+          Аналитика
+        </router-link>
+        <router-link class="tab" :class="{ active: activeTab === 'catalogs' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'catalogs', admin_panel: undefined } }">
+          Справочники
+        </router-link>
       </div>
+    </div>
 
-      <div v-else>
-        <!-- Модалки справочников живут отдельно, чтобы не раздувать шаблон -->
-        <WorkCatalogModals :ctx="catalogModalsCtx" />
+    <section class="panel admin-content-shell">
+      <div class="panel__body">
+        <p v-if="catalogsError" class="bad">{{ catalogsError }}</p>
+        <p v-if="catalogsOk" class="ok">{{ catalogsOk }}</p>
 
-        <div class="catalog-grid">
+        <div v-if="catalogsLoading" class="loader-wrap loader-overlay">
+          <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
+            <div class="wheel"></div>
+            <div class="hamster">
+              <div class="hamster__body">
+                <div class="hamster__head">
+                  <div class="hamster__ear"></div>
+                  <div class="hamster__eye"></div>
+                  <div class="hamster__nose"></div>
+                </div>
+                <div class="hamster__limb hamster__limb--fr"></div>
+                <div class="hamster__limb hamster__limb--fl"></div>
+                <div class="hamster__limb hamster__limb--br"></div>
+                <div class="hamster__limb hamster__limb--bl"></div>
+                <div class="hamster__tail"></div>
+              </div>
+            </div>
+            <div class="spoke"></div>
+          </div>
+        </div>
+
+        <div v-else>
+          <!-- Модалки справочников живут отдельно, чтобы не раздувать шаблон -->
+          <WorkCatalogModals :ctx="catalogModalsCtx" />
+
+          <div class="catalog-grid">
         <div class="catalog catalog--domain">
           <div class="panel__head">
             <div class="toolbar-actions">
@@ -430,9 +450,10 @@
           </table>
           <p v-else class="muted">Пока нет регионов.</p>
         </div>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
   </section>
 </template>
 
@@ -514,6 +535,9 @@ function startRegionsResizeByRole(event, key) {
 }
 
 const {
+  activeTab,
+  routeQuery,
+  canManageRolePermissions,
   catalogsError,
   catalogsOk,
   catalogsLoading,
