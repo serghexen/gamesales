@@ -947,11 +947,12 @@ def mount_deals_routes(
                     current_assign = row_assign[0] if row_assign else None
                     # Сравниваем назначение только по product_id.
                     assigned_product_id = int(row_assign[4]) if row_assign and row_assign[4] is not None else None
+                    assigned_customer_id = int(row_assign[3]) if row_assign and row_assign[3] is not None else None
+                    new_customer_id = int(customer_id) if customer_id is not None else None
                     need_new_assign = (
                         (not row_assign)
                         or int(row_assign[1]) != int(new_account_id)
                         or row_assign[2] != new_slot_type_code
-                        or (customer_id is not None and row_assign[3] != customer_id)
                         or (assigned_product_id != int(new_product_id))
                     )
                     if need_new_assign and current_assign:
@@ -976,6 +977,17 @@ def mount_deals_routes(
                                 deal_item_id,
                                 user.username,
                             ),
+                        )
+                    elif row_assign and new_customer_id != assigned_customer_id:
+                        # При простом переименовании покупателя обновляем клиента в активном назначении без "снятия" слота.
+                        exec1(
+                            conn,
+                            """
+                            UPDATE app.account_slot_assignments
+                            SET customer_id=%s
+                            WHERE assignment_id=%s
+                            """,
+                            (new_customer_id, current_assign),
                         )
             conn.commit()
             # После успешного update отправляем событие об изменении сделки.
