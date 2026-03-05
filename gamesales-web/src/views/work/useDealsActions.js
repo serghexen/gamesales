@@ -26,7 +26,7 @@ export function useDealsActions({
   // Проверяет, может ли текущий пользователь проводить возврат (admin/owner).
   function canCompleteRefund() {
     const role = String(auth?.state?.role || '').trim().toLowerCase()
-    return role === 'admin' || role === 'administrator' || role === 'owner'
+    return role === 'admin' || role === 'owner'
   }
 
   // Для ручной правки системных дат используем те же привилегии, что и для completed-операций.

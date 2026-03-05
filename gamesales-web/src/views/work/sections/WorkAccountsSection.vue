@@ -171,6 +171,14 @@
         :account-product-type="ctx.accountProductType"
         :set-account-product-type="ctx.setAccountProductType"
         :filtered-account-products="ctx.filteredAccountProducts"
+        :create-quick-account-product="ctx.createQuickAccountProduct"
+        :quick-new-account-product="ctx.quickNewAccountProduct"
+        :quick-new-account-product-loading="ctx.quickNewAccountProductLoading"
+        :quick-new-account-product-error="ctx.quickNewAccountProductError"
+        :quick-edit-account-product="ctx.quickEditAccountProduct"
+        :quick-edit-account-product-loading="ctx.quickEditAccountProductLoading"
+        :quick-edit-account-product-error="ctx.quickEditAccountProductError"
+        :platforms="ctx.platforms"
       />
 
       <WorkSlotImportModal

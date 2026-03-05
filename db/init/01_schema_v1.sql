@@ -614,7 +614,7 @@ CREATE TABLE IF NOT EXISTS app.users (
 );
 
 INSERT INTO app.user_roles(code, name)
-VALUES ('admin','Admin'),('manager','Manager')
+VALUES ('operator','Оператор'),('owner','Владелец'),('admin','Администратор'),('manager','Менеджер')
 ON CONFLICT (code) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS app.ui_sections (
@@ -652,7 +652,7 @@ SELECT
   r.code,
   s.section_code,
   CASE
-    WHEN lower(r.code) IN ('admin', 'administrator', 'owner') THEN true
+    WHEN lower(r.code) IN ('admin', 'owner') THEN true
     WHEN s.section_code IN ('analytics', 'catalogs', 'users', 'dashboard') THEN false
     ELSE true
   END AS can_view,

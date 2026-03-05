@@ -43,7 +43,7 @@ def mount_rbac_routes(
     def default_section_visibility(role_code: str, section_code: str) -> bool:
         role = str(role_code or "").strip().lower()
         section = str(section_code or "").strip().lower()
-        if role in {"admin", "administrator", "owner"}:
+        if role in {"admin", "owner"}:
             return True
         if section in {"analytics", "catalogs", "users", "dashboard"}:
             return False
@@ -154,7 +154,7 @@ def mount_rbac_routes(
         return {"role_code": role_code, "items": rows}
 
     @app.get("/rbac/roles/{role_code}/sections")
-    def get_role_sections(role_code: str, user=Depends(require_role("admin", "administrator", "owner"))):
+    def get_role_sections(role_code: str, user=Depends(require_role("admin", "owner"))):
         role = str(role_code or "").strip().lower()
         if not role:
             raise HTTPException(400, "role_code is required")
@@ -170,7 +170,7 @@ def mount_rbac_routes(
     def save_role_sections(
         role_code: str,
         payload: RoleSectionPermissionsUpdateIn,
-        user=Depends(require_role("admin", "administrator", "owner")),
+        user=Depends(require_role("admin", "owner")),
     ):
         role = str(role_code or "").strip().lower()
         if not role:

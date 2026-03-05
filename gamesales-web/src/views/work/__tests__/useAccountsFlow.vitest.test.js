@@ -26,6 +26,13 @@ function createHarness() {
     editAccountProductSearch: ref(''),
     accountProductType: ref(''),
     editAccountProductType: ref(''),
+    quickNewAccountProduct: reactive({ title: '', platform_codes: [] }),
+    quickNewAccountProductLoading: ref(false),
+    quickNewAccountProductError: ref(''),
+    quickEditAccountProduct: reactive({ title: '', platform_codes: [] }),
+    quickEditAccountProductLoading: ref(false),
+    quickEditAccountProductError: ref(''),
+    loadProductsAll: vi.fn().mockResolvedValue(undefined),
     accountProductsLoading: ref(false),
     accountDeals: ref([]),
     accountDealsError: ref(null),
@@ -77,13 +84,51 @@ describe('useAccountsFlow', () => {
     expect(h.editAccount.product_ids).toEqual([])
   })
 
-  it('openCreateAccountModal resets product type filter to all', () => {
+  it('openCreateAccountModal sets product type filter to game', () => {
     const h = createHarness()
     h.accountProductType.value = 'subscription'
 
     h.openCreateAccountModal()
 
-    expect(h.accountProductType.value).toBe('')
+    expect(h.accountProductType.value).toBe('game')
+  })
+
+  it('createQuickAccountProduct creates product by selected type and links it to new account', async () => {
+    const h = createHarness()
+    h.quickNewAccountProduct.title = 'PS Plus Extra'
+    h.quickNewAccountProduct.platform_codes = ['ps5']
+    h.newAccount.product_ids = [10]
+    h.apiPost.mockResolvedValueOnce({ product_id: 77 })
+
+    await h.createQuickAccountProduct('subscription')
+
+    expect(h.apiPost).toHaveBeenCalledWith(
+      '/products',
+      expect.objectContaining({
+        type_code: 'subscription',
+        title: 'PS Plus Extra',
+        platform_codes: ['ps5'],
+      }),
+      { token: 'token-1' }
+    )
+    expect(h.loadProductsAll).toHaveBeenCalledTimes(1)
+    expect(h.newAccount.product_ids).toEqual([10, 77])
+    expect(h.quickNewAccountProduct.title).toBe('')
+    expect(h.quickNewAccountProduct.platform_codes).toEqual([])
+  })
+
+  it('createQuickAccountProduct supports edit target and links product to edited account', async () => {
+    const h = createHarness()
+    h.quickEditAccountProduct.title = 'EA FC 26'
+    h.quickEditAccountProduct.platform_codes = ['ps5']
+    h.editAccount.product_ids = [44]
+    h.apiPost.mockResolvedValueOnce({ product_id: 88 })
+
+    await h.createQuickAccountProduct('game', 'edit')
+
+    expect(h.editAccount.product_ids).toEqual([44, 88])
+    expect(h.quickEditAccountProduct.title).toBe('')
+    expect(h.quickEditAccountProduct.platform_codes).toEqual([])
   })
 
   it('toggleAccountEditMode reverts unsaved changes on second click', () => {

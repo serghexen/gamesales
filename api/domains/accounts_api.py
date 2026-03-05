@@ -375,7 +375,7 @@ def mount_accounts_routes(
     def update_account(
         account_id: int,
         payload: AccountUpdate,
-        user=Depends(require_role("admin", "manager", "operator")),
+        user=Depends(require_role("admin", "owner", "manager", "operator")),
     ):
         validate_date_not_future(payload.account_date, "account_date")
         with psycopg.connect(DB_DSN) as conn:
@@ -407,7 +407,7 @@ def mount_accounts_routes(
 
             new_login = payload.login_name if payload.login_name is not None else current_login
             # Менеджер/оператор могут редактировать карточку, но не менять статус аккаунта.
-            if user.role != "admin" and payload.status_code is not None and payload.status_code != current_status:
+            if user_role not in {"admin", "owner"} and payload.status_code is not None and payload.status_code != current_status:
                 raise HTTPException(403, "Only admin can change account status")
             new_status = payload.status_code if payload.status_code is not None else current_status
             new_date = payload.account_date if payload.account_date is not None else current_account_date
@@ -520,7 +520,7 @@ def mount_accounts_routes(
         return {"ok": True}
     
     @app.get("/accounts/{account_id}/secrets", response_model=List[AccountSecretOut])
-    def list_account_secrets(account_id: int, user=Depends(require_role("admin", "manager", "operator"))):
+    def list_account_secrets(account_id: int, user=Depends(require_role("admin", "owner", "manager", "operator"))):
         with psycopg.connect(DB_DSN) as conn:
             rows = qall(
                 conn,
@@ -535,7 +535,7 @@ def mount_accounts_routes(
         return [AccountSecretOut(secret_key=r0, secret_value_b64=r1, created_at=r2) for (r0, r1, r2) in rows]
     
     @app.post("/accounts/secrets/batch", response_model=List[AccountSecretsBatchItem])
-    def list_account_secrets_batch(payload: AccountSecretsBatchIn, user=Depends(require_role("admin", "manager", "operator"))):
+    def list_account_secrets_batch(payload: AccountSecretsBatchIn, user=Depends(require_role("admin", "owner", "manager", "operator"))):
         account_ids = list({int(a) for a in (payload.account_ids or [])})
         if not account_ids:
             return []
@@ -565,7 +565,7 @@ def mount_accounts_routes(
     def upsert_account_secret(
         account_id: int,
         payload: AccountSecretIn,
-        user=Depends(require_role("admin", "manager", "operator")),
+        user=Depends(require_role("admin", "owner", "manager", "operator")),
     ):
         value_b64 = b64_encode(payload.secret_value)
         with psycopg.connect(DB_DSN) as conn:
@@ -592,7 +592,7 @@ def mount_accounts_routes(
     def delete_account_secret(
         account_id: int,
         secret_key: str,
-        user=Depends(require_role("admin", "manager", "operator")),
+        user=Depends(require_role("admin", "owner", "manager", "operator")),
     ):
         with psycopg.connect(DB_DSN) as conn:
             exec1(
@@ -908,7 +908,7 @@ def mount_accounts_routes(
     def set_account_products(
         account_id: int,
         payload: AccountProductsIn,
-        user=Depends(require_role("admin", "manager", "operator")),
+        user=Depends(require_role("admin", "owner", "manager", "operator")),
     ):
         with psycopg.connect(DB_DSN) as conn:
             ensure_account_exists(conn, account_id)

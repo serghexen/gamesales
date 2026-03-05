@@ -413,7 +413,7 @@ function normalizeRole(value) {
 function hasCompletedDealsAccess(roleValue, usernameValue) {
   const role = normalizeRole(roleValue)
   const me = String(usernameValue || '').trim().toLowerCase()
-  const privilegedRoles = new Set(['admin', 'administrator', 'owner'])
+  const privilegedRoles = new Set(['admin', 'owner'])
   const privilegedUsers = new Set(['admin', 'owner'])
   return privilegedRoles.has(role) || privilegedUsers.has(me)
 }
@@ -632,13 +632,13 @@ const activeAccountChips = computed(() => {
 const isAdmin = computed(() => {
   // Для административных разделов приравниваем владельца к админу.
   const role = normalizeRole(auth.state.role)
-  return role === 'admin' || role === 'administrator' || role === 'owner'
+  return role === 'admin' || role === 'owner'
 })
 const canManageRolePermissions = computed(() => {
   // Ролевой моделью управляют владелец и администратор.
   const role = normalizeRole(auth.state.role)
   const username = String(auth.state.user || '').trim().toLowerCase()
-  return role === 'admin' || role === 'administrator' || role === 'owner' || username === 'owner'
+  return role === 'admin' || role === 'owner' || username === 'owner'
 })
 const mustPrefillDealsResponsible = computed(() => {
   const role = String(auth.state.role || '').trim().toLowerCase()
@@ -668,7 +668,7 @@ const rolePermissionsOk = ref('')
 // Возвращает дефолтную видимость секции, если для роли еще нет явной записи в таблице прав.
 function defaultSectionVisibilityByRole(sectionCode, roleCode) {
   const role = normalizeRole(roleCode)
-  if (role === 'admin' || role === 'administrator' || role === 'owner') return true
+  if (role === 'admin' || role === 'owner') return true
   return !roleSectionDefaults.privileged_only.has(String(sectionCode || '').trim())
 }
 
@@ -1163,8 +1163,8 @@ const accountModalMode = ref('edit')
 const showAccountFilters = ref(false)
 const accountProductSearch = ref('')
 const editAccountProductSearch = ref('')
-const accountProductType = ref('')
-const editAccountProductType = ref('')
+const accountProductType = ref('game')
+const editAccountProductType = ref('game')
 const accountProductsLoading = ref(false)
 const activeAccountFilter = ref('')
 const accountFilterDraft = reactive({
@@ -1323,6 +1323,12 @@ const quickNewAccountLoading = ref(false)
 const quickEditAccountLoading = ref(false)
 const quickNewAccountError = ref('')
 const quickEditAccountError = ref('')
+const quickNewAccountProduct = reactive({ title: '', platform_codes: [] })
+const quickNewAccountProductLoading = ref(false)
+const quickNewAccountProductError = ref('')
+const quickEditAccountProduct = reactive({ title: '', platform_codes: [] })
+const quickEditAccountProductLoading = ref(false)
+const quickEditAccountProductError = ref('')
 const subscriptionFreeProductIdsNew = ref([])
 const subscriptionFreeProductIdsEdit = ref([])
 const subscriptionFreeProductIdsLoadingNew = ref(false)
@@ -1739,6 +1745,7 @@ const {
   openCreateAccountModal,
   cancelEditAccount,
   createAccount,
+  createQuickAccountProduct,
   updateAccount,
   deleteAccount,
 } = useAccountsFlow({
@@ -1783,6 +1790,13 @@ const {
   requestUnsavedConfirm,
   requestDealConfirm,
   showDealWarning,
+  quickNewAccountProduct,
+  quickNewAccountProductLoading,
+  quickNewAccountProductError,
+  quickEditAccountProduct,
+  quickEditAccountProductLoading,
+  quickEditAccountProductError,
+  loadProductsAll,
 })
 
 loadAccountsAllDeferred.set(loadAccountsAllFromAccountsFlow)
@@ -2471,6 +2485,14 @@ const accountsSectionCtx = asCtx({
   accountProductType,
   setAccountProductType,
   filteredAccountProducts,
+  createQuickAccountProduct,
+  quickNewAccountProduct,
+  quickNewAccountProductLoading,
+  quickNewAccountProductError,
+  quickEditAccountProduct,
+  quickEditAccountProductLoading,
+  quickEditAccountProductError,
+  platforms,
   showSlotImport,
   closeSlotImport,
   slotImportLoading,

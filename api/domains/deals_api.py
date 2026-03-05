@@ -125,7 +125,7 @@ def mount_deals_routes(
     def has_completed_deal_access(user) -> bool:
         role = (getattr(user, "role", "") or "").strip().lower()
         username = (getattr(user, "username", "") or "").strip().lower()
-        return role in {"admin", "administrator", "owner"} or username in {"admin", "owner"}
+        return role in {"admin", "owner"} or username in {"admin", "owner"}
 
     # Находит owner и возвращает отображаемое имя для поля "Ответственный".
     def resolve_owner_responsible_name(conn) -> str:
@@ -716,7 +716,7 @@ def mount_deals_routes(
                 raise HTTPException(400, "is_refund is allowed only for sale or rental deals")
             # Проведение возврата в completed разрешено только владельцу или администратору.
             is_completing_now = flow_status_code != "completed" and new_flow_status == "completed"
-            if is_completing_now and new_is_refund and user_role not in {"admin", "administrator", "owner"}:
+            if is_completing_now and new_is_refund and user_role not in {"admin", "owner"}:
                 raise HTTPException(403, "не достаточно прав для проведения возврата")
             # Храним признак возврата через returned_at: timestamp при включении и null при выключении.
             new_returned_at = returned_at

@@ -34,7 +34,7 @@ SELECT
   r.code,
   s.section_code,
   CASE
-    WHEN lower(r.code) IN ('admin', 'administrator', 'owner') THEN true
+    WHEN lower(r.code) IN ('admin', 'owner') THEN true
     WHEN s.section_code IN ('analytics', 'catalogs', 'users', 'dashboard') THEN false
     ELSE true
   END AS can_view,

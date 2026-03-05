@@ -217,7 +217,7 @@
                         </div>
                       </div>
                       <div class="field field--full">
-                        <span class="label account-products-title">Товары (необязательно)</span>
+                        <span class="label account-products-title">Товары</span>
                         <div v-if="accountEditMode === 'view'" class="pill-list">
                           <span v-for="t in accountProductTitles" :key="t" class="pill">{{ t }}</span>
                           <span v-if="!accountProductTitles.length" class="muted">Пока нет товаров.</span>
@@ -228,20 +228,52 @@
                               <span class="label">Поиск</span>
                               <input v-model.trim="editAccountProductSearchModel" class="input" placeholder="поиск" />
                             </label>
-                            <label class="field">
-                              <span class="label">Тип товара</span>
-                              <select v-model="editAccountProductTypeModel" class="input input--select">
-                                <option value="">Все</option>
-                                <option value="game">Игра</option>
-                                <option value="subscription">Подписка</option>
-                              </select>
-                            </label>
+                          <label class="field">
+                            <span class="label">Тип товара</span>
+                            <select v-model="editAccountProductTypeModel" class="input input--select">
+                              <option value="game">Игра</option>
+                              <option value="subscription">Подписка</option>
+                            </select>
+                          </label>
                           </div>
                           <div class="check-list check-list--account-products">
                             <label v-for="g in filteredEditAccountProducts" :key="g.product_id" class="check-item">
                               <input type="checkbox" :value="g.product_id" v-model="editAccount.product_ids" />
-                              <span>{{ g.title }} <span class="muted">({{ getProductTypeLabel(g.type_code) }})</span></span>
+                              <span>{{ g.title }}</span>
                             </label>
+                          </div>
+                          <div
+                            v-if="showEditAccountProductNoMatches"
+                            :class="[
+                              'quick-create quick-create--account-product',
+                              { 'quick-create--collapsed': !editQuickProductOpen }
+                            ]"
+                          >
+                            <div class="quick-create__header">
+                              <button class="comment-toggle" type="button" @click="editQuickProductOpen = !editQuickProductOpen">
+                                {{ editQuickProductOpen ? 'Быстрое создание товара' : '+ Быстрое создание товара' }}
+                              </button>
+                              <button
+                                v-if="editQuickProductOpen"
+                                class="ghost ghost--small"
+                                type="button"
+                                :disabled="quickEditAccountProductLoading"
+                                @click="createQuickAccountProduct(editAccountProductTypeModel, 'edit')"
+                              >
+                                <span v-if="quickEditAccountProductLoading" class="spinner spinner--small"></span>
+                                Создать
+                              </button>
+                            </div>
+                            <template v-if="editQuickProductOpen">
+                              <input v-model.trim="quickEditAccountProduct.title" class="input input--compact" placeholder="Название товара" />
+                              <div class="check-list check-list--compact check-list--platform-row">
+                                <label v-for="p in platforms" :key="`qae-p-${p.code}`" class="check-item">
+                                  <input type="checkbox" :value="p.code" v-model="quickEditAccountProduct.platform_codes" />
+                                  <span>{{ p.name }} ({{ p.code }})</span>
+                                </label>
+                              </div>
+                              <span v-if="quickEditAccountProductError" class="bad">{{ quickEditAccountProductError }}</span>
+                            </template>
                           </div>
                         </div>
                       </div>
@@ -428,7 +460,7 @@
                         />
                       </div>
                       <div class="field field--full">
-                        <span class="label account-products-title">Товары (необязательно)</span>
+                        <span class="label account-products-title">Товары</span>
                         <div class="account-product-filters field--full">
                           <label class="field">
                             <span class="label">Поиск</span>
@@ -437,17 +469,50 @@
                           <label class="field">
                             <span class="label">Тип товара</span>
                             <select v-model="accountProductTypeModel" class="input input--select">
-                              <option value="">Все</option>
                               <option value="game">Игра</option>
                               <option value="subscription">Подписка</option>
                             </select>
                           </label>
                         </div>
-                        <div class="check-list check-list--account-products">
+                        <div v-if="!isCreateSubscriptionMode" class="check-list check-list--account-products">
                           <label v-for="g in filteredAccountProducts" :key="g.product_id" class="check-item">
                             <input type="checkbox" :value="g.product_id" v-model="newAccount.product_ids" />
-                            <span>{{ g.title }} <span class="muted">({{ getProductTypeLabel(g.type_code) }})</span></span>
+                            <span>{{ g.title }}</span>
                           </label>
+                        </div>
+                        <p v-else class="muted">Для подписки используется только новое быстрое создание товара.</p>
+                        <div
+                          v-if="showNewAccountQuickCreate"
+                          :class="[
+                            'quick-create quick-create--account-product',
+                            { 'quick-create--collapsed': !newQuickProductOpen }
+                          ]"
+                        >
+                          <div class="quick-create__header">
+                            <button class="comment-toggle" type="button" @click="newQuickProductOpen = !newQuickProductOpen">
+                              {{ newQuickProductOpen ? 'Быстрое создание товара' : '+ Быстрое создание товара' }}
+                            </button>
+                            <button
+                              v-if="newQuickProductOpen"
+                              class="ghost ghost--small"
+                              type="button"
+                              :disabled="quickNewAccountProductLoading"
+                              @click="createQuickAccountProduct(accountProductTypeModel)"
+                            >
+                              <span v-if="quickNewAccountProductLoading" class="spinner spinner--small"></span>
+                              Создать
+                            </button>
+                          </div>
+                          <template v-if="newQuickProductOpen">
+                            <input v-model.trim="quickNewAccountProduct.title" class="input input--compact" placeholder="Название товара" />
+                            <div class="check-list check-list--compact check-list--platform-row">
+                              <label v-for="p in platforms" :key="`qa-p-${p.code}`" class="check-item">
+                                <input type="checkbox" :value="p.code" v-model="quickNewAccountProduct.platform_codes" />
+                                <span>{{ p.name }} ({{ p.code }})</span>
+                              </label>
+                            </div>
+                            <span v-if="quickNewAccountProductError" class="bad">{{ quickNewAccountProductError }}</span>
+                          </template>
                         </div>
                       </div>
                       <div class="field field--comment-collapsible field--full">
@@ -521,6 +586,14 @@ const props = defineProps([
   'accountProductSearch',
   'accountProductType',
   'filteredAccountProducts',
+  'createQuickAccountProduct',
+  'quickNewAccountProduct',
+  'quickNewAccountProductLoading',
+  'quickNewAccountProductError',
+  'quickEditAccountProduct',
+  'quickEditAccountProductLoading',
+  'quickEditAccountProductError',
+  'platforms',
   'setEditAccountProductSearch',
   'setAccountProductSearch',
   'setEditAccountProductType',
@@ -555,6 +628,29 @@ const accountProductSearchModel = computed({
 const accountProductTypeModel = computed({
   get: () => props.accountProductType,
   set: (value) => props.setAccountProductType(value),
+})
+
+// Показывает быстрый create товара, когда в текущем фильтре нет доступных позиций.
+const showNewAccountProductNoMatches = computed(() => {
+  if (props.accountModalMode !== 'create') return false
+  return !Array.isArray(props.filteredAccountProducts) || props.filteredAccountProducts.length === 0
+})
+
+// В создании подписки всегда показываем только быстрый create нового товара.
+const isCreateSubscriptionMode = computed(() => {
+  return props.accountModalMode === 'create'
+    && String(accountProductTypeModel.value || '').trim().toLowerCase() === 'subscription'
+})
+
+// Блок быстрого create в создании: всегда для подписки, для игр только когда список пуст.
+const showNewAccountQuickCreate = computed(() => {
+  return isCreateSubscriptionMode.value || showNewAccountProductNoMatches.value
+})
+
+// Показывает быстрый create товара в редактировании, если текущий фильтр вернул пустой список.
+const showEditAccountProductNoMatches = computed(() => {
+  if (props.accountModalMode !== 'edit' || props.accountEditMode === 'view') return false
+  return !Array.isArray(props.filteredEditAccountProducts) || props.filteredEditAccountProducts.length === 0
 })
 
 // Считает, сколько полных суток осталось до повторной активации аккаунта.
@@ -612,12 +708,11 @@ const accountModalTitle = computed(() => {
 
 const newAccountReserveOpen = ref(false)
 const newAccountCommentOpen = ref(false)
+const newQuickProductOpen = ref(false)
+const editQuickProductOpen = ref(false)
 const editAccountReserveOpen = ref(false)
 const editAccountCommentOpen = ref(false)
 const editReserveRows = ref([''])
-
-// Приводит подпись типа товара к короткому читаемому виду для списка чекбоксов.
-const getProductTypeLabel = (typeCode) => (String(typeCode || '').toLowerCase() === 'subscription' ? 'подписка' : 'игра')
 
 // Подбирает компактную высоту textarea для комментариев и резерва.
 const getCompactNotesRows = (value) => {
@@ -671,6 +766,8 @@ const syncCollapsiblePanels = () => {
   if (!isOpen) {
     newAccountReserveOpen.value = false
     newAccountCommentOpen.value = false
+    newQuickProductOpen.value = false
+    editQuickProductOpen.value = false
     editAccountReserveOpen.value = false
     editAccountCommentOpen.value = false
     editReserveRows.value = ['']
@@ -691,5 +788,59 @@ watch(
   () => [props.editAccount?.open, props.accountModalMode, props.editAccount?.account_id, props.accountEditMode, props.editAccount?.reserve_text],
   () => syncCollapsiblePanels(),
   { immediate: true },
+)
+
+watch(
+  () => showNewAccountProductNoMatches.value,
+  (noMatches) => {
+    // Автоматически сворачиваем быстрый create, когда снова появились товары в списке.
+    if (!noMatches && !isCreateSubscriptionMode.value) newQuickProductOpen.value = false
+  },
+)
+
+watch(
+  () => accountProductTypeModel.value,
+  (typeCode) => {
+    // При выборе подписки для нового аккаунта очищаем ручные выборы списка:
+    // подписка создается новым товаром, без привязки к старым позициям.
+    if (props.accountModalMode !== 'create') return
+    if (String(typeCode || '').trim().toLowerCase() !== 'subscription') return
+    if (Array.isArray(props.newAccount?.product_ids)) {
+      props.newAccount.product_ids = []
+    }
+    if (!newQuickProductOpen.value) newQuickProductOpen.value = true
+  },
+)
+
+watch(
+  () => showEditAccountProductNoMatches.value,
+  (noMatches) => {
+    // Для режима редактирования применяем ту же логику.
+    if (!noMatches) editQuickProductOpen.value = false
+  },
+)
+
+watch(
+  () => accountProductSearchModel.value,
+  (value) => {
+    // В создании аккаунта подставляем поиск в быстрое создание, как в форме Шеринг+.
+    const title = String(value || '').trim()
+    if (!title) return
+    if (props.quickNewAccountProduct) {
+      props.quickNewAccountProduct.title = title
+    }
+  },
+)
+
+watch(
+  () => editAccountProductSearchModel.value,
+  (value) => {
+    // В редактировании аккаунта используем тот же автоподбор названия для быстрого создания.
+    const title = String(value || '').trim()
+    if (!title) return
+    if (props.quickEditAccountProduct) {
+      props.quickEditAccountProduct.title = title
+    }
+  },
 )
 </script>

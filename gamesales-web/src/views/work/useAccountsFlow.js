@@ -42,6 +42,13 @@ export function useAccountsFlow({
   requestUnsavedConfirm,
   requestDealConfirm,
   showDealWarning,
+  quickNewAccountProduct,
+  quickNewAccountProductLoading,
+  quickNewAccountProductError,
+  quickEditAccountProduct,
+  quickEditAccountProductLoading,
+  quickEditAccountProductError,
+  loadProductsAll,
 }) {
   // Проверяет обязательные поля при создании аккаунта и возвращает их человекочитаемые названия.
   function getMissingCreateAccountFields() {
@@ -281,7 +288,10 @@ export function useAccountsFlow({
     editAccount.has_account = Boolean(account)
     editAccount.has_email = Boolean(email)
     editAccount.has_auth = Boolean(authSecret)
-    editAccountProductType.value = ''
+    editAccountProductType.value = 'game'
+    quickEditAccountProduct.title = ''
+    quickEditAccountProduct.platform_codes = []
+    quickEditAccountProductError.value = ''
     // Фиксируем исходное состояние, чтобы уметь определять несохраненные изменения.
     const syncInitialAccountSnapshot = () => {
       initialEditAccountSnapshot = {
@@ -330,8 +340,14 @@ export function useAccountsFlow({
     newAccount.auth_code = ''
     newAccount.product_ids = []
     accountProductSearch.value = ''
-    // Тип товара в поиске при новом открытии формы всегда сбрасываем на "все".
-    accountProductType.value = ''
+    // Тип товара в форме создания всегда начинаем с игр.
+    accountProductType.value = 'game'
+    quickNewAccountProduct.title = ''
+    quickNewAccountProduct.platform_codes = []
+    quickNewAccountProductError.value = ''
+    quickEditAccountProduct.title = ''
+    quickEditAccountProduct.platform_codes = []
+    quickEditAccountProductError.value = ''
     initialEditAccountSnapshot = null
   }
 
@@ -356,7 +372,7 @@ export function useAccountsFlow({
       editAccount.product_ids = [...(snapshot.product_ids || [])]
       accountEditMode.value = 'view'
       editAccountProductSearch.value = ''
-      editAccountProductType.value = ''
+      editAccountProductType.value = 'game'
       return
     }
     accountEditMode.value = 'edit'
@@ -420,7 +436,7 @@ export function useAccountsFlow({
     editAccount.has_auth = false
     editAccount.product_ids = []
     editAccountProductSearch.value = ''
-    editAccountProductType.value = ''
+    editAccountProductType.value = 'game'
     accountDeals.value = []
     accountDealsError.value = null
     accountDealsLoading.value = false
@@ -439,9 +455,81 @@ export function useAccountsFlow({
     newAccount.auth_code = ''
     newAccount.product_ids = []
     accountProductSearch.value = ''
-    accountProductType.value = ''
+    accountProductType.value = 'game'
+    quickNewAccountProduct.title = ''
+    quickNewAccountProduct.platform_codes = []
+    quickNewAccountProductError.value = ''
+    quickEditAccountProduct.title = ''
+    quickEditAccountProduct.platform_codes = []
+    quickEditAccountProductError.value = ''
     initialEditAccountSnapshot = null
     return true
+  }
+
+  // Возвращает refs нужной формы (создание/редактирование) для быстрого создания товара.
+  function resolveQuickAccountProductRefs(target = 'new') {
+    if (target === 'edit') {
+      return {
+        state: quickEditAccountProduct,
+        loading: quickEditAccountProductLoading,
+        error: quickEditAccountProductError,
+        selectedIds: editAccount.product_ids || [],
+        setSelectedIds: (ids) => { editAccount.product_ids = ids },
+      }
+    }
+    return {
+      state: quickNewAccountProduct,
+      loading: quickNewAccountProductLoading,
+      error: quickNewAccountProductError,
+      selectedIds: newAccount.product_ids || [],
+      setSelectedIds: (ids) => { newAccount.product_ids = ids },
+    }
+  }
+
+  // Быстро создает товар из формы создания аккаунта и сразу подставляет его в выбранные.
+  async function createQuickAccountProduct(typeCode = 'game', target = 'new') {
+    const refs = resolveQuickAccountProductRefs(target)
+    refs.error.value = ''
+    const normalizedType = String(typeCode || '').trim().toLowerCase() === 'subscription' ? 'subscription' : 'game'
+    if (!String(refs.state.title || '').trim()) {
+      refs.error.value = 'Укажите название товара'
+      return
+    }
+    if (!Array.isArray(refs.state.platform_codes) || !refs.state.platform_codes.length) {
+      refs.error.value = 'Выберите платформу'
+      return
+    }
+    refs.loading.value = true
+    try {
+      const created = await apiPost(
+        '/products',
+        {
+          type_code: normalizedType,
+          title: String(refs.state.title || '').trim(),
+          platform_codes: refs.state.platform_codes,
+          short_title: null,
+          link: null,
+          text_lang: null,
+          audio_lang: null,
+          vr_support: null,
+          region_code: null,
+        },
+        { token: auth.state.token }
+      )
+      await loadProductsAll()
+      const createdId = Number(created?.product_id || 0)
+      if (createdId) {
+        refs.setSelectedIds([...new Set([...(refs.selectedIds || []), createdId])])
+      }
+      accountProductSearch.value = ''
+      editAccountProductSearch.value = ''
+      refs.state.title = ''
+      refs.state.platform_codes = []
+    } catch (e) {
+      refs.error.value = mapApiError(e?.message)
+    } finally {
+      refs.loading.value = false
+    }
   }
 
   async function createAccount() {
@@ -532,7 +620,13 @@ export function useAccountsFlow({
       newAccount.auth_code = ''
       newAccount.product_ids = []
       accountProductSearch.value = ''
-      accountProductType.value = ''
+      accountProductType.value = 'game'
+      quickNewAccountProduct.title = ''
+      quickNewAccountProduct.platform_codes = []
+      quickNewAccountProductError.value = ''
+      quickEditAccountProduct.title = ''
+      quickEditAccountProduct.platform_codes = []
+      quickEditAccountProductError.value = ''
       // После успешного сохранения закрываем модалку без повторного confirm о несохраненных правках.
       if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = true
       try {
@@ -729,6 +823,7 @@ export function useAccountsFlow({
     openCreateAccountModal,
     cancelEditAccount,
     createAccount,
+    createQuickAccountProduct,
     updateAccount,
     deleteAccount,
   }
