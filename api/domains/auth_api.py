@@ -89,7 +89,7 @@ def mount_auth_routes(
         return [UserListOut(username=r0, name=(r1 or ""), role=r2, created_at=r3) for (r0, r1, r2, r3) in rows]
 
     @app.post("/users", response_model=UserOut)
-    def create_user(payload: UserCreate, user: UserOut = Depends(require_role("admin"))):
+    def create_user(payload: UserCreate, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         with psycopg.connect(DB_DSN) as conn:
             if not role_exists(conn, payload.role_code):
                 raise HTTPException(400, "Unknown role")
@@ -106,7 +106,7 @@ def mount_auth_routes(
         return UserOut(username=payload.username, role=payload.role_code)
 
     @app.post("/users/{username}/password")
-    def reset_password(username: str, payload: ResetPasswordIn, user: UserOut = Depends(require_role("admin"))):
+    def reset_password(username: str, payload: ResetPasswordIn, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         with psycopg.connect(DB_DSN) as conn:
             row = get_user_by_username(conn, username)
             if not row:

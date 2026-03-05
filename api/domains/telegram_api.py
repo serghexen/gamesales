@@ -46,7 +46,7 @@ def mount_telegram_routes(
         }
 
     @app.post("/tg/auth/start")
-    def telegram_auth_start(payload: TelegramAuthStartIn, user=Depends(require_role("admin"))):
+    def telegram_auth_start(payload: TelegramAuthStartIn, user=Depends(require_role("admin", "administrator", "owner"))):
         with psycopg.connect(DB_DSN) as conn:
             row = q1(conn, "SELECT session_string FROM tg.shared_session WHERE id=1")
             session_string = row[0] if row and row[0] else None
@@ -74,7 +74,7 @@ def mount_telegram_routes(
         return {"ok": True, "status": resp.get("status", "pending")}
 
     @app.post("/tg/auth/confirm")
-    def telegram_auth_confirm(payload: TelegramAuthConfirmIn, user=Depends(require_role("admin"))):
+    def telegram_auth_confirm(payload: TelegramAuthConfirmIn, user=Depends(require_role("admin", "administrator", "owner"))):
         with psycopg.connect(DB_DSN) as conn:
             row = q1(conn, "SELECT phone, phone_code_hash, session_string FROM tg.shared_session WHERE id=1")
             if not row:
@@ -107,7 +107,7 @@ def mount_telegram_routes(
         return {"ok": True, "status": status}
 
     @app.post("/tg/auth/password")
-    def telegram_auth_password(payload: TelegramAuthPasswordIn, user=Depends(require_role("admin"))):
+    def telegram_auth_password(payload: TelegramAuthPasswordIn, user=Depends(require_role("admin", "administrator", "owner"))):
         with psycopg.connect(DB_DSN) as conn:
             row = q1(conn, "SELECT session_string FROM tg.shared_session WHERE id=1")
             if not row or not row[0]:
@@ -135,7 +135,7 @@ def mount_telegram_routes(
         return {"ok": True, "status": status}
 
     @app.post("/tg/auth/disconnect")
-    def telegram_auth_disconnect(user=Depends(require_role("admin"))):
+    def telegram_auth_disconnect(user=Depends(require_role("admin", "administrator", "owner"))):
         with psycopg.connect(DB_DSN) as conn:
             row = q1(conn, "SELECT session_string FROM tg.shared_session WHERE id=1")
             if row and row[0]:

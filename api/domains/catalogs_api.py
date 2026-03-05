@@ -37,7 +37,7 @@ def mount_catalogs_routes(
         return [RegionOut(code=r0, name=r1, purchase_cost_rate=float(r2 or 1.0)) for (r0, r1, r2) in rows]
 
     @app.post("/platforms", response_model=PlatformOut)
-    def create_platform(payload: PlatformIn, user: UserOut = Depends(require_role("admin"))):
+    def create_platform(payload: PlatformIn, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         code = (payload.code or "").strip().lower()
         name = (payload.name or "").strip()
         if not code or not name:
@@ -57,7 +57,7 @@ def mount_catalogs_routes(
         return PlatformOut(code=code, name=name, slot_capacity=payload.slot_capacity)
 
     @app.put("/platforms/{code}", response_model=PlatformOut)
-    def update_platform(code: str, payload: PlatformUpdate, user: UserOut = Depends(require_role("admin"))):
+    def update_platform(code: str, payload: PlatformUpdate, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         with psycopg.connect(DB_DSN) as conn:
             row = q1(conn, "SELECT name, slot_capacity FROM app.platforms WHERE code=%s AND is_archived IS NOT TRUE", (code,))
             if not row:
@@ -69,7 +69,7 @@ def mount_catalogs_routes(
         return PlatformOut(code=code, name=new_name, slot_capacity=new_slots)
 
     @app.delete("/platforms/{code}")
-    def delete_platform(code: str, user: UserOut = Depends(require_role("admin"))):
+    def delete_platform(code: str, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         with psycopg.connect(DB_DSN) as conn:
             row = q1(conn, "SELECT 1 FROM app.platforms WHERE code=%s", (code,))
             if not row:
@@ -79,7 +79,7 @@ def mount_catalogs_routes(
         return {"ok": True}
 
     @app.post("/regions", response_model=RegionOut)
-    def create_region(payload: RegionIn, user: UserOut = Depends(require_role("admin"))):
+    def create_region(payload: RegionIn, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         code = (payload.code or "").strip().upper()
         name = (payload.name or "").strip()
         rate = float(payload.purchase_cost_rate or 1.0)
@@ -100,7 +100,7 @@ def mount_catalogs_routes(
         return RegionOut(code=code, name=name, purchase_cost_rate=rate)
 
     @app.put("/regions/{code}", response_model=RegionOut)
-    def update_region(code: str, payload: RegionUpdate, user: UserOut = Depends(require_role("admin"))):
+    def update_region(code: str, payload: RegionUpdate, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         name = (payload.name or "").strip() if payload.name is not None else None
         rate = payload.purchase_cost_rate
         if name is not None and not name:
@@ -116,7 +116,7 @@ def mount_catalogs_routes(
         return RegionOut(code=code, name=new_name, purchase_cost_rate=new_rate)
 
     @app.delete("/regions/{code}")
-    def delete_region(code: str, user: UserOut = Depends(require_role("admin"))):
+    def delete_region(code: str, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         with psycopg.connect(DB_DSN) as conn:
             row = q1(conn, "SELECT 1 FROM app.regions WHERE code=%s", (code,))
             if not row:
@@ -149,7 +149,7 @@ def mount_catalogs_routes(
         return [SourceOut(source_id=int(r0), code=r1, name=r2) for (r0, r1, r2) in rows]
 
     @app.post("/domains", response_model=PlatformOut)
-    def create_domain(payload: DomainIn, user: UserOut = Depends(require_role("admin"))):
+    def create_domain(payload: DomainIn, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         name = (payload.name or "").strip().lower()
         if not name:
             raise HTTPException(400, "Domain name is required")
@@ -168,7 +168,7 @@ def mount_catalogs_routes(
         return PlatformOut(code=name, name=name, slot_capacity=0)
 
     @app.put("/domains/{name}", response_model=PlatformOut)
-    def update_domain(name: str, payload: NameUpdate, user: UserOut = Depends(require_role("admin"))):
+    def update_domain(name: str, payload: NameUpdate, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         new_name = (payload.name or "").strip().lower()
         if not new_name:
             raise HTTPException(400, "Name is required")
@@ -181,7 +181,7 @@ def mount_catalogs_routes(
         return PlatformOut(code=new_name, name=new_name, slot_capacity=0)
 
     @app.delete("/domains/{name}")
-    def delete_domain(name: str, user: UserOut = Depends(require_role("admin"))):
+    def delete_domain(name: str, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         with psycopg.connect(DB_DSN) as conn:
             row = q1(conn, "SELECT 1 FROM app.domains WHERE name=%s", (name,))
             if not row:
@@ -191,7 +191,7 @@ def mount_catalogs_routes(
         return {"ok": True}
 
     @app.post("/sources", response_model=SourceOut)
-    def create_source(payload: SourceIn, user: UserOut = Depends(require_role("admin"))):
+    def create_source(payload: SourceIn, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         code = (payload.code or "").strip().lower()
         name = (payload.name or "").strip()
         if not code or not name:
@@ -212,7 +212,7 @@ def mount_catalogs_routes(
         return SourceOut(source_id=int(row[0]), code=row[1], name=row[2])
 
     @app.put("/sources/{source_id}", response_model=SourceOut)
-    def update_source(source_id: int, payload: SourceUpdate, user: UserOut = Depends(require_role("admin"))):
+    def update_source(source_id: int, payload: SourceUpdate, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         code = (payload.code or "").strip().lower() if payload.code is not None else None
         name = (payload.name or "").strip() if payload.name is not None else None
         if code is not None and not code:
@@ -230,7 +230,7 @@ def mount_catalogs_routes(
         return SourceOut(source_id=source_id, code=new_code, name=new_name)
 
     @app.delete("/sources/{source_id}")
-    def delete_source(source_id: int, user: UserOut = Depends(require_role("admin"))):
+    def delete_source(source_id: int, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         with psycopg.connect(DB_DSN) as conn:
             row = q1(conn, "SELECT 1 FROM app.sources WHERE source_id=%s", (source_id,))
             if not row:

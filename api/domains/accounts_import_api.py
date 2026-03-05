@@ -23,7 +23,7 @@ def mount_accounts_import_routes(
     ImportReportIn,
 ):
     @app.get("/accounts/import/template")
-    def accounts_import_template(user: UserOut = Depends(require_role("admin"))):
+    def accounts_import_template(user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         wb = Workbook()
         ws = wb.active
         ws.title = "Accounts"
@@ -38,7 +38,7 @@ def mount_accounts_import_routes(
         )
 
     @app.get("/accounts/import/status")
-    def accounts_import_status(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    def accounts_import_status(job_id: str, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         status = get_import_progress(job_id)
         if not status:
             return {"phase": "idle", "current": 0, "total": 0, "done": True}
@@ -53,7 +53,7 @@ def mount_accounts_import_routes(
         }
 
     @app.post("/accounts/import/validate")
-    def accounts_import_validate(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
+    def accounts_import_validate(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         if not file or not file.filename:
             raise HTTPException(400, "file is required")
         if not file.filename.lower().endswith((".xlsx", ".xls")):
@@ -67,7 +67,7 @@ def mount_accounts_import_routes(
         return {"ok": len(errors) == 0, "total": len(rows), "errors": errors, "warnings": warnings}
 
     @app.post("/accounts/import")
-    def accounts_import(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
+    def accounts_import(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         if not file or not file.filename:
             raise HTTPException(400, "file is required")
         if not file.filename.lower().endswith((".xlsx", ".xls")):
@@ -82,7 +82,7 @@ def mount_accounts_import_routes(
         return {"ok": True, "job_id": job_id}
 
     @app.post("/accounts/import/cancel")
-    def accounts_import_cancel(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    def accounts_import_cancel(job_id: str, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         status = get_import_progress(job_id)
         if not status:
             return {"ok": True}
@@ -103,7 +103,7 @@ def mount_accounts_import_routes(
         return {"ok": True}
 
     @app.post("/accounts/import/report")
-    def accounts_import_report(payload: ImportReportIn, user: UserOut = Depends(require_role("admin"))):
+    def accounts_import_report(payload: ImportReportIn, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         content = build_import_report_xlsx(
             [i.dict() for i in payload.errors],
             [i.dict() for i in payload.warnings],

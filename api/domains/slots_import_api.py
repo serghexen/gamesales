@@ -20,7 +20,7 @@ def mount_slots_import_routes(
     ImportReportIn,
 ):
     @app.post("/accounts/slots/clean")
-    def accounts_slots_clean(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
+    def accounts_slots_clean(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         if not file or not file.filename:
             raise HTTPException(400, "file is required")
         if not file.filename.lower().endswith((".xlsx", ".xls")):
@@ -41,7 +41,7 @@ def mount_slots_import_routes(
     def accounts_slots_validate(
         file: UploadFile = File(...),
         limit: int | None = Form(None),
-        user: UserOut = Depends(require_role("admin")),
+        user: UserOut = Depends(require_role("admin", "administrator", "owner")),
     ):
         if not file or not file.filename:
             raise HTTPException(400, "file is required")
@@ -57,7 +57,7 @@ def mount_slots_import_routes(
         return {"ok": True, "job_id": job_id}
 
     @app.get("/accounts/slots/validate/status")
-    def accounts_slots_validate_status(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    def accounts_slots_validate_status(job_id: str, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         status = get_import_progress(job_id)
         if not status:
             return {"phase": "idle", "current": 0, "total": 0, "done": True}
@@ -72,7 +72,7 @@ def mount_slots_import_routes(
         }
 
     @app.post("/accounts/slots/validate/cancel")
-    def accounts_slots_validate_cancel(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    def accounts_slots_validate_cancel(job_id: str, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         status = get_import_progress(job_id)
         if not status:
             return {"ok": True}
@@ -93,7 +93,7 @@ def mount_slots_import_routes(
         return {"ok": True}
 
     @app.post("/accounts/slots/report")
-    def accounts_slots_report(payload: ImportReportIn, user: UserOut = Depends(require_role("admin"))):
+    def accounts_slots_report(payload: ImportReportIn, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         content = build_import_report_xlsx(
             errors=payload.errors or [],
             warnings=payload.warnings or [],
@@ -105,7 +105,7 @@ def mount_slots_import_routes(
         )
 
     @app.post("/accounts/slots/import")
-    def accounts_slots_import(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin"))):
+    def accounts_slots_import(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         if not file or not file.filename:
             raise HTTPException(400, "file is required")
         if not file.filename.lower().endswith((".xlsx", ".xls")):
@@ -120,7 +120,7 @@ def mount_slots_import_routes(
         return {"ok": True, "job_id": job_id}
 
     @app.get("/accounts/slots/import/status")
-    def accounts_slots_import_status(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    def accounts_slots_import_status(job_id: str, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         status = get_import_progress(job_id)
         if not status:
             return {"phase": "idle", "current": 0, "total": 0, "done": True}
@@ -135,7 +135,7 @@ def mount_slots_import_routes(
         }
 
     @app.post("/accounts/slots/import/cancel")
-    def accounts_slots_import_cancel(job_id: str, user: UserOut = Depends(require_role("admin"))):
+    def accounts_slots_import_cancel(job_id: str, user: UserOut = Depends(require_role("admin", "administrator", "owner"))):
         status = get_import_progress(job_id)
         if not status:
             return {"ok": True}

@@ -122,7 +122,7 @@ describe('WorkAccountEditorModal', () => {
     expect(wrapper.text()).toContain('Повтораня деактивация через 10 дней')
   })
 
-  it('keeps deactivation checkbox editable even before timer expiry', () => {
+  it('disables deactivation checkbox before timer expiry', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-03-04T12:00:00Z'))
     const wrapper = mount(WorkAccountEditorModal, {
@@ -141,7 +141,7 @@ describe('WorkAccountEditorModal', () => {
     expect(wrapper.text()).not.toContain('Деактивирован.')
     const checkbox = wrapper.find('input[type="checkbox"]')
     expect(checkbox.exists()).toBe(true)
-    expect(checkbox.attributes('disabled')).toBeUndefined()
+    expect(checkbox.attributes('disabled')).toBeDefined()
   })
 
   it('allows uncheck when activation timer expired', () => {

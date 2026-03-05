@@ -13,7 +13,7 @@
                         <input
                           type="checkbox"
                           v-model="editAccount.is_deactivated"
-                          :disabled="accountBusy"
+                          :disabled="deactivationToggleDisabled"
                         />
                         <span>Деактивирован</span>
                       </label>
@@ -567,6 +567,14 @@ const deactivationDaysLeft = computed(() => {
   const diffMs = nextActivationAt.getTime() - Date.now()
   if (diffMs <= 0) return 0
   return Math.ceil(diffMs / (24 * 60 * 60 * 1000))
+})
+
+// Блокирует чекбокс деактивации до окончания таймера повторной активации.
+const deactivationToggleDisabled = computed(() => {
+  if (accountBusy.value) return true
+  if (!props.editAccount?.is_deactivated) return false
+  const days = deactivationDaysLeft.value
+  return typeof days === 'number' && days > 0
 })
 
 // В режиме просмотра показываем статус рядом с именем только для деактивированного аккаунта.
