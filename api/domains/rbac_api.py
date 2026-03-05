@@ -31,7 +31,7 @@ def mount_rbac_routes(
         ("deals", "Сделки", 10),
         ("accounts", "Аккаунты", 20),
         ("products", "Товары", 30),
-        ("ns-gift", "NS Gift", 40),
+        ("ns-gift", "Магазин", 40),
         ("analytics", "Аналитика", 50),
         ("catalogs", "Справочники", 60),
         ("users", "Пользователи", 70),

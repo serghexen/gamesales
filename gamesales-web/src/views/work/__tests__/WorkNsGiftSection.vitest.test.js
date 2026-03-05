@@ -47,7 +47,7 @@ describe('WorkNsGiftSection', () => {
       props: { ctx },
     })
 
-    expect(wrapper.text()).toContain('NS Gift')
+    expect(wrapper.text()).toContain('Магазина')
     expect(wrapper.text()).toContain('Баланс')
     expect(wrapper.text()).toContain('USD')
     expect(wrapper.text()).toContain('Всего: 3')

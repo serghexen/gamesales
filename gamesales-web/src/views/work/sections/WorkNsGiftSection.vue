@@ -7,8 +7,8 @@
         <button
           class="deal-refresh-btn"
           type="button"
-          title="Обновить данные NS Gift"
-          aria-label="Обновить данные NS Gift"
+          title="Обновить данные Магазина"
+          aria-label="Обновить данные Магазина"
           :disabled="ctx.loading"
           @click="ctx.reloadNsGiftData"
         >
@@ -30,7 +30,7 @@
           <article class="work-ns-gift__card work-ns-gift__card--balance">
             <span class="work-ns-gift__label">Баланс</span>
             <strong class="work-ns-gift__value">{{ formatBalance(ctx.balance) }} USD</strong>
-            <span class="muted work-ns-gift__hint">Актуальный остаток кошелька NS Gift</span>
+            <span class="muted work-ns-gift__hint">Актуальный остаток кошелька Магазина</span>
           </article>
 
           <button class="work-ns-gift__steam-tile" :class="{ 'is-active': ctx.steamMode }" type="button" @click="onSteamTileClick">
