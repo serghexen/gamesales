@@ -147,6 +147,60 @@
                 </label>
               </div>
               <div class="field field--full">
+                <span class="label account-products-title">Аккаунты</span>
+                <div v-if="productEditMode === 'view'" class="pill-list">
+                  <span v-for="title in editProductAccountTitles" :key="`product-edit-account-pill-${title}`" class="pill">{{ title }}</span>
+                  <span v-if="!editProductAccountTitles.length" class="muted">Пока нет привязанных аккаунтов.</span>
+                </div>
+                <div v-else>
+                  <label class="field">
+                    <span class="label">Поиск</span>
+                    <input v-model.trim="editProductAccountSearch" class="input" placeholder="поиск" />
+                  </label>
+                  <div class="check-list check-list--account-products">
+                    <label v-for="a in filteredEditProductAccounts" :key="`product-edit-account-${a.account_id}`" class="check-item">
+                      <input type="checkbox" :value="a.account_id" v-model="editProduct.account_ids" />
+                      <span>{{ formatAccountTitle(a) }}</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div v-if="productEditMode !== 'view'" class="quick-create quick-create--account">
+                <div class="quick-create__header">
+                  <button class="comment-toggle" type="button" @click="editQuickAccountOpen = !editQuickAccountOpen">
+                    {{ editQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
+                  </button>
+                  <button
+                    v-if="editQuickAccountOpen"
+                    class="ghost ghost--small"
+                    type="button"
+                    :disabled="quickEditProductAccountLoading"
+                    @click="createQuickProductAccount('edit')"
+                  >
+                    <span v-if="quickEditProductAccountLoading" class="spinner spinner--small"></span>
+                    Создать
+                  </button>
+                </div>
+                <template v-if="editQuickAccountOpen">
+                  <div class="deal-form__double">
+                    <input v-model.trim="quickEditProductAccount.login_name" class="input input--compact" placeholder="Логин" />
+                    <select v-model="quickEditProductAccount.domain_code" class="input input--select input--compact">
+                      <option value="">— домен —</option>
+                      <option v-for="d in domains" :key="`product-edit-domain-${d.code}`" :value="d.code">
+                        {{ d.name }} ({{ d.code }})
+                      </option>
+                    </select>
+                  </div>
+                  <div class="check-list check-list--compact check-list--platform-row">
+                    <label v-for="p in platforms" :key="`product-edit-platform-${p.code}`" class="check-item">
+                      <input type="checkbox" :value="p.code" v-model="quickEditProductAccount.platform_codes" />
+                      <span>{{ p.name }} ({{ p.code }})</span>
+                    </label>
+                  </div>
+                  <span v-if="quickEditProductAccountError" class="bad">{{ quickEditProductAccountError }}</span>
+                </template>
+              </div>
+              <div class="field field--full">
                 <span class="label">Платформа</span>
                 <div class="check-list check-list--compact">
                   <label v-for="p in platforms" :key="p.code" class="check-item">
@@ -189,6 +243,60 @@
                 </select>
               </label>
               <div class="field field--full">
+                <span class="label account-products-title">Аккаунты</span>
+                <div v-if="productEditMode === 'view'" class="pill-list">
+                  <span v-for="title in editProductAccountTitles" :key="`product-edit-account-pill-sub-${title}`" class="pill">{{ title }}</span>
+                  <span v-if="!editProductAccountTitles.length" class="muted">Пока нет привязанных аккаунтов.</span>
+                </div>
+                <div v-else>
+                  <label class="field">
+                    <span class="label">Поиск</span>
+                    <input v-model.trim="editProductAccountSearch" class="input" placeholder="поиск" />
+                  </label>
+                  <div class="check-list check-list--account-products">
+                    <label v-for="a in filteredEditProductAccounts" :key="`product-edit-account-sub-${a.account_id}`" class="check-item">
+                      <input type="checkbox" :value="a.account_id" v-model="editProduct.account_ids" />
+                      <span>{{ formatAccountTitle(a) }}</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div v-if="productEditMode !== 'view'" class="quick-create quick-create--account">
+                <div class="quick-create__header">
+                  <button class="comment-toggle" type="button" @click="editQuickAccountOpen = !editQuickAccountOpen">
+                    {{ editQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
+                  </button>
+                  <button
+                    v-if="editQuickAccountOpen"
+                    class="ghost ghost--small"
+                    type="button"
+                    :disabled="quickEditProductAccountLoading"
+                    @click="createQuickProductAccount('edit')"
+                  >
+                    <span v-if="quickEditProductAccountLoading" class="spinner spinner--small"></span>
+                    Создать
+                  </button>
+                </div>
+                <template v-if="editQuickAccountOpen">
+                  <div class="deal-form__double">
+                    <input v-model.trim="quickEditProductAccount.login_name" class="input input--compact" placeholder="Логин" />
+                    <select v-model="quickEditProductAccount.domain_code" class="input input--select input--compact">
+                      <option value="">— домен —</option>
+                      <option v-for="d in domains" :key="`product-edit-domain-sub-${d.code}`" :value="d.code">
+                        {{ d.name }} ({{ d.code }})
+                      </option>
+                    </select>
+                  </div>
+                  <div class="check-list check-list--compact check-list--platform-row">
+                    <label v-for="p in platforms" :key="`product-edit-platform-sub-${p.code}`" class="check-item">
+                      <input type="checkbox" :value="p.code" v-model="quickEditProductAccount.platform_codes" />
+                      <span>{{ p.name }} ({{ p.code }})</span>
+                    </label>
+                  </div>
+                  <span v-if="quickEditProductAccountError" class="bad">{{ quickEditProductAccountError }}</span>
+                </template>
+              </div>
+              <div class="field field--full">
                 <span class="label">Платформа</span>
                 <div class="check-list check-list--compact">
                   <label v-for="p in platforms" :key="p.code" class="check-item">
@@ -218,7 +326,7 @@
                 :aria-expanded="productAccountsOpen ? 'true' : 'false'"
                 @click="productAccountsOpen = !productAccountsOpen"
               >
-                <span class="label">Аккаунты по сделкам ({{ productAccountsCount }})</span>
+                <span class="label">Сделок ({{ productAccountsCount }}):</span>
                 <svg class="section-toggle__chevron" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M6 9l6 6 6-6" />
                 </svg>
@@ -248,9 +356,8 @@
                 <table v-else-if="pagedProductAccounts.length" ref="accountsTableEl" class="table table--compact table--dense">
                   <colgroup>
                     <col :style="getProductAccountsColumnStyle('account')" />
-                    <col :style="getProductAccountsColumnStyle('platform')" />
-                    <col :style="getProductAccountsColumnStyle('free')" />
-                    <col :style="getProductAccountsColumnStyle('occupied')" />
+                    <col :style="getProductAccountsColumnStyle('user')" />
+                    <col :style="getProductAccountsColumnStyle('date')" />
                   </colgroup>
                   <thead>
                     <tr>
@@ -283,15 +390,15 @@
                       </th>
                       <th class="sortable">
                         <span class="th-title th-title--filter">
-                          Платформа
+                          Пользователь
                           <span class="th-actions">
                             <button
                               class="filter-icon filter-icon--sort"
                               type="button"
-                              aria-label="Сортировка по платформе"
-                              title="Сортировка по платформе"
-                              @click.stop="sortProductAccounts('platform_code')"
-                              :class="getProductAccountsSortClass('platform_code')"
+                              aria-label="Сортировка по пользователю"
+                              title="Сортировка по пользователю"
+                              @click.stop="sortProductAccounts('customer_nickname')"
+                              :class="getProductAccountsSortClass('customer_nickname')"
                             >
                               <svg viewBox="0 0 24 24">
                                 <path class="sort-icon__up" d="M7 10l5-5 5 5" />
@@ -303,22 +410,22 @@
                         <button
                           class="table-col-resizer"
                           type="button"
-                          aria-label="Изменить ширину колонки Платформа"
+                          aria-label="Изменить ширину колонки Пользователь"
                           title="Потяните для изменения ширины"
-                          @mousedown.stop.prevent="startProductAccountsResize($event, 'platform')"
+                          @mousedown.stop.prevent="startProductAccountsResize($event, 'user')"
                         />
                       </th>
-                      <th class="sortable cell--num">
+                      <th class="sortable">
                         <span class="th-title th-title--filter">
-                          Свободно
+                          Дата сделки
                           <span class="th-actions">
                             <button
                               class="filter-icon filter-icon--sort"
                               type="button"
-                              aria-label="Сортировка по свободным слотам"
-                              title="Сортировка по свободным слотам"
-                              @click.stop="sortProductAccounts('free_slots')"
-                              :class="getProductAccountsSortClass('free_slots')"
+                              aria-label="Сортировка по дате сделки"
+                              title="Сортировка по дате сделки"
+                              @click.stop="sortProductAccounts('deal_date')"
+                              :class="getProductAccountsSortClass('deal_date')"
                             >
                               <svg viewBox="0 0 24 24">
                                 <path class="sort-icon__up" d="M7 10l5-5 5 5" />
@@ -330,48 +437,20 @@
                         <button
                           class="table-col-resizer"
                           type="button"
-                          aria-label="Изменить ширину колонки Свободно"
+                          aria-label="Изменить ширину колонки Дата сделки"
                           title="Потяните для изменения ширины"
-                          @mousedown.stop.prevent="startProductAccountsResize($event, 'free')"
-                        />
-                      </th>
-                      <th class="sortable cell--num">
-                        <span class="th-title th-title--filter">
-                          Занято
-                          <span class="th-actions">
-                            <button
-                              class="filter-icon filter-icon--sort"
-                              type="button"
-                              aria-label="Сортировка по занятым слотам"
-                              title="Сортировка по занятым слотам"
-                              @click.stop="sortProductAccounts('occupied_slots')"
-                              :class="getProductAccountsSortClass('occupied_slots')"
-                            >
-                              <svg viewBox="0 0 24 24">
-                                <path class="sort-icon__up" d="M7 10l5-5 5 5" />
-                                <path class="sort-icon__down" d="M7 14l5 5 5-5" />
-                              </svg>
-                            </button>
-                          </span>
-                        </span>
-                        <button
-                          class="table-col-resizer"
-                          type="button"
-                          aria-label="Изменить ширину колонки Занято"
-                          title="Потяните для изменения ширины"
-                          @mousedown.stop.prevent="startProductAccountsResize($event, 'occupied')"
+                          @mousedown.stop.prevent="startProductAccountsResize($event, 'date')"
                         />
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="a in pagedProductAccounts" :key="`${a.account_id}-${a.platform_code}`">
+                    <tr v-for="a in pagedProductAccounts" :key="a.deal_item_id || `${a.account_id}-${a.deal_date || ''}`">
                       <td class="product-account-cell" @click="openAccountFromCell(a.login_full)">
                         <span class="product-account-cell__text">{{ a.login_full || '—' }}</span>
                       </td>
-                      <td>{{ (a.platform_code || '—').toUpperCase() }}</td>
-                      <td class="cell--num">{{ a.free_slots ?? 0 }}</td>
-                      <td class="cell--num">{{ a.occupied_slots ?? 0 }}</td>
+                      <td>{{ a.customer_nickname || '—' }}</td>
+                      <td>{{ a.deal_date ? formatDateTimeMinutes(a.deal_date) : '—' }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -651,6 +730,54 @@
                 </label>
               </div>
               <div class="field field--full">
+                <span class="label account-products-title">Аккаунты</span>
+                <label class="field">
+                  <span class="label">Поиск</span>
+                  <input v-model.trim="newProductAccountSearch" class="input" placeholder="поиск" />
+                </label>
+                <div class="check-list check-list--account-products">
+                  <label v-for="a in filteredNewProductAccounts" :key="`product-new-account-${a.account_id}`" class="check-item">
+                    <input type="checkbox" :value="a.account_id" v-model="newProduct.account_ids" />
+                    <span>{{ formatAccountTitle(a) }}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="quick-create quick-create--account">
+                <div class="quick-create__header">
+                  <button class="comment-toggle" type="button" @click="newQuickAccountOpen = !newQuickAccountOpen">
+                    {{ newQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
+                  </button>
+                  <button
+                    v-if="newQuickAccountOpen"
+                    class="ghost ghost--small"
+                    type="button"
+                    :disabled="quickNewProductAccountLoading"
+                    @click="createQuickProductAccount('new')"
+                  >
+                    <span v-if="quickNewProductAccountLoading" class="spinner spinner--small"></span>
+                    Создать
+                  </button>
+                </div>
+                <template v-if="newQuickAccountOpen">
+                  <div class="deal-form__double">
+                    <input v-model.trim="quickNewProductAccount.login_name" class="input input--compact" placeholder="Логин" />
+                    <select v-model="quickNewProductAccount.domain_code" class="input input--select input--compact">
+                      <option value="">— домен —</option>
+                      <option v-for="d in domains" :key="`product-new-domain-${d.code}`" :value="d.code">
+                        {{ d.name }} ({{ d.code }})
+                      </option>
+                    </select>
+                  </div>
+                  <div class="check-list check-list--compact check-list--platform-row">
+                    <label v-for="p in platforms" :key="`product-new-platform-${p.code}`" class="check-item">
+                      <input type="checkbox" :value="p.code" v-model="quickNewProductAccount.platform_codes" />
+                      <span>{{ p.name }} ({{ p.code }})</span>
+                    </label>
+                  </div>
+                  <span v-if="quickNewProductAccountError" class="bad">{{ quickNewProductAccountError }}</span>
+                </template>
+              </div>
+              <div class="field field--full">
                 <span class="label">Платформа</span>
                 <div class="check-list check-list--compact">
                   <label v-for="p in platforms" :key="p.code" class="check-item">
@@ -685,6 +812,54 @@
                   </option>
                 </select>
               </label>
+              <div class="field field--full">
+                <span class="label account-products-title">Аккаунты</span>
+                <label class="field">
+                  <span class="label">Поиск</span>
+                  <input v-model.trim="newProductAccountSearch" class="input" placeholder="поиск" />
+                </label>
+                <div class="check-list check-list--account-products">
+                  <label v-for="a in filteredNewProductAccounts" :key="`product-new-account-sub-${a.account_id}`" class="check-item">
+                    <input type="checkbox" :value="a.account_id" v-model="newProduct.account_ids" />
+                    <span>{{ formatAccountTitle(a) }}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="quick-create quick-create--account">
+                <div class="quick-create__header">
+                  <button class="comment-toggle" type="button" @click="newQuickAccountOpen = !newQuickAccountOpen">
+                    {{ newQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
+                  </button>
+                  <button
+                    v-if="newQuickAccountOpen"
+                    class="ghost ghost--small"
+                    type="button"
+                    :disabled="quickNewProductAccountLoading"
+                    @click="createQuickProductAccount('new')"
+                  >
+                    <span v-if="quickNewProductAccountLoading" class="spinner spinner--small"></span>
+                    Создать
+                  </button>
+                </div>
+                <template v-if="newQuickAccountOpen">
+                  <div class="deal-form__double">
+                    <input v-model.trim="quickNewProductAccount.login_name" class="input input--compact" placeholder="Логин" />
+                    <select v-model="quickNewProductAccount.domain_code" class="input input--select input--compact">
+                      <option value="">— домен —</option>
+                      <option v-for="d in domains" :key="`product-new-domain-sub-${d.code}`" :value="d.code">
+                        {{ d.name }} ({{ d.code }})
+                      </option>
+                    </select>
+                  </div>
+                  <div class="check-list check-list--compact check-list--platform-row">
+                    <label v-for="p in platforms" :key="`product-new-platform-sub-${p.code}`" class="check-item">
+                      <input type="checkbox" :value="p.code" v-model="quickNewProductAccount.platform_codes" />
+                      <span>{{ p.name }} ({{ p.code }})</span>
+                    </label>
+                  </div>
+                  <span v-if="quickNewProductAccountError" class="bad">{{ quickNewProductAccountError }}</span>
+                </template>
+              </div>
               <div class="field field--full">
                 <span class="label">Платформа</span>
                 <div class="check-list check-list--compact">
@@ -747,6 +922,7 @@ const {
   productAccounts,
   pagedProductAccounts,
   productAccountsSort,
+  productAccountOptions,
   sortProductAccounts,
   openAccountFromProduct,
   productAccountsTotalPages,
@@ -762,6 +938,14 @@ const {
   productError,
   productOk,
   newProduct,
+  domains,
+  createQuickProductAccount,
+  quickNewProductAccount,
+  quickNewProductAccountLoading,
+  quickNewProductAccountError,
+  quickEditProductAccount,
+  quickEditProductAccountLoading,
+  quickEditProductAccountError,
 } = toRefs(ctx)
 
 // Заголовок новой карточки зависит от типа товара, который выбран кнопкой в шапке вкладки.
@@ -782,6 +966,10 @@ const editProductTitle = computed(() => {
 
 const newProductCommentOpen = ref(false)
 const editProductCommentOpen = ref(false)
+const newQuickAccountOpen = ref(false)
+const editQuickAccountOpen = ref(false)
+const newProductAccountSearch = ref('')
+const editProductAccountSearch = ref('')
 const productAccountsOpen = ref(false)
 const productSlotsOpen = ref(false)
 const productSlotsPage = ref(1)
@@ -795,9 +983,8 @@ const { getColumnStyle: getProductAccountsColumnStyle, startResize: startProduct
   storageKey: 'work.productmodal.accounts.columns.v1',
   columns: [
     { key: 'account', defaultWidth: 44, minWidth: 24 },
-    { key: 'platform', defaultWidth: 18, minWidth: 12 },
-    { key: 'free', defaultWidth: 19, minWidth: 12 },
-    { key: 'occupied', defaultWidth: 19, minWidth: 12 },
+    { key: 'user', defaultWidth: 28, minWidth: 16 },
+    { key: 'date', defaultWidth: 28, minWidth: 16 },
   ],
 })
 
@@ -816,6 +1003,41 @@ const { getColumnStyle: getProductSlotsColumnStyle, startResize: startProductSlo
 
 const productAccountsCount = computed(() => (Array.isArray(productAccounts.value) ? productAccounts.value.length : 0))
 const productSlotsCount = computed(() => (Array.isArray(productSlotAssignments.value) ? productSlotAssignments.value.length : 0))
+const selectableAccountOptions = computed(() => {
+  // Используем подготовленный сервером список доступных аккаунтов под тип товара.
+  const list = Array.isArray(productAccountOptions.value) ? [...productAccountOptions.value] : []
+  list.sort((a, b) => String(a?.login_name || '').localeCompare(String(b?.login_name || '')))
+  return list
+})
+// Формирует подпись аккаунта с доменом для единообразного списка выбора.
+const formatAccountTitle = (account) => {
+  const login = String(account?.login_name || '').trim()
+  const domain = String(account?.domain_code || '').trim()
+  if (!login && !domain) return '—'
+  if (!domain) return login
+  if (!login) return `@${domain}`
+  return `${login}@${domain}`
+}
+const filteredNewProductAccounts = computed(() => {
+  // Фильтрует аккаунты в создании товара по строке поиска.
+  const query = String(newProductAccountSearch.value || '').trim().toLowerCase()
+  if (!query) return selectableAccountOptions.value
+  return selectableAccountOptions.value.filter((item) => formatAccountTitle(item).toLowerCase().includes(query))
+})
+const filteredEditProductAccounts = computed(() => {
+  // Фильтрует аккаунты в редактировании товара по строке поиска.
+  const query = String(editProductAccountSearch.value || '').trim().toLowerCase()
+  if (!query) return selectableAccountOptions.value
+  return selectableAccountOptions.value.filter((item) => formatAccountTitle(item).toLowerCase().includes(query))
+})
+const editProductAccountTitles = computed(() => {
+  // В режиме просмотра показываем выбранные аккаунты как плашки.
+  const selected = Array.isArray(editProduct.value?.account_ids) ? editProduct.value.account_ids : []
+  const byId = new Map(selectableAccountOptions.value.map((item) => [Number(item?.account_id || 0), formatAccountTitle(item)]))
+  return selected
+    .map((idValue) => byId.get(Number(idValue || 0)))
+    .filter(Boolean)
+})
 
 // Считаем количество страниц для списка слотов внутри модалки товара.
 const productSlotsTotalPages = computed(() => {
@@ -911,6 +1133,10 @@ const syncCommentPanels = () => {
   if (!showCreate && !showEdit) {
     newProductCommentOpen.value = false
     editProductCommentOpen.value = false
+    newQuickAccountOpen.value = false
+    editQuickAccountOpen.value = false
+    newProductAccountSearch.value = ''
+    editProductAccountSearch.value = ''
     return
   }
   // Если комментарий пустой, блок стартует свернутым; если текст есть — раскрываем.
@@ -922,6 +1148,28 @@ watch(
   () => [showProductForm.value, editProduct.value?.open, editProduct.value?.product_id],
   () => syncCommentPanels(),
   { immediate: true },
+)
+
+watch(
+  () => newProduct.value?.type_code,
+  (typeCode) => {
+    // При смене типа сбрасываем только строку поиска и состояние quick-create.
+    if (typeCode !== PRODUCT_TYPE_PRIMARY) {
+      newProductAccountSearch.value = ''
+      newQuickAccountOpen.value = false
+    }
+  },
+)
+
+watch(
+  () => editProduct.value?.type_code,
+  (typeCode) => {
+    // При смене типа сбрасываем только строку поиска и состояние quick-create.
+    if (typeCode !== PRODUCT_TYPE_PRIMARY) {
+      editProductAccountSearch.value = ''
+      editQuickAccountOpen.value = false
+    }
+  },
 )
 
 // Если данных стало меньше, держим текущую страницу слотов в допустимом диапазоне.

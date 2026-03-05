@@ -19,6 +19,8 @@ from .accounts_models import (
     SlotAvailabilityOut,
     AccountProductsIn,
     ProductAccountOut,
+    ProductLinkedAccountOut,
+    ProductSelectableAccountOut,
     AccountProductOut,
     AccountSlotAssignmentOut,
 )
@@ -946,39 +948,139 @@ def mount_accounts_routes(
                 conn,
                 """
                 SELECT
+                  di.deal_item_id,
                   a.account_id,
                   a.login_name,
                   d.name as domain_name,
-                  p.code as platform_code,
-                  s.free_slots,
-                  s.occupied_slots
-                FROM (
-                  SELECT DISTINCT ON (di.account_id, di.platform_id)
-                    di.account_id,
-                    di.platform_id
-                  FROM app.deal_items di
-                  WHERE di.product_id=%s
-                    AND di.account_id IS NOT NULL
-                    AND di.platform_id IS NOT NULL
-                  ORDER BY di.account_id DESC, di.platform_id
-                ) dp
-                JOIN app.accounts a ON a.account_id = dp.account_id
+                  c.nickname as customer_nickname,
+                  COALESCE(di.purchase_at, dl.created_at) as deal_date
+                FROM app.deal_items di
+                JOIN app.deals dl ON dl.deal_id = di.deal_id
+                JOIN app.accounts a ON a.account_id = di.account_id
                 LEFT JOIN app.domains d ON d.domain_id = a.domain_id
-                JOIN app.platforms p ON p.platform_id = dp.platform_id
-                LEFT JOIN app.v_account_platform_slots s ON s.account_id = dp.account_id AND s.platform_id = dp.platform_id
-                ORDER BY a.account_id DESC, p.code
+                LEFT JOIN app.customers c ON c.customer_id = dl.customer_id
+                WHERE di.product_id=%s
+                  AND di.account_id IS NOT NULL
+                ORDER BY COALESCE(di.purchase_at, dl.created_at) DESC, di.deal_item_id DESC
                 """,
                 (product_id,),
             )
         return [
             ProductAccountOut(
-                account_id=r0,
-                login_full=f"{r1}@{r2}" if r1 and r2 else None,
-                platform_code=r3,
-                free_slots=int(r4 or 0),
-                occupied_slots=int(r5 or 0),
+                deal_item_id=int(r0),
+                account_id=int(r1),
+                login_full=f"{r2}@{r3}" if r2 and r3 else (str(r2 or "") or None),
+                customer_nickname=r4,
+                deal_date=r5,
             )
             for (r0, r1, r2, r3, r4, r5) in rows
+        ]
+
+    @app.get("/products/{product_id}/linked-accounts", response_model=List[ProductLinkedAccountOut])
+    def list_product_linked_accounts(product_id: int, user=Depends(get_current_user)):
+        with psycopg.connect(DB_DSN) as conn:
+            row = q1(
+                conn,
+                "SELECT 1 FROM app.products WHERE product_id=%s AND is_archived IS NOT TRUE",
+                (product_id,),
+            )
+            if not row:
+                raise HTTPException(400, f"Unknown product_id: {product_id}")
+            # Возвращаем прямые привязки товара к аккаунтам из account_assets.
+            rows = qall(
+                conn,
+                """
+                SELECT
+                  a.account_id,
+                  a.login_name,
+                  COALESCE(d.name, '') AS domain_code
+                FROM app.account_assets aa
+                JOIN app.accounts a ON a.account_id = aa.account_id
+                LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+                WHERE aa.product_id=%s
+                ORDER BY a.login_name ASC, a.account_id ASC
+                """,
+                (product_id,),
+            )
+        return [
+            ProductLinkedAccountOut(
+                account_id=int(r0),
+                login_name=str(r1 or ""),
+                domain_code=str(r2 or ""),
+                login_full=(f"{r1}@{r2}" if r1 and r2 else str(r1 or "")),
+            )
+            for (r0, r1, r2) in rows
+        ]
+
+    @app.get("/accounts/available-for-product", response_model=List[ProductSelectableAccountOut])
+    def list_accounts_available_for_product(
+        type_code: str,
+        product_id: Optional[int] = None,
+        user=Depends(get_current_user),
+    ):
+        normalized_type = str(type_code or "").strip().lower()
+        if normalized_type not in ("game", "subscription"):
+            raise HTTPException(400, "type_code must be game or subscription")
+        with psycopg.connect(DB_DSN) as conn:
+            if normalized_type == "subscription":
+                # Для подписок показываем только полностью "пустые" аккаунты
+                # (без привязок game/subscription) + текущие привязки этого товара.
+                # Если редактируем конкретную подписку, сохраняем ее текущие привязки в списке.
+                rows = qall(
+                    conn,
+                    """
+                    WITH occupied_accounts AS (
+                      SELECT DISTINCT aa.account_id
+                      FROM app.account_assets aa
+                      JOIN app.products p ON p.product_id = aa.product_id
+                      WHERE p.type_code IN ('game', 'subscription')
+                        AND p.is_archived IS NOT TRUE
+                    )
+                    SELECT
+                      a.account_id,
+                      a.login_name,
+                      COALESCE(d.name, '') AS domain_code
+                    FROM app.accounts a
+                    LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+                    WHERE (
+                        a.account_id NOT IN (SELECT oa.account_id FROM occupied_accounts oa)
+                        OR (
+                          %s::bigint IS NOT NULL
+                          AND EXISTS (
+                            SELECT 1
+                            FROM app.account_assets aa_cur
+                            WHERE aa_cur.account_id = a.account_id
+                              AND aa_cur.product_id = %s::bigint
+                          )
+                        )
+                      )
+                    ORDER BY a.login_name ASC, a.account_id ASC
+                    """,
+                    (product_id, product_id),
+                )
+            else:
+                # Для игр оставляем полный список аккаунтов.
+                rows = qall(
+                    conn,
+                    """
+                    SELECT
+                      a.account_id,
+                      a.login_name,
+                      COALESCE(d.name, '') AS domain_code
+                    FROM app.accounts a
+                    LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+                    ORDER BY a.login_name ASC, a.account_id ASC
+                    """,
+                    (),
+                )
+        return [
+            ProductSelectableAccountOut(
+                account_id=int(r0),
+                login_name=str(r1 or ""),
+                domain_code=str(r2 or ""),
+                login_full=(f"{r1}@{r2}" if r1 and r2 else str(r1 or "")),
+            )
+            for (r0, r1, r2) in rows
         ]
 
     @app.get("/products/{product_id}/slot-assignments", response_model=List[AccountSlotAssignmentOut])

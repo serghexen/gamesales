@@ -177,8 +177,11 @@ export function useAccountsFlow({
       // Используем только новый product endpoint для привязок аккаунта.
       const items = await apiGet(`/accounts/${accountId}/products`, { token: auth.state.token })
       editAccount.product_ids = [...new Set((items || []).map((p) => Number(p?.product_id || 0)).filter(Boolean))]
+      // Храним названия из ответа API, чтобы карточка аккаунта показывала их даже без productsAll.
+      editAccount.product_titles = [...new Set((items || []).map((p) => String(p?.title || '').trim()).filter(Boolean))]
     } catch {
       editAccount.product_ids = []
+      editAccount.product_titles = []
     } finally {
       accountProductsLoading.value = false
     }
@@ -435,6 +438,7 @@ export function useAccountsFlow({
     editAccount.has_email = false
     editAccount.has_auth = false
     editAccount.product_ids = []
+    editAccount.product_titles = []
     editAccountProductSearch.value = ''
     editAccountProductType.value = 'game'
     accountDeals.value = []

@@ -698,6 +698,47 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), [])
 
+    # Для подписки endpoint доступных аккаунтов должен возвращать "свободные" аккаунты.
+    def test_list_accounts_available_for_subscription_returns_free_accounts(self):
+        script = [
+            {"all": [(6, "hex", "test.com")]},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/available-for-product?type_code=subscription",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(len(res.json()), 1)
+            self.assertEqual(res.json()[0]["account_id"], 6)
+            self.assertEqual(res.json()[0]["login_full"], "hex@test.com")
+
+    # В редактировании подписки endpoint должен сохранять в списке текущую привязку товара.
+    def test_list_accounts_available_for_subscription_edit_keeps_current_binding(self):
+        script = [
+            {"all": [(6, "hex", "test.com")]},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/available-for-product?type_code=subscription&product_id=77",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(len(res.json()), 1)
+            self.assertEqual(res.json()[0]["account_id"], 6)
+
     # Новый endpoint должен отдавать товары аккаунта в product-формате.
     def test_list_account_products_success(self):
         script = [

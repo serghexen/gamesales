@@ -12,10 +12,12 @@ function createHarness() {
 
   const showProductForm = ref(false)
   const productEditMode = ref('view')
+  const accountsAll = ref([])
   const editProduct = reactive({
     open: false,
     product_id: null,
     type_code: 'game',
+    account_ids: [],
     title: '',
     short_title: '',
     link: '',
@@ -30,6 +32,7 @@ function createHarness() {
   })
   const newProduct = reactive({
     type_code: 'game',
+    account_ids: [],
     title: '',
     short_title: '',
     link: '',
@@ -65,6 +68,7 @@ function createHarness() {
     products: ref([]),
     productsAll: ref([]),
     productsTotal: ref(0),
+    accountsAll,
     productsSort: ref({ key: 'title', dir: 'asc' }),
     productsPage: ref(1),
     productsPageSize: ref(20),
@@ -74,6 +78,7 @@ function createHarness() {
     productAccounts: ref([]),
     productAccountsLoading: ref(false),
     productAccountsError: ref(null),
+    productAccountOptions: ref([]),
     productAccountsPage: ref(1),
     productSlotAssignments: ref([]),
     productSlotAssignmentsError: ref(null),
@@ -82,6 +87,13 @@ function createHarness() {
     suppressUnsavedConfirm: ref(false),
     requestUnsavedConfirm: vi.fn(async () => true),
     requestDealConfirm: vi.fn(async () => true),
+    loadAccountsAll: vi.fn(async () => undefined),
+    quickNewProductAccount: reactive({ login_name: '', domain_code: '', platform_codes: [] }),
+    quickNewProductAccountLoading: ref(false),
+    quickNewProductAccountError: ref(''),
+    quickEditProductAccount: reactive({ login_name: '', domain_code: '', platform_codes: [] }),
+    quickEditProductAccountLoading: ref(false),
+    quickEditProductAccountError: ref(''),
   }
 
   return {
@@ -89,6 +101,7 @@ function createHarness() {
     apiGet,
     apiPost,
     products: deps.products,
+    accountsAll,
     productsAll: deps.productsAll,
     editProduct,
     productFilters: deps.productFilters,
@@ -194,6 +207,27 @@ describe('useProductsFlow', () => {
     )
   })
 
+  it('createProduct binds game product to selected account', async () => {
+    const h = createHarness()
+    h.newProduct.type_code = 'game'
+    h.newProduct.title = 'GTA V'
+    h.newProduct.account_ids = [15]
+    h.apiPost.mockResolvedValueOnce({ product_id: 88 })
+    h.apiGet
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ product_id: 10 }])
+      .mockResolvedValue({ items: [], total: 0 })
+
+    await h.flow.createProduct()
+
+    expect(h.deps.apiPut).toHaveBeenCalledWith(
+      '/accounts/15/products',
+      { product_ids: [88] },
+      { token: 'token-1' },
+    )
+  })
+
   it('loadProductAccounts requests product endpoint', async () => {
     const h = createHarness()
     h.apiGet.mockResolvedValueOnce([])
@@ -211,6 +245,24 @@ describe('useProductsFlow', () => {
 
     expect(h.deps.showProductForm.value).toBe(true)
     expect(h.newProduct.type_code).toBe('game')
+  })
+
+  it('createQuickProductAccount creates account and appends it to product form selection', async () => {
+    const h = createHarness()
+    h.deps.quickNewProductAccount.login_name = 'new-acc'
+    h.deps.quickNewProductAccount.domain_code = 'mail'
+    h.deps.quickNewProductAccount.platform_codes = ['ps5']
+    h.apiPost.mockResolvedValueOnce({ account_id: 77 })
+
+    await h.flow.createQuickProductAccount('new')
+
+    expect(h.apiPost).toHaveBeenCalledWith(
+      '/accounts',
+      expect.objectContaining({ login_name: 'new-acc', domain_code: 'mail' }),
+      { token: 'token-1' },
+    )
+    expect(h.newProduct.account_ids).toEqual([77])
+    expect(h.deps.loadAccountsAll).toHaveBeenCalledTimes(1)
   })
 
   it('opens create modal with subscription type for subscription button', () => {

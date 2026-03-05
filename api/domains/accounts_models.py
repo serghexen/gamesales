@@ -112,11 +112,25 @@ class AccountProductsIn(BaseModel):
 
 
 class ProductAccountOut(BaseModel):
+    deal_item_id: int
     account_id: int
     login_full: Optional[str]
-    platform_code: str
-    free_slots: int
-    occupied_slots: int
+    customer_nickname: Optional[str] = None
+    deal_date: Optional[datetime] = None
+
+
+class ProductLinkedAccountOut(BaseModel):
+    account_id: int
+    login_name: str
+    domain_code: str
+    login_full: str
+
+
+class ProductSelectableAccountOut(BaseModel):
+    account_id: int
+    login_name: str
+    domain_code: str
+    login_full: str
 
 
 class AccountProductOut(BaseModel):

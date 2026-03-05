@@ -348,6 +348,7 @@ const productLoading = ref(false)
 const productAccounts = ref([])
 const productAccountsLoading = ref(false)
 const productAccountsError = ref(null)
+const productAccountOptions = ref([])
 const productSlotAssignments = ref([])
 const productSlotAssignmentsLoading = ref(false)
 const productSlotAssignmentsError = ref(null)
@@ -355,7 +356,7 @@ const dealGameAssignmentsNew = ref([])
 const dealGameAssignmentsEdit = ref([])
 const dealGameAssignmentsLoadingNew = ref(false)
 const dealGameAssignmentsLoadingEdit = ref(false)
-const productAccountsSort = ref({ key: 'free_slots', dir: 'desc' })
+const productAccountsSort = ref({ key: 'deal_date', dir: 'desc' })
 const productAccountsPage = ref(1)
 const productAccountsPageSize = 15
 const dealError = ref(null)
@@ -561,7 +562,10 @@ const {
 const accountProductTitles = computed(() => {
   // Собирает список названий товаров для выбранного аккаунта.
   const productMap = new Map((productsAll.value || []).map((g) => [g.product_id, g.title]))
-  return (editAccount.product_ids || []).map((id) => productMap.get(id)).filter(Boolean)
+  const fromMap = (editAccount.product_ids || []).map((id) => productMap.get(id)).filter(Boolean)
+  if (fromMap.length) return fromMap
+  // Если общий список товаров не подгрузился, показываем названия из ответа /accounts/{id}/products.
+  return Array.isArray(editAccount.product_titles) ? editAccount.product_titles.filter(Boolean) : []
 })
 
 const activeDealChips = computed(() => {
@@ -1006,6 +1010,7 @@ watch(
 
 const newProductState = reactive({
   type_code: PRODUCT_TYPE_PRIMARY,
+  account_ids: [],
   title: '',
   short_title: '',
   link: '',
@@ -1055,6 +1060,7 @@ const editProductState = reactive({
   open: false,
   product_id: null,
   type_code: PRODUCT_TYPE_PRIMARY,
+  account_ids: [],
   title: '',
   short_title: '',
   link: '',
@@ -1329,6 +1335,12 @@ const quickNewAccountProductError = ref('')
 const quickEditAccountProduct = reactive({ title: '', platform_codes: [] })
 const quickEditAccountProductLoading = ref(false)
 const quickEditAccountProductError = ref('')
+const quickNewProductAccount = reactive({ login_name: '', domain_code: '', platform_codes: [] })
+const quickEditProductAccount = reactive({ login_name: '', domain_code: '', platform_codes: [] })
+const quickNewProductAccountLoading = ref(false)
+const quickEditProductAccountLoading = ref(false)
+const quickNewProductAccountError = ref('')
+const quickEditProductAccountError = ref('')
 const subscriptionFreeProductIdsNew = ref([])
 const subscriptionFreeProductIdsEdit = ref([])
 const subscriptionFreeProductIdsLoadingNew = ref(false)
@@ -1443,6 +1455,7 @@ const {
   updateProduct,
   toggleProductEditMode,
   archiveProduct,
+  createQuickProductAccount,
 } = useProductsFlow({
   auth,
   apiGet,
@@ -1474,6 +1487,7 @@ const {
   productAccounts,
   productAccountsLoading,
   productAccountsError,
+  productAccountOptions,
   productAccountsPage,
   productSlotAssignments,
   productSlotAssignmentsError,
@@ -1482,6 +1496,13 @@ const {
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
   requestDealConfirm,
+  loadAccountsAll,
+  quickNewProductAccount,
+  quickNewProductAccountLoading,
+  quickNewProductAccountError,
+  quickEditProductAccount,
+  quickEditProductAccountLoading,
+  quickEditProductAccountError,
 })
 
 function clearNsGiftMessages() {
@@ -2572,6 +2593,7 @@ const {
   productAccountsLoading,
   productAccounts,
   productAccountsSort,
+  productAccountOptions,
   pagedProductAccounts,
   sortProductAccounts,
   openAccountFromProduct,
@@ -2588,6 +2610,14 @@ const {
   productError,
   productOk,
   newProduct,
+  accountsAll,
+  createQuickProductAccount,
+  quickNewProductAccount,
+  quickNewProductAccountLoading,
+  quickNewProductAccountError,
+  quickEditProductAccount,
+  quickEditProductAccountLoading,
+  quickEditProductAccountError,
   showDomainForm,
   editDomain,
   closeDomainModal,

@@ -38,6 +38,7 @@ export function createEditAccountState() {
     has_email: false,
     has_auth: false,
     product_ids: [],
+    product_titles: [],
   }
 }
 

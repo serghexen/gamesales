@@ -11,6 +11,7 @@ function buildCtx(overrides = {}) {
       open: true,
       product_id: 1,
       type_code: 'game',
+      account_ids: [],
       title: 'EA FC 26',
       short_title: '',
       link: '',
@@ -57,6 +58,7 @@ function buildCtx(overrides = {}) {
     productOk: null,
     newProduct: reactive({
       type_code: 'game',
+      account_ids: [],
       title: '',
       short_title: '',
       link: '',
@@ -69,6 +71,15 @@ function buildCtx(overrides = {}) {
       billing_period: '',
       subscription_notes: '',
     }),
+    productAccountOptions: [],
+    domains: [],
+    createQuickProductAccount: () => {},
+    quickNewProductAccount: reactive({ login_name: '', domain_code: '', platform_codes: [] }),
+    quickNewProductAccountLoading: false,
+    quickNewProductAccountError: '',
+    quickEditProductAccount: reactive({ login_name: '', domain_code: '', platform_codes: [] }),
+    quickEditProductAccountLoading: false,
+    quickEditProductAccountError: '',
     ...overrides,
   }
 }
@@ -95,6 +106,7 @@ describe('WorkProductEditorModal', () => {
             open: true,
             product_id: 2,
             type_code: 'subscription',
+            account_ids: [],
             title: 'PS Plus',
             short_title: '',
             link: '',
@@ -117,6 +129,72 @@ describe('WorkProductEditorModal', () => {
     })
 
     expect(wrapper.find('h3').text()).toBe('ТОВАР (ПОДПИСКА) - PS Plus')
+  })
+
+  it('shows account select for game create and hides for subscription create', () => {
+    const gameWrapper = mount(WorkProductEditorModal, {
+      props: {
+        ctx: buildCtx({
+          editProduct: reactive({ open: false }),
+          showProductForm: true,
+          newProduct: reactive({
+            type_code: 'game',
+            account_ids: [],
+            title: '',
+            short_title: '',
+            link: '',
+            text_lang: '',
+            audio_lang: '',
+            vr_support: '',
+            platform_codes: [],
+            region_code: '',
+            provider: '',
+            billing_period: '',
+            subscription_notes: '',
+          }),
+          productAccountOptions: [{ account_id: 7, login_name: 'acc', domain_code: 'test.com', login_full: 'acc@test.com' }],
+        }),
+      },
+      global: {
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    expect(gameWrapper.text()).toContain('Аккаунты')
+    expect(gameWrapper.text()).toContain('acc@test.com')
+
+    const subscriptionWrapper = mount(WorkProductEditorModal, {
+      props: {
+        ctx: buildCtx({
+          editProduct: reactive({ open: false }),
+          showProductForm: true,
+          newProduct: reactive({
+            type_code: 'subscription',
+            account_ids: [],
+            title: '',
+            short_title: '',
+            link: '',
+            text_lang: '',
+            audio_lang: '',
+            vr_support: '',
+            platform_codes: [],
+            region_code: '',
+            provider: '',
+            billing_period: '',
+            subscription_notes: '',
+          }),
+        }),
+      },
+      global: {
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    expect(subscriptionWrapper.text()).toContain('Аккаунты')
   })
 
   it('sorts slots table by selected column', async () => {
