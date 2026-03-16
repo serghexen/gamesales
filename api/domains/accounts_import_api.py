@@ -26,8 +26,8 @@ def mount_accounts_import_routes(
     def accounts_import_template(user: UserOut = Depends(require_role("admin", "owner"))):
         wb = Workbook()
         ws = wb.active
-        ws.title = "Accounts"
-        ws.append(["Аккаунт", "Пароль", "Товар"])
+        ws.title = "Почты"
+        ws.append(["Логин", "Пароль"] + [f"Резерв {idx}" for idx in range(1, 11)])
         buf = BytesIO()
         wb.save(buf)
         buf.seek(0)

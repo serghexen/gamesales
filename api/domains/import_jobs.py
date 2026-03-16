@@ -200,6 +200,9 @@ def build_import_jobs(
                 upload_done = 0
                 existing_product_by_row = {}
                 for idx, item in enumerate(rows, start=2):
+                    # Подписки и "плюс" в листе игр намеренно не импортируем.
+                    if bool(item.get("skip_for_import")):
+                        continue
                     title = (item.get("title") or "").strip()
                     platform_codes = parse_import_platforms(item.get("platform_codes") or "")
                     existing_product = find_game_product_by_title_platforms(conn, title, platform_codes)
@@ -219,6 +222,12 @@ def build_import_jobs(
                         return
                     try:
                         title = (item.get("title") or "").strip()
+                        # Подписки и "плюс" считаем пропущенными строками без ошибки.
+                        if bool(item.get("skip_for_import")):
+                            skipped += 1
+                            upload_done += 1
+                            set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+                            continue
                         platform_codes = parse_import_platforms(item.get("platform_codes") or "")
                         if not platform_codes:
                             skipped += 1
@@ -326,21 +335,12 @@ def build_import_jobs(
                     try:
                         account_val = (item.get("account") or "").strip()
                         password = (item.get("password") or "").strip()
-                        game_title = (item.get("game") or "").strip()
                         login, domain = split_account(account_val)
-                        if not login or not domain or not game_title:
+                        if not login or not domain:
                             skipped += 1
                             upload_done += 1
                             set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
                             continue
-                        # Резолвим товар по названию: для новых записей в импорте используем product_id как основной ключ.
-                        game_link = find_game_link_by_title(conn, game_title)
-                        if game_link is None:
-                            skipped += 1
-                            upload_done += 1
-                            set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
-                            continue
-                        product_id = game_link
                         domain_id = get_or_create_domain_id(conn, domain)
                         account_row = q1(
                             conn,
@@ -378,28 +378,23 @@ def build_import_jobs(
                                 """,
                                 (account_id, "account_password", b64_encode(password)),
                             )
-                        # Не дублируем ассет: для новых импортов проверяем только product_id.
-                        existing_asset = q1(
-                            conn,
-                            """
-                            SELECT 1
-                            FROM app.account_assets
-                            WHERE account_id=%s
-                              AND asset_type_code='game'
-                              AND product_id=%s
-                            LIMIT 1
-                            """,
-                            (account_id, product_id),
-                        )
-                        if not existing_asset:
-                            # Для новых импортов пишем только product_id.
+                        # Сохраняем резервы как reserve1..reserve10, чтобы их можно было сразу использовать в сделках.
+                        reserve_values = item.get("reserve_values") or {}
+                        for reserve_idx in range(1, 11):
+                            reserve_key = f"reserve{reserve_idx}"
+                            reserve_raw = reserve_values.get(reserve_key, item.get(reserve_key))
+                            reserve_val = str(reserve_raw or "").strip()
+                            if not reserve_val:
+                                continue
                             exec1(
                                 conn,
                                 """
-                                INSERT INTO app.account_assets(account_id, product_id, asset_type_code)
-                                VALUES (%s, %s, 'game')
+                                INSERT INTO app.account_secrets(account_id, secret_key, secret_value)
+                                VALUES (%s, %s, %s)
+                                ON CONFLICT (account_id, secret_key)
+                                DO UPDATE SET secret_value=excluded.secret_value
                                 """,
-                                (account_id, product_id),
+                                (account_id, reserve_key, b64_encode(reserve_val)),
                             )
                         conn.commit()
                         upload_done += 1

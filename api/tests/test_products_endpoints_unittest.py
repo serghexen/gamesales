@@ -1,10 +1,13 @@
 import unittest
+from io import BytesIO
 from unittest.mock import patch
 
 try:
     from fastapi.testclient import TestClient
 except Exception:  # pragma: no cover
     TestClient = None
+
+from openpyxl import Workbook
 
 import app as app_module
 
@@ -67,6 +70,23 @@ class ProductsEndpointsTests(unittest.TestCase):
     def _auth_headers(self, role="admin", username="admin", user_id=1):
         token = app_module.create_access_token(user_id, username, role)
         return {"Authorization": f"Bearer {token}"}
+
+    # Собирает xlsx-файл для проверок импорта товаров.
+    def _build_games_import_xlsx(self, *, active_title="Sheet", include_games_sheet=True):
+        wb = Workbook()
+        ws_active = wb.active
+        ws_active.title = active_title
+        ws_active.append(["Товар", "Платформа"])
+        ws_active.append(["Wrong Active Row", "ps5"])
+        if include_games_sheet:
+            ws_games = wb.create_sheet("Игры")
+            ws_games.append(["Игры", "Платформа"])
+            ws_games.append(["EA FC 26", "ps5"])
+            ws_games.append(["PS Plus Подписка", "ps5"])
+            ws_games.append(["Mega ПЛЮС", "ps4"])
+        buf = BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
 
     def test_list_products_requires_auth(self):
         with patch.object(app_module, "ensure_analytics_schema", return_value=None):
@@ -276,6 +296,53 @@ class ProductsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.json()["product_id"], 77)
             self.assertEqual(res.json()["type_code"], "subscription")
             self.assertEqual(res.json()["platform_codes"], ["ps5"])
+
+    # Валидация должна читать лист "Игры" и предупреждать о пропуске подписок.
+    def test_products_import_validate_prefers_games_sheet_and_skips_subscriptions(self):
+        script = [
+            {"all": [("ps4",), ("ps5",)]},  # platform codes
+        ]
+        content = self._build_games_import_xlsx(active_title="Свод", include_games_sheet=True)
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/products/import/validate",
+                    headers=self._auth_headers(role="admin"),
+                    files={"file": ("games.xlsx", content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(body["ok"], True)
+            self.assertEqual(body["total"], 3)
+            warning_messages = [str(w.get("message") or "") for w in body.get("warnings", [])]
+            self.assertEqual(sum("подпиской/плюсом" in msg for msg in warning_messages), 2)
+
+    # Если листа "Игры" нет, валидация должна использовать активный лист.
+    def test_products_import_validate_falls_back_to_active_sheet(self):
+        script = [
+            {"all": [("ps5",)]},  # platform codes
+        ]
+        content = self._build_games_import_xlsx(active_title="products", include_games_sheet=False)
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/products/import/validate",
+                    headers=self._auth_headers(role="admin"),
+                    files={"file": ("games.xlsx", content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(body["total"], 1)
 
 if __name__ == "__main__":
     unittest.main()

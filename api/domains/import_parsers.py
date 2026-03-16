@@ -43,6 +43,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         "товар": "title",
         "Игра": "title",
         "игра": "title",
+        "Игры": "title",
+        "игры": "title",
         "Платформа": "platform_codes",
         "title": "title",
         "platform_codes": "platform_codes",
@@ -116,6 +118,28 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 parts.append(val)
         return normalize_platform_codes(parts)
 
+    # Нормализует заголовки импорта аккаунтов и распознает колонки резервов.
+    def normalize_account_import_header(raw_header: Any) -> str:
+        if raw_header is None:
+            return ""
+        raw = str(raw_header).strip()
+        if not raw:
+            return ""
+        mapped = account_import_header_map.get(raw)
+        if mapped:
+            return mapped
+        reserve_match = re.match(r"^(?:резерв|reserve)\s*([1-9]|10)$", raw, flags=re.IGNORECASE)
+        if reserve_match:
+            return f"reserve{int(reserve_match.group(1))}"
+        return raw
+
+    # Проверяет, относится ли строка к подписке/плюсу, чтобы пропустить ее в импорте игр.
+    def is_subscription_like_game_title(value: str) -> bool:
+        title = str(value or "").strip().lower()
+        if not title:
+            return False
+        return "подписк" in title or "плюс" in title
+
     # Проверяет, что игровой товар существует в каталоге, и возвращает product_id.
     def resolve_game_product_id_by_title(conn, game_title: str):
         if not game_title:
@@ -176,6 +200,17 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         for idx, row in enumerate(rows, start=2):
             report_row = idx - 1
             title = (row.get("title") or "").strip()
+            # Строки подписок в листе "Игры" пропускаем, чтобы не плодить нецелевые товары.
+            if bool(row.get("skip_for_import")):
+                warnings.append({
+                    "row": report_row,
+                    "field": "Товар",
+                    "value": title,
+                    "message": "Строка с подпиской/плюсом пропущена",
+                })
+                if progress_cb:
+                    progress_cb(idx - 1)
+                continue
             platform_raw = row.get("platform_codes") or ""
             platform_codes = parse_import_platforms(platform_raw)
             if not title:
@@ -191,7 +226,12 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
 
     def read_games_from_excel(content: bytes) -> list[dict]:
         wb = load_workbook(BytesIO(content), data_only=True)
+        # Если в файле есть лист "Игры", читаем его приоритетно; иначе оставляем active для совместимости.
         ws = wb.active
+        for sheet_name in wb.sheetnames:
+            if str(sheet_name or "").strip().lower() == "игры":
+                ws = wb[sheet_name]
+                break
         headers = []
         for cell in ws[1]:
             if cell.value is None:
@@ -208,29 +248,44 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 if not key:
                     continue
                 item[key] = row[idx] if idx < len(row) else None
+            # Помечаем строки подписок, чтобы валидация и импорт синхронно их пропускали.
+            item["skip_for_import"] = is_subscription_like_game_title(item.get("title"))
             data.append(item)
         return data
 
     def read_accounts_from_excel(content: bytes) -> list[dict]:
         wb = load_workbook(BytesIO(content), data_only=True)
-        ws = wb.active
-        headers = []
-        for cell in ws[1]:
-            if cell.value is None:
-                headers.append("")
-            else:
-                raw = str(cell.value).strip()
-                headers.append(account_import_header_map.get(raw, raw))
         data = []
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not any(row):
-                continue
-            item = {}
-            for idx, key in enumerate(headers):
-                if not key:
+        # Читаем только целевые листы Почты/Почты1/Почты2; fallback оставляем для старых файлов.
+        selected_sheets = [
+            wb[sheet_name]
+            for sheet_name in wb.sheetnames
+            if str(sheet_name or "").strip().lower().startswith("почты")
+        ]
+        if not selected_sheets:
+            selected_sheets = [wb.active]
+        for ws in selected_sheets:
+            headers = [normalize_account_import_header(cell.value) for cell in ws[1]]
+            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                if not any(row):
                     continue
-                item[key] = row[idx] if idx < len(row) else None
-            data.append(item)
+                item = {}
+                for idx, key in enumerate(headers):
+                    if not key:
+                        continue
+                    item[key] = row[idx] if idx < len(row) else None
+                # Складываем непустые резервы в единый словарь, чтобы джоба одинаково их обрабатывала.
+                reserve_values = {}
+                for reserve_idx in range(1, 11):
+                    reserve_key = f"reserve{reserve_idx}"
+                    reserve_raw = item.get(reserve_key)
+                    reserve_val = str(reserve_raw or "").strip()
+                    if reserve_val:
+                        reserve_values[reserve_key] = reserve_val
+                item["reserve_values"] = reserve_values
+                item["_sheet_name"] = ws.title
+                item["_sheet_row"] = row_idx
+                data.append(item)
         return data
 
     def read_slots_from_excel(content: bytes) -> list[dict]:
@@ -294,17 +349,11 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         errors = []
         warnings = []
         for idx, row in enumerate(rows, start=2):
-            report_row = idx - 1
+            report_row = int(row.get("_sheet_row") or (idx - 1))
             account_val = (row.get("account") or "").strip()
-            game_title = (row.get("game") or "").strip()
             login, domain = split_account(account_val)
             if not account_val or not login or not domain:
                 warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Нужно значение в формате login@domain — строка будет пропущена"})
-            if not game_title:
-                warnings.append({"row": report_row, "field": "Товар", "value": game_title, "message": "Товар не указан — строка будет пропущена"})
-            else:
-                if resolve_game_product_id_by_title(conn, game_title) is None:
-                    warnings.append({"row": report_row, "field": "Товар", "value": game_title, "message": "Не найден в списке товаров — строка будет пропущена"})
             if progress_cb:
                 progress_cb(idx - 1)
         return errors, warnings
