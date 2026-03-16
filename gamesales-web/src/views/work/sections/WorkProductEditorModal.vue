@@ -261,6 +261,52 @@
                   </div>
                 </div>
               </div>
+              <div class="field field--full">
+                <button
+                  class="section-toggle"
+                  type="button"
+                  :aria-expanded="subscriptionTermsOpen ? 'true' : 'false'"
+                  @click="subscriptionTermsOpen = !subscriptionTermsOpen"
+                >
+                  <span class="label">Сроки подписки ({{ productSubscriptionTermsCount }})</span>
+                  <svg class="section-toggle__chevron" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+                <template v-if="subscriptionTermsOpen">
+                  <p v-if="productSubscriptionTermsErrorText" class="bad">{{ productSubscriptionTermsErrorText }}</p>
+                  <div v-else-if="productSubscriptionTermsLoadingState" class="loader-wrap loader-wrap--compact">
+                    <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                      <div class="wheel"></div>
+                      <div class="hamster">
+                        <div class="hamster__body">
+                          <div class="hamster__head">
+                            <div class="hamster__ear"></div>
+                            <div class="hamster__eye"></div>
+                            <div class="hamster__nose"></div>
+                          </div>
+                          <div class="hamster__limb hamster__limb--fr"></div>
+                          <div class="hamster__limb hamster__limb--fl"></div>
+                          <div class="hamster__limb hamster__limb--br"></div>
+                          <div class="hamster__limb hamster__limb--bl"></div>
+                          <div class="hamster__tail"></div>
+                        </div>
+                      </div>
+                      <div class="spoke"></div>
+                    </div>
+                  </div>
+                  <div v-else-if="sortedProductSubscriptionTerms.length" class="check-list check-list--account-products">
+                    <div
+                      v-for="term in sortedProductSubscriptionTerms"
+                      :key="`product-subscription-term-${term.term_id}`"
+                      class="check-item check-item--readonly"
+                    >
+                      <span>{{ term.login_full || '—' }} • до {{ formatTermDateLabel(term.valid_until) }} • {{ term.occupied ? 'занято' : 'свободно' }}</span>
+                    </div>
+                  </div>
+                  <p v-else class="muted">Сроков подписки пока нет.</p>
+                </template>
+              </div>
               <div v-if="productEditMode !== 'view'" class="quick-create quick-create--account">
                 <div class="quick-create__header">
                   <button class="comment-toggle" type="button" @click="editQuickAccountOpen = !editQuickAccountOpen">
@@ -972,6 +1018,7 @@ const newProductAccountSearch = ref('')
 const editProductAccountSearch = ref('')
 const productAccountsOpen = ref(false)
 const productSlotsOpen = ref(false)
+const subscriptionTermsOpen = ref(false)
 const productSlotsPage = ref(1)
 const productSlotsPageSize = 10
 const productSlotsSort = ref({ key: 'assigned', dir: 'desc' })
@@ -1003,6 +1050,22 @@ const { getColumnStyle: getProductSlotsColumnStyle, startResize: startProductSlo
 
 const productAccountsCount = computed(() => (Array.isArray(productAccounts.value) ? productAccounts.value.length : 0))
 const productSlotsCount = computed(() => (Array.isArray(productSlotAssignments.value) ? productSlotAssignments.value.length : 0))
+const productSubscriptionTermsList = computed(() => (
+  Array.isArray(ctx.productSubscriptionTerms) ? ctx.productSubscriptionTerms : []
+))
+const productSubscriptionTermsCount = computed(() => productSubscriptionTermsList.value.length)
+const sortedProductSubscriptionTerms = computed(() => {
+  const list = [...productSubscriptionTermsList.value]
+  list.sort((a, b) => {
+    const av = Date.parse(String(a?.valid_until || '')) || 0
+    const bv = Date.parse(String(b?.valid_until || '')) || 0
+    if (av !== bv) return av - bv
+    return Number(a?.term_id || 0) - Number(b?.term_id || 0)
+  })
+  return list
+})
+const productSubscriptionTermsLoadingState = computed(() => Boolean(ctx.productSubscriptionTermsLoading))
+const productSubscriptionTermsErrorText = computed(() => String(ctx.productSubscriptionTermsError || '').trim())
 const selectableAccountOptions = computed(() => {
   // Используем подготовленный сервером список доступных аккаунтов под тип товара.
   const list = Array.isArray(productAccountOptions.value) ? [...productAccountOptions.value] : []
@@ -1105,6 +1168,18 @@ const openAccountFromCell = (login) => {
   openAccountFromProduct.value(login)
 }
 
+// Показывает дату срока в привычном формате ДД.ММ.ГГГГ.
+const formatTermDateLabel = (value) => {
+  const raw = String(value || '').trim()
+  if (!raw) return '—'
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return raw
+  const day = String(parsed.getDate()).padStart(2, '0')
+  const month = String(parsed.getMonth() + 1).padStart(2, '0')
+  const year = String(parsed.getFullYear())
+  return `${day}.${month}.${year}`
+}
+
 // Достает значение для сравнения по выбранной колонке слотов.
 const getProductSlotSortValue = (item, key) => {
   if (key === 'account') return item?.account_login || item?.account_id || ''
@@ -1122,6 +1197,7 @@ watch(
   () => {
     productAccountsOpen.value = false
     productSlotsOpen.value = false
+    subscriptionTermsOpen.value = false
     productSlotsPage.value = 1
   },
 )

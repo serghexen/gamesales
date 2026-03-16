@@ -352,6 +352,9 @@ const productAccountOptions = ref([])
 const productSlotAssignments = ref([])
 const productSlotAssignmentsLoading = ref(false)
 const productSlotAssignmentsError = ref(null)
+const productSubscriptionTerms = ref([])
+const productSubscriptionTermsLoading = ref(false)
+const productSubscriptionTermsError = ref(null)
 const dealGameAssignmentsNew = ref([])
 const dealGameAssignmentsEdit = ref([])
 const dealGameAssignmentsLoadingNew = ref(false)
@@ -1502,6 +1505,9 @@ const {
   productSlotAssignments,
   productSlotAssignmentsError,
   productSlotAssignmentsLoading,
+  productSubscriptionTerms,
+  productSubscriptionTermsLoading,
+  productSubscriptionTermsError,
   loadProductSlotAssignments,
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
@@ -2630,6 +2636,9 @@ const {
   productSlotAssignmentsError,
   productSlotAssignmentsLoading,
   productSlotAssignments,
+  productSubscriptionTerms,
+  productSubscriptionTermsLoading,
+  productSubscriptionTermsError,
   getSlotTypeLabel,
   getSlotAssignmentStatus,
   formatDateTimeMinutes,

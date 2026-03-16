@@ -477,6 +477,16 @@ def build_import_jobs(
                                 continue
                             account_id = int(row_acc[0])
                             product_id = get_or_create_subscription_product_id(conn, subscription_title)
+                            # Держим прямую привязку подписки к аккаунту, чтобы она отображалась в карточке аккаунта.
+                            exec1(
+                                conn,
+                                """
+                                INSERT INTO app.account_assets(account_id, product_id, asset_type_code)
+                                VALUES (%s, %s, 'subscription')
+                                ON CONFLICT (account_id, product_id, asset_type_code) DO NOTHING
+                                """,
+                                (account_id, product_id),
+                            )
                             valid_until_date = valid_until_dt.date()
                             # Не плодим дубль срока для того же аккаунта и подписки на ту же дату.
                             existing_term = q1(

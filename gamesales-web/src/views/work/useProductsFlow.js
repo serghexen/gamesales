@@ -37,6 +37,9 @@ export function useProductsFlow({
   productSlotAssignments,
   productSlotAssignmentsError,
   productSlotAssignmentsLoading,
+  productSubscriptionTerms,
+  productSubscriptionTermsLoading,
+  productSubscriptionTermsError,
   loadProductSlotAssignments,
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
@@ -51,6 +54,9 @@ export function useProductsFlow({
 }) {
   let initialEditProductSnapshot = null
   let initialCreateProductSnapshot = null
+  const productSubscriptionTermsRef = productSubscriptionTerms || { value: [] }
+  const productSubscriptionTermsLoadingRef = productSubscriptionTermsLoading || { value: false }
+  const productSubscriptionTermsErrorRef = productSubscriptionTermsError || { value: null }
   // Нормализует список аккаунтов к массиву уникальных числовых id.
   function normalizeAccountIds(value) {
     const source = Array.isArray(value) ? value : (value ? [value] : [])
@@ -132,7 +138,32 @@ export function useProductsFlow({
     productSlotAssignments.value = []
     productSlotAssignmentsError.value = null
     productSlotAssignmentsLoading.value = false
+    productSubscriptionTermsRef.value = []
+    productSubscriptionTermsErrorRef.value = null
+    productSubscriptionTermsLoadingRef.value = false
     initialEditProductSnapshot = null
+  }
+
+  // Загружает сроки подписки для карточки товара типа "subscription".
+  async function loadProductSubscriptionTerms(productId, typeCode) {
+    const normalizedType = String(typeCode || '').trim().toLowerCase()
+    if (!productId || normalizedType !== 'subscription') {
+      productSubscriptionTermsRef.value = []
+      productSubscriptionTermsErrorRef.value = null
+      productSubscriptionTermsLoadingRef.value = false
+      return
+    }
+    productSubscriptionTermsLoadingRef.value = true
+    productSubscriptionTermsErrorRef.value = null
+    try {
+      const data = await apiGet(`/products/subscriptions/${encodeURIComponent(productId)}/terms`, { token: auth.state.token })
+      productSubscriptionTermsRef.value = Array.isArray(data) ? data : []
+    } catch (e) {
+      productSubscriptionTermsRef.value = []
+      productSubscriptionTermsErrorRef.value = mapApiError(e?.message)
+    } finally {
+      productSubscriptionTermsLoadingRef.value = false
+    }
   }
 
   // Подготавливает форму создания товара с выбранным типом.
@@ -229,6 +260,9 @@ export function useProductsFlow({
     productSlotAssignments.value = []
     productSlotAssignmentsError.value = null
     productSlotAssignmentsLoading.value = false
+    productSubscriptionTermsRef.value = []
+    productSubscriptionTermsErrorRef.value = null
+    productSubscriptionTermsLoadingRef.value = false
     newProduct.title = ''
     newProduct.type_code = PRODUCT_TYPE_PRIMARY
     newProduct.account_ids = []
@@ -266,6 +300,7 @@ export function useProductsFlow({
       loadProductAccounts(normalized.product_id)
       loadProductLinkedAccounts(normalized.product_id)
       loadProductSlotAssignments(normalized.product_id)
+      loadProductSubscriptionTerms(normalized.product_id, normalized.type_code)
     }
     // Подгружаем доступные аккаунты с учетом типа и текущего товара.
     loadAvailableProductAccounts(normalized.type_code, normalized.product_id)
