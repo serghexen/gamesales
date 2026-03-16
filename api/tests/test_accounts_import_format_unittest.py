@@ -156,6 +156,26 @@ class AccountsImportFormatTests(unittest.TestCase):
         self.assertEqual(rows[0]["password"], "pass-1")
         self.assertEqual(rows[0]["reserve_values"], {"reserve1": "one", "reserve2": "two", "reserve10": "ten"})
 
+    # Проверяет лимит строк на каждом листе для быстрого локального прогона.
+    def test_read_accounts_from_excel_respects_limit_per_sheet(self):
+        wb = Workbook()
+        ws_0 = wb.active
+        ws_0.title = "Почты"
+        ws_0.append(["Логин", "Пароль"])
+        ws_0.append(["u1@gmail.com", "p1"])
+        ws_0.append(["u2@gmail.com", "p2"])
+        ws_1 = wb.create_sheet("Почты1")
+        ws_1.append(["Логин", "Пароль"])
+        ws_1.append(["u3@gmail.com", "p3"])
+        ws_1.append(["u4@gmail.com", "p4"])
+        out = BytesIO()
+        wb.save(out)
+
+        rows = app_module.read_accounts_from_excel(out.getvalue(), limit_per_sheet=1)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["account"], "u1@gmail.com")
+        self.assertEqual(rows[1]["account"], "u3@gmail.com")
+
 
 if __name__ == "__main__":
     unittest.main()

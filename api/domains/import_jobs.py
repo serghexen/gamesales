@@ -332,6 +332,8 @@ def build_import_jobs(
                     if is_import_cancelled(job_id):
                         set_import_progress(job_id, owner, {"phase": "cancelled", "current": upload_done, "total": total, "done": True, "result": {"ok": False, "cancelled": True}})
                         return
+                    report_sheet = str(item.get("_sheet_name") or "").strip() or None
+                    report_row = int(item.get("_sheet_row") or idx)
                     try:
                         account_val = (item.get("account") or "").strip()
                         password = (item.get("password") or "").strip()
@@ -403,7 +405,7 @@ def build_import_jobs(
                     except Exception as exc:
                         conn.rollback()
                         failed += 1
-                        row_errors.append({"row": idx, "field": "Импорт", "message": str(exc)})
+                        row_errors.append({"sheet": report_sheet, "row": report_row, "field": "Импорт", "message": str(exc)})
                         upload_done += 1
                         set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
                 result = {

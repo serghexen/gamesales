@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from io import BytesIO
 from typing import Any, Callable
+import os
 import re
 import ssl
 import urllib.error
@@ -36,6 +37,9 @@ class ImportParsers:
 def build_import_parsers(*, q1, qall, normalize_platform_codes):
     max_logo_bytes = 5 * 1024 * 1024
     allowed_logo_mime = {"image/jpeg", "image/png", "image/webp"}
+    # Локальный лимит строк для листов Почты*: помогает быстро гонять тестовые прогоны.
+    accounts_import_limit_raw = str(os.getenv("ACCOUNTS_IMPORT_LIMIT_PER_SHEET", "") or "").strip()
+    accounts_import_limit = int(accounts_import_limit_raw) if accounts_import_limit_raw.isdigit() and int(accounts_import_limit_raw) > 0 else None
 
     game_import_headers = ["Товар", "Платформа"]
     game_import_header_map = {
@@ -253,9 +257,11 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
             data.append(item)
         return data
 
-    def read_accounts_from_excel(content: bytes) -> list[dict]:
+    def read_accounts_from_excel(content: bytes, limit_per_sheet: int | None = None) -> list[dict]:
         wb = load_workbook(BytesIO(content), data_only=True)
         data = []
+        # Даем возможность задать лимит через аргумент или env-переменную для локальных прогонов.
+        effective_limit = limit_per_sheet if isinstance(limit_per_sheet, int) and limit_per_sheet > 0 else accounts_import_limit
         # Читаем только целевые листы Почты/Почты1/Почты2; fallback оставляем для старых файлов.
         selected_sheets = [
             wb[sheet_name]
@@ -267,6 +273,9 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         for ws in selected_sheets:
             headers = [normalize_account_import_header(cell.value) for cell in ws[1]]
             for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                # Ограничиваем чтение верхними строками листа, чтобы локальный прогон был предсказуемым.
+                if effective_limit is not None and row_idx > (1 + effective_limit):
+                    break
                 if not any(row):
                     continue
                 item = {}
@@ -350,10 +359,17 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         warnings = []
         for idx, row in enumerate(rows, start=2):
             report_row = int(row.get("_sheet_row") or (idx - 1))
+            report_sheet = str(row.get("_sheet_name") or "").strip() or None
             account_val = (row.get("account") or "").strip()
             login, domain = split_account(account_val)
             if not account_val or not login or not domain:
-                warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Нужно значение в формате login@domain — строка будет пропущена"})
+                warnings.append({
+                    "sheet": report_sheet,
+                    "row": report_row,
+                    "field": "Аккаунт",
+                    "value": account_val,
+                    "message": "Нужно значение в формате login@domain — строка будет пропущена",
+                })
             if progress_cb:
                 progress_cb(idx - 1)
         return errors, warnings
