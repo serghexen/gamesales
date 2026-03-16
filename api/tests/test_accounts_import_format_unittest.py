@@ -196,25 +196,22 @@ class AccountsImportFormatTests(unittest.TestCase):
         self.assertEqual(binding_row["game"], "EA FC 26")
         self.assertEqual(binding_row["_import_kind"], "account_game_binding")
 
-    # Проверяет валидацию листа "Аккаунты": проверяем существование и аккаунта, и игры.
-    def test_accounts_import_validate_checks_account_and_game_for_bindings(self):
+    # Проверяет валидацию листа "Аккаунты": проверяем игру, а отсутствие аккаунта не считаем ошибкой.
+    def test_accounts_import_validate_checks_game_for_bindings_and_allows_missing_account(self):
         wb = Workbook()
         ws_bind = wb.active
         ws_bind.title = "Аккаунты"
         ws_bind.append(["Почта", "Игры"])
         ws_bind.append(["ok@gmail.com", "EA FC 26"])  # ok
-        ws_bind.append(["missing@gmail.com", "EA FC 26"])  # account not found
+        ws_bind.append(["missing@gmail.com", "EA FC 26"])  # account will be auto-created
         ws_bind.append(["ok@gmail.com", "Unknown Game"])  # game not found
         out = BytesIO()
         wb.save(out)
         content = out.getvalue()
 
         script = [
-            {"one": (1,)},   # row1 account exists
             {"one": (55,)},  # row1 game exists
-            {"one": None},   # row2 account missing
             {"one": (55,)},  # row2 game exists
-            {"one": (1,)},   # row3 account exists
             {"one": None},   # row3 game missing
         ]
         with (
@@ -233,7 +230,7 @@ class AccountsImportFormatTests(unittest.TestCase):
             body = res.json()
             self.assertEqual(body["total"], 3)
             warnings = body.get("warnings", [])
-            self.assertTrue(any(w.get("field") == "Почта" and "Аккаунт не найден" in str(w.get("message") or "") for w in warnings))
+            self.assertFalse(any(w.get("field") == "Почта" and "Аккаунт не найден" in str(w.get("message") or "") for w in warnings))
             self.assertTrue(any(w.get("field") == "Игры" and "Игра не найдена" in str(w.get("message") or "") for w in warnings))
 
 

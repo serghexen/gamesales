@@ -356,12 +356,23 @@ def build_import_jobs(
                                 """,
                                 (login, domain),
                             )
-                            if not row_acc:
-                                skipped += 1
-                                upload_done += 1
-                                set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
-                                continue
-                            account_id = int(row_acc[0])
+                            if row_acc:
+                                account_id = int(row_acc[0])
+                            else:
+                                # Если в листе "Аккаунты" аккаунт отсутствует, создаем его перед привязкой игры.
+                                domain_id = get_or_create_domain_id(conn, domain)
+                                row_new_acc = q1(
+                                    conn,
+                                    """
+                                    INSERT INTO app.accounts(login_name, domain_id, status_code)
+                                    VALUES (%s, %s, 'active')
+                                    RETURNING account_id
+                                    """,
+                                    (login, domain_id),
+                                )
+                                account_id = int(row_new_acc[0])
+                                ensure_account_platforms(conn, account_id)
+                                created += 1
                             product_id = find_game_link_by_title(conn, game_title)
                             if product_id is None:
                                 skipped += 1

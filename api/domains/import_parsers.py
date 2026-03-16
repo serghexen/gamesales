@@ -382,26 +382,6 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                         "value": account_val,
                         "message": "Нужно значение в формате login@domain — строка будет пропущена",
                     })
-                else:
-                    row_acc = q1(
-                        conn,
-                        """
-                        SELECT 1
-                        FROM app.accounts a
-                        JOIN app.domains d ON d.domain_id = a.domain_id
-                        WHERE lower(a.login_name)=lower(%s) AND lower(d.name)=lower(%s)
-                        LIMIT 1
-                        """,
-                        (login, domain),
-                    )
-                    if not row_acc:
-                        warnings.append({
-                            "sheet": report_sheet,
-                            "row": report_row,
-                            "field": "Почта",
-                            "value": account_val,
-                            "message": "Аккаунт не найден — строка будет пропущена",
-                        })
                 if not game_title:
                     warnings.append({
                         "sheet": report_sheet,
