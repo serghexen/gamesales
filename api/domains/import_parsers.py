@@ -71,6 +71,17 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         "Игры": "game",
         "игры": "game",
         "Game": "game",
+        "Подписка": "subscription",
+        "подписка": "subscription",
+        "Название подписки": "subscription",
+        "название подписки": "subscription",
+        "Срок": "valid_until",
+        "срок": "valid_until",
+        "Дата": "valid_until",
+        "дата": "valid_until",
+        "Активна до": "valid_until",
+        "активна до": "valid_until",
+        "Valid Until": "valid_until",
     }
     slot_import_header_map = {
         "Аккаунт": "account",
@@ -266,18 +277,26 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         data = []
         # Даем возможность задать лимит через аргумент или env-переменную для локальных прогонов.
         effective_limit = limit_per_sheet if isinstance(limit_per_sheet, int) and limit_per_sheet > 0 else accounts_import_limit
-        # Читаем листы Почты* и Аккаунты; fallback оставляем для старых файлов.
-        selected_sheets = [
-            wb[sheet_name]
-            for sheet_name in wb.sheetnames
-            if str(sheet_name or "").strip().lower().startswith("почты")
-            or str(sheet_name or "").strip().lower() == "аккаунты"
-        ]
+        # Читаем все нужные листы и фиксируем порядок прогона: Почты* -> ПЛЮС/EA PLAY -> Аккаунты.
+        mail_sheets = []
+        term_sheets = []
+        binding_sheets = []
+        for sheet_name in wb.sheetnames:
+            name_norm = str(sheet_name or "").strip().lower()
+            if name_norm.startswith("почты"):
+                mail_sheets.append(wb[sheet_name])
+            elif name_norm in {"плюс", "ea play"}:
+                term_sheets.append(wb[sheet_name])
+            elif name_norm == "аккаунты":
+                binding_sheets.append(wb[sheet_name])
+        selected_sheets = [*mail_sheets, *term_sheets, *binding_sheets]
         if not selected_sheets:
             selected_sheets = [wb.active]
         for ws in selected_sheets:
             sheet_name_norm = str(ws.title or "").strip().lower()
             is_bindings_sheet = sheet_name_norm == "аккаунты"
+            is_plus_sheet = sheet_name_norm == "плюс"
+            is_ea_play_sheet = sheet_name_norm == "ea play"
             headers = [normalize_account_import_header(cell.value) for cell in ws[1]]
             for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 # Ограничиваем чтение верхними строками листа, чтобы локальный прогон был предсказуемым.
@@ -290,6 +309,14 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                     if not key:
                         continue
                     item[key] = row[idx] if idx < len(row) else None
+                # Для сроков подписок поддерживаем фиксированный формат колонок, даже если заголовки нестандартные.
+                if is_plus_sheet or is_ea_play_sheet:
+                    if "account" not in item and len(row) >= 1:
+                        item["account"] = row[0]
+                    if "subscription" not in item and len(row) >= 2:
+                        item["subscription"] = row[1]
+                    if "valid_until" not in item and len(row) >= 3:
+                        item["valid_until"] = row[2]
                 # Складываем непустые резервы в единый словарь, чтобы джоба одинаково их обрабатывала.
                 reserve_values = {}
                 for reserve_idx in range(1, 11):
@@ -302,7 +329,14 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 item["_sheet_name"] = ws.title
                 item["_sheet_row"] = row_idx
                 # Храним тип строки, чтобы джоба и валидация применяли нужную логику.
-                item["_import_kind"] = "account_game_binding" if is_bindings_sheet else "account_credentials"
+                if is_bindings_sheet:
+                    item["_import_kind"] = "account_game_binding"
+                elif is_plus_sheet:
+                    item["_import_kind"] = "subscription_term_plus"
+                elif is_ea_play_sheet:
+                    item["_import_kind"] = "subscription_term_ea_play"
+                else:
+                    item["_import_kind"] = "account_credentials"
                 data.append(item)
         return data
 
@@ -397,6 +431,62 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                         "field": "Игры",
                         "value": game_title,
                         "message": "Игра не найдена — строка будет пропущена",
+                    })
+            elif row_kind in {"subscription_term_plus", "subscription_term_ea_play"}:
+                subscription_title = (row.get("subscription") or "").strip()
+                valid_until_raw = row.get("valid_until")
+                valid_until_text = "" if valid_until_raw is None else str(valid_until_raw).strip()
+                if not account_val or not login or not domain:
+                    warnings.append({
+                        "sheet": report_sheet,
+                        "row": report_row,
+                        "field": "Аккаунт",
+                        "value": account_val,
+                        "message": "Нужно значение в формате login@domain — строка будет пропущена",
+                    })
+                else:
+                    row_acc = q1(
+                        conn,
+                        """
+                        SELECT 1
+                        FROM app.accounts a
+                        JOIN app.domains d ON d.domain_id = a.domain_id
+                        WHERE lower(a.login_name) = lower(%s) AND lower(d.name) = lower(%s)
+                        LIMIT 1
+                        """,
+                        (login, domain),
+                    )
+                    if not row_acc:
+                        warnings.append({
+                            "sheet": report_sheet,
+                            "row": report_row,
+                            "field": "Аккаунт",
+                            "value": account_val,
+                            "message": "Аккаунт не найден — строка будет пропущена",
+                        })
+                if not subscription_title:
+                    warnings.append({
+                        "sheet": report_sheet,
+                        "row": report_row,
+                        "field": "Подписка",
+                        "value": subscription_title,
+                        "message": "Название подписки не указано — строка будет пропущена",
+                    })
+                if not valid_until_text:
+                    warnings.append({
+                        "sheet": report_sheet,
+                        "row": report_row,
+                        "field": "Срок",
+                        "value": valid_until_text,
+                        "message": "Дата окончания обязательна — строка будет пропущена",
+                    })
+                elif not normalize_slot_date(valid_until_raw):
+                    warnings.append({
+                        "sheet": report_sheet,
+                        "row": report_row,
+                        "field": "Срок",
+                        "value": valid_until_text,
+                        "message": "Не удалось распознать дату окончания — строка будет пропущена",
                     })
             else:
                 if not account_val or not login or not domain:

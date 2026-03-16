@@ -51,9 +51,30 @@ export function useDealsFlow({
   subscriptionFreeProductIdsEdit,
   subscriptionFreeProductIdsLoadingNew,
   subscriptionFreeProductIdsLoadingEdit,
+  subscriptionTermsNew,
+  subscriptionTermsEdit,
+  subscriptionTermsLoadingNew,
+  subscriptionTermsLoadingEdit,
+  quickNewSubscriptionTerm,
+  quickEditSubscriptionTerm,
+  quickNewSubscriptionTermLoading,
+  quickEditSubscriptionTermLoading,
+  quickNewSubscriptionTermError,
+  quickEditSubscriptionTermError,
   loadProductsAll,
   loadAccountsAll,
 }) {
+  const subscriptionTermsNewRef = subscriptionTermsNew || { value: [] }
+  const subscriptionTermsEditRef = subscriptionTermsEdit || { value: [] }
+  const subscriptionTermsLoadingNewRef = subscriptionTermsLoadingNew || { value: false }
+  const subscriptionTermsLoadingEditRef = subscriptionTermsLoadingEdit || { value: false }
+  const quickNewSubscriptionTermRef = quickNewSubscriptionTerm || { account_id: '', valid_until: '', notes: '' }
+  const quickEditSubscriptionTermRef = quickEditSubscriptionTerm || { account_id: '', valid_until: '', notes: '' }
+  const quickNewSubscriptionTermLoadingRef = quickNewSubscriptionTermLoading || { value: false }
+  const quickEditSubscriptionTermLoadingRef = quickEditSubscriptionTermLoading || { value: false }
+  const quickNewSubscriptionTermErrorRef = quickNewSubscriptionTermError || { value: '' }
+  const quickEditSubscriptionTermErrorRef = quickEditSubscriptionTermError || { value: '' }
+
   // Используем единый product-first загрузчик справочника.
   const reloadProductsAll = loadProductsAll
 
@@ -101,6 +122,101 @@ export function useDealsFlow({
       listRef.value = ids
     } catch {
       listRef.value = []
+    } finally {
+      loadingRef.value = false
+    }
+  }
+
+  // Загружает доступные сроки подписки под выбранные товар+слот.
+  async function loadSubscriptionTerms(target) {
+    const isEdit = target === 'edit'
+    const deal = isEdit ? editDeal : newDeal
+    const listRef = isEdit ? subscriptionTermsEditRef : subscriptionTermsNewRef
+    const loadingRef = isEdit ? subscriptionTermsLoadingEditRef : subscriptionTermsLoadingNewRef
+    const productId = Number(deal?.product_id || 0)
+    const slotTypeCode = String(deal?.slot_type_code || '').trim()
+    if (!productId || !slotTypeCode || !isSubscriptionProduct(productId)) {
+      listRef.value = []
+      loadingRef.value = false
+      return
+    }
+    loadingRef.value = true
+    try {
+      const available = await apiGet(
+        `/products/subscriptions/${encodeURIComponent(productId)}/terms/available?slot_type_code=${encodeURIComponent(slotTypeCode)}`,
+        { token: auth.state.token }
+      )
+      let list = Array.isArray(available) ? available : []
+      // Для редактирования сохраняем отображение уже выбранного срока, даже если он занят текущей сделкой.
+      const selectedTermId = Number(deal?.subscription_term_id || 0)
+      const hasSelected = selectedTermId && list.some((item) => Number(item?.term_id || 0) === selectedTermId)
+      if (isEdit && selectedTermId && !hasSelected) {
+        try {
+          const allTerms = await apiGet(`/products/subscriptions/${encodeURIComponent(productId)}/terms`, { token: auth.state.token })
+          const selected = (Array.isArray(allTerms) ? allTerms : []).find((item) => Number(item?.term_id || 0) === selectedTermId)
+          if (selected) list = [selected, ...list]
+        } catch {
+          // Ошибка фоновой догрузки не должна ломать форму.
+        }
+      }
+      listRef.value = list
+      if (selectedTermId && !list.some((item) => Number(item?.term_id || 0) === selectedTermId)) {
+        deal.subscription_term_id = ''
+      }
+      // Если срок выбран, синхронизируем аккаунт по сроку.
+      const selected = list.find((item) => Number(item?.term_id || 0) === Number(deal?.subscription_term_id || 0))
+      if (selected?.account_id) {
+        deal.account_id = Number(selected.account_id)
+      }
+    } catch {
+      listRef.value = []
+    } finally {
+      loadingRef.value = false
+    }
+  }
+
+  // Быстро создает срок подписки из модалки сделки.
+  async function createQuickSubscriptionTerm(target) {
+    const isEdit = target === 'edit'
+    const deal = isEdit ? editDeal : newDeal
+    const state = isEdit ? quickEditSubscriptionTermRef : quickNewSubscriptionTermRef
+    const loadingRef = isEdit ? quickEditSubscriptionTermLoadingRef : quickNewSubscriptionTermLoadingRef
+    const errorRef = isEdit ? quickEditSubscriptionTermErrorRef : quickNewSubscriptionTermErrorRef
+    errorRef.value = ''
+    const productId = Number(deal?.product_id || 0)
+    if (!productId || !isSubscriptionProduct(productId)) {
+      errorRef.value = 'Сначала выберите товар типа подписка'
+      return
+    }
+    const accountId = Number(state?.account_id || deal?.account_id || 0)
+    const validUntil = String(state?.valid_until || '').trim()
+    if (!accountId) {
+      errorRef.value = 'Выберите аккаунт для срока'
+      return
+    }
+    if (!validUntil) {
+      errorRef.value = 'Укажите дату окончания'
+      return
+    }
+    loadingRef.value = true
+    try {
+      const created = await apiPost(
+        `/products/subscriptions/${encodeURIComponent(productId)}/terms`,
+        {
+          account_id: accountId,
+          valid_until: validUntil,
+          notes: state?.notes ? String(state.notes).trim() : null,
+        },
+        { token: auth.state.token }
+      )
+      await loadSubscriptionTerms(target)
+      if (created?.term_id) deal.subscription_term_id = Number(created.term_id)
+      if (created?.account_id) deal.account_id = Number(created.account_id)
+      state.account_id = ''
+      state.valid_until = ''
+      state.notes = ''
+    } catch (e) {
+      errorRef.value = mapApiError(e?.message)
     } finally {
       loadingRef.value = false
     }
@@ -483,6 +599,8 @@ export function useDealsFlow({
     loadDealProductAssignments,
     loadDealSlotAvailability,
     loadSubscriptionFreeProductIds,
+    loadSubscriptionTerms,
+    createQuickSubscriptionTerm,
     releaseSlotFromDeal,
   }
 }

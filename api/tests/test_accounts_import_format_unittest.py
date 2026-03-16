@@ -196,6 +196,34 @@ class AccountsImportFormatTests(unittest.TestCase):
         self.assertEqual(binding_row["game"], "EA FC 26")
         self.assertEqual(binding_row["_import_kind"], "account_game_binding")
 
+    # Проверяет, что листы подписок читаются в том же прогоне и получают свои типы строк.
+    def test_read_accounts_from_excel_includes_subscription_sheets(self):
+        wb = Workbook()
+        ws_mail = wb.active
+        ws_mail.title = "Почты"
+        ws_mail.append(["Логин", "Пароль"])
+        ws_mail.append(["u1@gmail.com", "p1"])
+        ws_plus = wb.create_sheet("ПЛЮС")
+        ws_plus.append(["Аккаунт", "Подписка", "Срок"])
+        ws_plus.append(["u1@gmail.com", "ПЛЮС DELUXE", "05.02.2027"])
+        ws_ea = wb.create_sheet("EA PLAY")
+        ws_ea.append(["Аккаунт", "Подписка", "Срок"])
+        ws_ea.append(["u1@gmail.com", "ПОДПИСКА EA PLAY до 26.02.2026", "26.02.2026"])
+        ws_bind = wb.create_sheet("Аккаунты")
+        ws_bind.append(["Почта", "Игры"])
+        ws_bind.append(["u1@gmail.com", "EA FC 26"])
+        out = BytesIO()
+        wb.save(out)
+
+        rows = app_module.read_accounts_from_excel(out.getvalue())
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(rows[0]["_import_kind"], "account_credentials")
+        self.assertEqual(rows[1]["_import_kind"], "subscription_term_plus")
+        self.assertEqual(rows[1]["subscription"], "ПЛЮС DELUXE")
+        self.assertEqual(rows[2]["_import_kind"], "subscription_term_ea_play")
+        self.assertEqual(rows[2]["subscription"], "ПОДПИСКА EA PLAY до 26.02.2026")
+        self.assertEqual(rows[3]["_import_kind"], "account_game_binding")
+
     # Проверяет валидацию листа "Аккаунты": проверяем игру, а отсутствие аккаунта не считаем ошибкой.
     def test_accounts_import_validate_checks_game_for_bindings_and_allows_missing_account(self):
         wb = Workbook()
@@ -232,6 +260,46 @@ class AccountsImportFormatTests(unittest.TestCase):
             warnings = body.get("warnings", [])
             self.assertFalse(any(w.get("field") == "Почта" and "Аккаунт не найден" in str(w.get("message") or "") for w in warnings))
             self.assertTrue(any(w.get("field") == "Игры" and "Игра не найдена" in str(w.get("message") or "") for w in warnings))
+
+    # Проверяет валидацию сроков подписок: аккаунт должен существовать, дата обязательна и парсится.
+    def test_accounts_import_validate_subscription_terms_requires_account_and_date(self):
+        wb = Workbook()
+        ws_plus = wb.active
+        ws_plus.title = "ПЛЮС"
+        ws_plus.append(["Аккаунт", "Подписка", "Срок"])
+        ws_plus.append(["ok@gmail.com", "ПЛЮС DELUXE", "05.02.2027"])  # ok
+        ws_plus.append(["missing@gmail.com", "ПЛЮС DELUXE", "05.02.2027"])  # account missing
+        ws_plus.append(["ok@gmail.com", "ПЛЮС DELUXE", ""])  # empty date
+        ws_plus.append(["ok@gmail.com", "ПЛЮС DELUXE", "abc"])  # invalid date
+        out = BytesIO()
+        wb.save(out)
+        content = out.getvalue()
+
+        script = [
+            {"one": (1,)},    # row1 account exists
+            {"one": None},    # row2 account missing
+            {"one": (1,)},    # row3 account exists
+            {"one": (1,)},    # row4 account exists
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/accounts/import/validate",
+                    headers=self._auth_headers(role="admin"),
+                    files={"file": ("accounts.xlsx", content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(body["total"], 4)
+            warnings = body.get("warnings", [])
+            self.assertTrue(any(w.get("field") == "Аккаунт" and "Аккаунт не найден" in str(w.get("message") or "") for w in warnings))
+            self.assertTrue(any(w.get("field") == "Срок" and "обязательна" in str(w.get("message") or "") for w in warnings))
+            self.assertTrue(any(w.get("field") == "Срок" and "Не удалось распознать" in str(w.get("message") or "") for w in warnings))
 
 
 if __name__ == "__main__":

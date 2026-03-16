@@ -1345,6 +1345,16 @@ const subscriptionFreeProductIdsNew = ref([])
 const subscriptionFreeProductIdsEdit = ref([])
 const subscriptionFreeProductIdsLoadingNew = ref(false)
 const subscriptionFreeProductIdsLoadingEdit = ref(false)
+const subscriptionTermsNew = ref([])
+const subscriptionTermsEdit = ref([])
+const subscriptionTermsLoadingNew = ref(false)
+const subscriptionTermsLoadingEdit = ref(false)
+const quickNewSubscriptionTerm = reactive({ account_id: '', valid_until: '', notes: '' })
+const quickEditSubscriptionTerm = reactive({ account_id: '', valid_until: '', notes: '' })
+const quickNewSubscriptionTermLoading = ref(false)
+const quickEditSubscriptionTermLoading = ref(false)
+const quickNewSubscriptionTermError = ref('')
+const quickEditSubscriptionTermError = ref('')
 const dealQuickAccountBusy = computed(() => quickNewAccountLoading.value || quickEditAccountLoading.value)
 const dealQuickProductBusy = computed(() => quickNewProductLoading.value || quickEditProductLoading.value)
 const {
@@ -1834,6 +1844,8 @@ const {
   loadDealProductAssignments,
   loadDealSlotAvailability,
   loadSubscriptionFreeProductIds,
+  loadSubscriptionTerms,
+  createQuickSubscriptionTerm,
   releaseSlotFromDeal,
 } = useDealsFlow({
   auth,
@@ -1887,6 +1899,16 @@ const {
   subscriptionFreeProductIdsEdit,
   subscriptionFreeProductIdsLoadingNew,
   subscriptionFreeProductIdsLoadingEdit,
+  subscriptionTermsNew,
+  subscriptionTermsEdit,
+  subscriptionTermsLoadingNew,
+  subscriptionTermsLoadingEdit,
+  quickNewSubscriptionTerm,
+  quickEditSubscriptionTerm,
+  quickNewSubscriptionTermLoading,
+  quickEditSubscriptionTermLoading,
+  quickNewSubscriptionTermError,
+  quickEditSubscriptionTermError,
   loadProductsAll,
   loadAccountsAll,
 })
@@ -1922,6 +1944,10 @@ const {
   quickEditAccount,
   quickNewAccountError,
   quickEditAccountError,
+  quickNewSubscriptionTerm,
+  quickEditSubscriptionTerm,
+  quickNewSubscriptionTermError,
+  quickEditSubscriptionTermError,
   dealAccountsForProductNew,
   dealAccountsForProductEdit,
   dealAccountAssignmentsNew,
@@ -2739,6 +2765,10 @@ const {
   quickEditAccountLoading,
   createQuickAccount,
   quickEditAccountError,
+  quickEditSubscriptionTerm,
+  quickEditSubscriptionTermLoading,
+  quickEditSubscriptionTermError,
+  createQuickSubscriptionTerm,
   accountSlotStatusEdit,
   slotTypes,
   getSortedSlotStatus,
@@ -2754,6 +2784,8 @@ const {
   filteredEditDealProducts,
   subscriptionFreeProductIdsEdit,
   subscriptionFreeProductIdsLoadingEdit,
+  subscriptionTermsEdit,
+  subscriptionTermsLoadingEdit,
   syncEditDealProductSearch,
   getProductLabelById,
   editDealProductNoMatches,
@@ -2774,6 +2806,8 @@ const {
   filteredNewDealProducts,
   subscriptionFreeProductIdsNew,
   subscriptionFreeProductIdsLoadingNew,
+  subscriptionTermsNew,
+  subscriptionTermsLoadingNew,
   newDealProductNoMatches,
   syncNewDealProductSearch,
   clearNewDealProduct,
@@ -2788,6 +2822,9 @@ const {
   quickNewAccount,
   quickNewAccountLoading,
   quickNewAccountError,
+  quickNewSubscriptionTerm,
+  quickNewSubscriptionTermLoading,
+  quickNewSubscriptionTermError,
   accountSlotStatusNew,
   dealAccountAssignmentsLoadingNew,
   dealAccountAssignmentsNew,
@@ -3119,6 +3156,7 @@ useDealsWatchers({
   loadDealAccountAssignments,
   loadDealSlotAvailability,
   loadSubscriptionFreeProductIds,
+  loadSubscriptionTerms,
   ensureAccountSecretsLoaded,
 })
 

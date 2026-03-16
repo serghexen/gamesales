@@ -31,6 +31,11 @@ def mount_accounts_import_routes(
         # Добавляем второй лист для привязки игр к существующим аккаунтам.
         ws_bindings = wb.create_sheet("Аккаунты")
         ws_bindings.append(["Почта", "Игры"])
+        # Листы сроков подписок: используем тот же файл, чтобы прогон был единым.
+        ws_plus = wb.create_sheet("ПЛЮС")
+        ws_plus.append(["Аккаунт", "Подписка", "Срок"])
+        ws_ea = wb.create_sheet("EA PLAY")
+        ws_ea.append(["Аккаунт", "Подписка", "Срок"])
         buf = BytesIO()
         wb.save(buf)
         buf.seek(0)

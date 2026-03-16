@@ -135,6 +135,54 @@ def build_import_jobs(
         row = q1(conn, "INSERT INTO app.domains(name) VALUES (%s) RETURNING domain_id", (domain_name,))
         return int(row[0])
 
+    # Нормализует название подписки из импорта EA PLAY/ПЛЮС в базовый товар каталога.
+    def normalize_subscription_title(raw_title: str, row_kind: str) -> str:
+        title = str(raw_title or "").strip()
+        if not title:
+            return ""
+        if row_kind == "subscription_term_ea_play":
+            # В листе EA PLAY держим единый товар "EA PLAY", даже если в ячейке есть лишний текст.
+            return "EA PLAY"
+        return title
+
+    # Возвращает существующий subscription-товар или создает его при первом импорте.
+    def get_or_create_subscription_product_id(conn, title: str) -> int:
+        row = q1(
+            conn,
+            """
+            SELECT p.product_id
+            FROM app.products p
+            WHERE lower(p.title) = lower(%s)
+              AND lower(p.type_code) = 'subscription'
+              AND p.is_archived IS NOT TRUE
+            ORDER BY p.product_id
+            LIMIT 1
+            """,
+            (title,),
+        )
+        if row:
+            return int(row[0])
+        row_new = q1(
+            conn,
+            """
+            INSERT INTO app.products(type_code, title)
+            VALUES ('subscription', %s)
+            RETURNING product_id
+            """,
+            (title,),
+        )
+        product_id = int(row_new[0])
+        exec1(
+            conn,
+            """
+            INSERT INTO app.subscription_products(product_id)
+            VALUES (%s)
+            ON CONFLICT (product_id) DO NOTHING
+            """,
+            (product_id,),
+        )
+        return product_id
+
     def ensure_account_platforms(conn, account_id: int):
         ps4_id, ps4_slots = get_platform_info(conn, "ps4")
         ps5_id, ps5_slots = get_platform_info(conn, "ps5")
@@ -401,6 +449,61 @@ def build_import_jobs(
                                     (account_id, product_id),
                                 )
                             updated += 1
+                        elif row_kind in {"subscription_term_plus", "subscription_term_ea_play"}:
+                            subscription_raw = item.get("subscription")
+                            valid_until_raw = item.get("valid_until")
+                            subscription_title = normalize_subscription_title(subscription_raw, row_kind)
+                            valid_until_dt = normalize_slot_date_to_dt(valid_until_raw)
+                            if not login or not domain or not subscription_title or not valid_until_dt:
+                                skipped += 1
+                                upload_done += 1
+                                set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+                                continue
+                            row_acc = q1(
+                                conn,
+                                """
+                                SELECT a.account_id
+                                FROM app.accounts a
+                                JOIN app.domains d ON d.domain_id = a.domain_id
+                                WHERE lower(a.login_name)=lower(%s) AND lower(d.name)=lower(%s)
+                                LIMIT 1
+                                """,
+                                (login, domain),
+                            )
+                            if not row_acc:
+                                skipped += 1
+                                upload_done += 1
+                                set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+                                continue
+                            account_id = int(row_acc[0])
+                            product_id = get_or_create_subscription_product_id(conn, subscription_title)
+                            valid_until_date = valid_until_dt.date()
+                            # Не плодим дубль срока для того же аккаунта и подписки на ту же дату.
+                            existing_term = q1(
+                                conn,
+                                """
+                                SELECT term_id
+                                FROM app.subscription_terms
+                                WHERE product_id=%s
+                                  AND account_id=%s
+                                  AND valid_until=%s
+                                  AND is_archived IS NOT TRUE
+                                LIMIT 1
+                                """,
+                                (product_id, account_id, valid_until_date),
+                            )
+                            if existing_term:
+                                updated += 1
+                            else:
+                                exec1(
+                                    conn,
+                                    """
+                                    INSERT INTO app.subscription_terms(product_id, account_id, valid_until, notes)
+                                    VALUES (%s, %s, %s, %s)
+                                    """,
+                                    (product_id, account_id, valid_until_date, "import"),
+                                )
+                                created += 1
                         else:
                             password = (item.get("password") or "").strip()
                             if not login or not domain:

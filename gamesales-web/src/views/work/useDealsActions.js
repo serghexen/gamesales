@@ -102,6 +102,8 @@ export function useDealsActions({
       source_id: normalizeOptionalInt(deal.source_id),
       region_code: deal.region_code || null,
       slot_type_code: dealTypeCode === 'rental' ? (deal.slot_type_code || null) : null,
+      // Для подписочного шеринга сохраняем выбранный срок подписки как отдельный id.
+      subscription_term_id: dealTypeCode === 'rental' ? normalizeOptionalInt(deal.subscription_term_id) : null,
       reserve_key: dealTypeCode === 'rental' ? (deal.reserve_key || null) : null,
       price: deal.price || 0,
       purchase_cost: deal.purchase_cost || 0,

@@ -18,8 +18,13 @@ export function useDealsWatchers({
   loadDealAccountAssignments,
   loadDealSlotAvailability,
   loadSubscriptionFreeProductIds,
+  loadSubscriptionTerms,
   ensureAccountSecretsLoaded,
 }) {
+  const safeLoadSubscriptionTerms = typeof loadSubscriptionTerms === 'function'
+    ? loadSubscriptionTerms
+    : () => {}
+
   // Возвращает тип товара по id, чтобы ветвить поведение для игр и подписок.
   function getProductTypeCode(productId) {
     if (!productId) return ''
@@ -32,6 +37,7 @@ export function useDealsWatchers({
     () => [newDeal.product_id, newDeal.slot_type_code],
     () => {
       loadDealAccountsForProduct('new')
+      safeLoadSubscriptionTerms('new')
       if (newDeal.product_id) loadDealProductAssignments('new')
     }
   )
@@ -40,6 +46,7 @@ export function useDealsWatchers({
     () => [editDeal.product_id, editDeal.slot_type_code],
     () => {
       if (editDeal.open) loadDealAccountsForProduct('edit')
+      if (editDeal.open) safeLoadSubscriptionTerms('edit')
       if (editDeal.open && editDeal.product_id) loadDealProductAssignments('edit')
     }
   )
@@ -70,6 +77,7 @@ export function useDealsWatchers({
       if (val === prev) return
       const productType = getProductTypeCode(val)
       newDeal.account_id = ''
+      newDeal.subscription_term_id = ''
       newDeal.reserve_key = ''
       // Для подписок оставляем выбранный тип слота, потому что там сценарий slot -> product.
       if (productType !== 'subscription') newDeal.slot_type_code = ''
@@ -87,6 +95,7 @@ export function useDealsWatchers({
       if (val === prev) return
       const productType = getProductTypeCode(val)
       editDeal.account_id = ''
+      editDeal.subscription_term_id = ''
       editDeal.reserve_key = ''
       // Для подписок сохраняем слот, чтобы не ломать порядок выбора в форме.
       if (productType !== 'subscription') editDeal.slot_type_code = ''
@@ -130,14 +139,17 @@ export function useDealsWatchers({
       if (dealSlotAutoAssign.value || val === prev) return
       // При смене слота пересчитываем только подписки с реально свободным слотом.
       loadSubscriptionFreeProductIds('new', val)
+      safeLoadSubscriptionTerms('new')
       if (!val) {
         newDeal.account_id = ''
+        newDeal.subscription_term_id = ''
         newDeal.reserve_key = ''
         accountSlotStatusNew.value = []
         dealAccountAssignmentsNew.value = []
         return
       }
       newDeal.account_id = ''
+      newDeal.subscription_term_id = ''
       newDeal.reserve_key = ''
       accountSlotStatusNew.value = []
       dealAccountAssignmentsNew.value = []
@@ -151,14 +163,17 @@ export function useDealsWatchers({
       if (dealSlotAutoAssign.value || val === prev) return
       // Для редактирования обновляем тот же список подписок под выбранный слот.
       loadSubscriptionFreeProductIds('edit', val)
+      safeLoadSubscriptionTerms('edit')
       if (!val) {
         editDeal.account_id = ''
+        editDeal.subscription_term_id = ''
         editDeal.reserve_key = ''
         accountSlotStatusEdit.value = []
         dealAccountAssignmentsEdit.value = []
         return
       }
       editDeal.account_id = ''
+      editDeal.subscription_term_id = ''
       editDeal.reserve_key = ''
       accountSlotStatusEdit.value = []
       dealAccountAssignmentsEdit.value = []
@@ -170,7 +185,9 @@ export function useDealsWatchers({
     () => {
       // Когда справочник товаров догрузился, пересобираем фильтр подписок под текущие слоты.
       loadSubscriptionFreeProductIds('new', newDeal.slot_type_code)
+      safeLoadSubscriptionTerms('new')
       if (editDeal.open) loadSubscriptionFreeProductIds('edit', editDeal.slot_type_code)
+      if (editDeal.open) safeLoadSubscriptionTerms('edit')
     }
   )
 }

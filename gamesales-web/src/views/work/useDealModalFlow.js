@@ -25,6 +25,10 @@ export function useDealModalFlow({
   quickEditAccount,
   quickNewAccountError,
   quickEditAccountError,
+  quickNewSubscriptionTerm,
+  quickEditSubscriptionTerm,
+  quickNewSubscriptionTermError,
+  quickEditSubscriptionTermError,
   dealAccountsForProductNew,
   dealAccountsForProductEdit,
   dealAccountAssignmentsNew,
@@ -39,6 +43,11 @@ export function useDealModalFlow({
   canEditCompletedDeal,
   showDealWarning,
 }) {
+  const safeQuickNewSubscriptionTerm = quickNewSubscriptionTerm || { account_id: '', valid_until: '', notes: '' }
+  const safeQuickEditSubscriptionTerm = quickEditSubscriptionTerm || { account_id: '', valid_until: '', notes: '' }
+  const safeQuickNewSubscriptionTermError = quickNewSubscriptionTermError || { value: '' }
+  const safeQuickEditSubscriptionTermError = quickEditSubscriptionTermError || { value: '' }
+
   let initialEditDealSnapshot = null
   let initialCreateDealSnapshot = null
 
@@ -70,6 +79,7 @@ export function useDealModalFlow({
       source_id: newDeal.source_id,
       region_code: newDeal.region_code,
       slot_type_code: newDeal.slot_type_code,
+      subscription_term_id: newDeal.subscription_term_id,
       reserve_key: newDeal.reserve_key,
       price: newDeal.price,
       purchase_cost: newDeal.purchase_cost,
@@ -100,6 +110,7 @@ export function useDealModalFlow({
     editDeal.source_id = deal.source_id || ''
     editDeal.region_code = deal.region_code || ''
     editDeal.slot_type_code = deal.slot_type_code || ''
+    editDeal.subscription_term_id = deal.subscription_term_id || ''
     editDeal.reserve_key = deal.reserve_key || ''
     editDeal.price = Number(deal.price || 0)
     editDeal.purchase_cost = Number(deal.purchase_cost || 0)
@@ -130,6 +141,7 @@ export function useDealModalFlow({
     editDeal.source_id = ''
     editDeal.region_code = ''
     editDeal.slot_type_code = ''
+    editDeal.subscription_term_id = ''
     editDeal.reserve_key = ''
     editDeal.price = 0
     editDeal.purchase_cost = 0
@@ -171,6 +183,10 @@ export function useDealModalFlow({
     quickNewAccount.domain_code = ''
     quickNewAccount.platform_codes = []
     quickNewAccountError.value = ''
+    safeQuickNewSubscriptionTerm.account_id = ''
+    safeQuickNewSubscriptionTerm.valid_until = ''
+    safeQuickNewSubscriptionTerm.notes = ''
+    safeQuickNewSubscriptionTermError.value = ''
     dealAccountsForProductNew.value = []
     dealSlotAvailabilityNew.value = {}
     syncCreateDealSnapshot()
@@ -201,6 +217,7 @@ export function useDealModalFlow({
       source_id: '',
       region_code: '',
       slot_type_code: '',
+      subscription_term_id: '',
       reserve_key: '',
       price: 0,
       purchase_cost: 0,
@@ -222,6 +239,7 @@ export function useDealModalFlow({
       source_id: newDeal.source_id,
       region_code: newDeal.region_code,
       slot_type_code: newDeal.slot_type_code,
+      subscription_term_id: newDeal.subscription_term_id,
       reserve_key: newDeal.reserve_key,
       price: newDeal.price,
       purchase_cost: newDeal.purchase_cost,
@@ -244,6 +262,7 @@ export function useDealModalFlow({
       source_id: editDeal.source_id,
       region_code: editDeal.region_code,
       slot_type_code: editDeal.slot_type_code,
+      subscription_term_id: editDeal.subscription_term_id,
       reserve_key: editDeal.reserve_key,
       price: editDeal.price,
       purchase_cost: editDeal.purchase_cost,
@@ -274,6 +293,7 @@ export function useDealModalFlow({
     newDeal.source_id = ''
     newDeal.region_code = ''
     newDeal.slot_type_code = ''
+    newDeal.subscription_term_id = ''
     newDeal.reserve_key = ''
     newDeal.price = 0
     newDeal.purchase_cost = 0
@@ -299,10 +319,18 @@ export function useDealModalFlow({
     quickNewAccount.domain_code = ''
     quickNewAccount.platform_codes = []
     quickNewAccountError.value = ''
+    safeQuickNewSubscriptionTerm.account_id = ''
+    safeQuickNewSubscriptionTerm.valid_until = ''
+    safeQuickNewSubscriptionTerm.notes = ''
+    safeQuickNewSubscriptionTermError.value = ''
     quickEditAccount.login_name = ''
     quickEditAccount.domain_code = ''
     quickEditAccount.platform_codes = []
     quickEditAccountError.value = ''
+    safeQuickEditSubscriptionTerm.account_id = ''
+    safeQuickEditSubscriptionTerm.valid_until = ''
+    safeQuickEditSubscriptionTerm.notes = ''
+    safeQuickEditSubscriptionTermError.value = ''
     dealAccountsForProductNew.value = []
     dealAccountsForProductEdit.value = []
     dealAccountAssignmentsNew.value = []
@@ -329,6 +357,10 @@ export function useDealModalFlow({
     quickEditAccount.domain_code = ''
     quickEditAccount.platform_codes = []
     quickEditAccountError.value = ''
+    safeQuickEditSubscriptionTerm.account_id = ''
+    safeQuickEditSubscriptionTerm.valid_until = ''
+    safeQuickEditSubscriptionTerm.notes = ''
+    safeQuickEditSubscriptionTermError.value = ''
     dealAccountsForProductEdit.value = []
     // Сохраняем исходные данные в том же формате, что и форма, чтобы корректно сравнивать "грязные" изменения.
     initialEditDealSnapshot = {
@@ -343,6 +375,7 @@ export function useDealModalFlow({
       source_id: deal.source_id || '',
       region_code: deal.region_code || '',
       slot_type_code: deal.slot_type_code || '',
+      subscription_term_id: deal.subscription_term_id || '',
       reserve_key: deal.reserve_key || '',
       price: Number(deal.price || 0),
       purchase_cost: Number(deal.purchase_cost || 0),
