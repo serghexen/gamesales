@@ -26,6 +26,7 @@ class RentalCreate(BaseModel):
     product_id: Optional[int] = None
     platform_code: Optional[str] = None
     slot_type_code: Optional[str] = None
+    subscription_term_id: Optional[int] = None
     source_id: Optional[int] = None
     purchase_at: Optional[datetime] = None
 
@@ -48,6 +49,7 @@ class DealCreate(BaseModel):
     region_code: Optional[str] = None
     platform_code: Optional[str] = None
     slot_type_code: Optional[str] = None
+    subscription_term_id: Optional[int] = None
     reserve_key: Optional[str] = None
     price: float = 0
     purchase_cost: float = 0
@@ -79,6 +81,7 @@ class DealUpdate(BaseModel):
     region_code: Optional[str] = None
     platform_code: Optional[str] = None
     slot_type_code: Optional[str] = None
+    subscription_term_id: Optional[int] = None
     reserve_key: Optional[str] = None
     price: Optional[float] = None
     purchase_cost: Optional[float] = None
@@ -115,6 +118,7 @@ class DealListItem(BaseModel):
     product_short_title: Optional[str] = None
     platform_code: Optional[str]
     slot_type_code: Optional[str] = None
+    subscription_term_id: Optional[int] = None
     reserve_key: Optional[str] = None
     customer_nickname: Optional[str]
     login: Optional[str] = None

@@ -224,7 +224,7 @@ def mount_deals_routes(
         product_id: Optional[int],
         for_rental: bool,
         must_be_active: bool,
-    ) -> Optional[int]:
+    ) -> Optional[str]:
         if product_id is None:
             return None
         # Параметр оставлен для совместимости сигнатуры в текущем этапе миграции.
@@ -246,7 +246,65 @@ def mount_deals_routes(
             raise HTTPException(400, f"Product is archived: {product_id}")
         if for_rental and type_code not in {"game", "subscription"}:
             raise HTTPException(400, "rental supports only products with type game or subscription")
-        return None
+        return type_code
+
+    # Проверяет срок подписки для rental: срок должен принадлежать товару/аккаунту и быть свободным.
+    def validate_subscription_term_for_rental(
+        conn,
+        *,
+        subscription_term_id: Optional[int],
+        product_id: Optional[int],
+        account_id: Optional[int],
+        exclude_deal_item_id: Optional[int] = None,
+    ) -> None:
+        if subscription_term_id is None:
+            return
+        if not product_id or not account_id:
+            raise HTTPException(400, "subscription_term_id requires product_id and account_id")
+        term_row = q1(
+            conn,
+            """
+            SELECT product_id, account_id, is_archived
+            FROM app.subscription_terms
+            WHERE term_id=%s
+            """,
+            (subscription_term_id,),
+        )
+        if not term_row:
+            raise HTTPException(400, f"Unknown subscription_term_id: {subscription_term_id}")
+        if bool(term_row[2]):
+            raise HTTPException(400, "subscription term is archived")
+        if int(term_row[0]) != int(product_id):
+            raise HTTPException(400, "subscription_term_id does not match selected product")
+        if int(term_row[1]) != int(account_id):
+            raise HTTPException(400, "subscription_term_id does not match selected account")
+        if exclude_deal_item_id is None:
+            occupied = q1(
+                conn,
+                """
+                SELECT 1
+                FROM app.account_slot_assignments
+                WHERE subscription_term_id=%s
+                  AND released_at IS NULL
+                LIMIT 1
+                """,
+                (subscription_term_id,),
+            )
+        else:
+            occupied = q1(
+                conn,
+                """
+                SELECT 1
+                FROM app.account_slot_assignments
+                WHERE subscription_term_id=%s
+                  AND released_at IS NULL
+                  AND deal_item_id <> %s
+                LIMIT 1
+                """,
+                (subscription_term_id, exclude_deal_item_id),
+            )
+        if occupied:
+            raise HTTPException(409, "subscription term is already occupied")
 
     @app.post("/rentals")
     def create_rental(payload: RentalCreate, user=Depends(get_current_user)):
@@ -264,7 +322,7 @@ def mount_deals_routes(
     
         with psycopg.connect(DB_DSN) as conn:
             # Валидируем product_id для rental в product-first режиме.
-            validate_deal_product_id(
+            product_type_code = validate_deal_product_id(
                 conn,
                 product_id=payload.product_id,
                 for_rental=True,
@@ -300,6 +358,13 @@ def mount_deals_routes(
             free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
             if free < 1:
                 raise HTTPException(409, "Not enough free slots for selected slot type")
+            if product_type_code == "subscription" and payload.subscription_term_id is not None:
+                validate_subscription_term_for_rental(
+                    conn,
+                    subscription_term_id=payload.subscription_term_id,
+                    product_id=payload.product_id,
+                    account_id=payload.account_id,
+                )
     
             # create deal + item
             deal_row = q1(conn, """
@@ -313,28 +378,28 @@ def mount_deals_routes(
     
             # Для новых строк аренды сохраняем только product_id.
             row_item = q1(conn, """
-                INSERT INTO app.deal_items(
-                  deal_id, account_id, product_id, platform_id,
-                  qty, price, purchase_cost, start_at, end_at, slots_used, slot_type_code, purchase_at, notes, game_link
-                )
-                VALUES (
-                  %s, %s, %s, %s,
-                  1, %s, 0, %s, %s, 1, %s, %s, %s, %s
-                )
-                RETURNING deal_item_id
-            """, (
-                deal_id, payload.account_id, payload.product_id, platform_id,
-                payload.price, start_at, end_at, payload.slot_type_code, payload.purchase_at, None, None
-            ))
+                    INSERT INTO app.deal_items(
+                      deal_id, account_id, product_id, platform_id,
+                      qty, price, purchase_cost, start_at, end_at, slots_used, slot_type_code, subscription_term_id, purchase_at, notes, game_link
+                    )
+                    VALUES (
+                      %s, %s, %s, %s,
+                      1, %s, 0, %s, %s, 1, %s, %s, %s, %s, %s
+                    )
+                    RETURNING deal_item_id
+                """, (
+                    deal_id, payload.account_id, payload.product_id, platform_id,
+                    payload.price, start_at, end_at, payload.slot_type_code, payload.subscription_term_id, payload.purchase_at, None, None
+                ))
             deal_item_id = int(row_item[0])
             exec1(
                 conn,
                 """
                 INSERT INTO app.account_slot_assignments(
-                  account_id, slot_type_code, customer_id, product_id, deal_id, deal_item_id, assigned_by
+                  account_id, slot_type_code, customer_id, product_id, subscription_term_id, deal_id, deal_item_id, assigned_by
                 )
                 VALUES (
-                  %s, %s, %s, %s, %s, %s, %s
+                  %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 """,
                 (
@@ -342,6 +407,7 @@ def mount_deals_routes(
                     payload.slot_type_code,
                     customer_id,
                     payload.product_id,
+                    payload.subscription_term_id,
                     deal_id,
                     deal_item_id,
                     user.username,
@@ -394,9 +460,10 @@ def mount_deals_routes(
                 if not row:
                     raise HTTPException(400, "Unknown flow_status_code")
             # Для rental работаем только по product_id.
+            selected_product_type_code = None
             if payload.product_id is not None:
                 # Проверяем product_id заранее, чтобы вернуть понятную 4xx ошибку вместо SQL-ошибки.
-                validate_deal_product_id(
+                selected_product_type_code = validate_deal_product_id(
                     conn,
                     product_id=payload.product_id,
                     for_rental=(deal_type == "rental"),
@@ -455,10 +522,18 @@ def mount_deals_routes(
                 free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
                 if free < 1:
                     raise HTTPException(409, "Not enough free slots for selected slot type")
+            selected_subscription_term_id = int(payload.subscription_term_id) if payload.subscription_term_id is not None else None
+            if deal_type == "rental" and selected_subscription_term_id is not None:
+                validate_subscription_term_for_rental(
+                    conn,
+                    subscription_term_id=selected_subscription_term_id,
+                    product_id=payload.product_id,
+                    account_id=payload.account_id,
+                )
 
             selected_reserve_key = None
-            if deal_type == "rental" and payload.account_id:
-                # Для шеринга резерв закрепляем сразу при создании, чтобы не выдавать его второй раз.
+            if deal_type == "rental" and payload.account_id and customer_id is not None:
+                # Резерв подбираем только когда есть покупатель, иначе оставляем ключ пустым.
                 normalized_payload_reserve = normalize_reserve_key(payload.reserve_key)
                 if normalized_payload_reserve:
                     used_keys = get_used_reserve_keys(conn, payload.account_id)
@@ -481,17 +556,17 @@ def mount_deals_routes(
                 row_item = q1(conn, """
                     INSERT INTO app.deal_items(
                       deal_id, account_id, product_id, platform_id,
-                      qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, slot_type_code, reserve_key, notes, game_link
+                      qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, slot_type_code, subscription_term_id, reserve_key, notes, game_link
                     )
                     VALUES (
                       %s, %s, %s, %s,
-                      1, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s, %s
+                      1, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     RETURNING deal_item_id
                 """, (
                     deal_id, payload.account_id, payload.product_id, platform_id,
                     payload.price, payload.purchase_cost, payload.purchase_at, payload.start_at, payload.end_at,
-                    1, payload.slot_type_code, selected_reserve_key, payload.notes, product_link
+                    1, payload.slot_type_code, selected_subscription_term_id, selected_reserve_key, payload.notes, product_link
                 ))
             else:
                 row_item = q1(conn, """
@@ -512,13 +587,13 @@ def mount_deals_routes(
             deal_item_id = int(row_item[0])
             if deal_type == "rental" and not rental_is_draft:
                 exec1(
-                conn,
-                """
-                INSERT INTO app.account_slot_assignments(
-                      account_id, slot_type_code, customer_id, product_id, deal_id, deal_item_id, assigned_by
+                    conn,
+                    """
+                    INSERT INTO app.account_slot_assignments(
+                      account_id, slot_type_code, customer_id, product_id, subscription_term_id, deal_id, deal_item_id, assigned_by
                     )
                     VALUES (
-                      %s, %s, %s, %s, %s, %s, %s
+                      %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     """,
                     (
@@ -526,6 +601,7 @@ def mount_deals_routes(
                         payload.slot_type_code,
                         customer_id,
                         payload.product_id,
+                        selected_subscription_term_id,
                         deal_id,
                         deal_item_id,
                         user.username,
@@ -580,6 +656,7 @@ def mount_deals_routes(
                   di.end_at,
                   di.slots_used,
                   di.slot_type_code,
+                  di.subscription_term_id,
                   di.reserve_key,
                   di.notes,
                   di.game_link,
@@ -595,14 +672,15 @@ def mount_deals_routes(
             if not row:
                 raise HTTPException(404, "Deal not found")
     
-            if len(row) >= 22:
+            if len(row) >= 23:
                 current_type, status_code, flow_status_code, current_lock_version, region_id, customer_id, total_amount, order_number, responsible_username, deal_item_id, \
-                    account_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, reserve_key, notes, game_link, returned_at = row
+                    account_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, subscription_term_id, reserve_key, notes, game_link, returned_at = row
             else:
                 # Поддерживаем старый формат строки (без lock_version) в тестовых моках.
                 current_type, status_code, flow_status_code, region_id, customer_id, total_amount, order_number, responsible_username, deal_item_id, \
                     account_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link, returned_at = row
                 current_lock_version = 1
+                subscription_term_id = None
                 reserve_key = None
             # Проверяем версию записи, чтобы не перезаписать чужие правки при одновременном редактировании.
             expected_lock_version = payload.lock_version
@@ -660,6 +738,7 @@ def mount_deals_routes(
                 region_id = get_region_id(conn, payload.region_code)
     
             new_slot_type_code = payload.slot_type_code if payload.slot_type_code is not None else slot_type_code
+            new_subscription_term_id = payload.subscription_term_id if payload.subscription_term_id is not None else subscription_term_id
             new_reserve_key = normalize_reserve_key(payload.reserve_key) if payload.reserve_key is not None else normalize_reserve_key(reserve_key)
             new_platform_id = platform_id
             if deal_type == "rental" and not rental_is_draft:
@@ -670,6 +749,14 @@ def mount_deals_routes(
                 if slot_type_changed:
                     slot_type = get_slot_type(conn, new_slot_type_code)
                     new_platform_id = get_platform_id(conn, slot_type[1])
+                if new_subscription_term_id is not None:
+                    validate_subscription_term_for_rental(
+                        conn,
+                        subscription_term_id=int(new_subscription_term_id),
+                        product_id=new_product_id,
+                        account_id=new_account_id,
+                        exclude_deal_item_id=deal_item_id,
+                    )
     
             # customer update
             cust_nickname = payload.customer_nickname
@@ -868,6 +955,7 @@ def mount_deals_routes(
                         returned_at=%s,
                         slots_used=%s,
                         slot_type_code=%s,
+                        subscription_term_id=%s,
                         reserve_key=%s,
                         notes=%s,
                         game_link=%s
@@ -885,6 +973,7 @@ def mount_deals_routes(
                         new_returned_at,
                         new_slots_used,
                         new_slot_type_code,
+                        new_subscription_term_id,
                         new_reserve_key,
                         new_notes,
                         new_product_link,
@@ -907,6 +996,7 @@ def mount_deals_routes(
                         returned_at=%s,
                         slots_used=%s,
                         slot_type_code=%s,
+                        subscription_term_id=%s,
                         reserve_key=%s,
                         notes=%s,
                         game_link=%s
@@ -924,6 +1014,7 @@ def mount_deals_routes(
                         new_returned_at,
                         new_slots_used,
                         new_slot_type_code,
+                        new_subscription_term_id,
                         new_reserve_key,
                         new_notes,
                         new_product_link,
@@ -939,6 +1030,7 @@ def mount_deals_routes(
                         conn,
                         """
                         SELECT assignment_id, account_id, slot_type_code, customer_id, product_id
+                             , subscription_term_id
                         FROM app.account_slot_assignments
                         WHERE deal_item_id=%s AND released_at IS NULL
                         """,
@@ -946,7 +1038,12 @@ def mount_deals_routes(
                     )
                     current_assign = row_assign[0] if row_assign else None
                     # Сравниваем назначение только по product_id.
-                    assigned_product_id = int(row_assign[4]) if row_assign and row_assign[4] is not None else None
+                    assigned_product_id = int(row_assign[4]) if row_assign and len(row_assign) > 4 and row_assign[4] is not None else None
+                    # Поддерживаем старые тестовые моки без поля subscription_term_id.
+                    assigned_subscription_term_id = (
+                        int(row_assign[5]) if row_assign and len(row_assign) > 5 and row_assign[5] is not None else None
+                    )
+                    new_subscription_term_id_normalized = int(new_subscription_term_id) if new_subscription_term_id is not None else None
                     assigned_customer_id = int(row_assign[3]) if row_assign and row_assign[3] is not None else None
                     new_customer_id = int(customer_id) if customer_id is not None else None
                     need_new_assign = (
@@ -954,6 +1051,7 @@ def mount_deals_routes(
                         or int(row_assign[1]) != int(new_account_id)
                         or row_assign[2] != new_slot_type_code
                         or (assigned_product_id != int(new_product_id))
+                        or (assigned_subscription_term_id != new_subscription_term_id_normalized)
                     )
                     if need_new_assign and current_assign:
                         release_slot_assignment(conn, deal_item_id, user.username)
@@ -962,10 +1060,10 @@ def mount_deals_routes(
                             conn,
                             """
                             INSERT INTO app.account_slot_assignments(
-                              account_id, slot_type_code, customer_id, product_id, deal_id, deal_item_id, assigned_by
+                              account_id, slot_type_code, customer_id, product_id, subscription_term_id, deal_id, deal_item_id, assigned_by
                             )
                             VALUES (
-                              %s, %s, %s, %s, %s, %s, %s
+                              %s, %s, %s, %s, %s, %s, %s, %s
                             )
                             """,
                             (
@@ -973,6 +1071,7 @@ def mount_deals_routes(
                                 new_slot_type_code,
                                 customer_id,
                                 new_product_id,
+                                new_subscription_term_id,
                                 deal_id,
                                 deal_item_id,
                                 user.username,

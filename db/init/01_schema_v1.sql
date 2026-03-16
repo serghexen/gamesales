@@ -203,6 +203,24 @@ COMMENT ON COLUMN app.accounts.next_activation_at IS 'Когда аккаунт 
 COMMENT ON COLUMN app.accounts.created_at IS 'Дата создания аккаунта';
 COMMENT ON COLUMN app.accounts.account_date IS 'Дата аккаунта';
 COMMENT ON COLUMN app.accounts.notes IS 'Заметки';
+CREATE INDEX IF NOT EXISTS ix_accounts_is_deactivated ON app.accounts (is_deactivated);
+
+CREATE TABLE IF NOT EXISTS app.subscription_terms (
+  term_id bigserial PRIMARY KEY,
+  product_id bigint NOT NULL REFERENCES app.subscription_products(product_id) ON DELETE CASCADE,
+  account_id bigint NOT NULL REFERENCES app.accounts(account_id) ON DELETE RESTRICT,
+  valid_until date NOT NULL,
+  notes text,
+  is_archived boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE app.subscription_terms IS 'Сроки подписок по базовому товару';
+COMMENT ON COLUMN app.subscription_terms.product_id IS 'Базовый товар типа subscription';
+COMMENT ON COLUMN app.subscription_terms.account_id IS 'Аккаунт, на котором действует срок подписки';
+COMMENT ON COLUMN app.subscription_terms.valid_until IS 'Дата окончания срока';
+CREATE INDEX IF NOT EXISTS idx_subscription_terms_product ON app.subscription_terms(product_id, valid_until);
+CREATE INDEX IF NOT EXISTS idx_subscription_terms_account ON app.subscription_terms(account_id);
+CREATE INDEX IF NOT EXISTS idx_subscription_terms_archived ON app.subscription_terms(is_archived);
 
 CREATE TABLE IF NOT EXISTS app.account_platforms (
   account_id     bigint NOT NULL REFERENCES app.accounts(account_id) ON DELETE CASCADE,
@@ -343,6 +361,7 @@ CREATE TABLE IF NOT EXISTS app.deal_items (
   returned_at      timestamptz,
   slots_used       integer NOT NULL DEFAULT 1,
   slot_type_code   text REFERENCES app.slot_types(code),
+  subscription_term_id bigint REFERENCES app.subscription_terms(term_id) ON DELETE RESTRICT,
   reserve_key      text,
   game_link        text,
   notes            text,
@@ -367,11 +386,14 @@ COMMENT ON COLUMN app.deal_items.end_at IS 'Дата окончания';
 COMMENT ON COLUMN app.deal_items.returned_at IS 'Факт возврата';
 COMMENT ON COLUMN app.deal_items.slots_used IS 'Количество занятых слотов';
 COMMENT ON COLUMN app.deal_items.slot_type_code IS 'Тип слота';
+COMMENT ON COLUMN app.deal_items.subscription_term_id IS 'Срок подписки, выбранный для аренды';
 COMMENT ON COLUMN app.deal_items.reserve_key IS 'Ключ резерва аккаунта (reserveN), закрепленный за шеринговой сделкой';
 COMMENT ON COLUMN app.deal_items.game_link IS 'Ссылка на игру';
 COMMENT ON COLUMN app.deal_items.notes IS 'Заметки';
 CREATE INDEX IF NOT EXISTS idx_deal_items_product_id
   ON app.deal_items (product_id);
+CREATE INDEX IF NOT EXISTS idx_deal_items_subscription_term_id
+  ON app.deal_items (subscription_term_id);
 
 CREATE TABLE IF NOT EXISTS app.account_slot_assignments (
   assignment_id bigserial PRIMARY KEY,
@@ -379,6 +401,7 @@ CREATE TABLE IF NOT EXISTS app.account_slot_assignments (
   slot_type_code text NOT NULL REFERENCES app.slot_types(code),
   customer_id bigint REFERENCES app.customers(customer_id),
   product_id bigint REFERENCES app.products(product_id),
+  subscription_term_id bigint REFERENCES app.subscription_terms(term_id) ON DELETE RESTRICT,
   deal_id bigint REFERENCES app.deals(deal_id),
   deal_item_id bigint REFERENCES app.deal_items(deal_item_id),
   assigned_at timestamptz NOT NULL DEFAULT now(),
@@ -393,6 +416,11 @@ CREATE INDEX IF NOT EXISTS idx_account_slot_assignments_active
   WHERE released_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_account_slot_assignments_product_id
   ON app.account_slot_assignments(product_id);
+CREATE INDEX IF NOT EXISTS idx_slot_assignments_subscription_term_id
+  ON app.account_slot_assignments(subscription_term_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_slot_assignments_active_subscription_term
+  ON app.account_slot_assignments(subscription_term_id)
+  WHERE subscription_term_id IS NOT NULL AND released_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS app.deal_audit (
   audit_id bigserial PRIMARY KEY,
@@ -638,11 +666,12 @@ VALUES
   ('accounts', 'Аккаунты', 20),
   ('products', 'Товары', 30),
   ('ns-gift', 'NS Gift', 40),
-  ('analytics', 'Аналитика', 50),
-  ('catalogs', 'Справочники', 60),
-  ('users', 'Пользователи', 70),
-  ('dashboard', 'Дашборд', 80),
-  ('telegram', 'Чаты', 90)
+  ('telegram', 'Чаты', 50),
+  ('analytics', 'Аналитика', 60),
+  ('catalogs', 'Справочники', 70),
+  ('users', 'Пользователи', 80),
+  ('profile', 'Профиль', 90),
+  ('dashboard', 'Дашборд', 100)
 ON CONFLICT (section_code) DO UPDATE
 SET section_name = EXCLUDED.section_name,
     sort_order = EXCLUDED.sort_order;
@@ -718,3 +747,15 @@ CREATE TABLE IF NOT EXISTS tg.dialog_states (
   updated_by_user_id bigint REFERENCES app.users(user_id),
   CONSTRAINT ck_tg_dialog_states_status CHECK (status IN ('new', 'accepted', 'archived'))
 );
+
+CREATE TABLE IF NOT EXISTS tg.dialog_snapshot (
+  chat_id       bigint PRIMARY KEY,
+  title         text NOT NULL DEFAULT '',
+  unread_count  integer NOT NULL DEFAULT 0,
+  is_group      boolean NOT NULL DEFAULT false,
+  is_channel    boolean NOT NULL DEFAULT false,
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tg_dialog_snapshot_updated_at
+  ON tg.dialog_snapshot(updated_at DESC);

@@ -386,6 +386,39 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"deal_id": 33})
 
+    # Для шеринга с подпиской занятый subscription_term_id должен возвращать 409.
+    def test_create_deal_rental_with_occupied_subscription_term(self):
+        script = [
+            {"one": ("subscription", False)},  # product lookup
+            {"one": (1,)},  # ensure_account_exists
+            {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
+            {"one": (2,)},  # get_platform_id
+            {"one": (7,)},  # region from account
+            {"one": (1,)},  # get_account_slot_free
+            {"one": (55, 7, False)},  # subscription term lookup
+            {"one": (1,)},  # subscription term occupied
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/deals",
+                    headers=self._auth_headers(role="manager"),
+                    json={
+                        "deal_type_code": "rental",
+                        "account_id": 7,
+                        "product_id": 55,
+                        "slot_type_code": "ps5_p1",
+                        "subscription_term_id": 901,
+                        "price": 500,
+                    },
+                )
+            self.assertEqual(res.status_code, 409)
+
     # Если клиент уже есть, логин/пароль должны обновляться в app.customers.
     def test_create_deal_updates_customer_credentials_for_existing_customer(self):
         script = [
@@ -812,6 +845,55 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.json(), {"ok": True})
             self.assertFalse(any("SET released_at=now()" in sql for sql in sql_collector))
             self.assertTrue(any("SET customer_id=%s" in sql for sql in sql_collector))
+
+    # Для update rental занятый subscription_term_id должен блокировать сохранение.
+    def test_update_deal_rental_with_occupied_subscription_term(self):
+        current_row = (
+            "rental",
+            "confirmed",
+            "pending",
+            3,
+            10,
+            5,
+            500.0,
+            "A-100",
+            "admin",
+            77,
+            7,
+            2,
+            500.0,
+            100.0,
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+            None,
+            None,
+            1,
+            "ps5_p1",
+            None,
+            None,
+            "note",
+            None,
+            None,
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+            {"one": (55,)},  # current product_id from deal_item
+            {"one": (55, 7, False)},  # subscription term lookup
+            {"one": (1,)},  # subscription term occupied by other assignment
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="manager"),
+                    json={"subscription_term_id": 901},
+                )
+            self.assertEqual(res.status_code, 409)
 
     # При смене только ответственного у rental не проверяем емкость слотов повторно.
     def test_update_deal_rental_responsible_only_skips_slot_capacity_check(self):

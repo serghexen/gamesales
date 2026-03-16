@@ -1,4 +1,5 @@
 import unittest
+from datetime import date, datetime, timezone
 from io import BytesIO
 from unittest.mock import patch
 
@@ -296,6 +297,83 @@ class ProductsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.json()["product_id"], 77)
             self.assertEqual(res.json()["type_code"], "subscription")
             self.assertEqual(res.json()["platform_codes"], ["ps5"])
+
+    # Список сроков подписки должен возвращать данные аккаунта и признак занятости.
+    def test_list_subscription_terms_success(self):
+        script = [
+            {"one": (1,)},  # ensure_subscription_product
+            {
+                "all": [
+                    (
+                        101,
+                        77,
+                        7,
+                        "user1",
+                        "gmail.com",
+                        date(2027, 1, 13),
+                        "first",
+                        False,
+                        datetime(2026, 3, 1, 10, 0, tzinfo=timezone.utc),
+                        True,
+                    )
+                ]
+            },
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/products/subscriptions/77/terms",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(len(body), 1)
+            self.assertEqual(body[0]["term_id"], 101)
+            self.assertEqual(body[0]["login_full"], "user1@gmail.com")
+            self.assertEqual(body[0]["occupied"], True)
+
+    # Доступные сроки должны фильтроваться по slot_type_code и возвращаться только свободные.
+    def test_list_available_subscription_terms_success(self):
+        script = [
+            {"one": (1,)},  # ensure_subscription_product
+            {"one": (1,)},  # slot exists
+            {
+                "all": [
+                    (
+                        201,
+                        77,
+                        7,
+                        "user2",
+                        "mail.ru",
+                        date(2027, 2, 5),
+                        "note",
+                        False,
+                        datetime(2026, 3, 2, 10, 0, tzinfo=timezone.utc),
+                    )
+                ]
+            },
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/products/subscriptions/77/terms/available?slot_type_code=ps5_p1",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(len(body), 1)
+            self.assertEqual(body[0]["term_id"], 201)
+            self.assertEqual(body[0]["occupied"], False)
 
     # Валидация должна читать лист "Игры" и предупреждать о пропуске подписок.
     def test_products_import_validate_prefers_games_sheet_and_skips_subscriptions(self):

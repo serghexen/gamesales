@@ -9,6 +9,7 @@ COMMENT ON COLUMN app.user_roles.name IS 'Название роли';
 CREATE TABLE IF NOT EXISTS app.users (
   user_id bigserial PRIMARY KEY,
   username text NOT NULL UNIQUE,
+  name text NOT NULL DEFAULT '',
   password_hash text NOT NULL,
   role_code text NOT NULL DEFAULT 'manager' REFERENCES app.user_roles(code),
   created_at timestamptz NOT NULL DEFAULT now()
@@ -16,6 +17,7 @@ CREATE TABLE IF NOT EXISTS app.users (
 COMMENT ON TABLE app.users IS 'Пользователи системы';
 COMMENT ON COLUMN app.users.user_id IS 'Идентификатор пользователя';
 COMMENT ON COLUMN app.users.username IS 'Логин пользователя';
+COMMENT ON COLUMN app.users.name IS 'Отображаемое имя пользователя';
 COMMENT ON COLUMN app.users.password_hash IS 'Хеш пароля';
 COMMENT ON COLUMN app.users.role_code IS 'Роль пользователя';
 COMMENT ON COLUMN app.users.created_at IS 'Дата создания пользователя';

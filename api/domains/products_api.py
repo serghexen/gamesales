@@ -21,9 +21,28 @@ def mount_products_routes(
     ProductUpdate,
     ProductOut,
     ProductListOut,
+    SubscriptionTermCreate,
+    SubscriptionTermUpdate,
+    SubscriptionTermOut,
     SlotTypeOut,
     UserOut,
 ):
+    # Проверяет, что товар существует и относится к подпискам.
+    def ensure_subscription_product(conn, product_id: int):
+        row = q1(
+            conn,
+            """
+            SELECT 1
+            FROM app.products
+            WHERE product_id=%s
+              AND is_archived IS NOT TRUE
+              AND lower(type_code)='subscription'
+            """,
+            (product_id,),
+        )
+        if not row:
+            raise HTTPException(400, f"Unknown subscription product_id: {product_id}")
+
     @app.get("/products/subscriptions/free-by-slot", response_model=List[int])
     def list_subscription_products_with_free_slot(
         slot_type_code: str,
@@ -81,6 +100,221 @@ def mount_products_routes(
                 (normalized_slot_type_code, slot_platform),
             )
         return [int(row[0]) for row in rows]
+
+    @app.get("/products/subscriptions/{product_id}/terms", response_model=List[SubscriptionTermOut])
+    def list_subscription_terms(product_id: int, user: UserOut = Depends(get_current_user)):
+        with psycopg.connect(DB_DSN) as conn:
+            ensure_subscription_product(conn, product_id)
+            rows = qall(
+                conn,
+                """
+                SELECT
+                  st.term_id,
+                  st.product_id,
+                  st.account_id,
+                  a.login_name,
+                  d.name AS domain_code,
+                  st.valid_until,
+                  st.notes,
+                  st.is_archived,
+                  st.created_at,
+                  EXISTS (
+                    SELECT 1
+                    FROM app.account_slot_assignments asa
+                    WHERE asa.subscription_term_id = st.term_id
+                      AND asa.released_at IS NULL
+                  ) AS occupied
+                FROM app.subscription_terms st
+                JOIN app.accounts a ON a.account_id = st.account_id
+                LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+                WHERE st.product_id=%s
+                ORDER BY st.is_archived ASC, st.valid_until ASC, st.term_id ASC
+                """,
+                (product_id,),
+            )
+        return [
+            SubscriptionTermOut(
+                term_id=int(r0),
+                product_id=int(r1),
+                account_id=int(r2),
+                account_login=str(r3 or ""),
+                domain_code=str(r4 or ""),
+                login_full=(f"{r3}@{r4}" if r3 and r4 else str(r3 or "")),
+                valid_until=r5,
+                notes=r6,
+                is_archived=bool(r7),
+                created_at=r8,
+                occupied=bool(r9),
+            )
+            for (r0, r1, r2, r3, r4, r5, r6, r7, r8, r9) in rows
+        ]
+
+    @app.post("/products/subscriptions/{product_id}/terms", response_model=SubscriptionTermOut)
+    def create_subscription_term(
+        product_id: int,
+        payload: SubscriptionTermCreate = Body(...),
+        user: UserOut = Depends(get_current_user),
+    ):
+        with psycopg.connect(DB_DSN) as conn:
+            ensure_subscription_product(conn, product_id)
+            account_row = q1(conn, "SELECT login_name, domain_id FROM app.accounts WHERE account_id=%s", (payload.account_id,))
+            if not account_row:
+                raise HTTPException(400, f"Unknown account_id: {payload.account_id}")
+            row = q1(
+                conn,
+                """
+                INSERT INTO app.subscription_terms(product_id, account_id, valid_until, notes)
+                VALUES (%s, %s, %s, %s)
+                RETURNING term_id, product_id, account_id, valid_until, notes, is_archived, created_at
+                """,
+                (product_id, payload.account_id, payload.valid_until, payload.notes),
+            )
+            conn.commit()
+            domain_row = q1(conn, "SELECT name FROM app.domains WHERE domain_id=%s", (account_row[1],))
+        login_name = str(account_row[0] or "")
+        domain_code = str(domain_row[0] or "") if domain_row else ""
+        return SubscriptionTermOut(
+            term_id=int(row[0]),
+            product_id=int(row[1]),
+            account_id=int(row[2]),
+            account_login=login_name,
+            domain_code=domain_code,
+            login_full=(f"{login_name}@{domain_code}" if login_name and domain_code else login_name),
+            valid_until=row[3],
+            notes=row[4],
+            is_archived=bool(row[5]),
+            created_at=row[6],
+            occupied=False,
+        )
+
+    @app.put("/products/subscription-terms/{term_id}", response_model=SubscriptionTermOut)
+    def update_subscription_term(
+        term_id: int,
+        payload: SubscriptionTermUpdate = Body(...),
+        user: UserOut = Depends(get_current_user),
+    ):
+        with psycopg.connect(DB_DSN) as conn:
+            current = q1(
+                conn,
+                """
+                SELECT term_id, product_id, account_id, valid_until, notes, is_archived, created_at
+                FROM app.subscription_terms
+                WHERE term_id=%s
+                """,
+                (term_id,),
+            )
+            if not current:
+                raise HTTPException(404, "Subscription term not found")
+            account_id = int(payload.account_id) if payload.account_id is not None else int(current[2])
+            valid_until = payload.valid_until if payload.valid_until is not None else current[3]
+            notes = payload.notes if payload.notes is not None else current[4]
+            is_archived = bool(payload.is_archived) if payload.is_archived is not None else bool(current[5])
+            account_row = q1(conn, "SELECT login_name, domain_id FROM app.accounts WHERE account_id=%s", (account_id,))
+            if not account_row:
+                raise HTTPException(400, f"Unknown account_id: {account_id}")
+            exec1(
+                conn,
+                """
+                UPDATE app.subscription_terms
+                SET account_id=%s,
+                    valid_until=%s,
+                    notes=%s,
+                    is_archived=%s
+                WHERE term_id=%s
+                """,
+                (account_id, valid_until, notes, is_archived, term_id),
+            )
+            occupied = q1(
+                conn,
+                """
+                SELECT 1
+                FROM app.account_slot_assignments
+                WHERE subscription_term_id=%s AND released_at IS NULL
+                LIMIT 1
+                """,
+                (term_id,),
+            )
+            conn.commit()
+            domain_row = q1(conn, "SELECT name FROM app.domains WHERE domain_id=%s", (account_row[1],))
+        login_name = str(account_row[0] or "")
+        domain_code = str(domain_row[0] or "") if domain_row else ""
+        return SubscriptionTermOut(
+            term_id=int(current[0]),
+            product_id=int(current[1]),
+            account_id=account_id,
+            account_login=login_name,
+            domain_code=domain_code,
+            login_full=(f"{login_name}@{domain_code}" if login_name and domain_code else login_name),
+            valid_until=valid_until,
+            notes=notes,
+            is_archived=is_archived,
+            created_at=current[6],
+            occupied=bool(occupied),
+        )
+
+    @app.get("/products/subscriptions/{product_id}/terms/available", response_model=List[SubscriptionTermOut])
+    def list_available_subscription_terms(
+        product_id: int,
+        slot_type_code: str,
+        user: UserOut = Depends(get_current_user),
+    ):
+        normalized_slot_type_code = str(slot_type_code or "").strip()
+        if not normalized_slot_type_code:
+            raise HTTPException(400, "slot_type_code is required")
+        with psycopg.connect(DB_DSN) as conn:
+            ensure_subscription_product(conn, product_id)
+            slot_row = q1(conn, "SELECT 1 FROM app.slot_types WHERE code=%s", (normalized_slot_type_code,))
+            if not slot_row:
+                raise HTTPException(400, f"Unknown slot_type_code: {normalized_slot_type_code}")
+            rows = qall(
+                conn,
+                """
+                SELECT
+                  st.term_id,
+                  st.product_id,
+                  st.account_id,
+                  a.login_name,
+                  d.name AS domain_code,
+                  st.valid_until,
+                  st.notes,
+                  st.is_archived,
+                  st.created_at
+                FROM app.subscription_terms st
+                JOIN app.accounts a ON a.account_id = st.account_id
+                LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+                JOIN app.v_account_slot_status ss
+                  ON ss.account_id = st.account_id
+                 AND ss.slot_type_code = %s
+                WHERE st.product_id=%s
+                  AND st.is_archived IS NOT TRUE
+                  AND a.status_code <> 'archived'
+                  AND ss.free > 0
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM app.account_slot_assignments asa
+                    WHERE asa.subscription_term_id = st.term_id
+                      AND asa.released_at IS NULL
+                  )
+                ORDER BY st.valid_until ASC, st.term_id ASC
+                """,
+                (normalized_slot_type_code, product_id),
+            )
+        return [
+            SubscriptionTermOut(
+                term_id=int(r0),
+                product_id=int(r1),
+                account_id=int(r2),
+                account_login=str(r3 or ""),
+                domain_code=str(r4 or ""),
+                login_full=(f"{r3}@{r4}" if r3 and r4 else str(r3 or "")),
+                valid_until=r5,
+                notes=r6,
+                is_archived=bool(r7),
+                created_at=r8,
+                occupied=False,
+            )
+            for (r0, r1, r2, r3, r4, r5, r6, r7, r8) in rows
+        ]
 
     @app.get("/slot-types", response_model=List[SlotTypeOut])
     def list_slot_types(user: UserOut = Depends(get_current_user)):
