@@ -59,6 +59,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         "Login": "account",
         "Логин": "account",
         "логин": "account",
+        "Почта": "account",
+        "почта": "account",
         "Пароль": "password",
         "пароль": "password",
         "Password": "password",
@@ -66,6 +68,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         "товар": "game",
         "Игра": "game",
         "игра": "game",
+        "Игры": "game",
+        "игры": "game",
         "Game": "game",
     }
     slot_import_header_map = {
@@ -262,15 +266,18 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         data = []
         # Даем возможность задать лимит через аргумент или env-переменную для локальных прогонов.
         effective_limit = limit_per_sheet if isinstance(limit_per_sheet, int) and limit_per_sheet > 0 else accounts_import_limit
-        # Читаем только целевые листы Почты/Почты1/Почты2; fallback оставляем для старых файлов.
+        # Читаем листы Почты* и Аккаунты; fallback оставляем для старых файлов.
         selected_sheets = [
             wb[sheet_name]
             for sheet_name in wb.sheetnames
             if str(sheet_name or "").strip().lower().startswith("почты")
+            or str(sheet_name or "").strip().lower() == "аккаунты"
         ]
         if not selected_sheets:
             selected_sheets = [wb.active]
         for ws in selected_sheets:
+            sheet_name_norm = str(ws.title or "").strip().lower()
+            is_bindings_sheet = sheet_name_norm == "аккаунты"
             headers = [normalize_account_import_header(cell.value) for cell in ws[1]]
             for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 # Ограничиваем чтение верхними строками листа, чтобы локальный прогон был предсказуемым.
@@ -294,6 +301,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 item["reserve_values"] = reserve_values
                 item["_sheet_name"] = ws.title
                 item["_sheet_row"] = row_idx
+                # Храним тип строки, чтобы джоба и валидация применяли нужную логику.
+                item["_import_kind"] = "account_game_binding" if is_bindings_sheet else "account_credentials"
                 data.append(item)
         return data
 
@@ -360,16 +369,64 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         for idx, row in enumerate(rows, start=2):
             report_row = int(row.get("_sheet_row") or (idx - 1))
             report_sheet = str(row.get("_sheet_name") or "").strip() or None
+            row_kind = str(row.get("_import_kind") or "account_credentials")
             account_val = (row.get("account") or "").strip()
             login, domain = split_account(account_val)
-            if not account_val or not login or not domain:
-                warnings.append({
-                    "sheet": report_sheet,
-                    "row": report_row,
-                    "field": "Аккаунт",
-                    "value": account_val,
-                    "message": "Нужно значение в формате login@domain — строка будет пропущена",
-                })
+            if row_kind == "account_game_binding":
+                game_title = (row.get("game") or "").strip()
+                if not account_val or not login or not domain:
+                    warnings.append({
+                        "sheet": report_sheet,
+                        "row": report_row,
+                        "field": "Почта",
+                        "value": account_val,
+                        "message": "Нужно значение в формате login@domain — строка будет пропущена",
+                    })
+                else:
+                    row_acc = q1(
+                        conn,
+                        """
+                        SELECT 1
+                        FROM app.accounts a
+                        JOIN app.domains d ON d.domain_id = a.domain_id
+                        WHERE lower(a.login_name)=lower(%s) AND lower(d.name)=lower(%s)
+                        LIMIT 1
+                        """,
+                        (login, domain),
+                    )
+                    if not row_acc:
+                        warnings.append({
+                            "sheet": report_sheet,
+                            "row": report_row,
+                            "field": "Почта",
+                            "value": account_val,
+                            "message": "Аккаунт не найден — строка будет пропущена",
+                        })
+                if not game_title:
+                    warnings.append({
+                        "sheet": report_sheet,
+                        "row": report_row,
+                        "field": "Игры",
+                        "value": game_title,
+                        "message": "Игра не указана — строка будет пропущена",
+                    })
+                elif resolve_game_product_id_by_title(conn, game_title) is None:
+                    warnings.append({
+                        "sheet": report_sheet,
+                        "row": report_row,
+                        "field": "Игры",
+                        "value": game_title,
+                        "message": "Игра не найдена — строка будет пропущена",
+                    })
+            else:
+                if not account_val or not login or not domain:
+                    warnings.append({
+                        "sheet": report_sheet,
+                        "row": report_row,
+                        "field": "Аккаунт",
+                        "value": account_val,
+                        "message": "Нужно значение в формате login@domain — строка будет пропущена",
+                    })
             if progress_cb:
                 progress_cb(idx - 1)
         return errors, warnings

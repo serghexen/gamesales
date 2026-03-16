@@ -28,6 +28,9 @@ def mount_accounts_import_routes(
         ws = wb.active
         ws.title = "Почты"
         ws.append(["Логин", "Пароль"] + [f"Резерв {idx}" for idx in range(1, 11)])
+        # Добавляем второй лист для привязки игр к существующим аккаунтам.
+        ws_bindings = wb.create_sheet("Аккаунты")
+        ws_bindings.append(["Почта", "Игры"])
         buf = BytesIO()
         wb.save(buf)
         buf.seek(0)

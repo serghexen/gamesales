@@ -334,70 +334,124 @@ def build_import_jobs(
                         return
                     report_sheet = str(item.get("_sheet_name") or "").strip() or None
                     report_row = int(item.get("_sheet_row") or idx)
+                    row_kind = str(item.get("_import_kind") or "account_credentials")
                     try:
                         account_val = (item.get("account") or "").strip()
-                        password = (item.get("password") or "").strip()
                         login, domain = split_account(account_val)
-                        if not login or not domain:
-                            skipped += 1
-                            upload_done += 1
-                            set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
-                            continue
-                        domain_id = get_or_create_domain_id(conn, domain)
-                        account_row = q1(
-                            conn,
-                            """
-                            SELECT account_id
-                            FROM app.accounts
-                            WHERE login_name=%s AND domain_id=%s
-                            """,
-                            (login, domain_id),
-                        )
-                        if account_row:
-                            account_id = int(account_row[0])
-                            updated += 1
-                        else:
-                            row = q1(
+                        if row_kind == "account_game_binding":
+                            game_title = (item.get("game") or "").strip()
+                            if not login or not domain or not game_title:
+                                skipped += 1
+                                upload_done += 1
+                                set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+                                continue
+                            row_acc = q1(
                                 conn,
                                 """
-                                INSERT INTO app.accounts(login_name, domain_id, status_code)
-                                VALUES (%s, %s, 'active')
-                                RETURNING account_id
+                                SELECT a.account_id
+                                FROM app.accounts a
+                                JOIN app.domains d ON d.domain_id = a.domain_id
+                                WHERE lower(a.login_name)=lower(%s) AND lower(d.name)=lower(%s)
+                                LIMIT 1
+                                """,
+                                (login, domain),
+                            )
+                            if not row_acc:
+                                skipped += 1
+                                upload_done += 1
+                                set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+                                continue
+                            account_id = int(row_acc[0])
+                            product_id = find_game_link_by_title(conn, game_title)
+                            if product_id is None:
+                                skipped += 1
+                                upload_done += 1
+                                set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+                                continue
+                            existing_asset = q1(
+                                conn,
+                                """
+                                SELECT 1
+                                FROM app.account_assets
+                                WHERE account_id=%s
+                                  AND asset_type_code='game'
+                                  AND product_id=%s
+                                LIMIT 1
+                                """,
+                                (account_id, product_id),
+                            )
+                            if not existing_asset:
+                                exec1(
+                                    conn,
+                                    """
+                                    INSERT INTO app.account_assets(account_id, product_id, asset_type_code)
+                                    VALUES (%s, %s, 'game')
+                                    """,
+                                    (account_id, product_id),
+                                )
+                            updated += 1
+                        else:
+                            password = (item.get("password") or "").strip()
+                            if not login or not domain:
+                                skipped += 1
+                                upload_done += 1
+                                set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
+                                continue
+                            domain_id = get_or_create_domain_id(conn, domain)
+                            account_row = q1(
+                                conn,
+                                """
+                                SELECT account_id
+                                FROM app.accounts
+                                WHERE login_name=%s AND domain_id=%s
                                 """,
                                 (login, domain_id),
                             )
-                            account_id = int(row[0])
-                            ensure_account_platforms(conn, account_id)
-                            created += 1
-                        if password:
-                            exec1(
-                                conn,
-                                """
-                                INSERT INTO app.account_secrets(account_id, secret_key, secret_value)
-                                VALUES (%s, %s, %s)
-                                ON CONFLICT (account_id, secret_key)
-                                DO UPDATE SET secret_value=excluded.secret_value
-                                """,
-                                (account_id, "account_password", b64_encode(password)),
-                            )
-                        # Сохраняем резервы как reserve1..reserve10, чтобы их можно было сразу использовать в сделках.
-                        reserve_values = item.get("reserve_values") or {}
-                        for reserve_idx in range(1, 11):
-                            reserve_key = f"reserve{reserve_idx}"
-                            reserve_raw = reserve_values.get(reserve_key, item.get(reserve_key))
-                            reserve_val = str(reserve_raw or "").strip()
-                            if not reserve_val:
-                                continue
-                            exec1(
-                                conn,
-                                """
-                                INSERT INTO app.account_secrets(account_id, secret_key, secret_value)
-                                VALUES (%s, %s, %s)
-                                ON CONFLICT (account_id, secret_key)
-                                DO UPDATE SET secret_value=excluded.secret_value
-                                """,
-                                (account_id, reserve_key, b64_encode(reserve_val)),
-                            )
+                            if account_row:
+                                account_id = int(account_row[0])
+                                updated += 1
+                            else:
+                                row = q1(
+                                    conn,
+                                    """
+                                    INSERT INTO app.accounts(login_name, domain_id, status_code)
+                                    VALUES (%s, %s, 'active')
+                                    RETURNING account_id
+                                    """,
+                                    (login, domain_id),
+                                )
+                                account_id = int(row[0])
+                                ensure_account_platforms(conn, account_id)
+                                created += 1
+                            if password:
+                                exec1(
+                                    conn,
+                                    """
+                                    INSERT INTO app.account_secrets(account_id, secret_key, secret_value)
+                                    VALUES (%s, %s, %s)
+                                    ON CONFLICT (account_id, secret_key)
+                                    DO UPDATE SET secret_value=excluded.secret_value
+                                    """,
+                                    (account_id, "account_password", b64_encode(password)),
+                                )
+                            # Сохраняем резервы как reserve1..reserve10, чтобы их можно было сразу использовать в сделках.
+                            reserve_values = item.get("reserve_values") or {}
+                            for reserve_idx in range(1, 11):
+                                reserve_key = f"reserve{reserve_idx}"
+                                reserve_raw = reserve_values.get(reserve_key, item.get(reserve_key))
+                                reserve_val = str(reserve_raw or "").strip()
+                                if not reserve_val:
+                                    continue
+                                exec1(
+                                    conn,
+                                    """
+                                    INSERT INTO app.account_secrets(account_id, secret_key, secret_value)
+                                    VALUES (%s, %s, %s)
+                                    ON CONFLICT (account_id, secret_key)
+                                    DO UPDATE SET secret_value=excluded.secret_value
+                                    """,
+                                    (account_id, reserve_key, b64_encode(reserve_val)),
+                                )
                         conn.commit()
                         upload_done += 1
                         last_success_row = idx

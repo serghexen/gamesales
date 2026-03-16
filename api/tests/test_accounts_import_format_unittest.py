@@ -176,6 +176,66 @@ class AccountsImportFormatTests(unittest.TestCase):
         self.assertEqual(rows[0]["account"], "u1@gmail.com")
         self.assertEqual(rows[1]["account"], "u3@gmail.com")
 
+    # Проверяет, что лист "Аккаунты" тоже читается и помечается как привязка игры.
+    def test_read_accounts_from_excel_includes_akkaunty_sheet(self):
+        wb = Workbook()
+        ws_mail = wb.active
+        ws_mail.title = "Почты"
+        ws_mail.append(["Логин", "Пароль"])
+        ws_mail.append(["u1@gmail.com", "p1"])
+        ws_bind = wb.create_sheet("Аккаунты")
+        ws_bind.append(["Почта", "Игры"])
+        ws_bind.append(["u1@gmail.com", "EA FC 26"])
+        out = BytesIO()
+        wb.save(out)
+
+        rows = app_module.read_accounts_from_excel(out.getvalue())
+        self.assertEqual(len(rows), 2)
+        binding_row = [r for r in rows if r.get("_sheet_name") == "Аккаунты"][0]
+        self.assertEqual(binding_row["account"], "u1@gmail.com")
+        self.assertEqual(binding_row["game"], "EA FC 26")
+        self.assertEqual(binding_row["_import_kind"], "account_game_binding")
+
+    # Проверяет валидацию листа "Аккаунты": проверяем существование и аккаунта, и игры.
+    def test_accounts_import_validate_checks_account_and_game_for_bindings(self):
+        wb = Workbook()
+        ws_bind = wb.active
+        ws_bind.title = "Аккаунты"
+        ws_bind.append(["Почта", "Игры"])
+        ws_bind.append(["ok@gmail.com", "EA FC 26"])  # ok
+        ws_bind.append(["missing@gmail.com", "EA FC 26"])  # account not found
+        ws_bind.append(["ok@gmail.com", "Unknown Game"])  # game not found
+        out = BytesIO()
+        wb.save(out)
+        content = out.getvalue()
+
+        script = [
+            {"one": (1,)},   # row1 account exists
+            {"one": (55,)},  # row1 game exists
+            {"one": None},   # row2 account missing
+            {"one": (55,)},  # row2 game exists
+            {"one": (1,)},   # row3 account exists
+            {"one": None},   # row3 game missing
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/accounts/import/validate",
+                    headers=self._auth_headers(role="admin"),
+                    files={"file": ("accounts.xlsx", content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(body["total"], 3)
+            warnings = body.get("warnings", [])
+            self.assertTrue(any(w.get("field") == "Почта" and "Аккаунт не найден" in str(w.get("message") or "") for w in warnings))
+            self.assertTrue(any(w.get("field") == "Игры" and "Игра не найдена" in str(w.get("message") or "") for w in warnings))
+
 
 if __name__ == "__main__":
     unittest.main()
