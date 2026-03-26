@@ -1170,8 +1170,6 @@ const {
   editDealProductSearch,
   onEditDealProductSearch,
   filteredEditDealProducts,
-  subscriptionFreeProductIdsEdit,
-  subscriptionFreeProductIdsLoadingEdit,
   subscriptionTermsEdit,
   subscriptionTermsLoadingEdit,
   syncEditDealProductSearch,
@@ -1191,8 +1189,6 @@ const {
   newDealProductSearch,
   onNewDealProductSearch,
   filteredNewDealProducts,
-  subscriptionFreeProductIdsNew,
-  subscriptionFreeProductIdsLoadingNew,
   subscriptionTermsNew,
   subscriptionTermsLoadingNew,
   newDealProductNoMatches,
@@ -1288,30 +1284,6 @@ function syncEditProductTypeFilterFromSelectedProduct() {
   }
 }
 
-// Проверяет совместимость товара и типа слота по платформе.
-function isProductSlotCompatible(product, slotTypeCode) {
-  if (!slotTypeCode) return false
-  const slot = (slotTypes.value || []).find((item) => item?.code === slotTypeCode)
-  if (!slot?.platform_code) return true
-  const platforms = Array.isArray(product?.platform_codes)
-    ? product.platform_codes.map((code) => String(code || '').toLowerCase())
-    : []
-  if (!platforms.length) return true
-  if (platforms.includes('ps4')) return true
-  if (platforms.includes('ps5')) return String(slot.platform_code || '').toLowerCase() === 'ps5'
-  return true
-}
-
-// Проверяет, есть ли в подписке свободный выбранный слот по предзагруженной карте id.
-function hasFreeSubscriptionSlotByProductId(productId, target) {
-  const id = Number(productId || 0)
-  if (!id) return false
-  const ids = target === 'edit'
-    ? (subscriptionFreeProductIdsEdit.value || [])
-    : (subscriptionFreeProductIdsNew.value || [])
-  return ids.includes(id)
-}
-
 // Фильтрует товары в редактировании сделки по выбранному типу.
 const filteredEditDealProductsByType = computed(() => {
   const list = filteredEditDealProducts.value || []
@@ -1320,12 +1292,8 @@ const filteredEditDealProductsByType = computed(() => {
   // Для подписок даем выбирать товар только после выбора слота.
   if (!isEditRentalSubscriptionMode.value) return typed
   if (!editDeal.value?.slot_type_code) return []
-  if (subscriptionFreeProductIdsLoadingEdit.value) return []
-  // Для подписок оставляем только позиции, где выбранный слот действительно свободен.
-  return typed.filter((item) => {
-    if (!isProductSlotCompatible(item, editDeal.value.slot_type_code)) return false
-    return hasFreeSubscriptionSlotByProductId(item?.product_id, 'edit')
-  })
+  // После выбора слота показываем весь список подписок выбранного типа.
+  return typed
 })
 
 // Фильтрует товары в создании сделки по выбранному типу.
@@ -1337,12 +1305,8 @@ const filteredNewDealProductsByType = computed(() => {
   // Для подписок сначала выбираем слот, затем товар.
   if (!isNewRentalSubscriptionMode.value) return typed
   if (!newDeal.value?.slot_type_code) return []
-  if (subscriptionFreeProductIdsLoadingNew.value) return []
-  // В создании подписки применяем тот же фильтр по свободному слоту.
-  return typed.filter((item) => {
-    if (!isProductSlotCompatible(item, newDeal.value.slot_type_code)) return false
-    return hasFreeSubscriptionSlotByProductId(item?.product_id, 'new')
-  })
+  // После выбора слота показываем весь список подписок выбранного типа.
+  return typed
 })
 
 const showEditDealProductNoMatches = computed(() => {

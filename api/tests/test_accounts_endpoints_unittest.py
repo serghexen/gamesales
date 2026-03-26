@@ -967,6 +967,38 @@ class AccountsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 422)
 
+    # Ручное снятие игрового назначения слота должно оставаться доступным.
+    def test_release_slot_assignment_allows_game_assignment(self):
+        script = [
+            {"one": (900, None, "game")},
+            {"rowcount": 1},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post("/slot-assignments/900/release", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
+
+    # Ручное снятие подписочного назначения слота должно быть запрещено.
+    def test_release_slot_assignment_blocks_subscription_assignment(self):
+        script = [
+            {"one": (901, 777, "subscription")},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post("/slot-assignments/901/release", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 409)
+
 
 if __name__ == "__main__":
     unittest.main()

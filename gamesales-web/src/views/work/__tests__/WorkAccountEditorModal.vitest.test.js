@@ -76,6 +76,7 @@ function buildProps(overrides = {}) {
       auth_code: '',
       reserve_text: '',
       product_ids: [],
+      subscription_valid_until: '',
     },
     accountProductSearch: '',
     accountProductType: 'game',
@@ -221,7 +222,7 @@ describe('WorkAccountEditorModal', () => {
         accountModalMode: 'create',
         accountEditMode: 'edit',
         filteredAccountProducts: [],
-        accountProductType: 'subscription',
+        accountProductType: 'game',
         createQuickAccountProduct,
         quickNewAccountProduct: { title: 'PS Plus', platform_codes: ['ps5'] },
         platforms: [{ code: 'ps5', name: 'PlayStation 5' }],
@@ -235,10 +236,10 @@ describe('WorkAccountEditorModal', () => {
     const createBtn = wrapper.findAll('button').find((btn) => btn.text().trim() === 'Создать')
     expect(createBtn).toBeTruthy()
     await createBtn.trigger('click')
-    expect(createQuickAccountProduct).toHaveBeenCalledWith('subscription')
+    expect(createQuickAccountProduct).toHaveBeenCalledWith('game')
   })
 
-  it('create subscription mode hides existing list and keeps quick create visible', () => {
+  it('create subscription mode shows existing list and hides quick create block', () => {
     const wrapper = mount(WorkAccountEditorModal, {
       props: buildProps({
         accountModalMode: 'create',
@@ -249,9 +250,28 @@ describe('WorkAccountEditorModal', () => {
       global: { stubs: { teleport: true } },
     })
 
-    expect(wrapper.text()).not.toContain('Old Sub')
-    expect(wrapper.text()).toContain('Для подписки используется только новое быстрое создание товара')
-    expect(wrapper.text()).toContain('Быстрое создание товара')
+    expect(wrapper.text()).toContain('Old Sub')
+    expect(wrapper.text()).not.toContain('Для подписки используется только новое быстрое создание товара')
+    expect(wrapper.text()).not.toContain('Быстрое создание товара')
+    expect(wrapper.text()).not.toContain('Добавить срок подписки')
+  })
+
+  it('create subscription mode shows add-term block when subscription product is selected', () => {
+    const wrapper = mount(WorkAccountEditorModal, {
+      props: buildProps({
+        accountModalMode: 'create',
+        accountEditMode: 'edit',
+        accountProductType: 'subscription',
+        newAccount: {
+          ...buildProps().newAccount,
+          product_ids: [7],
+          subscription_valid_until: '2027-03-26',
+        },
+      }),
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(wrapper.text()).toContain('Добавить срок подписки')
   })
 
   it('shows quick product create in edit mode and passes edit target', async () => {

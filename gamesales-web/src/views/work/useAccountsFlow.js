@@ -50,6 +50,16 @@ export function useAccountsFlow({
   quickEditAccountProductError,
   loadProductsAll,
 }) {
+  // Возвращает дефолтную дату срока подписки: сегодня + 1 год.
+  function getDefaultSubscriptionTermDate() {
+    const nextYearDate = new Date()
+    nextYearDate.setFullYear(nextYearDate.getFullYear() + 1)
+    const year = nextYearDate.getFullYear()
+    const month = String(nextYearDate.getMonth() + 1).padStart(2, '0')
+    const day = String(nextYearDate.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
   // Проверяет обязательные поля при создании аккаунта и возвращает их человекочитаемые названия.
   function getMissingCreateAccountFields() {
     const missing = []
@@ -342,6 +352,7 @@ export function useAccountsFlow({
     newAccount.reserve_text = ''
     newAccount.auth_code = ''
     newAccount.product_ids = []
+    newAccount.subscription_valid_until = getDefaultSubscriptionTermDate()
     accountProductSearch.value = ''
     // Тип товара в форме создания всегда начинаем с игр.
     accountProductType.value = 'game'
@@ -394,6 +405,7 @@ export function useAccountsFlow({
       reserve_text: '',
       auth_code: '',
       product_ids: [],
+      subscription_valid_until: getDefaultSubscriptionTermDate(),
     }) === false
     const editCurrent = {
       login_name: editAccount.login_name,
@@ -458,6 +470,7 @@ export function useAccountsFlow({
     newAccount.reserve_text = ''
     newAccount.auth_code = ''
     newAccount.product_ids = []
+    newAccount.subscription_valid_until = getDefaultSubscriptionTermDate()
     accountProductSearch.value = ''
     accountProductType.value = 'game'
     quickNewAccountProduct.title = ''
@@ -523,7 +536,12 @@ export function useAccountsFlow({
       await loadProductsAll()
       const createdId = Number(created?.product_id || 0)
       if (createdId) {
-        refs.setSelectedIds([...new Set([...(refs.selectedIds || []), createdId])])
+        // Для подписки в создании аккаунта держим один выбранный товар, чтобы срок создавался однозначно.
+        if (normalizedType === 'subscription' && target === 'new') {
+          refs.setSelectedIds([createdId])
+        } else {
+          refs.setSelectedIds([...new Set([...(refs.selectedIds || []), createdId])])
+        }
       }
       accountProductSearch.value = ''
       editAccountProductSearch.value = ''
@@ -543,6 +561,17 @@ export function useAccountsFlow({
     const missingFields = getMissingCreateAccountFields()
     if (missingFields.length) {
       accountsError.value = `Заполните обязательные поля: ${missingFields.join(', ')}`
+      return
+    }
+    const isCreateSubscriptionMode = String(accountProductType.value || '').trim().toLowerCase() === 'subscription'
+    const subscriptionProductId = Number((newAccount.product_ids || [])[0] || 0)
+    const subscriptionValidUntil = String(newAccount.subscription_valid_until || '').trim()
+    if (isCreateSubscriptionMode && !subscriptionProductId) {
+      accountsError.value = 'Для подписки сначала создайте товар'
+      return
+    }
+    if (isCreateSubscriptionMode && !subscriptionValidUntil) {
+      accountsError.value = 'Для подписки укажите дату срока'
       return
     }
     accountsLoading.value = true
@@ -611,6 +640,20 @@ export function useAccountsFlow({
           { token: auth.state.token }
         )
       }
+      if (isCreateSubscriptionMode && subscriptionProductId && subscriptionValidUntil) {
+        try {
+          await apiPost(
+            `/products/subscriptions/${encodeURIComponent(subscriptionProductId)}/terms`,
+            { account_id: created.account_id, valid_until: subscriptionValidUntil, notes: null },
+            { token: auth.state.token }
+          )
+        } catch (e) {
+          // Не откатываем создание аккаунта: показываем, что срок подписки не добавился.
+          if (typeof showDealWarning === 'function') {
+            showDealWarning(`Аккаунт создан, но срок подписки не добавлен: ${mapApiError(e?.message)}`)
+          }
+        }
+      }
 
       accountsOk.value = `Аккаунт ${newAccount.login_name}@${newAccount.domain_code} создан`
       newAccount.login_name = ''
@@ -623,6 +666,7 @@ export function useAccountsFlow({
       newAccount.reserve_text = ''
       newAccount.auth_code = ''
       newAccount.product_ids = []
+      newAccount.subscription_valid_until = getDefaultSubscriptionTermDate()
       accountProductSearch.value = ''
       accountProductType.value = 'game'
       quickNewAccountProduct.title = ''

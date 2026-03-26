@@ -198,7 +198,8 @@ describe('WorkProductEditorModal', () => {
       },
     })
 
-    expect(subscriptionWrapper.text()).toContain('Аккаунты')
+    expect(subscriptionWrapper.text()).not.toContain('Аккаунты')
+    expect(subscriptionWrapper.text()).toContain('Платформа')
   })
 
   it('sorts slots table by selected column', async () => {
@@ -302,8 +303,7 @@ describe('WorkProductEditorModal', () => {
     expect(wrapper.text()).not.toContain('Пока нет привязанных аккаунтов.')
   })
 
-  it('adds subscription term from card form', async () => {
-    const createQuickProductSubscriptionTerm = vi.fn().mockResolvedValue(undefined)
+  it('hides subscription edit blocks for adding term and quick account', async () => {
     const wrapper = mount(WorkProductEditorModal, {
       props: {
         ctx: buildCtx({
@@ -325,27 +325,12 @@ describe('WorkProductEditorModal', () => {
             subscription_notes: '',
           }),
           productEditMode: 'edit',
-          productAccountOptions: [{ account_id: 7, login_name: 'acc', domain_code: 'test.com' }],
-          createQuickProductSubscriptionTerm,
         }),
       },
       global: { stubs: { teleport: true } },
     })
 
-    const toggleBtn = wrapper.find('.quick-create--subscription-term .comment-toggle')
-    await toggleBtn.trigger('click')
-    const accountSearch = wrapper.find('input[placeholder="login@domain"]')
-    await accountSearch.setValue('acc@test')
-    const accountRadio = wrapper.find('input[type="radio"][name="subscription-term-account"]')
-    await accountRadio.setValue('7')
-    const dateInput = wrapper.find('input[type="date"]')
-    await dateInput.setValue('2026-11-30')
-    const addBtn = wrapper.find('button.ghost.ghost--small')
-    await addBtn.trigger('click')
-
-    expect(createQuickProductSubscriptionTerm).toHaveBeenCalledWith({
-      account_id: 7,
-      valid_until: '2026-11-30',
-    })
+    expect(wrapper.text()).not.toContain('Добавить срок подписки')
+    expect(wrapper.text()).not.toContain('Быстрое создание аккаунта')
   })
 })

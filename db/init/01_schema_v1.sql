@@ -418,9 +418,6 @@ CREATE INDEX IF NOT EXISTS idx_account_slot_assignments_product_id
   ON app.account_slot_assignments(product_id);
 CREATE INDEX IF NOT EXISTS idx_slot_assignments_subscription_term_id
   ON app.account_slot_assignments(subscription_term_id);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_slot_assignments_active_subscription_term
-  ON app.account_slot_assignments(subscription_term_id)
-  WHERE subscription_term_id IS NOT NULL AND released_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS app.deal_audit (
   audit_id bigserial PRIMARY KEY,

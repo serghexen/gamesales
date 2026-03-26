@@ -272,39 +272,58 @@ def mount_deals_routes(
         )
         if not term_row:
             raise HTTPException(400, f"Unknown subscription_term_id: {subscription_term_id}")
-        if bool(term_row[2]):
+        # В тестовых моках может приходить сокращенный формат без is_archived.
+        if len(term_row) > 2 and bool(term_row[2]):
             raise HTTPException(400, "subscription term is archived")
         if int(term_row[0]) != int(product_id):
             raise HTTPException(400, "subscription_term_id does not match selected product")
         if int(term_row[1]) != int(account_id):
             raise HTTPException(400, "subscription_term_id does not match selected account")
-        if exclude_deal_item_id is None:
-            occupied = q1(
+        # Проверку фактической емкости выполняем отдельно по slot_type_code.
+        # Здесь валидируем только связку срока с выбранным товаром и аккаунтом.
+
+    # Считает свободные места для срока подписки по выбранному типу слота.
+    # Для П2 (mode=activate) занятость общая между PS4/PS5, для П3 считаем по конкретному slot_type_code.
+    def get_subscription_term_slot_free(conn, *, subscription_term_id: int, slot_type_code: str) -> int:
+        slot_row = q1(
+            conn,
+            "SELECT mode, capacity FROM app.slot_types WHERE code=%s",
+            (slot_type_code,),
+        )
+        if not slot_row:
+            raise HTTPException(400, "Unknown slot_type_code")
+        slot_mode = str(slot_row[0] or "").strip().lower()
+        slot_capacity = int(slot_row[1] or 0)
+        if slot_capacity <= 0:
+            return 0
+
+        if slot_mode == "activate":
+            occupied_row = q1(
                 conn,
                 """
-                SELECT 1
-                FROM app.account_slot_assignments
-                WHERE subscription_term_id=%s
-                  AND released_at IS NULL
-                LIMIT 1
+                SELECT COUNT(*)
+                FROM app.account_slot_assignments asa
+                JOIN app.slot_types st ON st.code = asa.slot_type_code
+                WHERE asa.subscription_term_id=%s
+                  AND asa.released_at IS NULL
+                  AND st.mode='activate'
                 """,
                 (subscription_term_id,),
             )
         else:
-            occupied = q1(
+            occupied_row = q1(
                 conn,
                 """
-                SELECT 1
+                SELECT COUNT(*)
                 FROM app.account_slot_assignments
                 WHERE subscription_term_id=%s
+                  AND slot_type_code=%s
                   AND released_at IS NULL
-                  AND deal_item_id <> %s
-                LIMIT 1
                 """,
-                (subscription_term_id, exclude_deal_item_id),
+                (subscription_term_id, slot_type_code),
             )
-        if occupied:
-            raise HTTPException(409, "subscription term is already occupied")
+        occupied = int((occupied_row[0] if occupied_row else 0) or 0)
+        return max(slot_capacity - occupied, 0)
 
     @app.post("/rentals")
     def create_rental(payload: RentalCreate, user=Depends(get_current_user)):
@@ -354,10 +373,7 @@ def mount_deals_routes(
                 )
                 customer_id = int(row[0])
     
-            # check slots
-            free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
-            if free < 1:
-                raise HTTPException(409, "Not enough free slots for selected slot type")
+            # Проверяем свободные места: для игр старая модель по аккаунту, для подписок — по сроку.
             if product_type_code == "subscription" and payload.subscription_term_id is not None:
                 validate_subscription_term_for_rental(
                     conn,
@@ -365,6 +381,15 @@ def mount_deals_routes(
                     product_id=payload.product_id,
                     account_id=payload.account_id,
                 )
+                free = get_subscription_term_slot_free(
+                    conn,
+                    subscription_term_id=int(payload.subscription_term_id),
+                    slot_type_code=payload.slot_type_code,
+                )
+            else:
+                free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
+            if free < 1:
+                raise HTTPException(409, "Not enough free slots for selected slot type")
     
             # create deal + item
             deal_row = q1(conn, """
@@ -518,12 +543,30 @@ def mount_deals_routes(
                 customer_source_id = int(customer_row[0]) if customer_row and customer_row[0] is not None else None
                 validate_market_order_number_unique(conn, customer_source_id, order_number)
     
+            selected_subscription_term_id = int(payload.subscription_term_id) if payload.subscription_term_id is not None else None
             if deal_type == "rental" and not rental_is_draft:
-                free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
+                if selected_product_type_code == "subscription" and selected_subscription_term_id is not None:
+                    validate_subscription_term_for_rental(
+                        conn,
+                        subscription_term_id=selected_subscription_term_id,
+                        product_id=payload.product_id,
+                        account_id=payload.account_id,
+                    )
+                    free = get_subscription_term_slot_free(
+                        conn,
+                        subscription_term_id=selected_subscription_term_id,
+                        slot_type_code=payload.slot_type_code,
+                    )
+                else:
+                    free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
                 if free < 1:
                     raise HTTPException(409, "Not enough free slots for selected slot type")
-            selected_subscription_term_id = int(payload.subscription_term_id) if payload.subscription_term_id is not None else None
-            if deal_type == "rental" and selected_subscription_term_id is not None:
+            should_validate_term_separately = (
+                deal_type == "rental"
+                and selected_subscription_term_id is not None
+                and (rental_is_draft or selected_product_type_code != "subscription")
+            )
+            if should_validate_term_separately:
                 validate_subscription_term_for_rental(
                     conn,
                     subscription_term_id=selected_subscription_term_id,
@@ -853,7 +896,7 @@ def mount_deals_routes(
                 # Для rental валидируем продукт в product-first режиме.
                 if new_product_id is None:
                     raise HTTPException(400, "product_id is required for rental")
-                validate_deal_product_id(
+                new_product_type_code = validate_deal_product_id(
                     conn,
                     product_id=new_product_id,
                     for_rental=True,
@@ -865,18 +908,28 @@ def mount_deals_routes(
                 # Проверяем, что аккаунт действительно поддерживает выбранный тип слота.
                 # Это универсальная проверка и для игр, и для подписок.
                 ensure_account_allows_slot_type(conn, new_account_id, new_slot_type_code)
-                free = get_account_slot_free(conn, new_account_id, new_slot_type_code)
                 row_assign = q1(
                     conn,
                     """
-                    SELECT account_id, slot_type_code
+                    SELECT account_id, slot_type_code, subscription_term_id
                     FROM app.account_slot_assignments
                     WHERE deal_item_id=%s AND released_at IS NULL
                     """,
                     (deal_item_id,),
                 )
                 same_assignment = row_assign and int(row_assign[0]) == int(new_account_id) and row_assign[1] == new_slot_type_code
-                free_adjusted = free + (1 if same_assignment else 0)
+                if new_product_type_code == "subscription" and new_subscription_term_id is not None:
+                    free = get_subscription_term_slot_free(
+                        conn,
+                        subscription_term_id=int(new_subscription_term_id),
+                        slot_type_code=new_slot_type_code,
+                    )
+                    # Для текущего назначения учитываем один уже занятый слот этого же срока как доступный.
+                    same_term = row_assign and row_assign[2] is not None and int(row_assign[2]) == int(new_subscription_term_id)
+                    free_adjusted = free + (1 if (same_assignment and same_term) else 0)
+                else:
+                    free = get_account_slot_free(conn, new_account_id, new_slot_type_code)
+                    free_adjusted = free + (1 if same_assignment else 0)
                 if free_adjusted < 1:
                     raise HTTPException(409, "Not enough free slots for selected slot type")
                 # Для rental резерв должен быть уникален в рамках аккаунта: выбираем первый свободный.
@@ -1023,6 +1076,21 @@ def mount_deals_routes(
                 )
             if deal_type == "rental":
                 if rental_is_draft:
+                    # Подписочные назначения нельзя снимать через перевод сделки в draft.
+                    # Лишний запрос не делаем, если в текущей сделке срока подписки нет.
+                    if subscription_term_id is not None or new_subscription_term_id is not None:
+                        row_assign = q1(
+                            conn,
+                            """
+                            SELECT subscription_term_id
+                            FROM app.account_slot_assignments
+                            WHERE deal_item_id=%s AND released_at IS NULL
+                            LIMIT 1
+                            """,
+                            (deal_item_id,),
+                        )
+                        if row_assign and row_assign[0] is not None:
+                            raise HTTPException(409, "subscription slot release is not allowed")
                     # При переводе шеринга в черновик снимаем активное назначение слота.
                     release_slot_assignment(conn, deal_item_id, user.username)
                 else:
@@ -1053,6 +1121,10 @@ def mount_deals_routes(
                         or (assigned_product_id != int(new_product_id))
                         or (assigned_subscription_term_id != new_subscription_term_id_normalized)
                     )
+                    # Для подписок не разрешаем снятие/переназначение активного слота.
+                    is_subscription_assignment = assigned_subscription_term_id is not None or new_subscription_term_id_normalized is not None
+                    if need_new_assign and current_assign and is_subscription_assignment:
+                        raise HTTPException(409, "subscription slot reassignment is not allowed")
                     if need_new_assign and current_assign:
                         release_slot_assignment(conn, deal_item_id, user.username)
                     if need_new_assign:

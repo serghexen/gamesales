@@ -69,9 +69,10 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('isEditRentalSubscriptionMode && !editDeal.slot_type_code')
     expect(source).toContain("getSlotTypeOptionsForDeal('new')")
     expect(source).toContain("getSlotTypeOptionsForDeal('edit')")
-    expect(source).toContain('subscriptionFreeProductIdsEdit')
-    expect(source).toContain('subscriptionFreeProductIdsNew')
-    expect(source).toContain('hasFreeSubscriptionSlotByProductId')
+    expect(source).toContain('if (!editDeal.value?.slot_type_code) return []')
+    expect(source).toContain('if (!newDeal.value?.slot_type_code) return []')
+    expect(source).toContain('return typed')
+    expect(source).not.toContain('hasFreeSubscriptionSlotByProductId')
   })
 
   it('shows subscription search only between slot selection and product selection', () => {

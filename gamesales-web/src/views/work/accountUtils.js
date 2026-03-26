@@ -10,6 +10,7 @@ export function createNewAccountState() {
     reserve_text: '',
     auth_code: '',
     product_ids: [],
+    subscription_valid_until: '',
   }
 }
 

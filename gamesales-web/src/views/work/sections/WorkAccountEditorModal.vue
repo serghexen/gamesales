@@ -474,13 +474,12 @@
                             </select>
                           </label>
                         </div>
-                        <div v-if="!isCreateSubscriptionMode" class="check-list check-list--account-products">
+                        <div class="check-list check-list--account-products">
                           <label v-for="g in filteredAccountProducts" :key="g.product_id" class="check-item">
                             <input type="checkbox" :value="g.product_id" v-model="newAccount.product_ids" />
                             <span>{{ g.title }}</span>
                           </label>
                         </div>
-                        <p v-else class="muted">Для подписки используется только новое быстрое создание товара.</p>
                         <div
                           v-if="showNewAccountQuickCreate"
                           :class="[
@@ -512,6 +511,23 @@
                               </label>
                             </div>
                             <span v-if="quickNewAccountProductError" class="bad">{{ quickNewAccountProductError }}</span>
+                          </template>
+                        </div>
+                        <div
+                          v-if="isCreateSubscriptionMode && hasCreateSubscriptionProduct"
+                          class="field field--full quick-create quick-create--subscription-term"
+                        >
+                          <div class="quick-create__header">
+                            <button class="comment-toggle" type="button" @click="newSubscriptionTermOpen = !newSubscriptionTermOpen">
+                              {{ newSubscriptionTermOpen ? 'Добавить срок подписки' : '+ Добавить срок подписки' }}
+                            </button>
+                          </div>
+                          <template v-if="newSubscriptionTermOpen">
+                            <input
+                              v-model="newAccount.subscription_valid_until"
+                              class="input input--compact"
+                              type="date"
+                            />
                           </template>
                         </div>
                       </div>
@@ -644,7 +660,12 @@ const isCreateSubscriptionMode = computed(() => {
 
 // Блок быстрого create в создании: всегда для подписки, для игр только когда список пуст.
 const showNewAccountQuickCreate = computed(() => {
-  return isCreateSubscriptionMode.value || showNewAccountProductNoMatches.value
+  return !isCreateSubscriptionMode.value && showNewAccountProductNoMatches.value
+})
+
+const hasCreateSubscriptionProduct = computed(() => {
+  const ids = Array.isArray(props.newAccount?.product_ids) ? props.newAccount.product_ids : []
+  return ids.length > 0
 })
 
 // Показывает быстрый create товара в редактировании, если текущий фильтр вернул пустой список.
@@ -709,10 +730,21 @@ const accountModalTitle = computed(() => {
 const newAccountReserveOpen = ref(false)
 const newAccountCommentOpen = ref(false)
 const newQuickProductOpen = ref(false)
+const newSubscriptionTermOpen = ref(false)
 const editQuickProductOpen = ref(false)
 const editAccountReserveOpen = ref(false)
 const editAccountCommentOpen = ref(false)
 const editReserveRows = ref([''])
+
+// Возвращает дату срока подписки по умолчанию: текущая дата плюс один год.
+const getDefaultSubscriptionTermDate = () => {
+  const nextYearDate = new Date()
+  nextYearDate.setFullYear(nextYearDate.getFullYear() + 1)
+  const year = nextYearDate.getFullYear()
+  const month = String(nextYearDate.getMonth() + 1).padStart(2, '0')
+  const day = String(nextYearDate.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 // Подбирает компактную высоту textarea для комментариев и резерва.
 const getCompactNotesRows = (value) => {
@@ -767,6 +799,7 @@ const syncCollapsiblePanels = () => {
     newAccountReserveOpen.value = false
     newAccountCommentOpen.value = false
     newQuickProductOpen.value = false
+    newSubscriptionTermOpen.value = false
     editQuickProductOpen.value = false
     editAccountReserveOpen.value = false
     editAccountCommentOpen.value = false
@@ -777,6 +810,7 @@ const syncCollapsiblePanels = () => {
   if (isCreate) {
     newAccountReserveOpen.value = Boolean(String(props.newAccount?.reserve_text || '').trim())
     newAccountCommentOpen.value = Boolean(String(props.newAccount?.notes || '').trim())
+    newSubscriptionTermOpen.value = false
   } else {
     editAccountReserveOpen.value = Boolean(String(props.editAccount?.reserve_text || '').trim())
     editAccountCommentOpen.value = Boolean(String(props.editAccount?.notes || '').trim())
@@ -801,14 +835,30 @@ watch(
 watch(
   () => accountProductTypeModel.value,
   (typeCode) => {
-    // При выборе подписки для нового аккаунта очищаем ручные выборы списка:
-    // подписка создается новым товаром, без привязки к старым позициям.
+    // При выборе подписки в создании аккаунта очищаем текущий выбор, затем пользователь выбирает нужный товар из списка.
     if (props.accountModalMode !== 'create') return
     if (String(typeCode || '').trim().toLowerCase() !== 'subscription') return
     if (Array.isArray(props.newAccount?.product_ids)) {
       props.newAccount.product_ids = []
     }
-    if (!newQuickProductOpen.value) newQuickProductOpen.value = true
+    if (props.newAccount) {
+      props.newAccount.subscription_valid_until = getDefaultSubscriptionTermDate()
+    }
+    newQuickProductOpen.value = false
+  },
+)
+
+watch(
+  () => [isCreateSubscriptionMode.value, hasCreateSubscriptionProduct.value],
+  ([isSubscriptionMode, hasProduct]) => {
+    // Блок срока показываем только когда создана подписка для нового аккаунта.
+    if (!isSubscriptionMode || !hasProduct) {
+      newSubscriptionTermOpen.value = false
+      return
+    }
+    if (props.newAccount && !String(props.newAccount.subscription_valid_until || '').trim()) {
+      props.newAccount.subscription_valid_until = getDefaultSubscriptionTermDate()
+    }
   },
 )
 

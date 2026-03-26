@@ -48,7 +48,7 @@ def mount_products_routes(
         slot_type_code: str,
         user: UserOut = Depends(get_current_user),
     ):
-        # Возвращает id подписок, где есть хотя бы один аккаунт со свободным выбранным слотом.
+        # Возвращает id подписок, где есть хотя бы один срок с доступным выбранным слотом.
         normalized_slot_type_code = str(slot_type_code or "").strip()
         if not normalized_slot_type_code:
             raise HTTPException(400, "slot_type_code is required")
@@ -56,26 +56,35 @@ def mount_products_routes(
         with psycopg.connect(DB_DSN) as conn:
             slot_row = q1(
                 conn,
-                "SELECT platform_code FROM app.slot_types WHERE code=%s",
+                "SELECT code FROM app.slot_types WHERE code=%s",
                 (normalized_slot_type_code,),
             )
             if not slot_row:
                 raise HTTPException(400, f"Unknown slot_type_code: {normalized_slot_type_code}")
-            slot_platform = str(slot_row[0] or "").strip().lower()
 
             rows = qall(
                 conn,
                 """
-                WITH account_platforms AS (
+                WITH target_slot AS (
+                  SELECT st.code, st.mode, st.capacity
+                  FROM app.slot_types st
+                  WHERE st.code = %s
+                ),
+                term_usage AS (
                   SELECT
-                    aa.account_id,
-                    BOOL_OR(p.code = 'ps4') AS has_ps4
-                  FROM app.account_assets aa
-                  JOIN app.products pr ON pr.product_id = aa.product_id
-                  JOIN app.product_platforms pp ON pp.product_id = pr.product_id
-                  JOIN app.platforms p ON p.platform_id = pp.platform_id
-                  WHERE aa.asset_type_code IN ('game', 'subscription')
-                  GROUP BY aa.account_id
+                    asa.subscription_term_id,
+                    COUNT(*) FILTER (
+                      WHERE asa.released_at IS NULL
+                        AND asa.slot_type_code = %s
+                    ) AS used_exact_slot,
+                    COUNT(*) FILTER (
+                      WHERE asa.released_at IS NULL
+                        AND st2.mode = 'activate'
+                    ) AS used_activate_any
+                  FROM app.account_slot_assignments asa
+                  JOIN app.slot_types st2 ON st2.code = asa.slot_type_code
+                  WHERE asa.subscription_term_id IS NOT NULL
+                  GROUP BY asa.subscription_term_id
                 )
                 SELECT DISTINCT p.product_id
                 FROM app.products p
@@ -83,21 +92,22 @@ def mount_products_routes(
                   AND lower(p.type_code) = 'subscription'
                   AND EXISTS (
                     SELECT 1
-                    FROM app.account_assets aa
-                    JOIN app.accounts a ON a.account_id = aa.account_id
-                    JOIN app.v_account_slot_status ss
-                      ON ss.account_id = a.account_id
-                     AND ss.slot_type_code = %s
-                    LEFT JOIN account_platforms ap ON ap.account_id = a.account_id
-                    WHERE aa.product_id = p.product_id
-                      AND aa.asset_type_code IN ('game', 'subscription')
+                    FROM app.subscription_terms st
+                    JOIN app.accounts a ON a.account_id = st.account_id
+                    CROSS JOIN target_slot ts
+                    LEFT JOIN term_usage tu ON tu.subscription_term_id = st.term_id
+                    WHERE st.product_id = p.product_id
+                      AND st.is_archived IS NOT TRUE
                       AND a.status_code <> 'archived'
-                      AND ss.free > 0
-                      AND (COALESCE(ap.has_ps4, false) OR %s = 'ps5')
+                      AND (
+                        (ts.mode = 'activate' AND COALESCE(tu.used_activate_any, 0) < 1)
+                        OR
+                        (ts.mode <> 'activate' AND COALESCE(tu.used_exact_slot, 0) < ts.capacity)
+                      )
                   )
                 ORDER BY p.product_id
                 """,
-                (normalized_slot_type_code, slot_platform),
+                (normalized_slot_type_code, normalized_slot_type_code),
             )
         return [int(row[0]) for row in rows]
 
@@ -108,6 +118,27 @@ def mount_products_routes(
             rows = qall(
                 conn,
                 """
+                WITH target_slot AS (
+                  SELECT st.code, st.mode, st.capacity
+                  FROM app.slot_types st
+                  WHERE st.code = %s
+                ),
+                term_usage AS (
+                  SELECT
+                    asa.subscription_term_id,
+                    COUNT(*) FILTER (
+                      WHERE asa.released_at IS NULL
+                        AND asa.slot_type_code = %s
+                    ) AS used_exact_slot,
+                    COUNT(*) FILTER (
+                      WHERE asa.released_at IS NULL
+                        AND st2.mode = 'activate'
+                    ) AS used_activate_any
+                  FROM app.account_slot_assignments asa
+                  JOIN app.slot_types st2 ON st2.code = asa.slot_type_code
+                  WHERE asa.subscription_term_id IS NOT NULL
+                  GROUP BY asa.subscription_term_id
+                )
                 SELECT
                   st.term_id,
                   st.product_id,
@@ -288,42 +319,43 @@ def mount_products_routes(
                   st.valid_until,
                   st.notes,
                   st.is_archived,
-                  st.created_at
+                  st.created_at,
+                  ts.mode,
+                  ts.capacity,
+                  COALESCE(tu.used_exact_slot, 0) AS used_exact_slot,
+                  COALESCE(tu.used_activate_any, 0) AS used_activate_any
                 FROM app.subscription_terms st
                 JOIN app.accounts a ON a.account_id = st.account_id
                 LEFT JOIN app.domains d ON d.domain_id = a.domain_id
-                JOIN app.v_account_slot_status ss
-                  ON ss.account_id = st.account_id
-                 AND ss.slot_type_code = %s
+                CROSS JOIN target_slot ts
+                LEFT JOIN term_usage tu ON tu.subscription_term_id = st.term_id
                 WHERE st.product_id=%s
                   AND st.is_archived IS NOT TRUE
                   AND a.status_code <> 'archived'
-                  AND ss.free > 0
-                  AND NOT EXISTS (
-                    SELECT 1
-                    FROM app.account_slot_assignments asa
-                    WHERE asa.subscription_term_id = st.term_id
-                      AND asa.released_at IS NULL
+                  AND (
+                    (ts.mode = 'activate' AND COALESCE(tu.used_activate_any, 0) < 1)
+                    OR
+                    (ts.mode <> 'activate' AND COALESCE(tu.used_exact_slot, 0) < ts.capacity)
                   )
                 ORDER BY st.valid_until ASC, st.term_id ASC
                 """,
-                (normalized_slot_type_code, product_id),
+                (normalized_slot_type_code, normalized_slot_type_code, product_id),
             )
         return [
             SubscriptionTermOut(
-                term_id=int(r0),
-                product_id=int(r1),
-                account_id=int(r2),
-                account_login=str(r3 or ""),
-                domain_code=str(r4 or ""),
-                login_full=(f"{r3}@{r4}" if r3 and r4 else str(r3 or "")),
-                valid_until=r5,
-                notes=r6,
-                is_archived=bool(r7),
-                created_at=r8,
+                term_id=int(row[0]),
+                product_id=int(row[1]),
+                account_id=int(row[2]),
+                account_login=str(row[3] or ""),
+                domain_code=str(row[4] or ""),
+                login_full=(f"{row[3]}@{row[4]}" if row[3] and row[4] else str(row[3] or "")),
+                valid_until=row[5],
+                notes=row[6],
+                is_archived=bool(row[7]),
+                created_at=row[8],
                 occupied=False,
             )
-            for (r0, r1, r2, r3, r4, r5, r6, r7, r8) in rows
+            for row in rows
         ]
 
     @app.get("/slot-types", response_model=List[SlotTypeOut])

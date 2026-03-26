@@ -112,9 +112,37 @@ describe('useAccountsFlow', () => {
       { token: 'token-1' }
     )
     expect(h.loadProductsAll).toHaveBeenCalledTimes(1)
-    expect(h.newAccount.product_ids).toEqual([10, 77])
+    expect(h.newAccount.product_ids).toEqual([77])
     expect(h.quickNewAccountProduct.title).toBe('')
     expect(h.quickNewAccountProduct.platform_codes).toEqual([])
+  })
+
+  it('createAccount creates subscription term for created account in subscription mode', async () => {
+    const h = createHarness()
+    h.openCreateAccountModal()
+    h.accountProductType.value = 'subscription'
+    h.newAccount.login_name = 'sub-user'
+    h.newAccount.domain_code = 'mail.com'
+    h.newAccount.region_code = 'RU'
+    h.newAccount.account_date = '2026-03-26'
+    h.newAccount.account_password = 'acc-pass'
+    h.newAccount.email_password = 'mail-pass'
+    h.newAccount.auth_code = 'auth-code'
+    h.newAccount.product_ids = [77]
+    h.newAccount.subscription_valid_until = '2027-03-26'
+    h.apiPost.mockImplementation(async (url) => {
+      if (url === '/accounts') return { account_id: 9 }
+      return {}
+    })
+    h.apiPut.mockResolvedValue({})
+
+    await h.createAccount()
+
+    expect(h.apiPost).toHaveBeenCalledWith(
+      '/products/subscriptions/77/terms',
+      { account_id: 9, valid_until: '2027-03-26', notes: null },
+      { token: 'token-1' }
+    )
   })
 
   it('createQuickAccountProduct supports edit target and links product to edited account', async () => {

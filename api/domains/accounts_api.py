@@ -1290,11 +1290,25 @@ def mount_accounts_routes(
         with psycopg.connect(DB_DSN) as conn:
             row = q1(
                 conn,
-                "SELECT assignment_id FROM app.account_slot_assignments WHERE assignment_id=%s AND released_at IS NULL",
+                """
+                SELECT
+                  asa.assignment_id,
+                  asa.subscription_term_id,
+                  p.type_code
+                FROM app.account_slot_assignments asa
+                LEFT JOIN app.products p ON p.product_id = asa.product_id
+                WHERE asa.assignment_id=%s
+                  AND asa.released_at IS NULL
+                """,
                 (assignment_id,),
             )
             if not row:
                 return {"ok": True}
+            # Подписочные назначения не снимаем вручную: это ломает логику сроков подписки.
+            subscription_term_id = row[1]
+            product_type_code = str(row[2] or "").strip().lower()
+            if subscription_term_id is not None or product_type_code == "subscription":
+                raise HTTPException(409, "subscription slot release is not allowed")
             exec1(
                 conn,
                 "UPDATE app.account_slot_assignments SET released_at=now(), released_by=%s WHERE assignment_id=%s",

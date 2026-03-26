@@ -386,17 +386,17 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"deal_id": 33})
 
-    # Для шеринга с подпиской занятый subscription_term_id должен возвращать 409.
-    def test_create_deal_rental_with_occupied_subscription_term(self):
+    # Для подписки по сроку 409 возвращаем при отсутствии свободного места в выбранном slot_type.
+    def test_create_deal_rental_with_full_subscription_term_slot(self):
         script = [
             {"one": ("subscription", False)},  # product lookup
             {"one": (1,)},  # ensure_account_exists
             {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
             {"one": (2,)},  # get_platform_id
             {"one": (7,)},  # region from account
-            {"one": (1,)},  # get_account_slot_free
             {"one": (55, 7, False)},  # subscription term lookup
-            {"one": (1,)},  # subscription term occupied
+            {"one": ("play", 1)},  # target slot type for term capacity
+            {"one": (1,)},  # occupied count for selected slot_type
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
@@ -846,8 +846,8 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertFalse(any("SET released_at=now()" in sql for sql in sql_collector))
             self.assertTrue(any("SET customer_id=%s" in sql for sql in sql_collector))
 
-    # Для update rental занятый subscription_term_id должен блокировать сохранение.
-    def test_update_deal_rental_with_occupied_subscription_term(self):
+    # Для update rental подписки отсутствие свободного места по сроку блокирует сохранение.
+    def test_update_deal_rental_with_full_subscription_term_slot(self):
         current_row = (
             "rental",
             "confirmed",
@@ -879,7 +879,9 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": current_row},  # current deal row
             {"one": (55,)},  # current product_id from deal_item
             {"one": (55, 7, False)},  # subscription term lookup
-            {"one": (1,)},  # subscription term occupied by other assignment
+            {"rowcount": 1},  # update deals
+            {"rowcount": 1},  # update deal_items
+            {"one": (900, 7, "ps5_p1", 5, 55, 777)},  # active assignment details
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),

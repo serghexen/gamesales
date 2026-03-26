@@ -242,7 +242,7 @@
                   </option>
                 </select>
               </label>
-              <div v-if="productEditMode !== 'view'" class="field field--full quick-create quick-create--subscription-term">
+              <div v-if="false && productEditMode !== 'view'" class="field field--full quick-create quick-create--subscription-term">
                 <div class="quick-create__header">
                   <button class="comment-toggle" type="button" @click="subscriptionTermOpen = !subscriptionTermOpen">
                     {{ subscriptionTermOpen ? 'Добавить срок подписки' : '+ Добавить срок подписки' }}
@@ -278,7 +278,7 @@
                   <span v-if="subscriptionTermError" class="bad">{{ subscriptionTermError }}</span>
                 </template>
               </div>
-              <div v-if="productEditMode !== 'view'" class="field field--full quick-create quick-create--account">
+              <div v-if="false && productEditMode !== 'view'" class="field field--full quick-create quick-create--account">
                 <div class="quick-create__header">
                   <button class="comment-toggle" type="button" @click="editQuickAccountOpen = !editQuickAccountOpen">
                     {{ editQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
@@ -936,54 +936,6 @@
                   </option>
                 </select>
               </label>
-              <div class="field field--full">
-                <span class="label account-products-title">Аккаунты</span>
-                <label class="field">
-                  <span class="label">Поиск</span>
-                  <input v-model.trim="newProductAccountSearch" class="input" placeholder="поиск" />
-                </label>
-                <div class="check-list check-list--account-products">
-                  <label v-for="a in filteredNewProductAccounts" :key="`product-new-account-sub-${a.account_id}`" class="check-item">
-                    <input type="checkbox" :value="a.account_id" v-model="newProduct.account_ids" />
-                    <span>{{ formatAccountTitle(a) }}</span>
-                  </label>
-                </div>
-              </div>
-              <div class="quick-create quick-create--account">
-                <div class="quick-create__header">
-                  <button class="comment-toggle" type="button" @click="newQuickAccountOpen = !newQuickAccountOpen">
-                    {{ newQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
-                  </button>
-                  <button
-                    v-if="newQuickAccountOpen"
-                    class="ghost ghost--small"
-                    type="button"
-                    :disabled="quickNewProductAccountLoading"
-                    @click="createQuickProductAccount('new')"
-                  >
-                    <span v-if="quickNewProductAccountLoading" class="spinner spinner--small"></span>
-                    Создать
-                  </button>
-                </div>
-                <template v-if="newQuickAccountOpen">
-                  <div class="deal-form__double">
-                    <input v-model.trim="quickNewProductAccount.login_name" class="input input--compact" placeholder="Логин" />
-                    <select v-model="quickNewProductAccount.domain_code" class="input input--select input--compact">
-                      <option value="">— домен —</option>
-                      <option v-for="d in domains" :key="`product-new-domain-sub-${d.code}`" :value="d.code">
-                        {{ d.name }} ({{ d.code }})
-                      </option>
-                    </select>
-                  </div>
-                  <div class="check-list check-list--compact check-list--platform-row">
-                    <label v-for="p in platforms" :key="`product-new-platform-sub-${p.code}`" class="check-item">
-                      <input type="checkbox" :value="p.code" v-model="quickNewProductAccount.platform_codes" />
-                      <span>{{ p.name }} ({{ p.code }})</span>
-                    </label>
-                  </div>
-                  <span v-if="quickNewProductAccountError" class="bad">{{ quickNewProductAccountError }}</span>
-                </template>
-              </div>
               <div class="field field--full">
                 <span class="label">Платформа</span>
                 <div class="check-list check-list--compact">
