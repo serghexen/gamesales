@@ -405,6 +405,17 @@
   margin: 0;
 }
 
+.work-page .deal-form .quick-create--subscription-term .quick-create__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.work-page .deal-form .quick-create--subscription-term .quick-create__header .comment-toggle {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
 .work-page .deal-form .quick-create--product-empty .check-list--platform-row {
   display: flex;
   flex-wrap: wrap;

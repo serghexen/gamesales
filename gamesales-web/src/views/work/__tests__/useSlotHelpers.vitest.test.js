@@ -9,8 +9,8 @@ function createHarness() {
     { code: 'full', name: 'Full', platform_code: 'ps4' },
   ])
   const productsAll = ref([
-    { product_id: 1, type_code: 'subscription', platform_codes: ['ps5'] },
-    { product_id: 2, type_code: 'game', platform_codes: ['ps5'] },
+    { product_id: 1, type_code: 'subscription', title: 'ПОДПИСКА EA PLAY до 26.02.2026', platform_codes: ['ps5'] },
+    { product_id: 2, type_code: 'game', title: 'FC 26', platform_codes: ['ps5'] },
   ])
   const newDeal = reactive({ product_id: 1, slot_type_code: 'share', account_id: null })
   const editDeal = reactive({ product_id: null, slot_type_code: '', account_id: null })
@@ -53,5 +53,12 @@ describe('useSlotHelpers', () => {
     const h = createHarness()
 
     expect(h.hasFreeDealSlots('new')).toBe(true)
+  })
+
+  it('normalizes subscription title for sharing label', () => {
+    const h = createHarness()
+
+    expect(h.getProductLabelById(1)).toBe('EA PLAY')
+    expect(h.getProductLabelById(2)).toBe('FC 26')
   })
 })

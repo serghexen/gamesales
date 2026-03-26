@@ -43,8 +43,18 @@ export function useDealModalFlow({
   canEditCompletedDeal,
   showDealWarning,
 }) {
-  const safeQuickNewSubscriptionTerm = quickNewSubscriptionTerm || { account_id: '', valid_until: '', notes: '' }
-  const safeQuickEditSubscriptionTerm = quickEditSubscriptionTerm || { account_id: '', valid_until: '', notes: '' }
+  // Возвращает дефолтную дату срока: сегодня плюс один год.
+  function getDefaultSubscriptionTermDate() {
+    const nextYearDate = new Date()
+    nextYearDate.setFullYear(nextYearDate.getFullYear() + 1)
+    const year = nextYearDate.getFullYear()
+    const month = String(nextYearDate.getMonth() + 1).padStart(2, '0')
+    const day = String(nextYearDate.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  const safeQuickNewSubscriptionTerm = quickNewSubscriptionTerm || { account_id: '', valid_until: getDefaultSubscriptionTermDate(), notes: '' }
+  const safeQuickEditSubscriptionTerm = quickEditSubscriptionTerm || { account_id: '', valid_until: getDefaultSubscriptionTermDate(), notes: '' }
   const safeQuickNewSubscriptionTermError = quickNewSubscriptionTermError || { value: '' }
   const safeQuickEditSubscriptionTermError = quickEditSubscriptionTermError || { value: '' }
 
@@ -184,7 +194,7 @@ export function useDealModalFlow({
     quickNewAccount.platform_codes = []
     quickNewAccountError.value = ''
     safeQuickNewSubscriptionTerm.account_id = ''
-    safeQuickNewSubscriptionTerm.valid_until = ''
+    safeQuickNewSubscriptionTerm.valid_until = getDefaultSubscriptionTermDate()
     safeQuickNewSubscriptionTerm.notes = ''
     safeQuickNewSubscriptionTermError.value = ''
     dealAccountsForProductNew.value = []
@@ -320,7 +330,7 @@ export function useDealModalFlow({
     quickNewAccount.platform_codes = []
     quickNewAccountError.value = ''
     safeQuickNewSubscriptionTerm.account_id = ''
-    safeQuickNewSubscriptionTerm.valid_until = ''
+    safeQuickNewSubscriptionTerm.valid_until = getDefaultSubscriptionTermDate()
     safeQuickNewSubscriptionTerm.notes = ''
     safeQuickNewSubscriptionTermError.value = ''
     quickEditAccount.login_name = ''
@@ -328,7 +338,7 @@ export function useDealModalFlow({
     quickEditAccount.platform_codes = []
     quickEditAccountError.value = ''
     safeQuickEditSubscriptionTerm.account_id = ''
-    safeQuickEditSubscriptionTerm.valid_until = ''
+    safeQuickEditSubscriptionTerm.valid_until = getDefaultSubscriptionTermDate()
     safeQuickEditSubscriptionTerm.notes = ''
     safeQuickEditSubscriptionTermError.value = ''
     dealAccountsForProductNew.value = []
@@ -358,7 +368,7 @@ export function useDealModalFlow({
     quickEditAccount.platform_codes = []
     quickEditAccountError.value = ''
     safeQuickEditSubscriptionTerm.account_id = ''
-    safeQuickEditSubscriptionTerm.valid_until = ''
+    safeQuickEditSubscriptionTerm.valid_until = getDefaultSubscriptionTermDate()
     safeQuickEditSubscriptionTerm.notes = ''
     safeQuickEditSubscriptionTermError.value = ''
     dealAccountsForProductEdit.value = []

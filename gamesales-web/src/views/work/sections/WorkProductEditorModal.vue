@@ -242,72 +242,43 @@
                   </option>
                 </select>
               </label>
-              <div class="field field--full">
-                <span class="label account-products-title">Аккаунты</span>
-                <div v-if="productEditMode === 'view'" class="pill-list">
-                  <span v-for="title in editProductAccountTitles" :key="`product-edit-account-pill-sub-${title}`" class="pill">{{ title }}</span>
-                  <span v-if="!editProductAccountTitles.length" class="muted">Пока нет привязанных аккаунтов.</span>
+              <div v-if="productEditMode !== 'view'" class="field field--full quick-create quick-create--subscription-term">
+                <div class="quick-create__header">
+                  <button class="comment-toggle" type="button" @click="subscriptionTermOpen = !subscriptionTermOpen">
+                    {{ subscriptionTermOpen ? 'Добавить срок подписки' : '+ Добавить срок подписки' }}
+                  </button>
+                  <button
+                    v-if="subscriptionTermOpen"
+                    class="ghost ghost--small"
+                    type="button"
+                    :disabled="subscriptionTermLoading"
+                    @click="addSubscriptionTerm"
+                  >
+                    <span v-if="subscriptionTermLoading" class="spinner spinner--small"></span>
+                    Добавить
+                  </button>
                 </div>
-                <div v-else>
+                <template v-if="subscriptionTermOpen">
                   <label class="field">
-                    <span class="label">Поиск</span>
-                    <input v-model.trim="editProductAccountSearch" class="input" placeholder="поиск" />
+                    <span class="label">Поиск аккаунта</span>
+                    <input v-model.trim="subscriptionTermAccountSearch" class="input input--compact" placeholder="login@domain" />
                   </label>
                   <div class="check-list check-list--account-products">
-                    <label v-for="a in filteredEditProductAccounts" :key="`product-edit-account-sub-${a.account_id}`" class="check-item">
-                      <input type="checkbox" :value="a.account_id" v-model="editProduct.account_ids" />
+                    <label
+                      v-for="a in filteredSubscriptionTermAccounts"
+                      :key="`subscription-term-account-${a.account_id}`"
+                      class="check-item"
+                    >
+                      <input type="radio" :value="a.account_id" v-model.number="subscriptionTermForm.account_id" name="subscription-term-account" />
                       <span>{{ formatAccountTitle(a) }}</span>
                     </label>
+                    <span v-if="!filteredSubscriptionTermAccounts.length" class="muted">Аккаунты не найдены</span>
                   </div>
-                </div>
-              </div>
-              <div class="field field--full">
-                <button
-                  class="section-toggle"
-                  type="button"
-                  :aria-expanded="subscriptionTermsOpen ? 'true' : 'false'"
-                  @click="subscriptionTermsOpen = !subscriptionTermsOpen"
-                >
-                  <span class="label">Сроки подписки ({{ productSubscriptionTermsCount }})</span>
-                  <svg class="section-toggle__chevron" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M6 9l6 6 6-6" />
-                  </svg>
-                </button>
-                <template v-if="subscriptionTermsOpen">
-                  <p v-if="productSubscriptionTermsErrorText" class="bad">{{ productSubscriptionTermsErrorText }}</p>
-                  <div v-else-if="productSubscriptionTermsLoadingState" class="loader-wrap loader-wrap--compact">
-                    <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
-                      <div class="wheel"></div>
-                      <div class="hamster">
-                        <div class="hamster__body">
-                          <div class="hamster__head">
-                            <div class="hamster__ear"></div>
-                            <div class="hamster__eye"></div>
-                            <div class="hamster__nose"></div>
-                          </div>
-                          <div class="hamster__limb hamster__limb--fr"></div>
-                          <div class="hamster__limb hamster__limb--fl"></div>
-                          <div class="hamster__limb hamster__limb--br"></div>
-                          <div class="hamster__limb hamster__limb--bl"></div>
-                          <div class="hamster__tail"></div>
-                        </div>
-                      </div>
-                      <div class="spoke"></div>
-                    </div>
-                  </div>
-                  <div v-else-if="sortedProductSubscriptionTerms.length" class="check-list check-list--account-products">
-                    <div
-                      v-for="term in sortedProductSubscriptionTerms"
-                      :key="`product-subscription-term-${term.term_id}`"
-                      class="check-item check-item--readonly"
-                    >
-                      <span>{{ term.login_full || '—' }} • до {{ formatTermDateLabel(term.valid_until) }} • {{ term.occupied ? 'занято' : 'свободно' }}</span>
-                    </div>
-                  </div>
-                  <p v-else class="muted">Сроков подписки пока нет.</p>
+                  <input v-model="subscriptionTermForm.valid_until" type="date" class="input input--compact" />
+                  <span v-if="subscriptionTermError" class="bad">{{ subscriptionTermError }}</span>
                 </template>
               </div>
-              <div v-if="productEditMode !== 'view'" class="quick-create quick-create--account">
+              <div v-if="productEditMode !== 'view'" class="field field--full quick-create quick-create--account">
                 <div class="quick-create__header">
                   <button class="comment-toggle" type="button" @click="editQuickAccountOpen = !editQuickAccountOpen">
                     {{ editQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
@@ -351,28 +322,135 @@
                   </label>
                 </div>
               </div>
-              <div class="field field--comment-collapsible field--full">
-                <button class="comment-toggle" type="button" @click="editProductCommentOpen = !editProductCommentOpen" :disabled="productEditMode === 'view'">
-                  {{ editProductCommentOpen || editProduct.subscription_notes ? 'Комментарий' : '+ Комментарий' }}
-                </button>
-                <textarea
-                  v-if="editProductCommentOpen || editProduct.subscription_notes"
-                  v-model.trim="editProduct.subscription_notes"
-                  class="input input--textarea input--textarea--compact"
-                  :rows="getCompactNotesRows(editProduct.subscription_notes)"
-                  :readonly="productEditMode === 'view'"
-                />
-              </div>
             </template>
             <div class="divider"></div>
-            <div class="field field--full">
+            <div v-if="!isEditGameType" class="field field--full">
+              <span class="label">Сроки подписки ({{ productSubscriptionTermsCount }})</span>
+              <p v-if="productSubscriptionTermsErrorText" class="bad">{{ productSubscriptionTermsErrorText }}</p>
+              <div v-else-if="productSubscriptionTermsLoadingState" class="loader-wrap loader-wrap--compact">
+                <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                  <div class="wheel"></div>
+                  <div class="hamster">
+                    <div class="hamster__body">
+                      <div class="hamster__head">
+                        <div class="hamster__ear"></div>
+                        <div class="hamster__eye"></div>
+                        <div class="hamster__nose"></div>
+                      </div>
+                      <div class="hamster__limb hamster__limb--fr"></div>
+                      <div class="hamster__limb hamster__limb--fl"></div>
+                      <div class="hamster__limb hamster__limb--br"></div>
+                      <div class="hamster__limb hamster__limb--bl"></div>
+                      <div class="hamster__tail"></div>
+                    </div>
+                  </div>
+                  <div class="spoke"></div>
+                </div>
+              </div>
+              <table v-else-if="sortedProductSubscriptionTerms.length" class="table table--compact table--dense">
+                <thead>
+                  <tr>
+                    <th>
+                      <span class="th-title th-title--filter">
+                        Дата
+                        <span class="th-actions">
+                          <button
+                            class="filter-icon filter-icon--sort"
+                            type="button"
+                            aria-label="Сортировка сроков по дате"
+                            title="Сортировка сроков по дате"
+                            @click.stop="toggleSubscriptionTermsSort('valid_until')"
+                            :class="getSubscriptionTermsSortClass('valid_until')"
+                          >
+                            <svg viewBox="0 0 24 24">
+                              <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                              <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                            </svg>
+                          </button>
+                        </span>
+                      </span>
+                    </th>
+                    <th>
+                      <span class="th-title th-title--filter">
+                        Статус
+                        <span class="th-actions">
+                          <button
+                            class="filter-icon filter-icon--sort"
+                            type="button"
+                            aria-label="Сортировка сроков по статусу"
+                            title="Сортировка сроков по статусу"
+                            @click.stop="toggleSubscriptionTermsSort('status')"
+                            :class="getSubscriptionTermsSortClass('status')"
+                          >
+                            <svg viewBox="0 0 24 24">
+                              <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                              <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                            </svg>
+                          </button>
+                        </span>
+                      </span>
+                    </th>
+                    <th>
+                      <span class="th-title th-title--filter">
+                        Аккаунт
+                        <span class="th-actions">
+                          <button
+                            class="filter-icon filter-icon--sort"
+                            type="button"
+                            aria-label="Сортировка сроков по аккаунту"
+                            title="Сортировка сроков по аккаунту"
+                            @click.stop="toggleSubscriptionTermsSort('account')"
+                            :class="getSubscriptionTermsSortClass('account')"
+                          >
+                            <svg viewBox="0 0 24 24">
+                              <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                              <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                            </svg>
+                          </button>
+                        </span>
+                      </span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="term in pagedProductSubscriptionTerms" :key="`product-subscription-term-${term.term_id}`">
+                    <td>{{ formatTermDateLabel(term.valid_until) }}</td>
+                    <td>{{ term.occupied ? 'занят' : 'свободен' }}</td>
+                    <td>{{ term.login_full || '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-if="productSubscriptionTermsTotalPages > 1" class="pager">
+                <button class="ghost" type="button" @click="prevProductSubscriptionTermsPage" :disabled="productSubscriptionTermsPage <= 1">
+                  ← Назад
+                </button>
+                <span class="muted">Страница {{ productSubscriptionTermsPage }} из {{ productSubscriptionTermsTotalPages }}</span>
+                <button class="ghost" type="button" @click="nextProductSubscriptionTermsPage" :disabled="productSubscriptionTermsPage >= productSubscriptionTermsTotalPages">
+                  Вперёд →
+                </button>
+              </div>
+              <p v-else-if="!sortedProductSubscriptionTerms.length" class="muted">Сроков подписки пока нет.</p>
+            </div>
+            <div v-if="!isEditGameType" class="field field--comment-collapsible field--full">
+              <button class="comment-toggle" type="button" @click="editProductCommentOpen = !editProductCommentOpen" :disabled="productEditMode === 'view'">
+                {{ editProductCommentOpen || editProduct.subscription_notes ? 'Комментарий' : '+ Комментарий' }}
+              </button>
+              <textarea
+                v-if="editProductCommentOpen || editProduct.subscription_notes"
+                v-model.trim="editProduct.subscription_notes"
+                class="input input--textarea input--textarea--compact"
+                :rows="getCompactNotesRows(editProduct.subscription_notes)"
+                :readonly="productEditMode === 'view'"
+              />
+            </div>
+            <div v-if="isEditGameType" class="field field--full">
               <button
                 class="section-toggle"
                 type="button"
                 :aria-expanded="productAccountsOpen ? 'true' : 'false'"
                 @click="productAccountsOpen = !productAccountsOpen"
               >
-                <span class="label">Сделок ({{ productAccountsCount }}):</span>
+                <span class="label">{{ isEditGameType ? `Сделок (${productAccountsCount}):` : `(${productAccountsCount})` }}</span>
                 <svg class="section-toggle__chevron" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M6 9l6 6 6-6" />
                 </svg>
@@ -512,14 +590,14 @@
                 </div>
               </template>
             </div>
-            <div class="field field--full">
+            <div v-if="isEditGameType" class="field field--full">
               <button
                 class="section-toggle"
                 type="button"
                 :aria-expanded="productSlotsOpen ? 'true' : 'false'"
                 @click="productSlotsOpen = !productSlotsOpen"
               >
-                <span class="label">Слоты по товару ({{ productSlotsCount }})</span>
+                <span class="label">{{ isEditGameType ? `Слоты по товару (${productSlotsCount})` : `(${productSlotsCount})` }}</span>
                 <svg class="section-toggle__chevron" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M6 9l6 6 6-6" />
                 </svg>
@@ -1018,10 +1096,26 @@ const newProductAccountSearch = ref('')
 const editProductAccountSearch = ref('')
 const productAccountsOpen = ref(false)
 const productSlotsOpen = ref(false)
-const subscriptionTermsOpen = ref(false)
 const productSlotsPage = ref(1)
 const productSlotsPageSize = 10
 const productSlotsSort = ref({ key: 'assigned', dir: 'desc' })
+const productSubscriptionTermsPage = ref(1)
+const productSubscriptionTermsPageSize = 10
+const subscriptionTermsSort = ref({ key: 'valid_until', dir: 'asc' })
+const subscriptionTermOpen = ref(false)
+// Возвращает дату в формате input[type=date] как сегодня + 1 год.
+const getDefaultSubscriptionTermDate = () => {
+  const nextYearDate = new Date()
+  nextYearDate.setFullYear(nextYearDate.getFullYear() + 1)
+  const year = nextYearDate.getFullYear()
+  const month = String(nextYearDate.getMonth() + 1).padStart(2, '0')
+  const day = String(nextYearDate.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+const subscriptionTermForm = reactive({ account_id: '', valid_until: getDefaultSubscriptionTermDate() })
+const subscriptionTermAccountSearch = ref('')
+const subscriptionTermLoading = ref(false)
+const subscriptionTermError = ref('')
 const accountsTableEl = ref(null)
 const slotsTableEl = ref(null)
 
@@ -1056,13 +1150,27 @@ const productSubscriptionTermsList = computed(() => (
 const productSubscriptionTermsCount = computed(() => productSubscriptionTermsList.value.length)
 const sortedProductSubscriptionTerms = computed(() => {
   const list = [...productSubscriptionTermsList.value]
+  const { key, dir } = subscriptionTermsSort.value
+  const factor = dir === 'asc' ? 1 : -1
   list.sort((a, b) => {
-    const av = Date.parse(String(a?.valid_until || '')) || 0
-    const bv = Date.parse(String(b?.valid_until || '')) || 0
-    if (av !== bv) return av - bv
-    return Number(a?.term_id || 0) - Number(b?.term_id || 0)
+    const av = getSubscriptionTermSortValue(a, key)
+    const bv = getSubscriptionTermSortValue(b, key)
+    if (typeof av === 'number' && typeof bv === 'number') {
+      if (av !== bv) return (av - bv) * factor
+      return (Number(a?.term_id || 0) - Number(b?.term_id || 0)) * factor
+    }
+    return String(av || '').localeCompare(String(bv || '')) * factor
   })
   return list
+})
+// Делит список сроков подписки на страницы, чтобы не растягивать форму.
+const productSubscriptionTermsTotalPages = computed(() => {
+  const pages = Math.ceil(productSubscriptionTermsCount.value / productSubscriptionTermsPageSize)
+  return pages > 0 ? pages : 1
+})
+const pagedProductSubscriptionTerms = computed(() => {
+  const start = (productSubscriptionTermsPage.value - 1) * productSubscriptionTermsPageSize
+  return sortedProductSubscriptionTerms.value.slice(start, start + productSubscriptionTermsPageSize)
 })
 const productSubscriptionTermsLoadingState = computed(() => Boolean(ctx.productSubscriptionTermsLoading))
 const productSubscriptionTermsErrorText = computed(() => String(ctx.productSubscriptionTermsError || '').trim())
@@ -1090,6 +1198,12 @@ const filteredNewProductAccounts = computed(() => {
 const filteredEditProductAccounts = computed(() => {
   // Фильтрует аккаунты в редактировании товара по строке поиска.
   const query = String(editProductAccountSearch.value || '').trim().toLowerCase()
+  if (!query) return selectableAccountOptions.value
+  return selectableAccountOptions.value.filter((item) => formatAccountTitle(item).toLowerCase().includes(query))
+})
+const filteredSubscriptionTermAccounts = computed(() => {
+  // Фильтрует аккаунты в блоке добавления срока подписки.
+  const query = String(subscriptionTermAccountSearch.value || '').trim().toLowerCase()
   if (!query) return selectableAccountOptions.value
   return selectableAccountOptions.value.filter((item) => formatAccountTitle(item).toLowerCase().includes(query))
 })
@@ -1159,6 +1273,24 @@ const toggleProductSlotsSort = (key) => {
 // Возвращает текстовый индикатор направления, чтобы пользователь видел активную сортировку.
 const getProductSlotsSortClass = (key) => getSortButtonClass(productSlotsSort.value.key === key ? productSlotsSort.value.dir : '')
 const getProductAccountsSortClass = (key) => getSortButtonClass(productAccountsSort.value?.key === key ? productAccountsSort.value?.dir : '')
+const getSubscriptionTermsSortClass = (key) => getSortButtonClass(subscriptionTermsSort.value.key === key ? subscriptionTermsSort.value.dir : '')
+
+// Переключает сортировку списка сроков подписки в стиле остальных таблиц.
+const toggleSubscriptionTermsSort = (key) => {
+  const current = subscriptionTermsSort.value
+  if (current.key === key) {
+    subscriptionTermsSort.value = { key, dir: current.dir === 'asc' ? 'desc' : 'asc' }
+  } else {
+    subscriptionTermsSort.value = { key, dir: 'asc' }
+  }
+  productSubscriptionTermsPage.value = 1
+}
+const prevProductSubscriptionTermsPage = () => {
+  if (productSubscriptionTermsPage.value > 1) productSubscriptionTermsPage.value -= 1
+}
+const nextProductSubscriptionTermsPage = () => {
+  if (productSubscriptionTermsPage.value < productSubscriptionTermsTotalPages.value) productSubscriptionTermsPage.value += 1
+}
 
 // Открывает аккаунт из ячейки только при обычном клике, без выделенного текста.
 const openAccountFromCell = (login) => {
@@ -1176,8 +1308,8 @@ const formatTermDateLabel = (value) => {
   if (Number.isNaN(parsed.getTime())) return raw
   const day = String(parsed.getDate()).padStart(2, '0')
   const month = String(parsed.getMonth() + 1).padStart(2, '0')
-  const year = String(parsed.getFullYear())
-  return `${day}.${month}.${year}`
+  const year = String(parsed.getFullYear()).slice(-2)
+  return `${day}/${month}/${year}`
 }
 
 // Достает значение для сравнения по выбранной колонке слотов.
@@ -1191,14 +1323,52 @@ const getProductSlotSortValue = (item, key) => {
   return ''
 }
 
+// Достает значение для сортировки сроков подписки.
+const getSubscriptionTermSortValue = (item, key) => {
+  if (key === 'valid_until') return Date.parse(String(item?.valid_until || '')) || 0
+  if (key === 'status') return item?.occupied ? 1 : 0
+  if (key === 'account') return String(item?.login_full || item?.account_login || '').trim().toLowerCase()
+  return ''
+}
+
+// Создает новый срок подписки в карточке товара и сразу обновляет таблицу сроков.
+const addSubscriptionTerm = async () => {
+  subscriptionTermError.value = ''
+  const createFn = ctx.createQuickProductSubscriptionTerm
+  if (typeof createFn !== 'function') {
+    subscriptionTermError.value = 'Функция создания срока недоступна'
+    return
+  }
+  try {
+    subscriptionTermLoading.value = true
+    await createFn({
+      account_id: Number(subscriptionTermForm.account_id || 0),
+      valid_until: String(subscriptionTermForm.valid_until || '').trim(),
+    })
+    subscriptionTermForm.account_id = ''
+    subscriptionTermForm.valid_until = getDefaultSubscriptionTermDate()
+    subscriptionTermAccountSearch.value = ''
+  } catch (error) {
+    subscriptionTermError.value = String(error?.message || 'Не удалось добавить срок подписки')
+  } finally {
+    subscriptionTermLoading.value = false
+  }
+}
+
 // При новом открытии карточки товара раскрываем секции и сбрасываем пагинацию слотов.
 watch(
   () => editProduct.value?.product_id,
   () => {
     productAccountsOpen.value = false
     productSlotsOpen.value = false
-    subscriptionTermsOpen.value = false
     productSlotsPage.value = 1
+    productSubscriptionTermsPage.value = 1
+    subscriptionTermsSort.value = { key: 'valid_until', dir: 'asc' }
+    subscriptionTermOpen.value = false
+    subscriptionTermForm.account_id = ''
+    subscriptionTermForm.valid_until = getDefaultSubscriptionTermDate()
+    subscriptionTermAccountSearch.value = ''
+    subscriptionTermError.value = ''
   },
 )
 
@@ -1251,6 +1421,9 @@ watch(
 // Если данных стало меньше, держим текущую страницу слотов в допустимом диапазоне.
 watch(productSlotsTotalPages, (total) => {
   if (productSlotsPage.value > total) productSlotsPage.value = total
+})
+watch(productSubscriptionTermsTotalPages, (total) => {
+  if (productSubscriptionTermsPage.value > total) productSubscriptionTermsPage.value = total
 })
 
 // Подбираем высоту textarea, чтобы комментарий не занимал лишнее место.

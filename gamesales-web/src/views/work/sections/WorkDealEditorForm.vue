@@ -209,7 +209,7 @@
                                 </select>
                               </label>
                             </div>
-                            <label v-if="isEditRentalSubscriptionMode && editDeal.product_id" class="field">
+                            <label v-if="isEditRentalSubscriptionMode && editDeal.product_id && !editDeal.subscription_term_id" class="field">
                               <span class="label">Срок подписки</span>
                               <input
                                 v-if="dealEditMode === 'view'"
@@ -236,47 +236,55 @@
                               </select>
                             </label>
                             <div
-                              v-if="dealEditMode !== 'view' && isEditRentalSubscriptionMode && editDeal.product_id && editDeal.slot_type_code"
+                              v-if="dealEditMode !== 'view' && isEditRentalSubscriptionMode && editDeal.product_id && editDeal.slot_type_code && !editDeal.subscription_term_id"
                               class="quick-create quick-create--subscription-term"
                             >
                               <div class="quick-create__header">
-                                <span class="quick-create__title">Быстрое создание срока</span>
+                                <button class="comment-toggle" type="button" @click="editQuickSubscriptionTermOpen = !editQuickSubscriptionTermOpen">
+                                  {{ editQuickSubscriptionTermOpen ? 'Добавить срок подписки' : '+ Добавить срок подписки' }}
+                                </button>
                                 <button
+                                  v-if="editQuickSubscriptionTermOpen"
                                   class="ghost ghost--small"
                                   type="button"
                                   :disabled="quickEditSubscriptionTermLoading"
                                   @click="createQuickSubscriptionTerm('edit')"
                                 >
                                   <span v-if="quickEditSubscriptionTermLoading" class="spinner spinner--small"></span>
-                                  Создать срок
+                                  Добавить
                                 </button>
                               </div>
-                              <div class="deal-form__double">
-                                <select v-model.number="quickEditSubscriptionTerm.account_id" class="input input--select input--compact">
-                                  <option value="">— аккаунт —</option>
-                                  <option v-for="a in dealAccountsForEdit" :key="`qe-term-account-${a.account_id}`" :value="a.account_id">
-                                    {{ a.login_full || a.account_id }}
-                                  </option>
-                                </select>
+                              <template v-if="editQuickSubscriptionTermOpen">
+                                <div class="deal-form__double">
+                                  <select v-model.number="quickEditSubscriptionTerm.account_id" class="input input--select input--compact">
+                                    <option value="">— аккаунт —</option>
+                                    <option v-for="a in dealAccountsForEdit" :key="`qe-term-account-${a.account_id}`" :value="a.account_id">
+                                      {{ a.login_full || a.account_id }}
+                                    </option>
+                                  </select>
+                                  <input
+                                    v-model="quickEditSubscriptionTerm.valid_until"
+                                    class="input input--compact"
+                                    type="date"
+                                  />
+                                </div>
                                 <input
-                                  v-model="quickEditSubscriptionTerm.valid_until"
+                                  v-model.trim="quickEditSubscriptionTerm.notes"
                                   class="input input--compact"
-                                  type="date"
+                                  placeholder="Комментарий (опционально)"
                                 />
-                              </div>
-                              <input
-                                v-model.trim="quickEditSubscriptionTerm.notes"
-                                class="input input--compact"
-                                placeholder="Комментарий (опционально)"
-                              />
-                              <span v-if="quickEditSubscriptionTermError" class="bad">{{ quickEditSubscriptionTermError }}</span>
+                                <span v-if="quickEditSubscriptionTermError" class="bad">{{ quickEditSubscriptionTermError }}</span>
+                              </template>
                             </div>
-                            <label class="field">
+                            <label
+                              v-if="!isEditRentalSubscriptionMode || showEditDealProductSearch || editDeal.subscription_term_id"
+                              class="field"
+                            >
                               <span class="label">{{ showEditDealProductSearch ? 'Поиск' : 'Товар' }}</span>
                               <input
                                 v-if="dealEditMode === 'view'"
                                 class="input"
-                                :value="getProductLabelById(editDeal.product_id)"
+                                :value="getDealProductDisplayLabel('edit')"
                                 readonly
                               />
                               <div v-else-if="showEditDealProductSearch" class="input input--search-row">
@@ -291,7 +299,7 @@
                                 <input
                                   class="input"
                                   :value="editDeal.product_id
-                                    ? getProductLabelById(editDeal.product_id)
+                                    ? getDealProductDisplayLabel('edit')
                                     : (isEditRentalSubscriptionMode && !editDeal.slot_type_code ? 'Сначала выберите слот' : '— не выбрано —')"
                                   readonly
                                 />
@@ -339,7 +347,7 @@
                                     {{ isEditRentalSubscriptionMode && !editDeal.slot_type_code ? 'Сначала выберите слот' : '— не выбрано —' }}
                                   </option>
                                   <option v-for="g in filteredEditDealProductsByType" :key="g.product_id" :value="g.product_id">
-                                    {{ g.title }}
+                                    {{ getProductLabelById(g.product_id) }}
                                   </option>
                                 </select>
                                 <button
@@ -809,7 +817,7 @@
                                 </select>
                               </label>
                             </div>
-                            <label v-if="isNewRentalSubscriptionMode && newDeal.product_id" class="field">
+                            <label v-if="isNewRentalSubscriptionMode && newDeal.product_id && !newDeal.subscription_term_id" class="field">
                               <span class="label">Срок подписки</span>
                               <select
                                 v-model.number="newDeal.subscription_term_id"
@@ -829,42 +837,50 @@
                               </select>
                             </label>
                             <div
-                              v-if="isNewRentalSubscriptionMode && newDeal.product_id && newDeal.slot_type_code"
+                              v-if="isNewRentalSubscriptionMode && newDeal.product_id && newDeal.slot_type_code && !newDeal.subscription_term_id"
                               class="quick-create quick-create--subscription-term"
                             >
                               <div class="quick-create__header">
-                                <span class="quick-create__title">Быстрое создание срока</span>
+                                <button class="comment-toggle" type="button" @click="newQuickSubscriptionTermOpen = !newQuickSubscriptionTermOpen">
+                                  {{ newQuickSubscriptionTermOpen ? 'Добавить срок подписки' : '+ Добавить срок подписки' }}
+                                </button>
                                 <button
+                                  v-if="newQuickSubscriptionTermOpen"
                                   class="ghost ghost--small"
                                   type="button"
                                   :disabled="quickNewSubscriptionTermLoading"
                                   @click="createQuickSubscriptionTerm('new')"
                                 >
                                   <span v-if="quickNewSubscriptionTermLoading" class="spinner spinner--small"></span>
-                                  Создать срок
+                                  Добавить
                                 </button>
                               </div>
-                              <div class="deal-form__double">
-                                <select v-model.number="quickNewSubscriptionTerm.account_id" class="input input--select input--compact">
-                                  <option value="">— аккаунт —</option>
-                                  <option v-for="a in dealAccountsForNew" :key="`qn-term-account-${a.account_id}`" :value="a.account_id">
-                                    {{ a.login_full || a.account_id }}
-                                  </option>
-                                </select>
+                              <template v-if="newQuickSubscriptionTermOpen">
+                                <div class="deal-form__double">
+                                  <select v-model.number="quickNewSubscriptionTerm.account_id" class="input input--select input--compact">
+                                    <option value="">— аккаунт —</option>
+                                    <option v-for="a in dealAccountsForNew" :key="`qn-term-account-${a.account_id}`" :value="a.account_id">
+                                      {{ a.login_full || a.account_id }}
+                                    </option>
+                                  </select>
+                                  <input
+                                    v-model="quickNewSubscriptionTerm.valid_until"
+                                    class="input input--compact"
+                                    type="date"
+                                  />
+                                </div>
                                 <input
-                                  v-model="quickNewSubscriptionTerm.valid_until"
+                                  v-model.trim="quickNewSubscriptionTerm.notes"
                                   class="input input--compact"
-                                  type="date"
+                                  placeholder="Комментарий (опционально)"
                                 />
-                              </div>
-                              <input
-                                v-model.trim="quickNewSubscriptionTerm.notes"
-                                class="input input--compact"
-                                placeholder="Комментарий (опционально)"
-                              />
-                              <span v-if="quickNewSubscriptionTermError" class="bad">{{ quickNewSubscriptionTermError }}</span>
+                                <span v-if="quickNewSubscriptionTermError" class="bad">{{ quickNewSubscriptionTermError }}</span>
+                              </template>
                             </div>
-                            <label class="field">
+                            <label
+                              v-if="!isNewRentalSubscriptionMode || showNewDealProductSearch || newDeal.subscription_term_id"
+                              class="field"
+                            >
                               <span class="label">{{ showNewDealProductSearch ? 'Поиск' : 'Товар' }}</span>
                               <div v-if="showNewDealProductSearch" class="input input--search-row">
                                 <input
@@ -878,7 +894,7 @@
                                 <input
                                   class="input"
                                   :value="newDeal.product_id
-                                    ? getProductLabelById(newDeal.product_id)
+                                    ? getDealProductDisplayLabel('new')
                                     : (isNewRentalSubscriptionMode && !newDeal.slot_type_code ? 'Сначала выберите слот' : '— не выбрано —')"
                                   readonly
                                 />
@@ -926,7 +942,7 @@
                                     {{ isNewRentalSubscriptionMode && !newDeal.slot_type_code ? 'Сначала выберите слот' : '— не выбрано —' }}
                                   </option>
                                   <option v-for="g in filteredNewDealProductsByType" :key="g.product_id" :value="g.product_id">
-                                    {{ g.title }}
+                                    {{ getProductLabelById(g.product_id) }}
                                   </option>
                                 </select>
                                 <button
@@ -1203,8 +1219,10 @@ const editDealProductTypeFilter = ref('game')
 const newDealProductTypeFilter = ref('game')
 const editQuickProductOpen = ref(false)
 const editQuickAccountOpen = ref(false)
+const editQuickSubscriptionTermOpen = ref(false)
 const newQuickProductOpen = ref(false)
 const newQuickAccountOpen = ref(false)
+const newQuickSubscriptionTermOpen = ref(false)
 
 const isEditRentalSubscriptionMode = computed(() => {
   return editDeal.value?.deal_type_code === 'rental' && editDealProductTypeFilter.value === 'subscription'
@@ -1415,19 +1433,28 @@ function getDealReserveLabel(accountId, reserveKey, currentDealId = null) {
 function formatSubscriptionTermLabel(term) {
   if (!term) return '— не выбрано —'
   const rawDate = String(term.valid_until || '').trim()
-  const accountLabel = String(term.login_full || term.account_login || '').trim()
-  const dateLabel = rawDate || 'без даты'
-  return accountLabel ? `${accountLabel} до ${dateLabel}` : `до ${dateLabel}`
+  if (!rawDate) return 'до —'
+  const parsed = new Date(rawDate)
+  if (Number.isNaN(parsed.getTime())) return `до ${rawDate}`
+  const day = String(parsed.getDate()).padStart(2, '0')
+  const month = String(parsed.getMonth() + 1).padStart(2, '0')
+  const year = String(parsed.getFullYear())
+  return `до ${day}.${month}.${year}`
+}
+
+// Оставляет в селектах только свободные сроки подписки.
+function isFreeSubscriptionTerm(term) {
+  return !(term?.occupied || term?.is_occupied)
 }
 
 const editSubscriptionTermOptions = computed(() => {
   const list = Array.isArray(subscriptionTermsEdit.value) ? subscriptionTermsEdit.value : []
-  return list
+  return list.filter(isFreeSubscriptionTerm)
 })
 
 const newSubscriptionTermOptions = computed(() => {
   const list = Array.isArray(subscriptionTermsNew.value) ? subscriptionTermsNew.value : []
-  return list
+  return list.filter(isFreeSubscriptionTerm)
 })
 
 function getSelectedEditSubscriptionTermLabel() {
@@ -1435,6 +1462,24 @@ function getSelectedEditSubscriptionTermLabel() {
   if (!termId) return '— не выбрано —'
   const selected = editSubscriptionTermOptions.value.find((item) => Number(item?.term_id || 0) === termId)
   return formatSubscriptionTermLabel(selected)
+}
+
+// Собирает подпись "товар + срок" в одном поле, когда выбран срок подписки.
+function getDealProductDisplayLabel(target) {
+  const isEdit = target === 'edit'
+  const deal = isEdit ? editDeal.value : newDeal.value
+  const productId = Number(deal?.product_id || 0)
+  if (!productId) return '—'
+  const productLabel = getProductLabelById.value(productId)
+  const subscriptionMode = isEdit ? isEditRentalSubscriptionMode.value : isNewRentalSubscriptionMode.value
+  const termId = Number(deal?.subscription_term_id || 0)
+  if (!subscriptionMode || !termId) return productLabel
+  const allTerms = isEdit
+    ? (Array.isArray(subscriptionTermsEdit.value) ? subscriptionTermsEdit.value : [])
+    : (Array.isArray(subscriptionTermsNew.value) ? subscriptionTermsNew.value : [])
+  const selectedTerm = allTerms.find((item) => Number(item?.term_id || 0) === termId)
+  const termLabel = formatSubscriptionTermLabel(selectedTerm)
+  return `${productLabel} ${termLabel}`.trim()
 }
 
 // Возвращает список слотов для формы; у подписки до выбора товара даем полный список.
@@ -1460,6 +1505,7 @@ watch(() => editDeal.value?.open, (isOpen) => {
   editDealProductTypeFilter.value = currentProductTypeCode === 'subscription' ? 'subscription' : 'game'
   editQuickProductOpen.value = false
   editQuickAccountOpen.value = false
+  editQuickSubscriptionTermOpen.value = false
 })
 
 watch(
@@ -1486,6 +1532,7 @@ watch(() => newDeal.value?.deal_type_code, (dealTypeCode) => {
   newDealProductTypeFilter.value = 'game'
   newQuickProductOpen.value = false
   newQuickAccountOpen.value = false
+  newQuickSubscriptionTermOpen.value = false
 })
 
 watch(() => editDealProductTypeFilter.value, (typeCode, prev) => {
@@ -1523,6 +1570,7 @@ watch(() => editDeal.value?.slot_type_code, (slotTypeCode, prev) => {
   editDeal.value.subscription_term_id = ''
   editDeal.value.account_id = ''
   editDealProductSearch.value = ''
+  editQuickSubscriptionTermOpen.value = false
 })
 
 watch(() => newDeal.value?.slot_type_code, (slotTypeCode, prev) => {
@@ -1533,6 +1581,7 @@ watch(() => newDeal.value?.slot_type_code, (slotTypeCode, prev) => {
   newDeal.value.subscription_term_id = ''
   newDeal.value.account_id = ''
   newDealProductSearch.value = ''
+  newQuickSubscriptionTermOpen.value = false
 })
 
 watch(() => editDeal.value?.subscription_term_id, (termId) => {

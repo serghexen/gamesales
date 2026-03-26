@@ -169,6 +169,16 @@ def mount_products_routes(
                 """,
                 (product_id, payload.account_id, payload.valid_until, payload.notes),
             )
+            # Синхронизируем прямую привязку подписки к аккаунту, чтобы карточки аккаунтов показывали товар.
+            exec1(
+                conn,
+                """
+                INSERT INTO app.account_assets(account_id, product_id, asset_type_code)
+                VALUES (%s, %s, 'subscription')
+                ON CONFLICT (account_id, product_id, asset_type_code) DO NOTHING
+                """,
+                (payload.account_id, product_id),
+            )
             conn.commit()
             domain_row = q1(conn, "SELECT name FROM app.domains WHERE domain_id=%s", (account_row[1],))
         login_name = str(account_row[0] or "")

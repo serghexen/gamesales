@@ -80,6 +80,10 @@ function buildCtx(overrides = {}) {
     quickEditProductAccount: reactive({ login_name: '', domain_code: '', platform_codes: [] }),
     quickEditProductAccountLoading: false,
     quickEditProductAccountError: '',
+    productSubscriptionTerms: [],
+    productSubscriptionTermsLoading: false,
+    productSubscriptionTermsError: '',
+    createQuickProductSubscriptionTerm: vi.fn(),
     ...overrides,
   }
 }
@@ -261,5 +265,87 @@ describe('WorkProductEditorModal', () => {
     expect(openAccountFromProduct).toHaveBeenCalledTimes(1)
 
     getSelectionSpy.mockRestore()
+  })
+
+  it('shows subscription terms table and hides old empty-account hint', async () => {
+    const wrapper = mount(WorkProductEditorModal, {
+      props: {
+        ctx: buildCtx({
+          editProduct: reactive({
+            open: true,
+            product_id: 2,
+            type_code: 'subscription',
+            account_ids: [],
+            title: 'EA PLAY',
+            short_title: '',
+            link: '',
+            text_lang: '',
+            audio_lang: '',
+            vr_support: '',
+            platform_codes: [],
+            region_code: '',
+            provider: '',
+            billing_period: '',
+            subscription_notes: '',
+          }),
+          productSubscriptionTerms: [
+            { term_id: 1, valid_until: '2026-11-30', occupied: true, login_full: 'acc@test.com' },
+          ],
+        }),
+      },
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(wrapper.text()).toContain('Сроки подписки (1)')
+    expect(wrapper.text()).toContain('30/11/26')
+    expect(wrapper.text()).toContain('занят')
+    expect(wrapper.text()).not.toContain('Пока нет привязанных аккаунтов.')
+  })
+
+  it('adds subscription term from card form', async () => {
+    const createQuickProductSubscriptionTerm = vi.fn().mockResolvedValue(undefined)
+    const wrapper = mount(WorkProductEditorModal, {
+      props: {
+        ctx: buildCtx({
+          editProduct: reactive({
+            open: true,
+            product_id: 2,
+            type_code: 'subscription',
+            account_ids: [],
+            title: 'EA PLAY',
+            short_title: '',
+            link: '',
+            text_lang: '',
+            audio_lang: '',
+            vr_support: '',
+            platform_codes: [],
+            region_code: '',
+            provider: '',
+            billing_period: '',
+            subscription_notes: '',
+          }),
+          productEditMode: 'edit',
+          productAccountOptions: [{ account_id: 7, login_name: 'acc', domain_code: 'test.com' }],
+          createQuickProductSubscriptionTerm,
+        }),
+      },
+      global: { stubs: { teleport: true } },
+    })
+
+    const toggleBtn = wrapper.find('.quick-create--subscription-term .comment-toggle')
+    await toggleBtn.trigger('click')
+    const accountSearch = wrapper.find('input[placeholder="login@domain"]')
+    await accountSearch.setValue('acc@test')
+    const accountRadio = wrapper.find('input[type="radio"][name="subscription-term-account"]')
+    await accountRadio.setValue('7')
+    const dateInput = wrapper.find('input[type="date"]')
+    await dateInput.setValue('2026-11-30')
+    const addBtn = wrapper.find('button.ghost.ghost--small')
+    await addBtn.trigger('click')
+
+    expect(createQuickProductSubscriptionTerm).toHaveBeenCalledWith({
+      account_id: 7,
+      valid_until: '2026-11-30',
+    })
   })
 })

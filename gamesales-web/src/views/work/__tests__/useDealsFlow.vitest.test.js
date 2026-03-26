@@ -54,6 +54,12 @@ function createHarness() {
     subscriptionFreeProductIdsEdit: ref([]),
     subscriptionFreeProductIdsLoadingNew: ref(false),
     subscriptionFreeProductIdsLoadingEdit: ref(false),
+    quickNewSubscriptionTerm: reactive({ account_id: '', valid_until: '', notes: '' }),
+    quickEditSubscriptionTerm: reactive({ account_id: '', valid_until: '', notes: '' }),
+    quickNewSubscriptionTermLoading: ref(false),
+    quickEditSubscriptionTermLoading: ref(false),
+    quickNewSubscriptionTermError: ref(''),
+    quickEditSubscriptionTermError: ref(''),
     loadProductsAll: vi.fn(),
     loadAccountsAll: vi.fn().mockResolvedValue(undefined),
   }
@@ -172,5 +178,36 @@ describe('useDealsFlow', () => {
       { token: 'token-1' },
     )
     expect(h.subscriptionFreeProductIdsNew.value).toEqual([55])
+  })
+
+  it('createQuickSubscriptionTerm resets date to today plus one year', async () => {
+    const h = createHarness()
+    h.productsAll.value = [{ product_id: 55, type_code: 'subscription' }]
+    h.quickNewSubscriptionTerm.account_id = 7
+    h.quickNewSubscriptionTerm.valid_until = '2026-02-01'
+    h.quickNewSubscriptionTerm.notes = 'n'
+    h.apiPost.mockResolvedValueOnce({ term_id: 101, account_id: 7 })
+    h.apiGet.mockResolvedValueOnce([])
+
+    await h.createQuickSubscriptionTerm('new')
+
+    const nextYearDate = new Date()
+    nextYearDate.setFullYear(nextYearDate.getFullYear() + 1)
+    const expectedDate = `${nextYearDate.getFullYear()}-${String(nextYearDate.getMonth() + 1).padStart(2, '0')}-${String(nextYearDate.getDate()).padStart(2, '0')}`
+    expect(h.quickNewSubscriptionTerm.valid_until).toBe(expectedDate)
+  })
+
+  it('clearNewDealProduct resets term and account for subscription', () => {
+    const h = createHarness()
+    h.productsAll.value = [{ product_id: 55, type_code: 'subscription' }]
+    h.newDeal.product_id = 55
+    h.newDeal.subscription_term_id = 10
+    h.newDeal.account_id = 7
+
+    h.clearNewDealProduct()
+
+    expect(h.newDeal.product_id).toBe('')
+    expect(h.newDeal.subscription_term_id).toBe('')
+    expect(h.newDeal.account_id).toBe('')
   })
 })

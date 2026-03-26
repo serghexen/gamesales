@@ -1344,6 +1344,15 @@ const quickNewProductAccountLoading = ref(false)
 const quickEditProductAccountLoading = ref(false)
 const quickNewProductAccountError = ref('')
 const quickEditProductAccountError = ref('')
+// Дает дефолт даты срока подписки как сегодня + 1 год.
+const getDefaultSubscriptionTermDate = () => {
+  const nextYearDate = new Date()
+  nextYearDate.setFullYear(nextYearDate.getFullYear() + 1)
+  const year = nextYearDate.getFullYear()
+  const month = String(nextYearDate.getMonth() + 1).padStart(2, '0')
+  const day = String(nextYearDate.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 const subscriptionFreeProductIdsNew = ref([])
 const subscriptionFreeProductIdsEdit = ref([])
 const subscriptionFreeProductIdsLoadingNew = ref(false)
@@ -1352,8 +1361,8 @@ const subscriptionTermsNew = ref([])
 const subscriptionTermsEdit = ref([])
 const subscriptionTermsLoadingNew = ref(false)
 const subscriptionTermsLoadingEdit = ref(false)
-const quickNewSubscriptionTerm = reactive({ account_id: '', valid_until: '', notes: '' })
-const quickEditSubscriptionTerm = reactive({ account_id: '', valid_until: '', notes: '' })
+const quickNewSubscriptionTerm = reactive({ account_id: '', valid_until: getDefaultSubscriptionTermDate(), notes: '' })
+const quickEditSubscriptionTerm = reactive({ account_id: '', valid_until: getDefaultSubscriptionTermDate(), notes: '' })
 const quickNewSubscriptionTermLoading = ref(false)
 const quickEditSubscriptionTermLoading = ref(false)
 const quickNewSubscriptionTermError = ref('')
@@ -1469,6 +1478,7 @@ const {
   toggleProductEditMode,
   archiveProduct,
   createQuickProductAccount,
+  createQuickProductSubscriptionTerm,
 } = useProductsFlow({
   auth,
   apiGet,
@@ -2647,6 +2657,7 @@ const {
   newProduct,
   accountsAll,
   createQuickProductAccount,
+  createQuickProductSubscriptionTerm,
   quickNewProductAccount,
   quickNewProductAccountLoading,
   quickNewProductAccountError,

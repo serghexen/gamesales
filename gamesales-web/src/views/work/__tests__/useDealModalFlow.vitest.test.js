@@ -75,6 +75,10 @@ function createDeps() {
     quickEditAccount: { login_name: '', domain_code: '', platform_codes: [] },
     quickNewAccountError: ref(''),
     quickEditAccountError: ref(''),
+    quickNewSubscriptionTerm: { account_id: '', valid_until: '', notes: '' },
+    quickEditSubscriptionTerm: { account_id: '', valid_until: '', notes: '' },
+    quickNewSubscriptionTermError: ref(''),
+    quickEditSubscriptionTermError: ref(''),
     dealAccountsForProductNew: ref([]),
     dealAccountsForProductEdit: ref([]),
     dealAccountAssignmentsNew: ref([]),
@@ -156,6 +160,19 @@ describe('useDealModalFlow', () => {
     expect(closed).toBe(true)
     expect(deps.requestUnsavedConfirm).not.toHaveBeenCalled()
     expect(deps.editDealCommentOpen.value).toBe(false)
+  })
+
+  it('sets default quick subscription date as today plus one year in create sharing', () => {
+    const deps = createDeps()
+    const api = useDealModalFlow(deps)
+
+    deps.quickNewSubscriptionTerm.valid_until = ''
+    api.openCreateSharingModal()
+
+    const nextYearDate = new Date()
+    nextYearDate.setFullYear(nextYearDate.getFullYear() + 1)
+    const expectedDate = `${nextYearDate.getFullYear()}-${String(nextYearDate.getMonth() + 1).padStart(2, '0')}-${String(nextYearDate.getDate()).padStart(2, '0')}`
+    expect(deps.quickNewSubscriptionTerm.valid_until).toBe(expectedDate)
   })
 
   it('prefills responsible with current session user for new sale', () => {

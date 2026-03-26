@@ -64,12 +64,21 @@ export function useDealsFlow({
   loadProductsAll,
   loadAccountsAll,
 }) {
+  // Возвращает дату для quick-срока: текущая дата плюс один год.
+  const getDefaultSubscriptionTermDate = () => {
+    const nextYearDate = new Date()
+    nextYearDate.setFullYear(nextYearDate.getFullYear() + 1)
+    const year = nextYearDate.getFullYear()
+    const month = String(nextYearDate.getMonth() + 1).padStart(2, '0')
+    const day = String(nextYearDate.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
   const subscriptionTermsNewRef = subscriptionTermsNew || { value: [] }
   const subscriptionTermsEditRef = subscriptionTermsEdit || { value: [] }
   const subscriptionTermsLoadingNewRef = subscriptionTermsLoadingNew || { value: false }
   const subscriptionTermsLoadingEditRef = subscriptionTermsLoadingEdit || { value: false }
-  const quickNewSubscriptionTermRef = quickNewSubscriptionTerm || { account_id: '', valid_until: '', notes: '' }
-  const quickEditSubscriptionTermRef = quickEditSubscriptionTerm || { account_id: '', valid_until: '', notes: '' }
+  const quickNewSubscriptionTermRef = quickNewSubscriptionTerm || { account_id: '', valid_until: getDefaultSubscriptionTermDate(), notes: '' }
+  const quickEditSubscriptionTermRef = quickEditSubscriptionTerm || { account_id: '', valid_until: getDefaultSubscriptionTermDate(), notes: '' }
   const quickNewSubscriptionTermLoadingRef = quickNewSubscriptionTermLoading || { value: false }
   const quickEditSubscriptionTermLoadingRef = quickEditSubscriptionTermLoading || { value: false }
   const quickNewSubscriptionTermErrorRef = quickNewSubscriptionTermError || { value: '' }
@@ -213,7 +222,7 @@ export function useDealsFlow({
       if (created?.term_id) deal.subscription_term_id = Number(created.term_id)
       if (created?.account_id) deal.account_id = Number(created.account_id)
       state.account_id = ''
-      state.valid_until = ''
+      state.valid_until = getDefaultSubscriptionTermDate()
       state.notes = ''
     } catch (e) {
       errorRef.value = mapApiError(e?.message)
@@ -577,13 +586,25 @@ export function useDealsFlow({
   }
 
   function clearNewDealProduct() {
+    // Для подписок на крестик сбрасываем связку товар+срок+аккаунт, чтобы выбрать заново.
+    const resetSubscriptionChain = isSubscriptionProduct(Number(newDeal.product_id || 0))
     newDeal.product_id = ''
+    if (resetSubscriptionChain) {
+      newDeal.subscription_term_id = ''
+      newDeal.account_id = ''
+    }
     newDealProductSearch.value = ''
     dealAccountsForProductNew.value = []
   }
 
   function clearEditDealProduct() {
+    // В редактировании подписки крестик также очищает выбранный срок и аккаунт.
+    const resetSubscriptionChain = isSubscriptionProduct(Number(editDeal.product_id || 0))
     editDeal.product_id = ''
+    if (resetSubscriptionChain) {
+      editDeal.subscription_term_id = ''
+      editDeal.account_id = ''
+    }
     editDealProductSearch.value = ''
     dealAccountsForProductEdit.value = []
   }

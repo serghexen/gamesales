@@ -123,9 +123,23 @@ export function useSlotHelpers({
 
   const getProductById = (productId) => (productsAll.value || []).find((item) => item.product_id === productId)
 
+  // Нормализует название подписки только для показа в шеринге, чтобы убрать лишние хвосты.
+  const normalizeSubscriptionTitleForDisplay = (title) => {
+    const raw = String(title || '').trim()
+    if (!raw) return ''
+    const noPrefix = raw.replace(/^подписка\s+/i, '')
+    const noDateTail = noPrefix.replace(/\s+до\s+\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\s*$/i, '')
+    return noDateTail.replace(/\s+/g, ' ').trim() || raw
+  }
+
   const getProductLabelById = (idValue) => {
     // Для формы сделок используем только product_id.
     const product = getProductById(idValue)
+    if (!product) return idValue ? String(idValue) : '—'
+    const normalizedType = String(product?.type_code || '').trim().toLowerCase()
+    if (normalizedType === 'subscription') {
+      return normalizeSubscriptionTitleForDisplay(product?.title)
+    }
     return product?.title || (idValue ? String(idValue) : '—')
   }
 

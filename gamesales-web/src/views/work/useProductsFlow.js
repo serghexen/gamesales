@@ -718,6 +718,23 @@ export function useProductsFlow({
     }
   }
 
+  // Быстро добавляет новый срок подписки в открытой карточке товара.
+  async function createQuickProductSubscriptionTerm(payload) {
+    const productId = Number(editProduct.product_id || 0)
+    const typeCode = String(editProduct.type_code || '').trim().toLowerCase()
+    const accountId = Number(payload?.account_id || 0)
+    const validUntil = String(payload?.valid_until || '').trim()
+    if (!productId || typeCode !== 'subscription') throw new Error('Откройте карточку подписки')
+    if (!accountId) throw new Error('Выберите аккаунт')
+    if (!validUntil) throw new Error('Укажите дату окончания')
+    await apiPost(
+      `/products/subscriptions/${encodeURIComponent(productId)}/terms`,
+      { account_id: accountId, valid_until: validUntil, notes: null },
+      { token: auth.state.token },
+    )
+    await loadProductSubscriptionTerms(productId, 'subscription')
+  }
+
   return {
     openProductAccounts,
     openCreateGameProductModal,
@@ -732,6 +749,7 @@ export function useProductsFlow({
     updateProduct,
     archiveProduct,
     createQuickProductAccount,
+    createQuickProductSubscriptionTerm,
     goToAccount,
     openDealProduct,
     startEditProduct,
