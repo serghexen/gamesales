@@ -42,8 +42,8 @@ function createHarness() {
     quickEditProductLoading: ref(false),
     quickNewProductError: ref(''),
     quickEditProductError: ref(''),
-    quickNewAccount: reactive({ login_name: 'qa', domain_code: 'gmail.com', platform_codes: ['ps5'] }),
-    quickEditAccount: reactive({ login_name: '', domain_code: '', platform_codes: [] }),
+    quickNewAccount: reactive({ login_name: 'qa', domain_code: 'gmail.com', platform_codes: ['ps5'], password: 'pwd', notes: 'note', subscription_product_id: '' }),
+    quickEditAccount: reactive({ login_name: '', domain_code: '', platform_codes: [], password: '', notes: '', subscription_product_id: '' }),
     quickNewAccountLoading: ref(false),
     quickEditAccountLoading: ref(false),
     quickNewAccountError: ref(''),
@@ -54,6 +54,10 @@ function createHarness() {
     subscriptionFreeProductIdsEdit: ref([]),
     subscriptionFreeProductIdsLoadingNew: ref(false),
     subscriptionFreeProductIdsLoadingEdit: ref(false),
+    subscriptionAvailableItemsNew: ref([]),
+    subscriptionAvailableItemsEdit: ref([]),
+    subscriptionAvailableItemsLoadingNew: ref(false),
+    subscriptionAvailableItemsLoadingEdit: ref(false),
     quickNewSubscriptionTerm: reactive({ account_id: '', valid_until: '', notes: '' }),
     quickEditSubscriptionTerm: reactive({ account_id: '', valid_until: '', notes: '' }),
     quickNewSubscriptionTermLoading: ref(false),
@@ -125,6 +129,32 @@ describe('useDealsFlow', () => {
     expect(h.apiPut).not.toHaveBeenCalledWith('/accounts/9/products', expect.anything(), { token: 'token-1' })
   })
 
+  it('createQuickAccount creates subscription term when product selected in quick block', async () => {
+    const h = createHarness()
+    h.newDeal.deal_type_code = 'rental'
+    h.newDeal.slot_type_code = 'play_ps5'
+    h.newDeal.product_id = ''
+    h.newDeal.account_id = ''
+    h.quickNewAccount.subscription_product_id = 88
+    h.productsAll.value = [{ product_id: 88, type_code: 'subscription' }]
+    h.apiPost
+      .mockResolvedValueOnce({ account_id: 19 })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ term_id: 105, account_id: 19 })
+
+    await h.createQuickAccount('new')
+
+    expect(h.apiPost).toHaveBeenNthCalledWith(
+      3,
+      '/products/subscriptions/88/terms',
+      expect.objectContaining({ account_id: 19 }),
+      { token: 'token-1' },
+    )
+    expect(h.newDeal.product_id).toBe(88)
+    expect(h.newDeal.subscription_term_id).toBe(105)
+    expect(h.newDeal.account_id).toBe(19)
+  })
+
   it('loadDealAccountsForProduct uses /accounts/for-deal for subscription', async () => {
     const h = createHarness()
     h.productsAll.value = [{ product_id: 55, type_code: 'subscription' }]
@@ -178,6 +208,19 @@ describe('useDealsFlow', () => {
       { token: 'token-1' },
     )
     expect(h.subscriptionFreeProductIdsNew.value).toEqual([55])
+  })
+
+  it('loadAvailableSubscriptionItems loads flat list of available items by slot', async () => {
+    const h = createHarness()
+    h.apiGet.mockResolvedValueOnce([{ term_id: 10, product_id: 55 }])
+
+    await h.loadAvailableSubscriptionItems('new', 'play_ps5')
+
+    expect(h.apiGet).toHaveBeenCalledWith(
+      '/products/subscriptions/terms/available-for-deal?slot_type_code=play_ps5',
+      { token: 'token-1' },
+    )
+    expect(h.subscriptionAvailableItemsNew.value).toEqual([{ term_id: 10, product_id: 55 }])
   })
 
   it('createQuickSubscriptionTerm resets date to today plus one year', async () => {

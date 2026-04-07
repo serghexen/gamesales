@@ -192,6 +192,9 @@ export function useDealModalFlow({
     quickNewAccount.login_name = ''
     quickNewAccount.domain_code = ''
     quickNewAccount.platform_codes = []
+    quickNewAccount.password = ''
+    quickNewAccount.notes = ''
+    quickNewAccount.subscription_product_id = ''
     quickNewAccountError.value = ''
     safeQuickNewSubscriptionTerm.account_id = ''
     safeQuickNewSubscriptionTerm.valid_until = getDefaultSubscriptionTermDate()
@@ -328,6 +331,9 @@ export function useDealModalFlow({
     quickNewAccount.login_name = ''
     quickNewAccount.domain_code = ''
     quickNewAccount.platform_codes = []
+    quickNewAccount.password = ''
+    quickNewAccount.notes = ''
+    quickNewAccount.subscription_product_id = ''
     quickNewAccountError.value = ''
     safeQuickNewSubscriptionTerm.account_id = ''
     safeQuickNewSubscriptionTerm.valid_until = getDefaultSubscriptionTermDate()
@@ -336,6 +342,9 @@ export function useDealModalFlow({
     quickEditAccount.login_name = ''
     quickEditAccount.domain_code = ''
     quickEditAccount.platform_codes = []
+    quickEditAccount.password = ''
+    quickEditAccount.notes = ''
+    quickEditAccount.subscription_product_id = ''
     quickEditAccountError.value = ''
     safeQuickEditSubscriptionTerm.account_id = ''
     safeQuickEditSubscriptionTerm.valid_until = getDefaultSubscriptionTermDate()
@@ -366,6 +375,9 @@ export function useDealModalFlow({
     quickEditAccount.login_name = ''
     quickEditAccount.domain_code = ''
     quickEditAccount.platform_codes = []
+    quickEditAccount.password = ''
+    quickEditAccount.notes = ''
+    quickEditAccount.subscription_product_id = ''
     quickEditAccountError.value = ''
     safeQuickEditSubscriptionTerm.account_id = ''
     safeQuickEditSubscriptionTerm.valid_until = getDefaultSubscriptionTermDate()

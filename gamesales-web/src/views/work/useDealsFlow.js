@@ -55,6 +55,10 @@ export function useDealsFlow({
   subscriptionTermsEdit,
   subscriptionTermsLoadingNew,
   subscriptionTermsLoadingEdit,
+  subscriptionAvailableItemsNew,
+  subscriptionAvailableItemsEdit,
+  subscriptionAvailableItemsLoadingNew,
+  subscriptionAvailableItemsLoadingEdit,
   quickNewSubscriptionTerm,
   quickEditSubscriptionTerm,
   quickNewSubscriptionTermLoading,
@@ -83,6 +87,10 @@ export function useDealsFlow({
   const quickEditSubscriptionTermLoadingRef = quickEditSubscriptionTermLoading || { value: false }
   const quickNewSubscriptionTermErrorRef = quickNewSubscriptionTermError || { value: '' }
   const quickEditSubscriptionTermErrorRef = quickEditSubscriptionTermError || { value: '' }
+  const subscriptionAvailableItemsNewRef = subscriptionAvailableItemsNew || { value: [] }
+  const subscriptionAvailableItemsEditRef = subscriptionAvailableItemsEdit || { value: [] }
+  const subscriptionAvailableItemsLoadingNewRef = subscriptionAvailableItemsLoadingNew || { value: false }
+  const subscriptionAvailableItemsLoadingEditRef = subscriptionAvailableItemsLoadingEdit || { value: false }
 
   // Используем единый product-first загрузчик справочника.
   const reloadProductsAll = loadProductsAll
@@ -177,6 +185,31 @@ export function useDealsFlow({
       if (selected?.account_id) {
         deal.account_id = Number(selected.account_id)
       }
+    } catch {
+      listRef.value = []
+    } finally {
+      loadingRef.value = false
+    }
+  }
+
+  // Загружает плоский список доступных подписок (товар + срок) для выбранного слота.
+  async function loadAvailableSubscriptionItems(target, slotTypeCode) {
+    const isEdit = target === 'edit'
+    const listRef = isEdit ? subscriptionAvailableItemsEditRef : subscriptionAvailableItemsNewRef
+    const loadingRef = isEdit ? subscriptionAvailableItemsLoadingEditRef : subscriptionAvailableItemsLoadingNewRef
+    const normalizedSlotTypeCode = String(slotTypeCode || '').trim()
+    if (!normalizedSlotTypeCode) {
+      listRef.value = []
+      loadingRef.value = false
+      return
+    }
+    loadingRef.value = true
+    try {
+      const data = await apiGet(
+        `/products/subscriptions/terms/available-for-deal?slot_type_code=${encodeURIComponent(normalizedSlotTypeCode)}`,
+        { token: auth.state.token }
+      )
+      listRef.value = Array.isArray(data) ? data : []
     } catch {
       listRef.value = []
     } finally {
@@ -503,6 +536,7 @@ export function useDealsFlow({
     const state = isEdit ? quickEditAccount : quickNewAccount
     const loading = isEdit ? quickEditAccountLoading : quickNewAccountLoading
     const error = isEdit ? quickEditAccountError : quickNewAccountError
+    const deal = isEdit ? editDeal : newDeal
     error.value = ''
     if (!state.login_name) {
       error.value = 'Укажите логин'
@@ -516,6 +550,32 @@ export function useDealsFlow({
       error.value = 'Выберите платформу'
       return
     }
+    if (!String(state.password || '').trim()) {
+      error.value = 'Укажите пароль аккаунта'
+      return
+    }
+    if (!String(state.notes || '').trim()) {
+      error.value = 'Укажите комментарий'
+      return
+    }
+    const selectedRefs = resolveSelectedDealRefs(target)
+    const selectedProductId = Number(selectedRefs.productId || 0)
+    const selectedProductIsSubscription = selectedProductId && isSubscriptionProduct(selectedProductId)
+    const requestedSubscriptionProductId = Number(state.subscription_product_id || 0)
+    const fallbackSubscriptionProductId = requestedSubscriptionProductId && isSubscriptionProduct(requestedSubscriptionProductId)
+      ? requestedSubscriptionProductId
+      : 0
+    // Для сценария "нет свободных" даем выбрать подписку прямо в quick-форме.
+    const quickSubscriptionProductId = selectedProductIsSubscription ? selectedProductId : fallbackSubscriptionProductId
+    if (
+      String(deal?.deal_type_code || '').toLowerCase() === 'rental'
+      && String(deal?.slot_type_code || '').trim()
+      && !selectedProductId
+      && !quickSubscriptionProductId
+    ) {
+      error.value = 'Выберите подписку'
+      return
+    }
     loading.value = true
     try {
       const created = await apiPost(
@@ -525,13 +585,22 @@ export function useDealsFlow({
           domain_code: state.domain_code,
           region_code: isEdit ? editDeal.region_code || null : newDeal.region_code || null,
           account_date: null,
-          notes: null,
+          notes: state.notes ? String(state.notes).trim() : null,
         },
         { token: auth.state.token }
       )
+      if (created?.account_id && state.password) {
+        try {
+          await apiPost(
+            `/accounts/${created.account_id}/secrets`,
+            { secret_key: 'password', secret_value: state.password },
+            { token: auth.state.token }
+          )
+        } catch {
+          // Ошибка сохранения пароля не должна блокировать создание аккаунта.
+        }
+      }
       await loadAccountsAll()
-      const selectedRefs = resolveSelectedDealRefs(target)
-      const selectedProductId = selectedRefs.productId
       // Для подписок не используем game-only привязки account_assets, чтобы не получать 400 от API.
       if (created?.account_id && selectedProductId && !isSubscriptionProduct(selectedProductId)) {
         try {
@@ -546,6 +615,24 @@ export function useDealsFlow({
           )
         } catch {
           // Ошибка привязки не должна мешать созданию аккаунта.
+        }
+      }
+      if (created?.account_id && quickSubscriptionProductId) {
+        try {
+          // После быстрого создания аккаунта сразу добавляем срок подписки на +1 год.
+          const createdTerm = await apiPost(
+            `/products/subscriptions/${encodeURIComponent(quickSubscriptionProductId)}/terms`,
+            {
+              account_id: created.account_id,
+              valid_until: getDefaultSubscriptionTermDate(),
+              notes: String(state.notes || '').trim() || null,
+            },
+            { token: auth.state.token }
+          )
+          deal.product_id = quickSubscriptionProductId
+          deal.subscription_term_id = Number(createdTerm?.term_id || 0) || ''
+        } catch {
+          // Ошибка создания срока не должна откатывать уже созданный аккаунт.
         }
       }
       if (created?.account_id) {
@@ -578,6 +665,9 @@ export function useDealsFlow({
       state.login_name = ''
       state.domain_code = ''
       state.platform_codes = []
+      state.password = ''
+      state.notes = ''
+      state.subscription_product_id = ''
     } catch (e) {
       error.value = mapApiError(e?.message)
     } finally {
@@ -620,6 +710,7 @@ export function useDealsFlow({
     loadDealProductAssignments,
     loadDealSlotAvailability,
     loadSubscriptionFreeProductIds,
+    loadAvailableSubscriptionItems,
     loadSubscriptionTerms,
     createQuickSubscriptionTerm,
     releaseSlotFromDeal,

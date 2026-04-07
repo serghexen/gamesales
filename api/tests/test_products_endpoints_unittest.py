@@ -190,6 +190,42 @@ class ProductsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 400)
 
+    def test_list_available_subscription_terms_for_deal_success(self):
+        script = [
+            {"one": (1,)},  # slot exists
+            {
+                "all": [
+                    (
+                        201,
+                        77,
+                        "PS Plus Deluxe",
+                        7,
+                        "user2",
+                        "mail.ru",
+                        date(2027, 2, 5),
+                        datetime(2026, 3, 2, 10, 0, tzinfo=timezone.utc),
+                    )
+                ]
+            },
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/products/subscriptions/terms/available-for-deal?slot_type_code=ps5_p1",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(len(body), 1)
+            self.assertEqual(body[0]["term_id"], 201)
+            self.assertEqual(body[0]["product_id"], 77)
+            self.assertEqual(body[0]["login_full"], "user2@mail.ru")
+
     def test_create_subscription_product_success(self):
         script = [
             {"one": (1,)},  # product type exists

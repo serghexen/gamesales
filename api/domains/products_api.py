@@ -358,6 +358,89 @@ def mount_products_routes(
             for row in rows
         ]
 
+    @app.get("/products/subscriptions/terms/available-for-deal")
+    def list_available_subscription_terms_for_deal(
+        slot_type_code: str,
+        user: UserOut = Depends(get_current_user),
+    ):
+        # Возвращает плоский список доступных сроков подписок для выбранного слота.
+        normalized_slot_type_code = str(slot_type_code or "").strip()
+        if not normalized_slot_type_code:
+            raise HTTPException(400, "slot_type_code is required")
+        with psycopg.connect(DB_DSN) as conn:
+            slot_row = q1(conn, "SELECT 1 FROM app.slot_types WHERE code=%s", (normalized_slot_type_code,))
+            if not slot_row:
+                raise HTTPException(400, f"Unknown slot_type_code: {normalized_slot_type_code}")
+            rows = qall(
+                conn,
+                """
+                WITH target_slot AS (
+                  SELECT st.code, st.mode, st.capacity
+                  FROM app.slot_types st
+                  WHERE st.code = %s
+                ),
+                term_usage AS (
+                  SELECT
+                    asa.subscription_term_id,
+                    COUNT(*) FILTER (
+                      WHERE asa.released_at IS NULL
+                        AND asa.slot_type_code = %s
+                    ) AS used_exact_slot,
+                    COUNT(*) FILTER (
+                      WHERE asa.released_at IS NULL
+                        AND st2.mode = 'activate'
+                    ) AS used_activate_any
+                  FROM app.account_slot_assignments asa
+                  JOIN app.slot_types st2 ON st2.code = asa.slot_type_code
+                  WHERE asa.subscription_term_id IS NOT NULL
+                  GROUP BY asa.subscription_term_id
+                )
+                SELECT
+                  st.term_id,
+                  st.product_id,
+                  p.title AS product_title,
+                  st.account_id,
+                  a.login_name,
+                  d.name AS domain_code,
+                  st.valid_until,
+                  st.created_at
+                FROM app.subscription_terms st
+                JOIN app.products p ON p.product_id = st.product_id
+                JOIN app.accounts a ON a.account_id = st.account_id
+                LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+                CROSS JOIN target_slot ts
+                LEFT JOIN term_usage tu ON tu.subscription_term_id = st.term_id
+                WHERE st.is_archived IS NOT TRUE
+                  AND p.is_archived IS NOT TRUE
+                  AND lower(p.type_code) = 'subscription'
+                  AND a.status_code <> 'archived'
+                  AND (
+                    (ts.mode = 'activate' AND COALESCE(tu.used_activate_any, 0) < 1)
+                    OR
+                    (ts.mode <> 'activate' AND COALESCE(tu.used_exact_slot, 0) < ts.capacity)
+                  )
+                ORDER BY st.valid_until DESC, st.term_id DESC
+                """,
+                (normalized_slot_type_code, normalized_slot_type_code),
+            )
+        result = []
+        for row in rows:
+            login_name = str(row[4] or "")
+            domain_code = str(row[5] or "")
+            login_full = f"{login_name}@{domain_code}" if login_name and domain_code else login_name
+            result.append(
+                {
+                    "term_id": int(row[0]),
+                    "product_id": int(row[1]),
+                    "product_title": str(row[2] or ""),
+                    "account_id": int(row[3]),
+                    "login_full": login_full,
+                    "valid_until": row[6],
+                    "created_at": row[7],
+                }
+            )
+        return result
+
     @app.get("/slot-types", response_model=List[SlotTypeOut])
     def list_slot_types(user: UserOut = Depends(get_current_user)):
         # Возвращает справочник типов слотов для модалки сделок.

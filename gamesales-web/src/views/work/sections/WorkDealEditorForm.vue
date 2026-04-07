@@ -166,6 +166,13 @@
                             </div>
                           </div>
                           <div class="deal-form__rental-side">
+                            <div
+                              v-if="showEditQuickAccountReminder"
+                              class="deal-form__quick-reminder deal-form__quick-reminder--top"
+                            >
+                              <div class="deal-form__quick-reminder-title">Напоминание: заполните быстрый аккаунт до конца</div>
+                              <div class="deal-form__quick-reminder-text">{{ editQuickAccountMissingText }}</div>
+                            </div>
                             <div class="deal-form__double">
                               <label class="field">
                                 <span class="label">Тип товара</span>
@@ -330,7 +337,28 @@
                             >
                               <div class="input--select-wrap">
                                 <select
-                                  v-if="!showEditDealProductNoMatches"
+                                  v-if="!showEditDealProductNoMatches && isEditRentalSubscriptionMode"
+                                  v-model.number="editDeal.subscription_term_id"
+                                  :class="[
+                                    'input input--select input--list input--list--product-short',
+                                    {
+                                      'input--list--sharing-height': !editDeal.subscription_term_id,
+                                      'input--list--compact': !!editDeal.subscription_term_id,
+                                    }
+                                  ]"
+                                  :size="editDeal.subscription_term_id ? 1 : 3"
+                                  :disabled="isEditRentalSubscriptionMode && !editDeal.slot_type_code"
+                                  @change="applyEditSubscriptionSelectionByTermId()"
+                                >
+                                  <option value="">
+                                    {{ isEditRentalSubscriptionMode && !editDeal.slot_type_code ? 'Сначала выберите слот' : '— не выбрано —' }}
+                                  </option>
+                                  <option v-for="g in availableSubscriptionItemsEditFiltered" :key="`edit-sub-item-${g.term_id}`" :value="g.term_id">
+                                    {{ formatAvailableSubscriptionItemLabel(g) }}
+                                  </option>
+                                </select>
+                                <select
+                                  v-else-if="!showEditDealProductNoMatches"
                                   v-model.number="editDeal.product_id"
                                   :class="[
                                     'input input--select input--list input--list--product-short',
@@ -364,7 +392,7 @@
                                 </button>
                               </div>
                               <div
-                                v-if="showEditDealProductNoMatches"
+                                v-if="showEditDealProductNoMatches && !isEditRentalSubscriptionMode"
                                 :class="[
                                   'quick-create quick-create--product-empty',
                                   { 'quick-create--collapsed': !editQuickProductOpen }
@@ -396,6 +424,9 @@
                                   <span v-if="quickEditProductError" class="bad">{{ quickEditProductError }}</span>
                                 </template>
                               </div>
+                              <div v-if="showEditDealProductNoMatches && isEditRentalSubscriptionMode" class="quick-create quick-create--plain">
+                                <div class="quick-create__title">Свободных подписок на выбранный слот нет</div>
+                              </div>
                             </label>
                             <div v-if="editDeal.account_id" class="deal-form__account-details">
                               <div class="deal-form__account-details-head">Данные аккаунта</div>
@@ -413,9 +444,24 @@
                               </label>
                             </div>
                             <div
-                              v-if="dealEditMode !== 'view' && !dealAccountsForProductLoading && editDeal.product_id && editDeal.slot_type_code && !editDeal.account_id && !isDealSlotTypeUnsupported('edit') && (isEditRentalSubscriptionMode || !hasFreeDealSlots('edit'))"
+                              v-if="dealEditMode !== 'view'
+                                && !dealAccountsForProductLoading
+                                && editDeal.slot_type_code
+                                && !editDeal.account_id
+                                && !isDealSlotTypeUnsupported('edit')
+                                && (
+                                  (isEditRentalSubscriptionMode && (editDeal.product_id || showEditDealProductNoMatches))
+                                  || (!isEditRentalSubscriptionMode && editDeal.product_id && !hasFreeDealSlots('edit'))
+                                )"
                               class="quick-create quick-create--account"
                             >
+                              <div
+                                v-if="showEditQuickAccountReminder"
+                                class="deal-form__quick-reminder"
+                              >
+                                <div class="deal-form__quick-reminder-title">Напоминание: заполните быстрый аккаунт до конца</div>
+                                <div class="deal-form__quick-reminder-text">{{ editQuickAccountMissingText }}</div>
+                              </div>
                               <div class="quick-create__header">
                                 <button class="comment-toggle" type="button" @click="editQuickAccountOpen = !editQuickAccountOpen">
                                   {{ editQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
@@ -432,6 +478,16 @@
                                 </button>
                               </div>
                               <template v-if="editQuickAccountOpen">
+                                <select
+                                  v-if="isEditRentalSubscriptionMode && !editDeal.product_id"
+                                  v-model.number="quickEditAccount.subscription_product_id"
+                                  class="input input--select input--compact"
+                                >
+                                  <option value="">— подписка —</option>
+                                  <option v-for="p in quickEditAccountSubscriptionProducts" :key="`qe-sub-product-${p.product_id}`" :value="p.product_id">
+                                    {{ getProductLabelById(p.product_id) }}
+                                  </option>
+                                </select>
                                 <div class="deal-form__double">
                                   <input v-model.trim="quickEditAccount.login_name" class="input input--compact" placeholder="Логин" />
                                   <select v-model="quickEditAccount.domain_code" class="input input--select input--compact">
@@ -440,6 +496,10 @@
                                       {{ d.name }} ({{ d.code }})
                                     </option>
                                   </select>
+                                </div>
+                                <div class="deal-form__double">
+                                  <input v-model.trim="quickEditAccount.password" class="input input--compact" placeholder="Пароль аккаунта" />
+                                  <input v-model.trim="quickEditAccount.notes" class="input input--compact" placeholder="Комментарий" />
                                 </div>
                                 <div class="check-list check-list--compact check-list--platform-row">
                                   <label v-for="p in platforms" :key="`qe-p-${p.code}`" class="check-item">
@@ -737,7 +797,13 @@
                             </option>
                           </select>
                           <div
-                            v-if="!dealAccountsForProductLoading && newDeal.product_id && newDeal.slot_type_code && !newDeal.account_id && !isDealSlotTypeUnsupported('new') && (isNewRentalSubscriptionMode || !hasFreeDealSlots('new'))"
+                            v-if="!dealAccountsForProductLoading
+                              && !isNewRentalSubscriptionMode
+                              && newDeal.slot_type_code
+                              && !newDeal.account_id
+                              && !isDealSlotTypeUnsupported('new')
+                              && newDeal.product_id
+                              && !hasFreeDealSlots('new')"
                             :class="[
                               'quick-create',
                               { 'quick-create--plain': isNewRentalSubscriptionMode || !hasAnyProductAssignmentsNew || !dealProductAssignmentsForSelectedSlotNew.length }
@@ -790,6 +856,13 @@
                             </div>
                           </div>
                           <div class="deal-form__rental-side">
+                            <div
+                              v-if="showNewQuickAccountReminder"
+                              class="deal-form__quick-reminder deal-form__quick-reminder--top"
+                            >
+                              <div class="deal-form__quick-reminder-title">Напоминание: заполните быстрый аккаунт до конца</div>
+                              <div class="deal-form__quick-reminder-text">{{ newQuickAccountMissingText }}</div>
+                            </div>
                             <div class="deal-form__double">
                               <label class="field">
                                 <span class="label">Тип товара</span>
@@ -925,7 +998,28 @@
                             >
                               <div class="input--select-wrap">
                                 <select
-                                  v-if="!showNewDealProductNoMatches"
+                                  v-if="!showNewDealProductNoMatches && isNewRentalSubscriptionMode"
+                                  v-model.number="newDeal.subscription_term_id"
+                                  :class="[
+                                    'input input--select input--list input--list--product-short',
+                                    {
+                                      'input--list--sharing-height': !newDeal.subscription_term_id,
+                                      'input--list--compact': !!newDeal.subscription_term_id,
+                                    }
+                                  ]"
+                                  :size="newDeal.subscription_term_id ? 1 : 3"
+                                  :disabled="isNewRentalSubscriptionMode && !newDeal.slot_type_code"
+                                  @change="applyNewSubscriptionSelectionByTermId()"
+                                >
+                                  <option value="">
+                                    {{ isNewRentalSubscriptionMode && !newDeal.slot_type_code ? 'Сначала выберите слот' : '— не выбрано —' }}
+                                  </option>
+                                  <option v-for="g in availableSubscriptionItemsNewFiltered" :key="`new-sub-item-${g.term_id}`" :value="g.term_id">
+                                    {{ formatAvailableSubscriptionItemLabel(g) }}
+                                  </option>
+                                </select>
+                                <select
+                                  v-else-if="!showNewDealProductNoMatches"
                                   v-model.number="newDeal.product_id"
                                   :class="[
                                     'input input--select input--list input--list--product-short',
@@ -959,7 +1053,7 @@
                                 </button>
                               </div>
                               <div
-                                v-if="showNewDealProductNoMatches"
+                                v-if="showNewDealProductNoMatches && !isNewRentalSubscriptionMode"
                                 :class="[
                                   'quick-create quick-create--product-empty',
                                   { 'quick-create--collapsed': !newQuickProductOpen }
@@ -991,6 +1085,9 @@
                                   <span v-if="quickNewProductError" class="bad">{{ quickNewProductError }}</span>
                                 </template>
                               </div>
+                              <div v-if="showNewDealProductNoMatches && isNewRentalSubscriptionMode" class="quick-create quick-create--plain">
+                                <div class="quick-create__title">Свободных подписок на выбранный слот нет</div>
+                              </div>
                             </label>
                             <div v-if="newDeal.account_id" class="deal-form__account-details">
                               <div class="deal-form__account-details-head">Данные аккаунта</div>
@@ -1008,9 +1105,23 @@
                               </label>
                             </div>
                             <div
-                              v-if="!dealAccountsForProductLoading && newDeal.product_id && newDeal.slot_type_code && !newDeal.account_id && !isDealSlotTypeUnsupported('new') && (isNewRentalSubscriptionMode || !hasFreeDealSlots('new'))"
+                              v-if="!dealAccountsForProductLoading
+                                && newDeal.slot_type_code
+                                && !newDeal.account_id
+                                && !isDealSlotTypeUnsupported('new')
+                                && (
+                                  (isNewRentalSubscriptionMode && (newDeal.product_id || showNewDealProductNoMatches))
+                                  || (!isNewRentalSubscriptionMode && newDeal.product_id && !hasFreeDealSlots('new'))
+                                )"
                               class="quick-create quick-create--account"
                             >
+                              <div
+                                v-if="showNewQuickAccountReminder"
+                                class="deal-form__quick-reminder"
+                              >
+                                <div class="deal-form__quick-reminder-title">Напоминание: заполните быстрый аккаунт до конца</div>
+                                <div class="deal-form__quick-reminder-text">{{ newQuickAccountMissingText }}</div>
+                              </div>
                               <div class="quick-create__header">
                                 <button class="comment-toggle" type="button" @click="newQuickAccountOpen = !newQuickAccountOpen">
                                   {{ newQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
@@ -1027,6 +1138,16 @@
                                 </button>
                               </div>
                               <template v-if="newQuickAccountOpen">
+                                <select
+                                  v-if="isNewRentalSubscriptionMode && !newDeal.product_id"
+                                  v-model.number="quickNewAccount.subscription_product_id"
+                                  class="input input--select input--compact"
+                                >
+                                  <option value="">— подписка —</option>
+                                  <option v-for="p in quickNewAccountSubscriptionProducts" :key="`qn-sub-product-${p.product_id}`" :value="p.product_id">
+                                    {{ getProductLabelById(p.product_id) }}
+                                  </option>
+                                </select>
                                 <div class="deal-form__double">
                                   <input v-model.trim="quickNewAccount.login_name" class="input input--compact" placeholder="Логин" />
                                   <select v-model="quickNewAccount.domain_code" class="input input--select input--compact">
@@ -1035,6 +1156,10 @@
                                       {{ d.name }} ({{ d.code }})
                                     </option>
                                   </select>
+                                </div>
+                                <div class="deal-form__double">
+                                  <input v-model.trim="quickNewAccount.password" class="input input--compact" placeholder="Пароль аккаунта" />
+                                  <input v-model.trim="quickNewAccount.notes" class="input input--compact" placeholder="Комментарий" />
                                 </div>
                                 <div class="check-list check-list--compact check-list--platform-row">
                                   <label v-for="p in platforms" :key="`qn-p-${p.code}`" class="check-item">
@@ -1172,6 +1297,8 @@ const {
   filteredEditDealProducts,
   subscriptionTermsEdit,
   subscriptionTermsLoadingEdit,
+  subscriptionAvailableItemsEdit,
+  subscriptionAvailableItemsLoadingEdit,
   syncEditDealProductSearch,
   getProductLabelById,
   editDealProductNoMatches,
@@ -1191,6 +1318,8 @@ const {
   filteredNewDealProducts,
   subscriptionTermsNew,
   subscriptionTermsLoadingNew,
+  subscriptionAvailableItemsNew,
+  subscriptionAvailableItemsLoadingNew,
   newDealProductNoMatches,
   syncNewDealProductSearch,
   clearNewDealProduct,
@@ -1309,19 +1438,136 @@ const filteredNewDealProductsByType = computed(() => {
   return typed
 })
 
+// Возвращает список подписок для quick-создания аккаунта, когда свободных сроков нет.
+const quickNewAccountSubscriptionProducts = computed(() => {
+  const list = Array.isArray(filteredNewDealProducts.value) ? filteredNewDealProducts.value : []
+  return list.filter((item) => String(item?.type_code || '').toLowerCase() === 'subscription')
+})
+
+// В редактировании используем тот же список подписок для ручного выбора товара в quick-блоке.
+const quickEditAccountSubscriptionProducts = computed(() => {
+  const list = Array.isArray(filteredEditDealProducts.value) ? filteredEditDealProducts.value : []
+  return list.filter((item) => String(item?.type_code || '').toLowerCase() === 'subscription')
+})
+
+// Формирует подпись "товар + срок" для единого списка доступных подписок.
+function formatAvailableSubscriptionItemLabel(item) {
+  const title = String(item?.product_title || '').trim()
+  return `${title} ${formatSubscriptionTermLabel(item)}`.trim()
+}
+
+// Фильтрует доступные подписки (товар+срок) для режима создания.
+const availableSubscriptionItemsNewFiltered = computed(() => {
+  const list = Array.isArray(subscriptionAvailableItemsNew.value) ? subscriptionAvailableItemsNew.value : []
+  const query = String(newDealProductSearch.value || '').trim().toLowerCase()
+  if (!query) return list
+  return list.filter((item) => formatAvailableSubscriptionItemLabel(item).toLowerCase().includes(query))
+})
+
+// Фильтрует доступные подписки (товар+срок) для режима редактирования.
+const availableSubscriptionItemsEditFiltered = computed(() => {
+  const list = Array.isArray(subscriptionAvailableItemsEdit.value) ? subscriptionAvailableItemsEdit.value : []
+  const query = String(editDealProductSearch.value || '').trim().toLowerCase()
+  if (!query) return list
+  return list.filter((item) => formatAvailableSubscriptionItemLabel(item).toLowerCase().includes(query))
+})
+
+// По выбранному сроку заполняет товар и аккаунт в новой сделке.
+function applyNewSubscriptionSelectionByTermId() {
+  const termId = Number(newDeal.value?.subscription_term_id || 0)
+  if (!termId) {
+    newDeal.value.product_id = ''
+    newDeal.value.account_id = ''
+    return
+  }
+  const selected = availableSubscriptionItemsNewFiltered.value.find((item) => Number(item?.term_id || 0) === termId)
+    || (Array.isArray(subscriptionAvailableItemsNew.value) ? subscriptionAvailableItemsNew.value : []).find((item) => Number(item?.term_id || 0) === termId)
+  if (!selected) return
+  newDeal.value.product_id = Number(selected.product_id || 0) || ''
+  newDeal.value.account_id = Number(selected.account_id || 0) || ''
+}
+
+// По выбранному сроку заполняет товар и аккаунт в редактировании сделки.
+function applyEditSubscriptionSelectionByTermId() {
+  const termId = Number(editDeal.value?.subscription_term_id || 0)
+  if (!termId) {
+    editDeal.value.product_id = ''
+    editDeal.value.account_id = ''
+    return
+  }
+  const selected = availableSubscriptionItemsEditFiltered.value.find((item) => Number(item?.term_id || 0) === termId)
+    || (Array.isArray(subscriptionAvailableItemsEdit.value) ? subscriptionAvailableItemsEdit.value : []).find((item) => Number(item?.term_id || 0) === termId)
+  if (!selected) return
+  editDeal.value.product_id = Number(selected.product_id || 0) || ''
+  editDeal.value.account_id = Number(selected.account_id || 0) || ''
+}
+
 const showEditDealProductNoMatches = computed(() => {
-  // В режиме подписок без слота блок "не найдено" не показываем: товар пока недоступен для выбора.
+  // Для подписки показываем пустой список только после выбора слота и загрузки доступных сроков.
   if (isEditRentalSubscriptionMode.value && !editDeal.value?.slot_type_code) return false
-  if (isEditRentalSubscriptionMode.value) return false
+  if (isEditRentalSubscriptionMode.value) {
+    if (subscriptionAvailableItemsLoadingEdit.value) return false
+    return availableSubscriptionItemsEditFiltered.value.length === 0
+  }
   return Boolean(editDealProductNoMatches.value)
 })
 
 const showNewDealProductNoMatches = computed(() => {
-  // Для подписок не показываем быстрый create товара, он рассчитан на игры.
+  // Для подписки показываем пустой список только после выбора слота и загрузки доступных сроков.
   if (isNewRentalSubscriptionMode.value && !newDeal.value?.slot_type_code) return false
-  if (isNewRentalSubscriptionMode.value) return false
+  if (isNewRentalSubscriptionMode.value) {
+    if (subscriptionAvailableItemsLoadingNew.value) return false
+    return availableSubscriptionItemsNewFiltered.value.length === 0
+  }
   return Boolean(newDealProductNoMatches.value)
 })
+
+// Проверяет, заполнены ли ключевые поля быстрого аккаунта для продолжения шеринга.
+function collectQuickAccountMissingLabels(state, { subscriptionMode = false, hasSelectedProduct = false } = {}) {
+  const missing = []
+  if (!String(state?.login_name || '').trim()) missing.push('логин')
+  if (!String(state?.domain_code || '').trim()) missing.push('домен')
+  if (!String(state?.password || '').trim()) missing.push('пароль аккаунта')
+  if (!String(state?.notes || '').trim()) missing.push('комментарий')
+  if (subscriptionMode && !hasSelectedProduct && !Number(state?.subscription_product_id || 0)) missing.push('подписка')
+  return missing
+}
+
+// Формирует текст для напоминания, чтобы менеджер сразу видел какие поля еще пустые.
+function formatQuickAccountMissingText(missing) {
+  if (!missing.length) return 'Все ключевые поля заполнены'
+  return `Осталось заполнить: ${missing.join(', ')}`
+}
+
+const editQuickAccountMissingLabels = computed(() => {
+  return collectQuickAccountMissingLabels(quickEditAccount.value, {
+    subscriptionMode: isEditRentalSubscriptionMode.value,
+    hasSelectedProduct: Boolean(editDeal.value?.product_id),
+  })
+})
+
+const newQuickAccountMissingLabels = computed(() => {
+  return collectQuickAccountMissingLabels(quickNewAccount.value, {
+    subscriptionMode: isNewRentalSubscriptionMode.value,
+    hasSelectedProduct: Boolean(newDeal.value?.product_id),
+  })
+})
+
+// Показывает визуальную напоминалку до тех пор, пока в quick-блоке есть незаполненные обязательные поля.
+const showEditQuickAccountReminder = computed(() => {
+  if (!isEditRentalSubscriptionMode.value) return false
+  if (!editDeal.value?.slot_type_code || editDeal.value?.account_id) return false
+  return editQuickAccountMissingLabels.value.length > 0
+})
+
+const showNewQuickAccountReminder = computed(() => {
+  if (!isNewRentalSubscriptionMode.value) return false
+  if (!newDeal.value?.slot_type_code || newDeal.value?.account_id) return false
+  return newQuickAccountMissingLabels.value.length > 0
+})
+
+const editQuickAccountMissingText = computed(() => formatQuickAccountMissingText(editQuickAccountMissingLabels.value))
+const newQuickAccountMissingText = computed(() => formatQuickAccountMissingText(newQuickAccountMissingLabels.value))
 
 // Возвращает пароль аккаунта для блока под выбранным аккаунтом в форме сделки.
 function getAccountPasswordById(accountId) {
@@ -1441,7 +1687,13 @@ function getDealProductDisplayLabel(target) {
   const allTerms = isEdit
     ? (Array.isArray(subscriptionTermsEdit.value) ? subscriptionTermsEdit.value : [])
     : (Array.isArray(subscriptionTermsNew.value) ? subscriptionTermsNew.value : [])
-  const selectedTerm = allTerms.find((item) => Number(item?.term_id || 0) === termId)
+  let selectedTerm = allTerms.find((item) => Number(item?.term_id || 0) === termId)
+  if (!selectedTerm) {
+    const available = isEdit
+      ? (Array.isArray(subscriptionAvailableItemsEdit.value) ? subscriptionAvailableItemsEdit.value : [])
+      : (Array.isArray(subscriptionAvailableItemsNew.value) ? subscriptionAvailableItemsNew.value : [])
+    selectedTerm = available.find((item) => Number(item?.term_id || 0) === termId)
+  }
   const termLabel = formatSubscriptionTermLabel(selectedTerm)
   return `${productLabel} ${termLabel}`.trim()
 }
@@ -1551,19 +1803,21 @@ watch(() => newDeal.value?.slot_type_code, (slotTypeCode, prev) => {
 watch(() => editDeal.value?.subscription_term_id, (termId) => {
   if (!editDeal.value?.open || !isEditRentalSubscriptionMode.value) return
   if (!termId) return
+  // При выборе срока автоматически подставляем товар и аккаунт из плоского списка доступных подписок.
+  applyEditSubscriptionSelectionByTermId()
   const selected = editSubscriptionTermOptions.value.find((item) => Number(item?.term_id || 0) === Number(termId))
-  if (!selected?.account_id) return
-  // При выборе срока автоматически подставляем связанный аккаунт.
-  editDeal.value.account_id = Number(selected.account_id)
+    || availableSubscriptionItemsEditFiltered.value.find((item) => Number(item?.term_id || 0) === Number(termId))
+  if (selected?.account_id) editDeal.value.account_id = Number(selected.account_id)
 })
 
 watch(() => newDeal.value?.subscription_term_id, (termId) => {
   if (!isNewRentalSubscriptionMode.value) return
   if (!termId) return
+  // Для новой сделки по сроку сразу синхронизируем товар и аккаунт.
+  applyNewSubscriptionSelectionByTermId()
   const selected = newSubscriptionTermOptions.value.find((item) => Number(item?.term_id || 0) === Number(termId))
-  if (!selected?.account_id) return
-  // Для новой сделки аккаунт определяем через выбранный срок подписки.
-  newDeal.value.account_id = Number(selected.account_id)
+    || availableSubscriptionItemsNewFiltered.value.find((item) => Number(item?.term_id || 0) === Number(termId))
+  if (selected?.account_id) newDeal.value.account_id = Number(selected.account_id)
 })
 
 watch(() => newDeal.value?.account_id, (accountId) => {

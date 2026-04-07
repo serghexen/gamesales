@@ -1326,8 +1326,8 @@ const quickNewProductLoading = ref(false)
 const quickEditProductLoading = ref(false)
 const quickNewProductError = ref('')
 const quickEditProductError = ref('')
-const quickNewAccount = reactive({ login_name: '', domain_code: '', platform_codes: [] })
-const quickEditAccount = reactive({ login_name: '', domain_code: '', platform_codes: [] })
+const quickNewAccount = reactive({ login_name: '', domain_code: '', platform_codes: [], password: '', notes: '', subscription_product_id: '' })
+const quickEditAccount = reactive({ login_name: '', domain_code: '', platform_codes: [], password: '', notes: '', subscription_product_id: '' })
 const quickNewAccountLoading = ref(false)
 const quickEditAccountLoading = ref(false)
 const quickNewAccountError = ref('')
@@ -1361,6 +1361,10 @@ const subscriptionTermsNew = ref([])
 const subscriptionTermsEdit = ref([])
 const subscriptionTermsLoadingNew = ref(false)
 const subscriptionTermsLoadingEdit = ref(false)
+const subscriptionAvailableItemsNew = ref([])
+const subscriptionAvailableItemsEdit = ref([])
+const subscriptionAvailableItemsLoadingNew = ref(false)
+const subscriptionAvailableItemsLoadingEdit = ref(false)
 const quickNewSubscriptionTerm = reactive({ account_id: '', valid_until: getDefaultSubscriptionTermDate(), notes: '' })
 const quickEditSubscriptionTerm = reactive({ account_id: '', valid_until: getDefaultSubscriptionTermDate(), notes: '' })
 const quickNewSubscriptionTermLoading = ref(false)
@@ -1860,6 +1864,7 @@ const {
   loadDealProductAssignments,
   loadDealSlotAvailability,
   loadSubscriptionFreeProductIds,
+  loadAvailableSubscriptionItems,
   loadSubscriptionTerms,
   createQuickSubscriptionTerm,
   releaseSlotFromDeal,
@@ -1919,6 +1924,10 @@ const {
   subscriptionTermsEdit,
   subscriptionTermsLoadingNew,
   subscriptionTermsLoadingEdit,
+  subscriptionAvailableItemsNew,
+  subscriptionAvailableItemsEdit,
+  subscriptionAvailableItemsLoadingNew,
+  subscriptionAvailableItemsLoadingEdit,
   quickNewSubscriptionTerm,
   quickEditSubscriptionTerm,
   quickNewSubscriptionTermLoading,
@@ -2806,6 +2815,8 @@ const {
   subscriptionFreeProductIdsLoadingEdit,
   subscriptionTermsEdit,
   subscriptionTermsLoadingEdit,
+  subscriptionAvailableItemsEdit,
+  subscriptionAvailableItemsLoadingEdit,
   syncEditDealProductSearch,
   getProductLabelById,
   editDealProductNoMatches,
@@ -2828,6 +2839,8 @@ const {
   subscriptionFreeProductIdsLoadingNew,
   subscriptionTermsNew,
   subscriptionTermsLoadingNew,
+  subscriptionAvailableItemsNew,
+  subscriptionAvailableItemsLoadingNew,
   newDealProductNoMatches,
   syncNewDealProductSearch,
   clearNewDealProduct,
@@ -3176,6 +3189,7 @@ useDealsWatchers({
   loadDealAccountAssignments,
   loadDealSlotAvailability,
   loadSubscriptionFreeProductIds,
+  loadAvailableSubscriptionItems,
   loadSubscriptionTerms,
   ensureAccountSecretsLoaded,
 })
