@@ -158,10 +158,10 @@ def mount_accounts_routes(
             filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR (a.login_name || '@' || d.name) ILIKE %s)")
             params.extend([f"%{login_q}%", f"%{login_q}%", f"%{login_q}%"])
         if q:
-            filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR (a.login_name || '@' || d.name) ILIKE %s OR r.code ILIKE %s OR apr.display_title ILIKE %s)")
+            filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR (a.login_name || '@' || d.name) ILIKE %s OR r.code ILIKE %s OR apa.product_titles_text ILIKE %s)")
             params.extend([f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"])
         if product_q:
-            filters.append("apr.display_title ILIKE %s")
+            filters.append("apa.product_titles_text ILIKE %s")
             params.append(f"%{product_q}%")
         if region_q:
             filters.append("r.code ILIKE %s")
@@ -239,6 +239,34 @@ def mount_accounts_routes(
                     ON stt.account_id = apl.account_id
                    AND stt.product_id = apl.product_id
                 ),
+                account_products_agg AS (
+                  -- Агрегируем подписи товаров отдельно, чтобы не перемножать строки со слотами.
+                  SELECT
+                    apr.account_id,
+                    COALESCE(
+                      array_agg(DISTINCT apr.display_title ORDER BY apr.display_title)
+                        FILTER (WHERE apr.display_title IS NOT NULL),
+                      '{{}}'::text[]
+                    ) AS product_titles,
+                    COALESCE(
+                      string_agg(DISTINCT apr.display_title, ' · ' ORDER BY apr.display_title),
+                      ''
+                    ) AS product_titles_text
+                  FROM account_products_resolved apr
+                  GROUP BY apr.account_id
+                ),
+                account_slots_agg AS (
+                  -- Агрегируем сводку слотов отдельно, чтобы базовый SELECT был "одна строка = один аккаунт".
+                  SELECT
+                    s.account_id,
+                    COALESCE(SUM(s.free), 0) AS free_total,
+                    COALESCE(string_agg(st.code || ' ' || s.occupied || '/' || s.capacity, ' · ' ORDER BY st.code), '') AS slots_text
+                  FROM app.v_account_slot_status s
+                  LEFT JOIN app.slot_types st ON st.code = s.slot_type_code
+                  LEFT JOIN account_platforms ap ON ap.account_id = s.account_id
+                  WHERE (COALESCE(ap.has_ps4, false) OR s.platform_code = 'ps5')
+                  GROUP BY s.account_id
+                ),
                 base AS (
                   SELECT
                     a.account_id,
@@ -253,29 +281,18 @@ def mount_accounts_routes(
                     a.next_activation_at,
                     r.code as region_code,
                     d.name as domain_name,
-                    COALESCE(
-                      array_agg(DISTINCT apr.display_title ORDER BY apr.display_title)
-                        FILTER (WHERE apr.display_title IS NOT NULL),
-                      '{{}}'::text[]
-                    ) as product_titles,
-                    COALESCE(
-                      string_agg(DISTINCT apr.display_title, ' · ' ORDER BY apr.display_title),
-                      ''
-                    ) as product_titles_text,
+                    COALESCE(apa.product_titles, '{{}}'::text[]) as product_titles,
+                    COALESCE(apa.product_titles_text, '') as product_titles_text,
                     ap.platform_codes,
-                    COALESCE(SUM(s.free), 0) as free_total,
-                    COALESCE(string_agg(st.code || ' ' || s.occupied || '/' || s.capacity, ' · ' ORDER BY st.code), '') as slots_text
+                    COALESCE(asa.free_total, 0) as free_total,
+                    COALESCE(asa.slots_text, '') as slots_text
                   FROM app.accounts a
                   LEFT JOIN app.regions r ON r.region_id = a.region_id
                   LEFT JOIN app.domains d ON d.domain_id = a.domain_id
                   LEFT JOIN account_platforms ap ON ap.account_id = a.account_id
-                  LEFT JOIN account_products_resolved apr ON apr.account_id = a.account_id
-                  LEFT JOIN app.v_account_slot_status s
-                    ON s.account_id = a.account_id
-                   AND (COALESCE(ap.has_ps4, false) OR s.platform_code = 'ps5')
-                  LEFT JOIN app.slot_types st ON st.code = s.slot_type_code
+                  LEFT JOIN account_products_agg apa ON apa.account_id = a.account_id
+                  LEFT JOIN account_slots_agg asa ON asa.account_id = a.account_id
                   {where_sql}
-                  GROUP BY a.account_id, a.region_id, a.status_code, a.login_name, a.domain_id, a.account_date, a.notes, a.is_deactivated, a.deactivated_at, a.next_activation_at, r.code, d.name, ap.platform_codes
                 ),
                 filtered AS (
                   SELECT * FROM base

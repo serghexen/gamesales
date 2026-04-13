@@ -122,24 +122,31 @@ export function useActiveTabWatcher({
       // Фильтры сбрасываем до await, чтобы избежать гонки с действиями пользователя.
       showAccountFilters.value = false
       activeAccountFilter.value = ''
+      accountsPage.value = 1
+      // Список аккаунтов грузим первым, а вспомогательные справочники подтягиваем в фоне.
+      await loadAccounts()
+      const backgroundTasks = []
       if (!catalogsLoadedOnce.value && (!platforms.value.length || !regions.value.length)) {
-        await loadCatalogs()
-        if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
+        backgroundTasks.push(loadCatalogs().then(() => {
+          if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
+        }))
       }
       if (!domainsLoadedOnce.value && !domains.value.length) {
-        await loadDomains()
-        if (domains.value.length) domainsLoadedOnce.value = true
+        backgroundTasks.push(loadDomains().then(() => {
+          if (domains.value.length) domainsLoadedOnce.value = true
+        }))
       }
       if (!productsAllLoadedOnce.value && !productsAll.value.length) {
-        await loadProductsAll()
-        if (productsAll.value.length) productsAllLoadedOnce.value = true
+        backgroundTasks.push(loadProductsAll().then(() => {
+          if (productsAll.value.length) productsAllLoadedOnce.value = true
+        }))
       }
       if (!slotTypesLoadedOnce.value && !slotTypes.value.length) {
-        await loadSlotTypes()
-        if (slotTypes.value.length) slotTypesLoadedOnce.value = true
+        backgroundTasks.push(loadSlotTypes().then(() => {
+          if (slotTypes.value.length) slotTypesLoadedOnce.value = true
+        }))
       }
-      accountsPage.value = 1
-      await loadAccounts()
+      void Promise.all(backgroundTasks)
       return
     }
     if (tab === 'deals') {

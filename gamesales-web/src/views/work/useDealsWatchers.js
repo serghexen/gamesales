@@ -77,8 +77,15 @@ export function useDealsWatchers({
     (val, prev) => {
       if (val === prev) return
       const productType = getProductTypeCode(val)
-      newDeal.account_id = ''
-      newDeal.subscription_term_id = ''
+      // Если товар пришел из выбора "срок подписки", не сбрасываем уже выбранный срок и аккаунт.
+      const keepSubscriptionChain = (
+        productType === 'subscription'
+        && Number(newDeal.subscription_term_id || 0) > 0
+      )
+      if (!keepSubscriptionChain) {
+        newDeal.account_id = ''
+        newDeal.subscription_term_id = ''
+      }
       newDeal.reserve_key = ''
       // Для подписок оставляем выбранный тип слота, потому что там сценарий slot -> product.
       if (productType !== 'subscription') newDeal.slot_type_code = ''
@@ -95,8 +102,15 @@ export function useDealsWatchers({
       if (!editDeal.open || dealInitLock.value) return
       if (val === prev) return
       const productType = getProductTypeCode(val)
-      editDeal.account_id = ''
-      editDeal.subscription_term_id = ''
+      // Не трогаем цепочку срока при выборе подписки по term_id в режиме редактирования.
+      const keepSubscriptionChain = (
+        productType === 'subscription'
+        && Number(editDeal.subscription_term_id || 0) > 0
+      )
+      if (!keepSubscriptionChain) {
+        editDeal.account_id = ''
+        editDeal.subscription_term_id = ''
+      }
       editDeal.reserve_key = ''
       // Для подписок сохраняем слот, чтобы не ломать порядок выбора в форме.
       if (productType !== 'subscription') editDeal.slot_type_code = ''
