@@ -526,26 +526,18 @@ export function useProductsFlow({
       if (typeCode === PRODUCT_TYPE_PRIMARY && createdProductId) {
         await syncProductAccountBindings(createdProductId, newProduct.account_ids)
       }
-      productOk.value = `Товар “${newProduct.title}” добавлен`
-      newProduct.type_code = PRODUCT_TYPE_PRIMARY
-      newProduct.account_ids = []
-      newProduct.title = ''
-      newProduct.short_title = ''
-      newProduct.link = ''
-      newProduct.text_lang = ''
-      newProduct.audio_lang = ''
-      newProduct.vr_support = ''
-      newProduct.platform_codes = []
-      newProduct.region_code = ''
-      newProduct.provider = ''
-      newProduct.billing_period = ''
-      newProduct.subscription_notes = ''
+      const createdTitle = newProduct.title
+      // Сначала закрываем модалку, чтобы во время перезагрузки списков не переключать форму на "игру".
+      suppressUnsavedConfirm.value = true
+      const closed = await closeProductModal()
+      suppressUnsavedConfirm.value = false
+      if (!closed) return
+      productOk.value = `Товар “${createdTitle}” добавлен`
       await loadProducts()
       await loadProductsAll()
       if (createdProductId) {
         await loadProductLinkedAccounts(createdProductId)
       }
-      closeProductModal()
     } catch (e) {
       productError.value = mapApiError(e?.message)
     } finally {

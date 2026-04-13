@@ -221,6 +221,9 @@ COMMENT ON COLUMN app.subscription_terms.valid_until IS 'Дата окончан
 CREATE INDEX IF NOT EXISTS idx_subscription_terms_product ON app.subscription_terms(product_id, valid_until);
 CREATE INDEX IF NOT EXISTS idx_subscription_terms_account ON app.subscription_terms(account_id);
 CREATE INDEX IF NOT EXISTS idx_subscription_terms_archived ON app.subscription_terms(is_archived);
+CREATE INDEX IF NOT EXISTS idx_subscription_terms_active_account_product_valid_until
+  ON app.subscription_terms(account_id, product_id, valid_until)
+  WHERE is_archived IS NOT TRUE;
 
 CREATE TABLE IF NOT EXISTS app.account_platforms (
   account_id     bigint NOT NULL REFERENCES app.accounts(account_id) ON DELETE CASCADE,
@@ -268,6 +271,12 @@ CREATE INDEX IF NOT EXISTS idx_account_assets_product
 CREATE INDEX IF NOT EXISTS idx_account_assets_account_product
   ON app.account_assets (account_id, product_id)
   WHERE asset_type_code = 'game';
+CREATE INDEX IF NOT EXISTS idx_account_assets_product_account_live
+  ON app.account_assets (product_id, account_id)
+  WHERE asset_type_code IN ('game', 'subscription');
+CREATE INDEX IF NOT EXISTS idx_account_assets_account_product_live
+  ON app.account_assets (account_id, product_id)
+  WHERE asset_type_code IN ('game', 'subscription');
 CREATE INDEX IF NOT EXISTS idx_account_assets_product_id
   ON app.account_assets (product_id);
 

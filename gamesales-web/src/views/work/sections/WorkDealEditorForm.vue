@@ -1829,10 +1829,11 @@ watch(() => newDeal.value?.account_id, (accountId) => {
     return
   }
   // При выборе аккаунта подставляем первый свободный резерв, если он доступен.
+  const reserveEntries = getAccountReserveEntriesForDeal(accountId)
   const reserveKey = pickFirstFreeReserveKey(accountId)
   newDeal.value.reserve_key = reserveKey
-  // Если свободных резервов нет, сразу показываем стандартное предупреждение в модалке.
-  if (!reserveKey && typeof showDealWarning.value === 'function') {
+  // Предупреждение показываем только когда список резервов уже загружен и действительно весь занят.
+  if (!reserveKey && reserveEntries.length > 0 && typeof showDealWarning.value === 'function') {
     showDealWarning.value('У выбранного аккаунта нет доступных резервов')
   }
 })
