@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import Body, Depends, HTTPException
@@ -142,22 +143,28 @@ def mount_products_routes(
                 """,
                 (product_id,),
             )
-        return [
-            SubscriptionTermOut(
-                term_id=int(r0),
-                product_id=int(r1),
-                account_id=int(r2),
-                account_login=str(r3 or ""),
-                domain_code=str(r4 or ""),
-                login_full=(f"{r3}@{r4}" if r3 and r4 else str(r3 or "")),
-                valid_until=r5,
-                notes=r6,
-                is_archived=bool(r7),
-                created_at=r8,
-                occupied=bool(r9),
+        items: List[SubscriptionTermOut] = []
+        for (r0, r1, r2, r3, r4, r5, r6, r7, r8, r9) in rows:
+            # Старые/грязные строки не должны ломать весь эндпоинт 500-ошибкой.
+            if not r5:
+                continue
+            created_at = r8 or datetime.now(timezone.utc)
+            items.append(
+                SubscriptionTermOut(
+                    term_id=int(r0),
+                    product_id=int(r1),
+                    account_id=int(r2),
+                    account_login=str(r3 or ""),
+                    domain_code=str(r4 or ""),
+                    login_full=(f"{r3}@{r4}" if r3 and r4 else str(r3 or "")),
+                    valid_until=r5,
+                    notes=r6,
+                    is_archived=bool(r7) if r7 is not None else False,
+                    created_at=created_at,
+                    occupied=bool(r9),
+                )
             )
-            for (r0, r1, r2, r3, r4, r5, r6, r7, r8, r9) in rows
-        ]
+        return items
 
     @app.post("/products/subscriptions/{product_id}/terms", response_model=SubscriptionTermOut)
     def create_subscription_term(
@@ -320,22 +327,27 @@ def mount_products_routes(
                 """,
                 (normalized_slot_type_code, normalized_slot_type_code, product_id),
             )
-        return [
-            SubscriptionTermOut(
-                term_id=int(row[0]),
-                product_id=int(row[1]),
-                account_id=int(row[2]),
-                account_login=str(row[3] or ""),
-                domain_code=str(row[4] or ""),
-                login_full=(f"{row[3]}@{row[4]}" if row[3] and row[4] else str(row[3] or "")),
-                valid_until=row[5],
-                notes=row[6],
-                is_archived=bool(row[7]),
-                created_at=row[8],
-                occupied=False,
+        items: List[SubscriptionTermOut] = []
+        for row in rows:
+            if not row[5]:
+                continue
+            created_at = row[8] or datetime.now(timezone.utc)
+            items.append(
+                SubscriptionTermOut(
+                    term_id=int(row[0]),
+                    product_id=int(row[1]),
+                    account_id=int(row[2]),
+                    account_login=str(row[3] or ""),
+                    domain_code=str(row[4] or ""),
+                    login_full=(f"{row[3]}@{row[4]}" if row[3] and row[4] else str(row[3] or "")),
+                    valid_until=row[5],
+                    notes=row[6],
+                    is_archived=bool(row[7]) if row[7] is not None else False,
+                    created_at=created_at,
+                    occupied=False,
+                )
             )
-            for row in rows
-        ]
+        return items
 
     @app.get("/products/subscriptions/terms/available-for-deal")
     def list_available_subscription_terms_for_deal(
