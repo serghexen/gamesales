@@ -187,8 +187,62 @@ export function useAccountsFlow({
       // Используем только новый product endpoint для привязок аккаунта.
       const items = await apiGet(`/accounts/${accountId}/products`, { token: auth.state.token })
       editAccount.product_ids = [...new Set((items || []).map((p) => Number(p?.product_id || 0)).filter(Boolean))]
-      // Храним названия из ответа API, чтобы карточка аккаунта показывала их даже без productsAll.
-      editAccount.product_titles = [...new Set((items || []).map((p) => String(p?.title || '').trim()).filter(Boolean))]
+      // Храним названия из ответа API; для подписок при необходимости дособираем даты сроков.
+      const baseTitles = [...new Set((items || []).map((p) => String(p?.title || '').trim()).filter(Boolean))]
+      const needsSubscriptionEnrich = (items || []).some((p) => {
+        const typeCode = String(p?.type_code || '').trim().toLowerCase()
+        const title = String(p?.title || '').trim().toLowerCase()
+        return typeCode === 'subscription' && title && !title.includes(' до ')
+      })
+      if (!needsSubscriptionEnrich) {
+        editAccount.product_titles = baseTitles
+      } else {
+        const enrichedTitles = []
+        for (const item of (items || [])) {
+          const typeCode = String(item?.type_code || '').trim().toLowerCase()
+          const title = String(item?.title || '').trim()
+          const productId = Number(item?.product_id || 0)
+          if (typeCode !== 'subscription' || !title || !productId) {
+            if (title) enrichedTitles.push(title)
+            continue
+          }
+          if (title.toLowerCase().includes(' до ')) {
+            enrichedTitles.push(title)
+            continue
+          }
+          try {
+            // Подтягиваем сроки подписки товара и оставляем только сроки текущего аккаунта.
+            const terms = await apiGet(`/products/subscriptions/${productId}/terms`, { token: auth.state.token })
+            const ownTerms = (Array.isArray(terms) ? terms : []).filter(
+              (term) => Number(term?.account_id || 0) === Number(accountId || 0) && !term?.is_archived
+            )
+            if (!ownTerms.length) {
+              enrichedTitles.push(title)
+              continue
+            }
+            for (const term of ownTerms) {
+              const rawDate = String(term?.valid_until || '').trim()
+              if (!rawDate) {
+                enrichedTitles.push(title)
+                continue
+              }
+              const parsed = new Date(rawDate)
+              if (Number.isNaN(parsed.getTime())) {
+                enrichedTitles.push(`${title} до ${rawDate}`)
+                continue
+              }
+              const day = String(parsed.getDate()).padStart(2, '0')
+              const month = String(parsed.getMonth() + 1).padStart(2, '0')
+              const year = String(parsed.getFullYear())
+              enrichedTitles.push(`${title} до ${day}.${month}.${year}`)
+            }
+          } catch {
+            // Если сроки не удалось загрузить, не ломаем карточку аккаунта.
+            enrichedTitles.push(title)
+          }
+        }
+        editAccount.product_titles = [...new Set(enrichedTitles.filter(Boolean))]
+      }
     } catch {
       editAccount.product_ids = []
       editAccount.product_titles = []

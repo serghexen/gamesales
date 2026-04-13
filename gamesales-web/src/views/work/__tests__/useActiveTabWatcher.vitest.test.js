@@ -8,7 +8,12 @@ function createHarness({ role = 'manager', responsible = '', preset = '', tab = 
   const isAdmin = ref(role === 'admin')
   const dealFilters = reactive({
     responsible_q: preset,
+    search_q: '',
   })
+  const productFilters = reactive({ q: '' })
+  const accountFilters = reactive({ search_q: '' })
+  const productFilterDraft = reactive({ title: '', type: '', platform: '', region: '' })
+  const accountFilterDraft = reactive({ login: '', product: '', region: '', status: '', date_from: '', date_to: '' })
   const defaultDealsResponsibleFilter = ref(responsible)
 
   const loadDeals = vi.fn().mockResolvedValue(undefined)
@@ -20,6 +25,10 @@ function createHarness({ role = 'manager', responsible = '', preset = '', tab = 
     activeTab,
     isAdmin,
     dealFilters,
+    productFilters,
+    accountFilters,
+    productFilterDraft,
+    accountFilterDraft,
     defaultDealsResponsibleFilter,
     mustPrefillDealsResponsible: ref(role === 'manager' || role === 'operator'),
     showUserForm: ref(false),
@@ -70,7 +79,18 @@ function createHarness({ role = 'manager', responsible = '', preset = '', tab = 
     stopTelegramPolling: vi.fn(),
   })
 
-  return { dealFilters, loadDeals, loadNsGiftBalance, loadNsGiftCategories, reloadNsGiftData }
+  return {
+    activeTab,
+    dealFilters,
+    productFilters,
+    accountFilters,
+    productFilterDraft,
+    accountFilterDraft,
+    loadDeals,
+    loadNsGiftBalance,
+    loadNsGiftCategories,
+    reloadNsGiftData,
+  }
 }
 
 describe('useActiveTabWatcher', () => {
@@ -180,6 +200,21 @@ describe('useActiveTabWatcher', () => {
     expect(h.reloadNsGiftData).toHaveBeenCalledTimes(1)
     expect(h.loadNsGiftBalance).not.toHaveBeenCalled()
     expect(h.loadNsGiftCategories).not.toHaveBeenCalled()
+  })
+
+  it('clears search fields after switching top tabs', async () => {
+    const h = createHarness({ tab: 'accounts' })
+    h.accountFilters.search_q = 'тест'
+    h.accountFilterDraft.login = 'mail'
+    h.activeTab.value = 'deals'
+    await Promise.resolve()
+    expect(h.dealFilters.search_q).toBe('')
+
+    h.dealFilters.search_q = 'поиск'
+    h.activeTab.value = 'products'
+    await Promise.resolve()
+    expect(h.productFilters.q).toBe('')
+    expect(h.productFilterDraft.title).toBe('')
   })
 
 })

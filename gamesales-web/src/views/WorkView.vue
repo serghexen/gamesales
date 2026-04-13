@@ -563,12 +563,13 @@ const {
 })
 
 const accountProductTitles = computed(() => {
-  // Собирает список названий товаров для выбранного аккаунта.
+  // В карточке аккаунта приоритет у названий из /accounts/{id}/products:
+  // для подписок там уже добавлен срок ("Название до DD/MM/YY").
+  const apiTitles = Array.isArray(editAccount.product_titles) ? editAccount.product_titles.filter(Boolean) : []
+  if (apiTitles.length) return apiTitles
+  // Fallback нужен только когда API-список еще не догрузился.
   const productMap = new Map((productsAll.value || []).map((g) => [g.product_id, g.title]))
-  const fromMap = (editAccount.product_ids || []).map((id) => productMap.get(id)).filter(Boolean)
-  if (fromMap.length) return fromMap
-  // Если общий список товаров не подгрузился, показываем названия из ответа /accounts/{id}/products.
-  return Array.isArray(editAccount.product_titles) ? editAccount.product_titles.filter(Boolean) : []
+  return (editAccount.product_ids || []).map((id) => productMap.get(id)).filter(Boolean)
 })
 
 const activeDealChips = computed(() => {
@@ -3104,6 +3105,10 @@ useActiveTabWatcher({
   activeTab,
   isAdmin,
   dealFilters,
+  productFilters,
+  accountFilters,
+  productFilterDraft,
+  accountFilterDraft,
   defaultDealsResponsibleFilter,
   mustPrefillDealsResponsible,
   showUserForm,

@@ -1556,12 +1556,14 @@ const newQuickAccountMissingLabels = computed(() => {
 // Показывает визуальную напоминалку до тех пор, пока в quick-блоке есть незаполненные обязательные поля.
 const showEditQuickAccountReminder = computed(() => {
   if (!isEditRentalSubscriptionMode.value) return false
+  if (!editQuickAccountOpen.value) return false
   if (!editDeal.value?.slot_type_code || editDeal.value?.account_id) return false
   return editQuickAccountMissingLabels.value.length > 0
 })
 
 const showNewQuickAccountReminder = computed(() => {
   if (!isNewRentalSubscriptionMode.value) return false
+  if (!newQuickAccountOpen.value) return false
   if (!newDeal.value?.slot_type_code || newDeal.value?.account_id) return false
   return newQuickAccountMissingLabels.value.length > 0
 })

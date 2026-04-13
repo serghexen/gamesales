@@ -4,6 +4,10 @@ export function useActiveTabWatcher({
   activeTab,
   isAdmin,
   dealFilters,
+  productFilters,
+  accountFilters,
+  productFilterDraft,
+  accountFilterDraft,
   defaultDealsResponsibleFilter,
   mustPrefillDealsResponsible,
   showUserForm,
@@ -54,7 +58,36 @@ export function useActiveTabWatcher({
   stopTelegramPolling,
 }) {
   // Главный watcher вкладок: подгружает данные только для активного раздела.
-  watch(activeTab, async (tab) => {
+  watch(activeTab, async (tab, prevTab) => {
+    // После перехода между верхними вкладками очищаем текстовые поиски текущего раздела.
+    const switchedFromAnotherTab = typeof prevTab === 'string' && prevTab && prevTab !== tab
+    if (switchedFromAnotherTab) {
+      if (tab === 'deals' && dealFilters) {
+        dealFilters.search_q = ''
+      }
+      if (tab === 'accounts' && accountFilters) {
+        accountFilters.search_q = ''
+      }
+      if (tab === 'products' && productFilters) {
+        productFilters.q = ''
+      }
+      // Черновики фильтров тоже чистим, чтобы попапы не показывали старый поиск.
+      if (tab === 'accounts' && accountFilterDraft) {
+        accountFilterDraft.login = ''
+        accountFilterDraft.product = ''
+        accountFilterDraft.region = ''
+        accountFilterDraft.status = ''
+        accountFilterDraft.date_from = ''
+        accountFilterDraft.date_to = ''
+      }
+      if (tab === 'products' && productFilterDraft) {
+        productFilterDraft.title = ''
+        productFilterDraft.type = ''
+        productFilterDraft.platform = ''
+        productFilterDraft.region = ''
+      }
+    }
+
     if (tab !== 'telegram') {
       // Если ушли с Telegram, сразу останавливаем опрос.
       stopTelegramPolling()
