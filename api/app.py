@@ -62,14 +62,9 @@ def ensure_analytics_schema():
                 conn,
                 "CREATE INDEX IF NOT EXISTS idx_slot_assignments_subscription_term_id ON app.account_slot_assignments(subscription_term_id)",
             )
-            exec1(
-                conn,
-                """
-                CREATE UNIQUE INDEX IF NOT EXISTS uq_slot_assignments_active_subscription_term
-                  ON app.account_slot_assignments(subscription_term_id)
-                  WHERE subscription_term_id IS NOT NULL AND released_at IS NULL
-                """,
-            )
+            # Новая логика подписок считает занятость по типу слота/емкости, поэтому
+            # глобальный unique по subscription_term_id больше не нужен.
+            exec1(conn, "DROP INDEX IF EXISTS app.uq_slot_assignments_active_subscription_term")
             # Добавляем статус черновика для flow-логики, чтобы можно было сохранять неполные продажи.
             exec1(
                 conn,
