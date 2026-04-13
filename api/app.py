@@ -15,9 +15,11 @@ import urllib.request
 import urllib.error
 import ssl
 import uuid
+import logging
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env.dev", override=True)
+logger = logging.getLogger(__name__)
 
 def ensure_analytics_schema():
     try:
@@ -93,8 +95,8 @@ def ensure_analytics_schema():
             )
             conn.commit()
     except Exception:
-        # Ignore startup migration errors to avoid breaking app boot
-        pass
+        # Ошибки миграций не валят запуск, но обязательно пишем их в лог для диагностики.
+        logger.exception("Startup schema migration failed")
 
 
 @asynccontextmanager

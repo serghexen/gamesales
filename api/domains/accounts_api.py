@@ -158,10 +158,10 @@ def mount_accounts_routes(
             filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR (a.login_name || '@' || d.name) ILIKE %s)")
             params.extend([f"%{login_q}%", f"%{login_q}%", f"%{login_q}%"])
         if q:
-            filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR (a.login_name || '@' || d.name) ILIKE %s OR r.code ILIKE %s OR p_id.title ILIKE %s)")
+            filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR (a.login_name || '@' || d.name) ILIKE %s OR r.code ILIKE %s OR apr.display_title ILIKE %s)")
             params.extend([f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"])
         if product_q:
-            filters.append("p_id.title ILIKE %s")
+            filters.append("apr.display_title ILIKE %s")
             params.append(f"%{product_q}%")
         if region_q:
             filters.append("r.code ILIKE %s")
@@ -208,6 +208,37 @@ def mount_accounts_routes(
                   FROM app.subscription_terms st
                   WHERE st.is_archived IS NOT TRUE
                 ),
+                subscription_terms_titles AS (
+                  -- Предвычисляем подписи подписок по аккаунту, чтобы не запускать одинаковые подзапросы много раз.
+                  SELECT
+                    st.account_id,
+                    st.product_id,
+                    string_agg(
+                      p.title || ' до ' || to_char(st.valid_until, 'DD/MM/YY'),
+                      ' · '
+                      ORDER BY st.valid_until
+                    ) AS title_with_terms
+                  FROM app.subscription_terms st
+                  JOIN app.products p ON p.product_id = st.product_id
+                  WHERE st.is_archived IS NOT TRUE
+                  GROUP BY st.account_id, st.product_id
+                ),
+                account_products_resolved AS (
+                  -- Единая "витрина" названий товаров аккаунта (игра или подписка + сроки).
+                  SELECT
+                    apl.account_id,
+                    apl.product_id,
+                    CASE
+                      WHEN lower(p_id.type_code) = 'subscription' THEN
+                        COALESCE(NULLIF(stt.title_with_terms, ''), p_id.title)
+                      ELSE p_id.title
+                    END AS display_title
+                  FROM account_products_linked apl
+                  JOIN app.products p_id ON p_id.product_id = apl.product_id
+                  LEFT JOIN subscription_terms_titles stt
+                    ON stt.account_id = apl.account_id
+                   AND stt.product_id = apl.product_id
+                ),
                 base AS (
                   SELECT
                     a.account_id,
@@ -223,106 +254,12 @@ def mount_accounts_routes(
                     r.code as region_code,
                     d.name as domain_name,
                     COALESCE(
-                      array_agg(
-                        DISTINCT (
-                          CASE
-                            WHEN lower(p_id.type_code) = 'subscription' THEN
-                              COALESCE(
-                                NULLIF(
-                                  (
-                                    SELECT string_agg(
-                                      p_id.title || ' до ' || to_char(st.valid_until, 'DD/MM/YY'),
-                                      ' · '
-                                      ORDER BY st.valid_until
-                                    )
-                                    FROM app.subscription_terms st
-                                    WHERE st.account_id = a.account_id
-                                      AND st.product_id = p_id.product_id
-                                      AND st.is_archived IS NOT TRUE
-                                  ),
-                                  ''
-                                ),
-                                p_id.title
-                              )
-                            ELSE p_id.title
-                          END
-                        )
-                        ORDER BY (
-                          CASE
-                            WHEN lower(p_id.type_code) = 'subscription' THEN
-                              COALESCE(
-                                NULLIF(
-                                  (
-                                    SELECT string_agg(
-                                      p_id.title || ' до ' || to_char(st.valid_until, 'DD/MM/YY'),
-                                      ' · '
-                                      ORDER BY st.valid_until
-                                    )
-                                    FROM app.subscription_terms st
-                                    WHERE st.account_id = a.account_id
-                                      AND st.product_id = p_id.product_id
-                                      AND st.is_archived IS NOT TRUE
-                                  ),
-                                  ''
-                                ),
-                                p_id.title
-                              )
-                            ELSE p_id.title
-                          END
-                        )
-                      ) FILTER (WHERE p_id.title IS NOT NULL),
+                      array_agg(DISTINCT apr.display_title ORDER BY apr.display_title)
+                        FILTER (WHERE apr.display_title IS NOT NULL),
                       '{{}}'::text[]
                     ) as product_titles,
                     COALESCE(
-                      string_agg(
-                        DISTINCT (
-                          CASE
-                            WHEN lower(p_id.type_code) = 'subscription' THEN
-                              COALESCE(
-                                NULLIF(
-                                  (
-                                    SELECT string_agg(
-                                      p_id.title || ' до ' || to_char(st.valid_until, 'DD/MM/YY'),
-                                      ' · '
-                                      ORDER BY st.valid_until
-                                    )
-                                    FROM app.subscription_terms st
-                                    WHERE st.account_id = a.account_id
-                                      AND st.product_id = p_id.product_id
-                                      AND st.is_archived IS NOT TRUE
-                                  ),
-                                  ''
-                                ),
-                                p_id.title
-                              )
-                            ELSE p_id.title
-                          END
-                        ),
-                        ' · '
-                        ORDER BY (
-                          CASE
-                            WHEN lower(p_id.type_code) = 'subscription' THEN
-                              COALESCE(
-                                NULLIF(
-                                  (
-                                    SELECT string_agg(
-                                      p_id.title || ' до ' || to_char(st.valid_until, 'DD/MM/YY'),
-                                      ' · '
-                                      ORDER BY st.valid_until
-                                    )
-                                    FROM app.subscription_terms st
-                                    WHERE st.account_id = a.account_id
-                                      AND st.product_id = p_id.product_id
-                                      AND st.is_archived IS NOT TRUE
-                                  ),
-                                  ''
-                                ),
-                                p_id.title
-                              )
-                            ELSE p_id.title
-                          END
-                        )
-                      ),
+                      string_agg(DISTINCT apr.display_title, ' · ' ORDER BY apr.display_title),
                       ''
                     ) as product_titles_text,
                     ap.platform_codes,
@@ -332,8 +269,7 @@ def mount_accounts_routes(
                   LEFT JOIN app.regions r ON r.region_id = a.region_id
                   LEFT JOIN app.domains d ON d.domain_id = a.domain_id
                   LEFT JOIN account_platforms ap ON ap.account_id = a.account_id
-                  LEFT JOIN account_products_linked apl ON apl.account_id = a.account_id
-                  LEFT JOIN app.products p_id ON p_id.product_id = apl.product_id
+                  LEFT JOIN account_products_resolved apr ON apr.account_id = a.account_id
                   LEFT JOIN app.v_account_slot_status s
                     ON s.account_id = a.account_id
                    AND (COALESCE(ap.has_ps4, false) OR s.platform_code = 'ps5')

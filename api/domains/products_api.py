@@ -296,6 +296,27 @@ def mount_products_routes(
             rows = qall(
                 conn,
                 """
+                WITH target_slot AS (
+                  SELECT st.code, st.mode, st.capacity
+                  FROM app.slot_types st
+                  WHERE st.code = %s
+                ),
+                term_usage AS (
+                  SELECT
+                    asa.subscription_term_id,
+                    COUNT(*) FILTER (
+                      WHERE asa.released_at IS NULL
+                        AND asa.slot_type_code = %s
+                    ) AS used_exact_slot,
+                    COUNT(*) FILTER (
+                      WHERE asa.released_at IS NULL
+                        AND st2.mode = 'activate'
+                    ) AS used_activate_any
+                  FROM app.account_slot_assignments asa
+                  JOIN app.slot_types st2 ON st2.code = asa.slot_type_code
+                  WHERE asa.subscription_term_id IS NOT NULL
+                  GROUP BY asa.subscription_term_id
+                )
                 SELECT
                   st.term_id,
                   st.product_id,

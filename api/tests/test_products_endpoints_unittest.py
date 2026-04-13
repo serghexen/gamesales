@@ -14,8 +14,9 @@ import app as app_module
 
 
 class _ScriptedCursor:
-    def __init__(self, script):
+    def __init__(self, script, executed):
         self._script = script
+        self._executed = executed
         self._current = None
         self.rowcount = 0
 
@@ -26,6 +27,8 @@ class _ScriptedCursor:
         return False
 
     def execute(self, sql, params=None):
+        # Сохраняем выполненные запросы, чтобы тесты могли проверять структуру SQL.
+        self._executed.append((str(sql or ""), params))
         if not self._script:
             raise AssertionError(f"Unexpected SQL without scripted response: {sql}")
         self._current = self._script.pop(0)
@@ -49,6 +52,7 @@ class _ScriptedCursor:
 class _ScriptedConnCtx:
     def __init__(self, script):
         self._script = list(script)
+        self.executed = []
 
     def __enter__(self):
         return self
@@ -60,7 +64,7 @@ class _ScriptedConnCtx:
         return None
 
     def cursor(self):
-        return _ScriptedCursor(self._script)
+        return _ScriptedCursor(self._script, self.executed)
 
 
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
@@ -410,6 +414,37 @@ class ProductsEndpointsTests(unittest.TestCase):
             self.assertEqual(len(body), 1)
             self.assertEqual(body[0]["term_id"], 201)
             self.assertEqual(body[0]["occupied"], False)
+
+    # Проверяет, что endpoint доступных сроков использует CTE target_slot/term_usage и 3 параметра.
+    def test_list_available_subscription_terms_uses_expected_cte_sql(self):
+        script = [
+            {"one": (1,)},  # ensure_subscription_product
+            {"one": (1,)},  # slot exists
+            {"all": []},  # available terms query
+        ]
+        conn_ctx = _ScriptedConnCtx(script)
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=conn_ctx),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/products/subscriptions/77/terms/available?slot_type_code=ps5_p1",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+        subscription_sql = ""
+        subscription_params = None
+        for sql, params in conn_ctx.executed:
+            if "FROM app.subscription_terms st" in sql:
+                subscription_sql = sql
+                subscription_params = params
+                break
+        self.assertIn("WITH target_slot AS", subscription_sql)
+        self.assertIn("term_usage AS", subscription_sql)
+        self.assertEqual(len(subscription_params or ()), 3)
 
     # Валидация должна читать лист "Игры" и предупреждать о пропуске подписок.
     def test_products_import_validate_prefers_games_sheet_and_skips_subscriptions(self):

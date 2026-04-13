@@ -429,7 +429,12 @@
                   Вперёд →
                 </button>
               </div>
-              <p v-else-if="!sortedProductSubscriptionTerms.length" class="muted">Сроков подписки пока нет.</p>
+              <p
+                v-if="!productSubscriptionTermsErrorText && !productSubscriptionTermsLoadingState && !sortedProductSubscriptionTerms.length"
+                class="muted"
+              >
+                Сроков подписки пока нет.
+              </p>
             </div>
             <div v-if="!isEditGameType" class="field field--comment-collapsible field--full">
               <button class="comment-toggle" type="button" @click="editProductCommentOpen = !editProductCommentOpen" :disabled="productEditMode === 'view'">
