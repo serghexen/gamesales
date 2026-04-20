@@ -87,7 +87,22 @@ export const mapApiError = (message) => {
   if (text.includes('slots_used must be >= 1 for rental')) return 'Для шеринга укажите количество слотов (минимум 1)'
   if (text.includes('slots_used must be >= 1')) return 'Количество слотов должно быть не меньше 1'
   if (text.includes('deal_type_code must be sale or rental')) return 'Тип сделки должен быть продажа или шеринг'
-  if (text.includes('order_number must be unique for market source')) return 'Для market-источника номер заказа уже используется'
+  if (text.includes('order_number must be unique for market source')) {
+    // Оставляем подробности конфликта в тексте, чтобы менеджер мог быстро найти нужную сделку.
+    const conflictDealId = text.match(/deal_id=([0-9]+)/)?.[1]
+    const conflictCustomer = text.match(/customer=([^;]+)/)?.[1]?.trim()
+    const conflictProduct = text.match(/product=([^;]+)/)?.[1]?.trim()
+    const conflictDate = text.match(/created_at=([^;]+)/)?.[1]?.trim()
+    const details = [
+      conflictDealId ? `Сделка #${conflictDealId}` : '',
+      conflictCustomer ? `покупатель: ${conflictCustomer}` : '',
+      conflictProduct ? `товар: ${conflictProduct}` : '',
+      conflictDate ? `дата: ${conflictDate}` : '',
+    ].filter(Boolean).join(', ')
+    return details
+      ? `Для market-источника номер заказа уже используется. ${details}`
+      : 'Для market-источника номер заказа уже используется'
+  }
   if (text.includes('Unknown flow_status_code')) return 'Неизвестный статус'
   if (text.includes('flow_status_code draft is allowed only for sale deals')) return 'Черновик доступен только для продажи'
   if (text.includes('draft deal cannot be completed directly')) return 'Черновик нельзя сразу перевести в статус Завершен'

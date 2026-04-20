@@ -201,7 +201,7 @@ describe('WorkDealsTableSection', () => {
     expect(wrapper.text()).not.toContain('Сбросить')
   })
 
-  it('supports multi-select for region and status filters', async () => {
+  it('supports multi-select for status filter', async () => {
     const dealFilters = {
       type_q: '',
       customer_q: '',
@@ -211,21 +211,6 @@ describe('WorkDealsTableSection', () => {
       status_q: '',
       responsible_q: '',
     }
-
-    const regionWrapper = mount(WorkDealsTableSection, {
-      props: buildProps({
-        dealFilters,
-        activeDealFilter: 'region',
-        regions: [
-          { code: 'TR', name: 'Turkey' },
-          { code: 'PL', name: 'Poland' },
-        ],
-      }),
-    })
-    const regionCheckboxes = regionWrapper.findAll('input[type="checkbox"]')
-    await regionCheckboxes[0].setValue(true)
-    await regionCheckboxes[1].setValue(true)
-    expect(dealFilters.region_q).toBe('TR,PL')
 
     const statusWrapper = mount(WorkDealsTableSection, {
       props: buildProps({

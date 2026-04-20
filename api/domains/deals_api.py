@@ -191,7 +191,18 @@ def mount_deals_routes(
             conflict_row = q1(
                 conn,
                 """
-                SELECT d.deal_id
+                SELECT
+                  d.deal_id,
+                  c.nickname,
+                  (
+                    SELECT p.title
+                    FROM app.deal_items di2
+                    LEFT JOIN app.products p ON p.product_id = di2.product_id
+                    WHERE di2.deal_id = d.deal_id
+                    ORDER BY di2.deal_item_id DESC
+                    LIMIT 1
+                  ) AS product_title,
+                  COALESCE(d.completed_at, d.created_at) AS deal_dt
                 FROM app.deals d
                 JOIN app.customers c ON c.customer_id = d.customer_id
                 WHERE c.source_id=%s
@@ -204,7 +215,18 @@ def mount_deals_routes(
             conflict_row = q1(
                 conn,
                 """
-                SELECT d.deal_id
+                SELECT
+                  d.deal_id,
+                  c.nickname,
+                  (
+                    SELECT p.title
+                    FROM app.deal_items di2
+                    LEFT JOIN app.products p ON p.product_id = di2.product_id
+                    WHERE di2.deal_id = d.deal_id
+                    ORDER BY di2.deal_item_id DESC
+                    LIMIT 1
+                  ) AS product_title,
+                  COALESCE(d.completed_at, d.created_at) AS deal_dt
                 FROM app.deals d
                 JOIN app.customers c ON c.customer_id = d.customer_id
                 WHERE c.source_id=%s
@@ -215,7 +237,21 @@ def mount_deals_routes(
                 (source_id, normalized_order, exclude_deal_id),
             )
         if conflict_row:
-            raise HTTPException(409, "order_number must be unique for market source")
+            conflict_deal_id = int(conflict_row[0])
+            # В unit-тестах mock может вернуть только deal_id, поэтому читаем поля безопасно.
+            conflict_customer = str(conflict_row[1] or "").strip() if len(conflict_row) > 1 else ""
+            conflict_product = str(conflict_row[2] or "").strip() if len(conflict_row) > 2 else ""
+            conflict_dt = conflict_row[3] if len(conflict_row) > 3 else None
+            if not conflict_customer:
+                conflict_customer = "—"
+            if not conflict_product:
+                conflict_product = "—"
+            conflict_date_text = conflict_dt.isoformat() if conflict_dt else "—"
+            # Возвращаем подсказку с deal_id, чтобы менеджер мог сразу открыть конфликтующую сделку.
+            raise HTTPException(
+                409,
+                f"order_number must be unique for market source; deal_id={conflict_deal_id}; customer={conflict_customer}; product={conflict_product}; created_at={conflict_date_text}",
+            )
 
     # Валидирует product_id и тип товара для операций со сделками.
     def validate_deal_product_id(

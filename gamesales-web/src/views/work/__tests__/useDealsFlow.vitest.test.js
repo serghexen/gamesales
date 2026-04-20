@@ -103,6 +103,13 @@ describe('useDealsFlow', () => {
 
     await h.createQuickAccount('new')
 
+    expect(h.apiPost).toHaveBeenNthCalledWith(
+      1,
+      '/accounts',
+      expect.objectContaining({ region_code: 'RU' }),
+      { token: 'token-1' },
+    )
+    expect(h.apiPost.mock.calls[0][1].account_date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     expect(h.apiGet).toHaveBeenCalledWith('/accounts/7/products', { token: 'token-1' })
     expect(h.apiPut).toHaveBeenCalledWith('/accounts/7/products', { product_ids: [50, 55] }, { token: 'token-1' })
   })

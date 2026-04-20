@@ -57,6 +57,12 @@ export function useProductsFlow({
   const productSubscriptionTermsRef = productSubscriptionTerms || { value: [] }
   const productSubscriptionTermsLoadingRef = productSubscriptionTermsLoading || { value: false }
   const productSubscriptionTermsErrorRef = productSubscriptionTermsError || { value: null }
+
+  // Возвращает сегодняшнюю дату в формате YYYY-MM-DD для создания нового аккаунта.
+  function getTodayAccountDate() {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  }
   // Нормализует список аккаунтов к массиву уникальных числовых id.
   function normalizeAccountIds(value) {
     const source = Array.isArray(value) ? value : (value ? [value] : [])
@@ -676,6 +682,11 @@ export function useProductsFlow({
       error.value = 'Выберите платформу'
       return
     }
+    const regionCode = String(isEdit ? editProduct.region_code || '' : newProduct.region_code || '').trim()
+    if (!regionCode) {
+      error.value = 'Укажите регион товара'
+      return
+    }
     loading.value = true
     try {
       // Быстро создаем аккаунт в потоке товара и сразу добавляем его в выбранные привязки.
@@ -684,8 +695,8 @@ export function useProductsFlow({
         {
           login_name: state.login_name,
           domain_code: state.domain_code,
-          region_code: isEdit ? editProduct.region_code || null : newProduct.region_code || null,
-          account_date: null,
+          region_code: regionCode,
+          account_date: getTodayAccountDate(),
           notes: null,
         },
         { token: auth.state.token },

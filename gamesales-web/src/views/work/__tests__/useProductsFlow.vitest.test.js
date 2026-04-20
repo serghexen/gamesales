@@ -252,15 +252,17 @@ describe('useProductsFlow', () => {
     h.deps.quickNewProductAccount.login_name = 'new-acc'
     h.deps.quickNewProductAccount.domain_code = 'mail'
     h.deps.quickNewProductAccount.platform_codes = ['ps5']
+    h.newProduct.region_code = 'RU'
     h.apiPost.mockResolvedValueOnce({ account_id: 77 })
 
     await h.flow.createQuickProductAccount('new')
 
     expect(h.apiPost).toHaveBeenCalledWith(
       '/accounts',
-      expect.objectContaining({ login_name: 'new-acc', domain_code: 'mail' }),
+      expect.objectContaining({ login_name: 'new-acc', domain_code: 'mail', region_code: 'RU' }),
       { token: 'token-1' },
     )
+    expect(h.apiPost.mock.calls[0][1].account_date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     expect(h.newProduct.account_ids).toEqual([77])
     expect(h.deps.loadAccountsAll).toHaveBeenCalledTimes(1)
   })

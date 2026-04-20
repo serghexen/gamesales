@@ -691,7 +691,17 @@
                         </label>
                       </div>
                       <div class="deal-form__full">
-                        <p v-if="dealError" class="bad">{{ dealError }}</p>
+                        <div v-if="dealError" class="field field--inline-actions">
+                          <p class="bad">{{ dealError }}</p>
+                          <button
+                            v-if="conflictDealIdFromError"
+                            class="ghost ghost--small"
+                            type="button"
+                            @click="openConflictDealFromError"
+                          >
+                            Открыть сделку #{{ conflictDealIdFromError }}
+                          </button>
+                        </div>
                         <p v-if="dealOk" class="ok">{{ dealOk }}</p>
                         <div v-if="dealEditMode === 'edit'" class="toolbar-actions"></div>
                       </div>
@@ -1236,7 +1246,17 @@
                         </div>
                       </div>
                       <div class="deal-form__full">
-                        <p v-if="dealError" class="bad">{{ dealError }}</p>
+                        <div v-if="dealError" class="field field--inline-actions">
+                          <p class="bad">{{ dealError }}</p>
+                          <button
+                            v-if="conflictDealIdFromError"
+                            class="ghost ghost--small"
+                            type="button"
+                            @click="openConflictDealFromError"
+                          >
+                            Открыть сделку #{{ conflictDealIdFromError }}
+                          </button>
+                        </div>
                         <p v-if="dealOk" class="ok">{{ dealOk }}</p>
                         <div class="toolbar-actions"></div>
                       </div>
@@ -1571,6 +1591,32 @@ const showNewQuickAccountReminder = computed(() => {
 const editQuickAccountMissingText = computed(() => formatQuickAccountMissingText(editQuickAccountMissingLabels.value))
 const newQuickAccountMissingText = computed(() => formatQuickAccountMissingText(newQuickAccountMissingLabels.value))
 
+// Достает id конфликтной сделки из текста ошибки дубля номера заказа.
+function parseConflictDealIdFromError(errorText) {
+  const raw = String(errorText || '')
+  if (!raw) return 0
+  const byDealLabel = raw.match(/Сделка\s*#\s*([0-9]+)/i)
+  if (byDealLabel?.[1]) return Number(byDealLabel[1]) || 0
+  const byLegacyToken = raw.match(/deal_id\s*=\s*([0-9]+)/i)
+  if (byLegacyToken?.[1]) return Number(byLegacyToken[1]) || 0
+  return 0
+}
+
+const conflictDealIdFromError = computed(() => parseConflictDealIdFromError(dealError.value))
+
+// Открывает конфликтную сделку из текущего списка, чтобы менеджер сразу увидел детали.
+function openConflictDealFromError() {
+  const dealId = Number(conflictDealIdFromError.value || 0)
+  if (!dealId) return
+  const rows = Array.isArray(sortedDeals.value) ? sortedDeals.value : []
+  const matched = rows.find((item) => Number(item?.deal_id || 0) === dealId)
+  if (matched && typeof ctx.startEditDeal === 'function') {
+    ctx.startEditDeal(matched)
+    return
+  }
+  showDealWarning.value?.(`Сделка #${dealId} не найдена в текущем списке. Сбросьте фильтры и обновите таблицу.`)
+}
+
 // Возвращает пароль аккаунта для блока под выбранным аккаунтом в форме сделки.
 function getAccountPasswordById(accountId) {
   if (!accountId) return '—'
@@ -1705,6 +1751,7 @@ function getSlotTypeOptionsForDeal(target) {
   const isEdit = target === 'edit'
   const subscriptionMode = isEdit ? isEditRentalSubscriptionMode.value : isNewRentalSubscriptionMode.value
   const productId = isEdit ? editDeal.value?.product_id : newDeal.value?.product_id
+  const selectedSlotTypeCode = String(isEdit ? editDeal.value?.slot_type_code || '' : newDeal.value?.slot_type_code || '').trim()
   if (subscriptionMode && !productId) {
     return (slotTypes.value || []).map((item) => ({
       code: item.code,
@@ -1712,7 +1759,9 @@ function getSlotTypeOptionsForDeal(target) {
       supported: true,
     }))
   }
-  return getDealSlotTypeOptions.value(target)
+  const options = getDealSlotTypeOptions.value(target)
+  // Скрываем неподдерживаемые слоты из выпадающего списка, чтобы не оставлять "пустые" строки.
+  return options.filter((item) => item?.supported !== false || item?.code === selectedSlotTypeCode)
 }
 
 // Сбрасывает фильтр типа при новом открытии редактирования, чтобы не прятать товары.

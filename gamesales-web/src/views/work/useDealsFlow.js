@@ -83,6 +83,24 @@ export function useDealsFlow({
   const subscriptionTermsLoadingEditRef = subscriptionTermsLoadingEdit || { value: false }
   const quickNewSubscriptionTermRef = quickNewSubscriptionTerm || { account_id: '', valid_until: getDefaultSubscriptionTermDate(), notes: '' }
   const quickEditSubscriptionTermRef = quickEditSubscriptionTerm || { account_id: '', valid_until: getDefaultSubscriptionTermDate(), notes: '' }
+
+  // Возвращает сегодняшнюю дату в формате YYYY-MM-DD для обязательного поля account_date.
+  function getTodayAccountDate() {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  }
+
+  // Подбирает регион для быстрого аккаунта: сначала из сделки, затем из выбранного товара.
+  function resolveQuickAccountRegionCode(target, selectedProductId = 0, fallbackSubscriptionProductId = 0) {
+    const isEdit = target === 'edit'
+    const dealRegion = String((isEdit ? editDeal.region_code : newDeal.region_code) || '').trim()
+    if (dealRegion) return dealRegion
+    const productId = Number(selectedProductId || fallbackSubscriptionProductId || 0)
+    if (!productId) return ''
+    const list = Array.isArray(productsAll.value) ? productsAll.value : []
+    const product = list.find((item) => Number(item?.product_id || 0) === productId)
+    return String(product?.region_code || '').trim()
+  }
   const quickNewSubscriptionTermLoadingRef = quickNewSubscriptionTermLoading || { value: false }
   const quickEditSubscriptionTermLoadingRef = quickEditSubscriptionTermLoading || { value: false }
   const quickNewSubscriptionTermErrorRef = quickNewSubscriptionTermError || { value: '' }
@@ -576,6 +594,11 @@ export function useDealsFlow({
       error.value = 'Выберите подписку'
       return
     }
+    const regionCode = resolveQuickAccountRegionCode(target, selectedProductId, quickSubscriptionProductId)
+    if (!regionCode) {
+      error.value = 'Укажите регион у товара или сделки'
+      return
+    }
     loading.value = true
     try {
       const created = await apiPost(
@@ -583,8 +606,8 @@ export function useDealsFlow({
         {
           login_name: state.login_name,
           domain_code: state.domain_code,
-          region_code: isEdit ? editDeal.region_code || null : newDeal.region_code || null,
-          account_date: null,
+          region_code: regionCode,
+          account_date: getTodayAccountDate(),
           notes: state.notes ? String(state.notes).trim() : null,
         },
         { token: auth.state.token }

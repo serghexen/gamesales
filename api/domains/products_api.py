@@ -116,33 +116,65 @@ def mount_products_routes(
     def list_subscription_terms(product_id: int, user: UserOut = Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
             ensure_subscription_product(conn, product_id)
-            rows = qall(
-                conn,
-                """
-                SELECT
-                  st.term_id,
-                  st.product_id,
-                  st.account_id,
-                  a.login_name,
-                  d.name AS domain_code,
-                  st.valid_until,
-                  st.notes,
-                  st.is_archived,
-                  st.created_at,
-                  EXISTS (
-                    SELECT 1
-                    FROM app.account_slot_assignments asa
-                    WHERE asa.subscription_term_id = st.term_id
-                      AND asa.released_at IS NULL
-                  ) AS occupied
-                FROM app.subscription_terms st
-                JOIN app.accounts a ON a.account_id = st.account_id
-                LEFT JOIN app.domains d ON d.domain_id = a.domain_id
-                WHERE st.product_id=%s
-                ORDER BY st.is_archived ASC, st.valid_until ASC, st.term_id ASC
-                """,
-                (product_id,),
-            )
+            try:
+                rows = qall(
+                    conn,
+                    """
+                    SELECT
+                      st.term_id,
+                      st.product_id,
+                      st.account_id,
+                      a.login_name,
+                      d.name AS domain_code,
+                      st.valid_until,
+                      st.notes,
+                      st.is_archived,
+                      st.created_at,
+                      EXISTS (
+                        SELECT 1
+                        FROM app.account_slot_assignments asa
+                        WHERE asa.subscription_term_id = st.term_id
+                          AND asa.released_at IS NULL
+                      ) AS occupied
+                    FROM app.subscription_terms st
+                    JOIN app.accounts a ON a.account_id = st.account_id
+                    LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+                    WHERE st.product_id=%s
+                    ORDER BY st.is_archived ASC, st.valid_until ASC, st.term_id ASC
+                    """,
+                    (product_id,),
+                )
+            except Exception as exc:
+                # Для старой схемы БД без created_at не падаем, а возвращаем корректный список сроков.
+                if "created_at" not in str(exc).lower():
+                    raise
+                rows = qall(
+                    conn,
+                    """
+                    SELECT
+                      st.term_id,
+                      st.product_id,
+                      st.account_id,
+                      a.login_name,
+                      d.name AS domain_code,
+                      st.valid_until,
+                      st.notes,
+                      st.is_archived,
+                      timezone('utc', now()) AS created_at,
+                      EXISTS (
+                        SELECT 1
+                        FROM app.account_slot_assignments asa
+                        WHERE asa.subscription_term_id = st.term_id
+                          AND asa.released_at IS NULL
+                      ) AS occupied
+                    FROM app.subscription_terms st
+                    JOIN app.accounts a ON a.account_id = st.account_id
+                    LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+                    WHERE st.product_id=%s
+                    ORDER BY st.is_archived ASC, st.valid_until ASC, st.term_id ASC
+                    """,
+                    (product_id,),
+                )
         items: List[SubscriptionTermOut] = []
         for (r0, r1, r2, r3, r4, r5, r6, r7, r8, r9) in rows:
             # Старые/грязные строки не должны ломать весь эндпоинт 500-ошибкой.

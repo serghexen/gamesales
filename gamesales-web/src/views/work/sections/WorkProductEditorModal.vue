@@ -119,16 +119,49 @@
             <template v-if="isEditGameType">
               <label class="field">
                 <span class="label">Язык текста</span>
-                <input v-model.trim="editProduct.text_lang" class="input" placeholder="" :readonly="productEditMode === 'view'" />
+                <input
+                  v-if="productEditMode === 'view'"
+                  class="input"
+                  :value="editProduct.text_lang || '— не выбрано —'"
+                  readonly
+                />
+                <select v-else v-model="editProduct.text_lang" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="lang in gameTextLanguageOptions" :key="`edit-text-lang-${lang}`" :value="lang">
+                    {{ lang }}
+                  </option>
+                </select>
               </label>
               <label class="field">
                 <span class="label">Язык озвучки</span>
-                <input v-model.trim="editProduct.audio_lang" class="input" placeholder="" :readonly="productEditMode === 'view'" />
+                <input
+                  v-if="productEditMode === 'view'"
+                  class="input"
+                  :value="editProduct.audio_lang || '— не выбрано —'"
+                  readonly
+                />
+                <select v-else v-model="editProduct.audio_lang" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="lang in gameAudioLanguageOptions" :key="`edit-audio-lang-${lang}`" :value="lang">
+                    {{ lang }}
+                  </option>
+                </select>
               </label>
               <div class="deal-form__double field--full">
                 <label class="field">
                   <span class="label">Поддержка VR</span>
-                  <input v-model.trim="editProduct.vr_support" class="input" placeholder="" :readonly="productEditMode === 'view'" />
+                  <input
+                    v-if="productEditMode === 'view'"
+                    class="input"
+                    :value="editProduct.vr_support || '— не выбрано —'"
+                    readonly
+                  />
+                  <select v-else v-model="editProduct.vr_support" class="input input--select">
+                    <option value="">— не выбрано —</option>
+                    <option v-for="vrMode in gameVrOptions" :key="`edit-vr-${vrMode}`" :value="vrMode">
+                      {{ vrMode }}
+                    </option>
+                  </select>
                 </label>
                 <label class="field">
                   <span class="label">Регион</span>
@@ -837,16 +870,31 @@
             <template v-if="newProduct.type_code === PRODUCT_TYPE_PRIMARY">
               <label class="field">
                 <span class="label">Язык текста</span>
-                <input v-model.trim="newProduct.text_lang" class="input" placeholder="" />
+                <select v-model="newProduct.text_lang" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="lang in gameTextLanguageOptions" :key="`new-text-lang-${lang}`" :value="lang">
+                    {{ lang }}
+                  </option>
+                </select>
               </label>
               <label class="field">
                 <span class="label">Язык озвучки</span>
-                <input v-model.trim="newProduct.audio_lang" class="input" placeholder="" />
+                <select v-model="newProduct.audio_lang" class="input input--select">
+                  <option value="">— не выбрано —</option>
+                  <option v-for="lang in gameAudioLanguageOptions" :key="`new-audio-lang-${lang}`" :value="lang">
+                    {{ lang }}
+                  </option>
+                </select>
               </label>
               <div class="deal-form__double field--full">
                 <label class="field">
                   <span class="label">Поддержка VR</span>
-                  <input v-model.trim="newProduct.vr_support" class="input" placeholder="" />
+                  <select v-model="newProduct.vr_support" class="input input--select">
+                    <option value="">— не выбрано —</option>
+                    <option v-for="vrMode in gameVrOptions" :key="`new-vr-${vrMode}`" :value="vrMode">
+                      {{ vrMode }}
+                    </option>
+                  </select>
                 </label>
                 <label class="field">
                   <span class="label">Регион</span>
@@ -981,6 +1029,10 @@ const props = defineProps({
   ctx: { type: Object, required: true },
 })
 const ctx = reactive(props.ctx)
+// Фиксированные значения для полей игры, чтобы исключить разнобой в карточках.
+const gameTextLanguageOptions = ['RU']
+const gameAudioLanguageOptions = ['RU']
+const gameVrOptions = ['VR1', 'VR2']
 
 const {
   editProduct,

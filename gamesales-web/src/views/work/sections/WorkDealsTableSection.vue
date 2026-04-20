@@ -115,25 +115,13 @@
         </th>
         <th class="cell--tight deal-col-region">
           <span class="th-title th-title--filter">
-            Регион
+            Товар
             <span class="th-actions">
-              <button
-                class="filter-icon"
-                :class="{ 'filter-icon--active': Boolean(dealFilters.region_q) }"
-                type="button"
-                aria-label="Фильтр по региону"
-                title="Фильтр по региону"
-                @click.stop="setActiveDealFilter(activeDealFilter === 'region' ? '' : 'region')"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M4 6h16M7 12h10M10 18h4" />
-                </svg>
-              </button>
               <button
                 class="filter-icon filter-icon--sort"
                 type="button"
-                aria-label="Сортировка по региону"
-                title="Сортировка по региону"
+                aria-label="Сортировка по товару"
+                title="Сортировка по товару"
                 @click.stop="toggleDealSort('region')"
                 :class="getDealSortClass('region')"
               >
@@ -144,21 +132,10 @@
               </button>
             </span>
           </span>
-          <div v-if="activeDealFilter === 'region'" class="filter-pop filter-pop--center" @click.stop>
-            <div class="field">
-              <span class="label">Регион</span>
-              <div class="check-list check-list--compact">
-                <label v-for="r in regions" :key="`deal-region-${r.code}`" class="check-item">
-                  <input v-model="regionFilterValues" type="checkbox" :value="r.code" @change="applyDealMultiFilter" />
-                  <span>{{ r.name }} ({{ r.code }})</span>
-                </label>
-              </div>
-            </div>
-          </div>
           <button
             class="table-col-resizer"
             type="button"
-            aria-label="Изменить ширину колонки Регион"
+            aria-label="Изменить ширину колонки Товар"
             title="Потяните для изменения ширины"
             @mousedown.stop.prevent="startResize($event, 'region')"
           />
@@ -356,7 +333,7 @@
       >
         <td class="cell--tight deal-col-type">{{ d.deal_type || '—' }}</td>
         <td class="deal-col-customer">{{ d.customer_nickname || '—' }}</td>
-        <td class="cell--tight deal-col-region">{{ d.region_code || '—' }}</td>
+        <td class="cell--tight deal-col-region">{{ d.product_title || '—' }}</td>
         <td class="deal-col-date">
           <template v-if="dealShowCompleted">
             <div class="deal-date-lines">
@@ -593,14 +570,6 @@ const typeFilterValues = computed({
   set: (values) => {
     // Держим в фильтре строку кодов, чтобы API получил единый формат.
     props.dealFilters.type_q = stringifyMultiValueFilterQuery(values)
-  },
-})
-
-const regionFilterValues = computed({
-  get: () => parseMultiValueFilterQuery(props.dealFilters.region_q),
-  set: (values) => {
-    // Храним выбранные регионы в строке через запятую как и другие мультифильтры.
-    props.dealFilters.region_q = stringifyMultiValueFilterQuery(values)
   },
 })
 

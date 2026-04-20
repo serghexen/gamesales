@@ -42,7 +42,7 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
       if (key === 'type') return d.deal_type || ''
       if (key === 'customer') return d.customer_nickname || ''
       if (key === 'responsible') return d.responsible_username || ''
-      if (key === 'region') return d.region_code || ''
+      if (key === 'region') return d.product_title || ''
       if (key === 'status') return d.flow_status || ''
       if (key === 'date') return new Date(d.purchase_at || d.created_at || 0).getTime()
       return ''
