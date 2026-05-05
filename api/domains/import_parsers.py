@@ -400,6 +400,17 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
     def validate_account_import_rows(conn, rows: list[dict], progress_cb=None):
         errors = []
         warnings = []
+        # Собираем аккаунты из листов Почты* этого же файла, чтобы валидация сроков учитывала "будущие" вставки.
+        staged_accounts: set[tuple[str, str]] = set()
+        for staged_row in rows:
+            staged_kind = str(staged_row.get("_import_kind") or "account_credentials")
+            if staged_kind != "account_credentials":
+                continue
+            staged_account_val = (staged_row.get("account") or "").strip()
+            staged_login, staged_domain = split_account(staged_account_val)
+            if not staged_login or not staged_domain:
+                continue
+            staged_accounts.add((staged_login.lower(), staged_domain.lower()))
         for idx, row in enumerate(rows, start=2):
             report_row = int(row.get("_sheet_row") or (idx - 1))
             report_sheet = str(row.get("_sheet_name") or "").strip() or None
@@ -456,7 +467,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                         """,
                         (login, domain),
                     )
-                    if not row_acc:
+                    in_file_accounts = (login.lower(), domain.lower()) in staged_accounts
+                    if not row_acc and not in_file_accounts:
                         warnings.append({
                             "sheet": report_sheet,
                             "row": report_row,

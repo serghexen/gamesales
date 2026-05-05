@@ -301,6 +301,41 @@ class AccountsImportFormatTests(unittest.TestCase):
             self.assertTrue(any(w.get("field") == "Срок" and "обязательна" in str(w.get("message") or "") for w in warnings))
             self.assertTrue(any(w.get("field") == "Срок" and "Не удалось распознать" in str(w.get("message") or "") for w in warnings))
 
+    # Проверяет, что валидация сроков учитывает аккаунты, которые будут созданы из листов Почты* этого же файла.
+    def test_accounts_import_validate_subscription_terms_accepts_accounts_staged_in_same_file(self):
+        wb = Workbook()
+        ws_mail = wb.active
+        ws_mail.title = "Почты"
+        ws_mail.append(["Логин", "Пароль"])
+        ws_mail.append(["newacc@gmail.com", "pwd"])
+        ws_plus = wb.create_sheet("ПЛЮС")
+        ws_plus.append(["Аккаунт", "Подписка", "Срок"])
+        ws_plus.append(["newacc@gmail.com", "ПЛЮС DELUXE", "05.02.2027"])
+        out = BytesIO()
+        wb.save(out)
+        content = out.getvalue()
+
+        # Для строки из ПЛЮС в БД аккаунт пока отсутствует, но он есть в этом же файле на листе Почты.
+        script = [
+            {"one": None},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/accounts/import/validate",
+                    headers=self._auth_headers(role="admin"),
+                    files={"file": ("accounts.xlsx", content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            warnings = body.get("warnings", [])
+            self.assertFalse(any(w.get("field") == "Аккаунт" and "Аккаунт не найден" in str(w.get("message") or "") for w in warnings))
+
 
 if __name__ == "__main__":
     unittest.main()
