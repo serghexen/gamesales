@@ -58,6 +58,13 @@ export function useDealsActions({
       || text.includes('lock_version')
   }
 
+  // Определяет ошибку дубля market-заказа по устойчивым фрагментам сообщения API.
+  function isMarketOrderDuplicate(error) {
+    const text = String(error?.message || '').toLowerCase()
+    return text.includes('order_number must be unique for market source')
+      || text.includes('номер заказа уже используется')
+  }
+
   // Определяет, нужно ли ослаблять проверки и сохранять сделку как черновик.
   function isDraftSave(saveAsDraft) {
     return Boolean(saveAsDraft)
@@ -182,7 +189,12 @@ export function useDealsActions({
       newDeal.purchase_at = ''
       newDeal.notes = ''
     } catch (e) {
-      dealError.value = mapApiError(e?.message)
+      const mappedError = mapApiError(e?.message)
+      dealError.value = mappedError
+      // Для дубля market-заказа показываем явное предупреждение, чтобы менеджер сразу заметил конфликт.
+      if (isMarketOrderDuplicate(e) && typeof showDealWarning === 'function') {
+        showDealWarning(mappedError)
+      }
     } finally {
       // Если сохранение не удалось, сразу снимаем лоадер здесь.
       if (!createdOk) {
@@ -261,7 +273,12 @@ export function useDealsActions({
           showDealWarning('Запись уже изменилась у другого пользователя. Обновите список и повторите правку.')
         }
       }
-      dealError.value = mapApiError(e?.message)
+      const mappedError = mapApiError(e?.message)
+      dealError.value = mappedError
+      // Для дубля market-заказа дублируем ошибку в предупреждение, чтобы не терялась в форме.
+      if (isMarketOrderDuplicate(e) && typeof showDealWarning === 'function') {
+        showDealWarning(mappedError)
+      }
     } finally {
       // Если обновление не удалось, снимаем блокировку сразу.
       if (!updatedOk) {

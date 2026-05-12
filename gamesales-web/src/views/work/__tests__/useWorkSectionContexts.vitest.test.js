@@ -60,7 +60,7 @@ describe('useWorkSectionContexts', () => {
     editDeal.flow_status_code = 'draft'
     expect(ctx.dealEditorModalShellCtx.showSaveDraft).toBe(false)
     ctx.dealEditorModalShellCtx.onSaveEdit()
-    expect(updateDealDraft).toHaveBeenCalledTimes(1)
-    expect(updateDeal).toHaveBeenCalledTimes(0)
+    expect(updateDeal).toHaveBeenCalledTimes(1)
+    expect(updateDealDraft).toHaveBeenCalledTimes(0)
   })
 })

@@ -275,11 +275,8 @@ export function useWorkSectionContexts({
   const isDraftDeal = computed(() => String(editDeal.flow_status_code || '').trim().toLowerCase() === 'draft')
 
   async function saveEditDeal() {
-    // Для черновика всегда сохраняем в черновик, чтобы не отправлять обычный save.
-    if (isDraftDeal.value) {
-      await updateDealDraft()
-      return
-    }
+    // Кнопка сохранения в режиме редактирования всегда выполняет обычное сохранение,
+    // чтобы черновик можно было перевести в рабочую сделку.
     await updateDeal()
   }
 
