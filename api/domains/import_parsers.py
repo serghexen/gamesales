@@ -167,24 +167,28 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
             return False
         return "подписк" in title or "плюс" in title
 
-    # Проверяет, что игровой товар существует в каталоге, и возвращает product_id.
-    def resolve_game_product_id_by_title(conn, game_title: str):
-        if not game_title:
+    # Проверяет, что товар (игра или подписка) существует в каталоге.
+    def resolve_slot_product_meta_by_title(conn, product_title: str):
+        if not product_title:
             return None
         row = q1(
             conn,
             """
-            SELECT p.product_id
+            SELECT p.product_id, lower(p.type_code)
             FROM app.products p
             WHERE lower(p.title) = lower(%s)
-              AND lower(p.type_code) = 'game'
+              AND lower(p.type_code) IN ('game', 'subscription')
               AND p.is_archived IS NOT TRUE
             ORDER BY p.product_id
             LIMIT 1
             """,
-            (game_title,),
+            (product_title,),
         )
-        return int(row[0]) if row and row[0] is not None else None
+        if not row or row[0] is None:
+            return None
+        # Поддерживаем старые тестовые моки, где возвращается только product_id без type_code.
+        type_code = str(row[1] or "").strip().lower() if len(row) > 1 else "game"
+        return {"product_id": int(row[0]), "type_code": type_code}
 
     def detect_logo_mime_from_bytes(data: bytes) -> str:
         if not data:
@@ -358,10 +362,10 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         return title
 
     # Собирает кандидатов товара по аккаунту из вспомогательных листов файла.
-    def build_account_slot_product_candidates(wb) -> dict[tuple[str, str], list[str]]:
-        candidates: dict[tuple[str, str], list[str]] = {}
+    def build_account_slot_product_candidates(wb) -> dict[tuple[str, str], list[dict[str, Any]]]:
+        candidates: dict[tuple[str, str], list[dict[str, Any]]] = {}
 
-        def add_candidate(account_value: Any, title_value: Any):
+        def add_candidate(account_value: Any, title_value: Any, valid_until_value: Any = None):
             account_raw = str(account_value or "").strip()
             title_raw = str(title_value or "").strip()
             login, domain = split_account(account_raw)
@@ -369,8 +373,14 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 return
             key = (login.lower(), domain.lower())
             bucket = candidates.setdefault(key, [])
-            if title_raw not in bucket:
-                bucket.append(title_raw)
+            normalized_valid_until = normalize_slot_date(valid_until_value)
+            exists = any(
+                str(item.get("title") or "").strip().lower() == title_raw.lower()
+                and str(item.get("valid_until") or "").strip() == str(normalized_valid_until or "").strip()
+                for item in bucket
+            )
+            if not exists:
+                bucket.append({"title": title_raw, "valid_until": normalized_valid_until})
 
         for sheet_name in wb.sheetnames:
             ws = wb[sheet_name]
@@ -411,7 +421,11 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 if name_norm == "аккаунты":
                     add_candidate(item.get("account"), item.get("game"))
                 else:
-                    add_candidate(item.get("account"), normalize_subscription_slot_title(item.get("subscription"), sheet_name))
+                    add_candidate(
+                        item.get("account"),
+                        normalize_subscription_slot_title(item.get("subscription"), sheet_name),
+                        item.get("valid_until"),
+                    )
         return candidates
 
     # Собирает аккаунты, которые будут созданы в этом же файле (листы Почты*), чтобы не ругаться на "не найден в БД".
@@ -470,11 +484,38 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 if login and domain:
                     key = (login.lower(), domain.lower())
                     candidates = account_product_candidates.get(key, [])
-                    if len(candidates) == 1:
-                        item["game"] = candidates[0]
-                    elif len(candidates) > 1:
+                    unique_titles = []
+                    seen_titles = set()
+                    for candidate in candidates:
+                        title = str(candidate.get("title") or "").strip()
+                        if not title:
+                            continue
+                        title_l = title.lower()
+                        if title_l in seen_titles:
+                            continue
+                        seen_titles.add(title_l)
+                        unique_titles.append(title)
+                    if len(unique_titles) == 1:
+                        selected_title = unique_titles[0]
+                        item["game"] = selected_title
+                        selected_title_l = selected_title.lower()
+                        selected_dates = []
+                        seen_dates = set()
+                        for candidate in candidates:
+                            if str(candidate.get("title") or "").strip().lower() != selected_title_l:
+                                continue
+                            valid_until = str(candidate.get("valid_until") or "").strip()
+                            if not valid_until or valid_until in seen_dates:
+                                continue
+                            seen_dates.add(valid_until)
+                            selected_dates.append(valid_until)
+                        if len(selected_dates) == 1:
+                            item["_subscription_valid_until"] = selected_dates[0]
+                        elif len(selected_dates) > 1:
+                            item["_subscription_term_dates"] = selected_dates
+                    elif len(unique_titles) > 1:
                         # Сохраняем список кандидатов, чтобы валидация показала понятное предупреждение.
-                        item["_game_candidates"] = candidates
+                        item["_game_candidates"] = unique_titles
                     if key in staged_accounts:
                         # Помечаем аккаунт как "будущий" из этого же файла, чтобы валидация не требовала наличие в БД.
                         item["_account_declared_in_file"] = True
@@ -556,7 +597,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                         "value": game_title,
                         "message": "Игра не указана — строка будет пропущена",
                     })
-                elif resolve_game_product_id_by_title(conn, game_title) is None:
+                elif resolve_slot_product_meta_by_title(conn, game_title) is None:
                     warnings.append({
                         "sheet": report_sheet,
                         "row": report_row,
@@ -791,13 +832,59 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                     warnings.append({"row": report_row, "field": "Слот", "value": slot_val, "account": account_val, "message": "Слот не найден в БД"})
 
             if game_title:
-                if resolve_game_product_id_by_title(conn, game_title) is None:
+                product_meta = resolve_slot_product_meta_by_title(conn, game_title)
+                if product_meta is None:
                     if account_key:
                         if account_key not in warned_account_game_missing:
                             warnings.append({"row": report_row, "field": "Товар", "value": game_title, "account": account_val, "message": "Товар не найден"})
                             warned_account_game_missing.add(account_key)
                     else:
                         warnings.append({"row": report_row, "field": "Товар", "value": game_title, "account": account_val, "message": "Товар не найден"})
+                elif str(product_meta.get("type_code") or "") == "subscription":
+                    # Для подписки обязательно определяем и проверяем срок из листов ПЛЮС/EA PLAY.
+                    if isinstance(row.get("_subscription_term_dates"), list) and len(row.get("_subscription_term_dates")) > 1:
+                        warnings.append({
+                            "row": report_row,
+                            "field": "Срок подписки",
+                            "value": ", ".join(str(x) for x in row.get("_subscription_term_dates")),
+                            "account": account_val,
+                            "message": "Найдено несколько дат срока подписки — выберите срок однозначно",
+                        })
+                    else:
+                        term_date = normalize_slot_date(row.get("_subscription_valid_until"))
+                        if not term_date:
+                            warnings.append({
+                                "row": report_row,
+                                "field": "Срок подписки",
+                                "value": str(row.get("_subscription_valid_until") or ""),
+                                "account": account_val,
+                                "message": "Дата срока подписки не найдена в листах ПЛЮС/EA PLAY",
+                            })
+                        elif account_key:
+                            term_row = q1(
+                                conn,
+                                """
+                                SELECT st.term_id
+                                FROM app.subscription_terms st
+                                JOIN app.accounts a ON a.account_id = st.account_id
+                                JOIN app.domains d ON d.domain_id = a.domain_id
+                                WHERE lower(a.login_name) = lower(%s)
+                                  AND lower(d.name) = lower(%s)
+                                  AND st.product_id = %s
+                                  AND st.valid_until = %s::date
+                                  AND st.is_archived IS NOT TRUE
+                                LIMIT 1
+                                """,
+                                (login, domain, int(product_meta["product_id"]), term_date),
+                            )
+                            if not term_row:
+                                warnings.append({
+                                    "row": report_row,
+                                    "field": "Срок подписки",
+                                    "value": term_date,
+                                    "account": account_val,
+                                    "message": "Срок подписки не найден в БД для аккаунта и товара",
+                                })
             else:
                 candidates = row.get("_game_candidates") or []
                 if isinstance(candidates, list) and len(candidates) > 1:

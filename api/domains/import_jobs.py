@@ -107,8 +107,8 @@ def build_import_jobs(
                 return None
         return int(row[0])
 
-    # Резолвит игровой товар по названию для импорта только через product_id.
-    def find_game_link_by_title(conn, title: str):
+    # Резолвит товар (игра или подписка) по названию для импорта через product_id.
+    def find_slot_product_link_by_title(conn, title: str):
         if not title:
             return None
         row = q1(
@@ -117,7 +117,7 @@ def build_import_jobs(
             SELECT p.product_id
             FROM app.products p
             WHERE lower(p.title) = lower(%s)
-              AND lower(p.type_code) = 'game'
+              AND lower(p.type_code) IN ('game', 'subscription')
               AND p.is_archived IS NOT TRUE
             ORDER BY p.product_id
             LIMIT 1
@@ -421,7 +421,7 @@ def build_import_jobs(
                                 account_id = int(row_new_acc[0])
                                 ensure_account_platforms(conn, account_id)
                                 created += 1
-                            product_id = find_game_link_by_title(conn, game_title)
+                            product_id = find_slot_product_link_by_title(conn, game_title)
                             if product_id is None:
                                 skipped += 1
                                 upload_done += 1
@@ -731,12 +731,41 @@ def build_import_jobs(
                     account_id = int(account_row[0])
 
                     # Резолвим товар по названию и дальше работаем только через product_id.
-                    game_link = find_game_link_by_title(conn, game_title)
+                    game_link = find_slot_product_link_by_title(conn, game_title)
                     if game_link is None:
                         skipped += 1
                         prepared.append({"skip": True})
                         continue
                     product_id = game_link
+                    product_type_row = q1(conn, "SELECT lower(type_code) FROM app.products WHERE product_id=%s", (product_id,))
+                    product_type_code = str(product_type_row[0] or "").strip().lower() if product_type_row else ""
+                    subscription_term_id = None
+                    if product_type_code == "subscription":
+                        # Для подписки привязываем конкретный срок по дате из листов ПЛЮС/EA PLAY.
+                        term_date_raw = row.get("_subscription_valid_until")
+                        term_date = normalize_slot_date_to_dt(term_date_raw)
+                        if not term_date:
+                            skipped += 1
+                            prepared.append({"skip": True})
+                            continue
+                        term_row = q1(
+                            conn,
+                            """
+                            SELECT term_id
+                            FROM app.subscription_terms
+                            WHERE account_id=%s
+                              AND product_id=%s
+                              AND valid_until=%s::date
+                              AND is_archived IS NOT TRUE
+                            LIMIT 1
+                            """,
+                            (account_id, product_id, term_date.date().isoformat()),
+                        )
+                        if not term_row:
+                            skipped += 1
+                            prepared.append({"skip": True})
+                            continue
+                        subscription_term_id = int(term_row[0])
 
                     slot_key = normalize_slot_file_value(slot_val)
                     slot_mapping = SLOT_FILE_TO_TYPE.get(slot_key)
@@ -755,6 +784,8 @@ def build_import_jobs(
                         "row_idx": report_row,
                         "account_id": account_id,
                         "product_id": product_id,
+                        "product_type_code": product_type_code,
+                        "subscription_term_id": subscription_term_id,
                         "slot_type_code": slot_type_code,
                         "slot_instance": slot_instance,
                         "customer": customer,
@@ -767,7 +798,13 @@ def build_import_jobs(
                 for item in prepared:
                     if item.get("skip"):
                         continue
-                    key = (item["account_id"], item["product_id"], item["slot_type_code"], item.get("slot_instance"))
+                    key = (
+                        item["account_id"],
+                        item["product_id"],
+                        item.get("subscription_term_id"),
+                        item["slot_type_code"],
+                        item.get("slot_instance"),
+                    )
                     groups.setdefault(key, []).append(item)
 
                 for key in groups:
@@ -786,6 +823,7 @@ def build_import_jobs(
                         try:
                             account_id = item["account_id"]
                             product_id = item["product_id"]
+                            subscription_term_id = item.get("subscription_term_id")
                             slot_type_code = item["slot_type_code"]
                             assigned_at = item["assigned_at"]
                             completed_at = item["completed_at"]
@@ -814,13 +852,13 @@ def build_import_jobs(
                             row_item = q1(conn, """
                                 INSERT INTO app.deal_items(
                                   deal_id, account_id, product_id, platform_id,
-                                  qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, slot_type_code, notes, game_link
+                                  qty, price, purchase_cost, fee, purchase_at, start_at, end_at, slots_used, slot_type_code, subscription_term_id, notes, game_link
                                 )
-                                VALUES (%s, %s, %s, %s, 1, 0, 0, 0, %s, %s, NULL, 1, %s, NULL, NULL)
+                                VALUES (%s, %s, %s, %s, 1, 0, 0, 0, %s, %s, NULL, 1, %s, %s, NULL, NULL)
                                 RETURNING deal_item_id
                             """, (
                                 deal_id, account_id, product_id, platform_id,
-                                completed_at, completed_at, slot_type_code
+                                completed_at, completed_at, slot_type_code, subscription_term_id
                             ))
                             deal_item_id = int(row_item[0])
 
@@ -828,12 +866,12 @@ def build_import_jobs(
                                 conn,
                                 """
                                 INSERT INTO app.account_slot_assignments(
-                                  account_id, slot_type_code, customer_id, product_id, deal_id, deal_item_id, assigned_at, assigned_by
+                                  account_id, slot_type_code, customer_id, product_id, subscription_term_id, deal_id, deal_item_id, assigned_at, assigned_by
                                 )
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                                 RETURNING assignment_id
                                 """,
-                                (account_id, slot_type_code, customer_id, product_id, deal_id, deal_item_id, assigned_at, owner),
+                                (account_id, slot_type_code, customer_id, product_id, subscription_term_id, deal_id, deal_item_id, assigned_at, owner),
                             )
                             assignment_id = int(assignment_row[0])
 
