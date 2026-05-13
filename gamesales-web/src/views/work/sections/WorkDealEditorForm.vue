@@ -1728,7 +1728,7 @@ function getDealProductDisplayLabel(target) {
   const deal = isEdit ? editDeal.value : newDeal.value
   const productId = Number(deal?.product_id || 0)
   if (!productId) return '—'
-  const productLabel = getProductLabelById.value(productId)
+  let productLabel = getProductLabelById.value(productId)
   const subscriptionMode = isEdit ? isEditRentalSubscriptionMode.value : isNewRentalSubscriptionMode.value
   const termId = Number(deal?.subscription_term_id || 0)
   if (!subscriptionMode || !termId) return productLabel
@@ -1741,6 +1741,10 @@ function getDealProductDisplayLabel(target) {
       ? (Array.isArray(subscriptionAvailableItemsEdit.value) ? subscriptionAvailableItemsEdit.value : [])
       : (Array.isArray(subscriptionAvailableItemsNew.value) ? subscriptionAvailableItemsNew.value : [])
     selectedTerm = available.find((item) => Number(item?.term_id || 0) === termId)
+  }
+  // Если справочник товаров еще не догрузился, берем имя подписки из выбранного срока, чтобы не показывать product_id.
+  if (String(productLabel || '').trim() === String(productId) && selectedTerm?.product_title) {
+    productLabel = String(selectedTerm.product_title).trim()
   }
   const termLabel = formatSubscriptionTermLabel(selectedTerm)
   return `${productLabel} ${termLabel}`.trim()

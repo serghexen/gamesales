@@ -773,6 +773,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 SELECT source_id
                 FROM app.sources
                 WHERE lower(name) = lower(%s) AND lower(code) = lower(%s)
+                  AND is_archived IS NOT TRUE
                 """,
                 (name_part, code_part),
             )
@@ -783,6 +784,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                     SELECT source_id
                     FROM app.sources
                     WHERE lower(name) = lower(%s) AND lower(code) = lower(%s)
+                      AND is_archived IS NOT TRUE
                     """,
                     (code_part, name_part),
                 )
@@ -792,7 +794,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 """
                 SELECT source_id
                 FROM app.sources
-                WHERE lower(code) = lower(%s) OR lower(name) = lower(%s)
+                WHERE (lower(code) = lower(%s) OR lower(name) = lower(%s))
+                  AND is_archived IS NOT TRUE
                 """,
                 (source_val, source_val),
             )
@@ -973,6 +976,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                         SELECT 1
                         FROM app.sources
                         WHERE lower(name) = lower(%s) AND lower(code) = lower(%s)
+                          AND is_archived IS NOT TRUE
                         """,
                         (name_part, code_part),
                     )
@@ -983,6 +987,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                             SELECT 1
                             FROM app.sources
                             WHERE lower(name) = lower(%s) AND lower(code) = lower(%s)
+                              AND is_archived IS NOT TRUE
                             """,
                             (code_part, name_part),
                         )
@@ -992,7 +997,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                         """
                         SELECT 1
                         FROM app.sources
-                        WHERE lower(code) = lower(%s) OR lower(name) = lower(%s)
+                        WHERE (lower(code) = lower(%s) OR lower(name) = lower(%s))
+                          AND is_archived IS NOT TRUE
                         """,
                         (source_val, source_val),
                     )
