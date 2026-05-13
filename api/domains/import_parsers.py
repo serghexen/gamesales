@@ -380,7 +380,11 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
             rows = list(ws.iter_rows(values_only=True))
             if not rows:
                 continue
-            headers = [slot_import_header_map.get(str(cell).strip(), str(cell).strip()) if cell is not None else "" for cell in rows[0]]
+            # Для листа "Аккаунты" используем account-заголовки, где колонка игры обычно называется "Игры".
+            if name_norm == "аккаунты":
+                headers = [normalize_account_import_header(cell) for cell in rows[0]]
+            else:
+                headers = [slot_import_header_map.get(str(cell).strip(), str(cell).strip()) if cell is not None else "" for cell in rows[0]]
             for row in rows[1:]:
                 if not any(row):
                     continue
