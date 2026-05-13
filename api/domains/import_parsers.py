@@ -742,11 +742,11 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
             account_key = None
 
             if not account_val:
-                errors.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Аккаунт обязателен"})
+                errors.append({"row": report_row, "field": "Аккаунт", "value": account_val, "account": account_val, "message": "Аккаунт обязателен"})
             else:
                 login, domain = split_account(account_val)
                 if not login or not domain:
-                    warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Нужно значение в формате login@domain"})
+                    warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "account": account_val, "message": "Нужно значение в формате login@domain"})
                 else:
                     account_key = (login.lower(), domain.lower())
                     row_acc = q1(
@@ -761,27 +761,27 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                     )
                     if not row_acc:
                         if not bool(row.get("_account_declared_in_file")) and account_key not in warned_accounts:
-                            warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Аккаунт не найден"})
+                            warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "account": account_val, "message": "Аккаунт не найден"})
                             warned_accounts.add(account_key)
 
             if not slot_val:
-                errors.append({"row": report_row, "field": "Слот", "value": slot_val, "message": "Слот обязателен"})
+                errors.append({"row": report_row, "field": "Слот", "value": slot_val, "account": account_val, "message": "Слот обязателен"})
             else:
                 normalized_slot = normalize_slot_file_value(slot_val)
                 slot_mapping = slot_file_to_type.get(normalized_slot)
                 if not slot_mapping:
-                    warnings.append({"row": report_row, "field": "Слот", "value": slot_val, "message": "Неизвестный слот"})
+                    warnings.append({"row": report_row, "field": "Слот", "value": slot_val, "account": account_val, "message": "Неизвестный слот"})
                 elif slot_mapping[0].lower() not in slot_types:
-                    warnings.append({"row": report_row, "field": "Слот", "value": slot_val, "message": "Слот не найден в БД"})
+                    warnings.append({"row": report_row, "field": "Слот", "value": slot_val, "account": account_val, "message": "Слот не найден в БД"})
 
             if game_title:
                 if resolve_game_product_id_by_title(conn, game_title) is None:
                     if account_key:
                         if account_key not in warned_account_game_missing:
-                            warnings.append({"row": report_row, "field": "Товар", "value": game_title, "message": "Товар не найден"})
+                            warnings.append({"row": report_row, "field": "Товар", "value": game_title, "account": account_val, "message": "Товар не найден"})
                             warned_account_game_missing.add(account_key)
                     else:
-                        warnings.append({"row": report_row, "field": "Товар", "value": game_title, "message": "Товар не найден"})
+                        warnings.append({"row": report_row, "field": "Товар", "value": game_title, "account": account_val, "message": "Товар не найден"})
             else:
                 candidates = row.get("_game_candidates") or []
                 if isinstance(candidates, list) and len(candidates) > 1:
@@ -791,6 +791,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                                 "row": report_row,
                                 "field": "Товар",
                                 "value": ", ".join(str(x) for x in candidates),
+                                "account": account_val,
                                 "message": "Найдено несколько товаров/подписок для аккаунта — выберите товар однозначно",
                             })
                             warned_account_game_ambiguous.add(account_key)
@@ -799,6 +800,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                             "row": report_row,
                             "field": "Товар",
                             "value": ", ".join(str(x) for x in candidates),
+                            "account": account_val,
                             "message": "Найдено несколько товаров/подписок для аккаунта — выберите товар однозначно",
                         })
                 else:
@@ -808,6 +810,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                                 "row": report_row,
                                 "field": "Товар",
                                 "value": game_title,
+                                "account": account_val,
                                 "message": "Товар не найден (нет совпадения в листах Аккаунты/ПЛЮС/EA PLAY)",
                             })
                             warned_account_game_missing.add(account_key)
@@ -816,11 +819,12 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                             "row": report_row,
                             "field": "Товар",
                             "value": game_title,
+                            "account": account_val,
                             "message": "Товар не найден (нет совпадения в листах Аккаунты/ПЛЮС/EA PLAY)",
                         })
 
             if not customer:
-                warnings.append({"row": report_row, "field": "Пользователь", "value": customer, "message": "Пользователь не указан"})
+                warnings.append({"row": report_row, "field": "Пользователь", "value": customer, "account": account_val, "message": "Пользователь не указан"})
 
             if source_val:
                 parts = [p for p in str(source_val).strip().split() if p]
@@ -858,13 +862,13 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                         (source_val, source_val),
                     )
                 if not row_source:
-                    warnings.append({"row": report_row, "field": "Источник", "value": source_val, "message": "Источник не найден"})
+                    warnings.append({"row": report_row, "field": "Источник", "value": source_val, "account": account_val, "message": "Источник не найден"})
 
             if date_val not in (None, ""):
                 normalized_date = normalize_slot_date(date_val)
                 if not normalized_date:
                     original_date = normalize_cell_text(date_val)
-                    warnings.append({"row": report_row, "field": "Дата", "value": original_date, "message": "Не удалось распознать дату"})
+                    warnings.append({"row": report_row, "field": "Дата", "value": original_date, "account": account_val, "message": "Не удалось распознать дату"})
 
             if progress_cb:
                 progress_cb(idx - 1)

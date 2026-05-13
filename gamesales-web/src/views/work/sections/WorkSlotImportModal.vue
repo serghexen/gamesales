@@ -109,6 +109,7 @@
                 <thead>
                   <tr>
                     <th>Строка</th>
+                    <th>Почта</th>
                     <th>Поле</th>
                     <th>Значение</th>
                     <th>Предупреждение</th>
@@ -117,6 +118,7 @@
                 <tbody>
                   <tr v-for="(e, idx) in slotImportWarnings" :key="`sw-${idx}`">
                     <td>{{ e.row }}</td>
+                    <td>{{ e.account || '—' }}</td>
                     <td>{{ e.field }}</td>
                     <td>{{ e.value || '—' }}</td>
                     <td>{{ e.message }}</td>
