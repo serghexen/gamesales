@@ -714,7 +714,18 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         raw = str(value).strip()
         if not raw:
             return None
-        m = re.search(r"(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})", raw)
+        # Сначала обрабатываем ISO-формат строго как YYYY-MM-DD.
+        iso = re.match(r"^\s*(\d{4})-(\d{1,2})-(\d{1,2})\s*$", raw)
+        if iso:
+            y = int(iso.group(1))
+            mo = int(iso.group(2))
+            d = int(iso.group(3))
+            try:
+                return date(y, mo, d).isoformat()
+            except ValueError:
+                return None
+        # Затем обрабатываем только полный формат D/M/Y (без совпадений по подстроке).
+        m = re.match(r"^\s*(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\s*$", raw)
         if m:
             d = int(m.group(1))
             mo = int(m.group(2))
