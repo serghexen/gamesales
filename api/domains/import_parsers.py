@@ -380,12 +380,28 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
             rows = list(ws.iter_rows(values_only=True))
             if not rows:
                 continue
+            # Листы могут быть без шапки (данные сразу с первой строки), поэтому определяем это эвристикой.
+            first_row = rows[0]
+            first_account = str(first_row[0] or "").strip() if len(first_row) > 0 else ""
+            first_looks_like_data = bool(split_account(first_account)[0] and split_account(first_account)[1])
+            has_header = not first_looks_like_data
+
             # Для листа "Аккаунты" используем account-заголовки, где колонка игры обычно называется "Игры".
-            if name_norm == "аккаунты":
-                headers = [normalize_account_import_header(cell) for cell in rows[0]]
+            if has_header:
+                if name_norm == "аккаунты":
+                    headers = [normalize_account_import_header(cell) for cell in rows[0]]
+                else:
+                    headers = [slot_import_header_map.get(str(cell).strip(), str(cell).strip()) if cell is not None else "" for cell in rows[0]]
+                data_rows = rows[1:]
             else:
-                headers = [slot_import_header_map.get(str(cell).strip(), str(cell).strip()) if cell is not None else "" for cell in rows[0]]
-            for row in rows[1:]:
+                # Без заголовка используем фиксированную схему колонок, как в шаблоне импорта.
+                if name_norm == "аккаунты":
+                    headers = ["account", "game"]
+                else:
+                    headers = ["account", "subscription", "valid_until"]
+                data_rows = rows
+
+            for row in data_rows:
                 if not any(row):
                     continue
                 item = {}
