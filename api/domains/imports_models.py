@@ -5,6 +5,8 @@ from pydantic import BaseModel
 
 class ImportIssue(BaseModel):
     row: int
+    sheet: Optional[str] = None
+    account: Optional[str] = None
     field: str
     value: Optional[str] = None
     message: str
