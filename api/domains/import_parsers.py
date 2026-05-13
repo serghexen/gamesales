@@ -826,11 +826,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
 
             if date_val not in (None, ""):
                 normalized_date = normalize_slot_date(date_val)
-                original_date = normalize_cell_text(date_val)
-                if normalized_date:
-                    if normalized_date != original_date:
-                        warnings.append({"row": report_row, "field": "Дата", "value": original_date, "message": f"Будет сохранено как {normalized_date}"})
-                else:
+                if not normalized_date:
+                    original_date = normalize_cell_text(date_val)
                     warnings.append({"row": report_row, "field": "Дата", "value": original_date, "message": "Не удалось распознать дату"})
 
             if progress_cb:
