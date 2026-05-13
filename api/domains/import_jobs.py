@@ -688,6 +688,7 @@ def build_import_jobs(
 
                 prepared = []
                 for idx, row in enumerate(rows, start=2):
+                    report_row = int(row.get("_sheet_row") or idx)
                     status_raw = row.get("status")
                     status = "" if status_raw is None else str(status_raw).strip().lower()
                     if not status or status == "свободен":
@@ -751,7 +752,7 @@ def build_import_jobs(
 
                     prepared.append({
                         "skip": False,
-                        "row_idx": idx,
+                        "row_idx": report_row,
                         "account_id": account_id,
                         "product_id": product_id,
                         "slot_type_code": slot_type_code,

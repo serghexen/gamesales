@@ -267,7 +267,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 raw = str(cell.value).strip()
                 headers.append(game_import_header_map.get(raw, raw))
         data = []
-        for row in ws.iter_rows(min_row=2, values_only=True):
+        for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
             if not any(row):
                 continue
             item = {}
@@ -462,6 +462,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                     if key in staged_accounts:
                         # Помечаем аккаунт как "будущий" из этого же файла, чтобы валидация не требовала наличие в БД.
                         item["_account_declared_in_file"] = True
+            # Сохраняем реальный номер строки в листе для точного отчета предупреждений/ошибок.
+            item["_sheet_row"] = row_idx
             data.append(item)
         return data
 
@@ -720,7 +722,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         slot_types = {str(r[0]).strip().lower() for r in slot_rows}
 
         for idx, row in enumerate(rows, start=2):
-            report_row = idx - 1
+            report_row = int(row.get("_sheet_row") or idx)
             if progress_cb:
                 progress_cb(idx - 1)
             status_raw = row.get("status")
