@@ -711,6 +711,10 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         errors = []
         warnings = []
         total = 0
+        # Запоминаем уже показанные предупреждения по аккаунту, чтобы не дублировать одно и то же на каждой строке.
+        warned_accounts: set[tuple[str, str]] = set()
+        warned_account_game_missing: set[tuple[str, str]] = set()
+        warned_account_game_ambiguous: set[tuple[str, str]] = set()
 
         slot_rows = qall(conn, "SELECT code FROM app.slot_types")
         slot_types = {str(r[0]).strip().lower() for r in slot_rows}
@@ -731,6 +735,9 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
             customer = normalize_cell_text(row.get("customer"))
             source_val = normalize_cell_text(row.get("source"))
             date_val = row.get("date")
+            login = None
+            domain = None
+            account_key = None
 
             if not account_val:
                 errors.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Аккаунт обязателен"})
@@ -739,6 +746,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 if not login or not domain:
                     warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Нужно значение в формате login@domain"})
                 else:
+                    account_key = (login.lower(), domain.lower())
                     row_acc = q1(
                         conn,
                         """
@@ -750,8 +758,9 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                         (login, domain),
                     )
                     if not row_acc:
-                        if not bool(row.get("_account_declared_in_file")):
+                        if not bool(row.get("_account_declared_in_file")) and account_key not in warned_accounts:
                             warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Аккаунт не найден"})
+                            warned_accounts.add(account_key)
 
             if not slot_val:
                 errors.append({"row": report_row, "field": "Слот", "value": slot_val, "message": "Слот обязателен"})
@@ -765,23 +774,48 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
 
             if game_title:
                 if resolve_game_product_id_by_title(conn, game_title) is None:
-                    warnings.append({"row": report_row, "field": "Товар", "value": game_title, "message": "Товар не найден"})
+                    if account_key:
+                        if account_key not in warned_account_game_missing:
+                            warnings.append({"row": report_row, "field": "Товар", "value": game_title, "message": "Товар не найден"})
+                            warned_account_game_missing.add(account_key)
+                    else:
+                        warnings.append({"row": report_row, "field": "Товар", "value": game_title, "message": "Товар не найден"})
             else:
                 candidates = row.get("_game_candidates") or []
                 if isinstance(candidates, list) and len(candidates) > 1:
-                    warnings.append({
-                        "row": report_row,
-                        "field": "Товар",
-                        "value": ", ".join(str(x) for x in candidates),
-                        "message": "Найдено несколько товаров/подписок для аккаунта — выберите товар однозначно",
-                    })
+                    if account_key:
+                        if account_key not in warned_account_game_ambiguous:
+                            warnings.append({
+                                "row": report_row,
+                                "field": "Товар",
+                                "value": ", ".join(str(x) for x in candidates),
+                                "message": "Найдено несколько товаров/подписок для аккаунта — выберите товар однозначно",
+                            })
+                            warned_account_game_ambiguous.add(account_key)
+                    else:
+                        warnings.append({
+                            "row": report_row,
+                            "field": "Товар",
+                            "value": ", ".join(str(x) for x in candidates),
+                            "message": "Найдено несколько товаров/подписок для аккаунта — выберите товар однозначно",
+                        })
                 else:
-                    warnings.append({
-                        "row": report_row,
-                        "field": "Товар",
-                        "value": game_title,
-                        "message": "Товар не найден (нет совпадения в листах Аккаунты/ПЛЮС/EA PLAY)",
-                    })
+                    if account_key:
+                        if account_key not in warned_account_game_missing:
+                            warnings.append({
+                                "row": report_row,
+                                "field": "Товар",
+                                "value": game_title,
+                                "message": "Товар не найден (нет совпадения в листах Аккаунты/ПЛЮС/EA PLAY)",
+                            })
+                            warned_account_game_missing.add(account_key)
+                    else:
+                        warnings.append({
+                            "row": report_row,
+                            "field": "Товар",
+                            "value": game_title,
+                            "message": "Товар не найден (нет совпадения в листах Аккаунты/ПЛЮС/EA PLAY)",
+                        })
 
             if not customer:
                 warnings.append({"row": report_row, "field": "Пользователь", "value": customer, "message": "Пользователь не указан"})
