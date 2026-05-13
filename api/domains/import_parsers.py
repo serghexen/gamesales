@@ -309,10 +309,31 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
             is_bindings_sheet = sheet_name_norm == "аккаунты"
             is_plus_sheet = sheet_name_norm == "плюс"
             is_ea_play_sheet = sheet_name_norm == "ea play"
-            headers = [normalize_account_import_header(cell.value) for cell in ws[1]]
-            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            rows = list(ws.iter_rows(values_only=True))
+            if not rows:
+                continue
+            first_row = rows[0]
+            first_account = str(first_row[0] or "").strip() if len(first_row) > 0 else ""
+            first_looks_like_data = bool(split_account(first_account)[0] and split_account(first_account)[1])
+            # Без заголовка поддерживаем только листы ПЛЮС и EA PLAY.
+            allow_no_header = is_plus_sheet or is_ea_play_sheet
+            has_header = (not first_looks_like_data) or (not allow_no_header)
+
+            if has_header:
+                headers = [normalize_account_import_header(cell) for cell in rows[0]]
+                iter_rows = list(enumerate(rows[1:], start=2))
+            else:
+                # Для листов ПЛЮС/EA PLAY без шапки берем фиксированный порядок колонок.
+                if is_plus_sheet or is_ea_play_sheet:
+                    headers = ["account", "subscription", "valid_until"]
+                else:
+                    headers = ["account", "password", "reserve1", "reserve2", "reserve3", "reserve4", "reserve5", "reserve6", "reserve7", "reserve8", "reserve9", "reserve10"]
+                iter_rows = list(enumerate(rows, start=1))
+
+            for row_idx, row in iter_rows:
                 # Ограничиваем чтение верхними строками листа, чтобы локальный прогон был предсказуемым.
-                if effective_limit is not None and row_idx > (1 + effective_limit):
+                max_row_idx = (1 + effective_limit) if has_header else effective_limit
+                if effective_limit is not None and row_idx > max_row_idx:
                     break
                 if not any(row):
                     continue
@@ -394,7 +415,9 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
             first_row = rows[0]
             first_account = str(first_row[0] or "").strip() if len(first_row) > 0 else ""
             first_looks_like_data = bool(split_account(first_account)[0] and split_account(first_account)[1])
-            has_header = not first_looks_like_data
+            # В вспомогательном разборе без заголовка поддерживаем только ПЛЮС/EA PLAY.
+            allow_no_header = name_norm in {"плюс", "ea play"}
+            has_header = (not first_looks_like_data) or (not allow_no_header)
 
             # Для листа "Аккаунты" используем account-заголовки, где колонка игры обычно называется "Игры".
             if has_header:
@@ -405,10 +428,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 data_rows = rows[1:]
             else:
                 # Без заголовка используем фиксированную схему колонок, как в шаблоне импорта.
-                if name_norm == "аккаунты":
-                    headers = ["account", "game"]
-                else:
-                    headers = ["account", "subscription", "valid_until"]
+                headers = ["account", "subscription", "valid_until"]
                 data_rows = rows
 
             for row in data_rows:
