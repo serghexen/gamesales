@@ -332,9 +332,10 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
 
             for row_idx, row in iter_rows:
                 # Ограничиваем чтение верхними строками листа, чтобы локальный прогон был предсказуемым.
-                max_row_idx = (1 + effective_limit) if has_header else effective_limit
-                if effective_limit is not None and row_idx > max_row_idx:
-                    break
+                if effective_limit is not None:
+                    max_row_idx = (1 + effective_limit) if has_header else effective_limit
+                    if row_idx > max_row_idx:
+                        break
                 if not any(row):
                     continue
                 item = {}
