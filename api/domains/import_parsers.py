@@ -86,6 +86,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
     slot_import_header_map = {
         "Аккаунт": "account",
         "аккаунт": "account",
+        "Почта": "account",
+        "почта": "account",
         "Товар": "game",
         "товар": "game",
         "Игра": "game",
@@ -96,10 +98,16 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         "пользователь": "customer",
         "Источник": "source",
         "источник": "source",
+        "Откуда": "source",
+        "откуда": "source",
         "Дата": "date",
         "дата": "date",
+        "Покупка": "date",
+        "покупка": "date",
         "Слот": "slot",
         "слот": "slot",
+        "Платформа": "slot",
+        "платформа": "slot",
     }
     slot_file_to_type = {
         "п4": ("activate_ps4", 1),
@@ -340,9 +348,86 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 data.append(item)
         return data
 
+    # Приводит название подписки из листов к тому виду, как товар хранится в каталоге.
+    def normalize_subscription_slot_title(raw_title: Any, sheet_name: str) -> str:
+        title = str(raw_title or "").strip()
+        if not title:
+            return ""
+        if str(sheet_name or "").strip().lower() == "ea play":
+            return "EA PLAY"
+        return title
+
+    # Собирает кандидатов товара по аккаунту из вспомогательных листов файла.
+    def build_account_slot_product_candidates(wb) -> dict[tuple[str, str], list[str]]:
+        candidates: dict[tuple[str, str], list[str]] = {}
+
+        def add_candidate(account_value: Any, title_value: Any):
+            account_raw = str(account_value or "").strip()
+            title_raw = str(title_value or "").strip()
+            login, domain = split_account(account_raw)
+            if not login or not domain or not title_raw:
+                return
+            key = (login.lower(), domain.lower())
+            bucket = candidates.setdefault(key, [])
+            if title_raw not in bucket:
+                bucket.append(title_raw)
+
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            name_norm = str(sheet_name or "").strip().lower()
+            if name_norm not in {"аккаунты", "плюс", "ea play"}:
+                continue
+            rows = list(ws.iter_rows(values_only=True))
+            if not rows:
+                continue
+            headers = [slot_import_header_map.get(str(cell).strip(), str(cell).strip()) if cell is not None else "" for cell in rows[0]]
+            for row in rows[1:]:
+                if not any(row):
+                    continue
+                item = {}
+                for idx, key in enumerate(headers):
+                    if key:
+                        item[key] = row[idx] if idx < len(row) else None
+                if name_norm == "аккаунты":
+                    add_candidate(item.get("account"), item.get("game"))
+                else:
+                    add_candidate(item.get("account"), normalize_subscription_slot_title(item.get("subscription"), sheet_name))
+        return candidates
+
+    # Собирает аккаунты, которые будут созданы в этом же файле (листы Почты*), чтобы не ругаться на "не найден в БД".
+    def build_staged_slot_accounts(wb) -> set[tuple[str, str]]:
+        staged: set[tuple[str, str]] = set()
+        for sheet_name in wb.sheetnames:
+            name_norm = str(sheet_name or "").strip().lower()
+            if not name_norm.startswith("почты"):
+                continue
+            ws = wb[sheet_name]
+            rows = list(ws.iter_rows(values_only=True))
+            if not rows:
+                continue
+            headers = [normalize_account_import_header(cell) for cell in rows[0]]
+            for row in rows[1:]:
+                if not any(row):
+                    continue
+                item = {}
+                for idx, key in enumerate(headers):
+                    if key:
+                        item[key] = row[idx] if idx < len(row) else None
+                login, domain = split_account(str(item.get("account") or "").strip())
+                if login and domain:
+                    staged.add((login.lower(), domain.lower()))
+        return staged
+
     def read_slots_from_excel(content: bytes) -> list[dict]:
         wb = load_workbook(BytesIO(content), data_only=True)
+        # Для импорта слотов приоритетно читаем лист "Пользователи", иначе используем active.
         ws = wb.active
+        for sheet_name in wb.sheetnames:
+            if str(sheet_name or "").strip().lower() == "пользователи":
+                ws = wb[sheet_name]
+                break
+        account_product_candidates = build_account_slot_product_candidates(wb)
+        staged_accounts = build_staged_slot_accounts(wb)
         headers = []
         for cell in ws[1]:
             if cell.value is None:
@@ -359,6 +444,20 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 if not key:
                     continue
                 item[key] = row[idx] if idx < len(row) else None
+            # Если в листе нет явной колонки товара, пробуем взять его по аккаунту из листов Аккаунты/ПЛЮС/EA PLAY.
+            if not str(item.get("game") or "").strip():
+                login, domain = split_account(str(item.get("account") or "").strip())
+                if login and domain:
+                    key = (login.lower(), domain.lower())
+                    candidates = account_product_candidates.get(key, [])
+                    if len(candidates) == 1:
+                        item["game"] = candidates[0]
+                    elif len(candidates) > 1:
+                        # Сохраняем список кандидатов, чтобы валидация показала понятное предупреждение.
+                        item["_game_candidates"] = candidates
+                    if key in staged_accounts:
+                        # Помечаем аккаунт как "будущий" из этого же файла, чтобы валидация не требовала наличие в БД.
+                        item["_account_declared_in_file"] = True
             data.append(item)
         return data
 
@@ -647,7 +746,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                         (login, domain),
                     )
                     if not row_acc:
-                        warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Аккаунт не найден"})
+                        if not bool(row.get("_account_declared_in_file")):
+                            warnings.append({"row": report_row, "field": "Аккаунт", "value": account_val, "message": "Аккаунт не найден"})
 
             if not slot_val:
                 errors.append({"row": report_row, "field": "Слот", "value": slot_val, "message": "Слот обязателен"})
@@ -663,7 +763,21 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 if resolve_game_product_id_by_title(conn, game_title) is None:
                     warnings.append({"row": report_row, "field": "Товар", "value": game_title, "message": "Товар не найден"})
             else:
-                warnings.append({"row": report_row, "field": "Товар", "value": game_title, "message": "Товар не указан"})
+                candidates = row.get("_game_candidates") or []
+                if isinstance(candidates, list) and len(candidates) > 1:
+                    warnings.append({
+                        "row": report_row,
+                        "field": "Товар",
+                        "value": ", ".join(str(x) for x in candidates),
+                        "message": "Найдено несколько товаров/подписок для аккаунта — выберите товар однозначно",
+                    })
+                else:
+                    warnings.append({
+                        "row": report_row,
+                        "field": "Товар",
+                        "value": game_title,
+                        "message": "Товар не найден (нет совпадения в листах Аккаунты/ПЛЮС/EA PLAY)",
+                    })
 
             if not customer:
                 warnings.append({"row": report_row, "field": "Пользователь", "value": customer, "message": "Пользователь не указан"})

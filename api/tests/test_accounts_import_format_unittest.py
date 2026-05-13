@@ -261,6 +261,97 @@ class AccountsImportFormatTests(unittest.TestCase):
             self.assertFalse(any(w.get("field") == "Почта" and "Аккаунт не найден" in str(w.get("message") or "") for w in warnings))
             self.assertTrue(any(w.get("field") == "Игры" and "Игра не найдена" in str(w.get("message") or "") for w in warnings))
 
+    # Проверяет, что slots-парсер подтягивает товар из листа "Аккаунты" по почте.
+    def test_read_slots_from_excel_resolves_game_from_akkaunty_sheet(self):
+        wb = Workbook()
+        ws_users = wb.active
+        ws_users.title = "Пользователи"
+        ws_users.append(["Почта", "Статус", "Платформа", "Пользователь", "Откуда", "Покупка"])
+        ws_users.append(["user1@gmail.com", "ЗАНЯТ", "PS5(1)", "Buyer", "ASAT TG", "01.04.2026"])
+        ws_accounts = wb.create_sheet("Аккаунты")
+        ws_accounts.append(["Почта", "Игры"])
+        ws_accounts.append(["user1@gmail.com", "EA FC 26"])
+        out = BytesIO()
+        wb.save(out)
+
+        rows = app_module.read_slots_from_excel(out.getvalue())
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["account"], "user1@gmail.com")
+        self.assertEqual(rows[0]["slot"], "PS5(1)")
+        self.assertEqual(rows[0]["game"], "EA FC 26")
+
+    # Проверяет предупреждение, когда товар не найден ни в строке, ни в листах Аккаунты/ПЛЮС/EA PLAY.
+    def test_validate_slot_import_rows_warns_when_game_not_found_from_related_sheets(self):
+        rows = [{
+            "account": "user1@gmail.com",
+            "status": "ЗАНЯТ",
+            "slot": "PS5(1)",
+            "game": "",
+            "customer": "Buyer",
+            "source": "ASAT TG",
+            "date": "01.04.2026",
+        }]
+        script = [
+            {"all": [("play_ps5",)]},   # slot_types
+            {"one": (1,)},              # account exists
+            {"one": (1,)},              # source exists
+        ]
+        with _ScriptedConnCtx(script) as conn:
+            errors, warnings, total = app_module.validate_slot_import_rows(conn, rows)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(total, 1)
+        self.assertTrue(any("Товар не найден (нет совпадения в листах Аккаунты/ПЛЮС/EA PLAY)" in str(w.get("message") or "") for w in warnings))
+
+    # Проверяет предупреждение, если по аккаунту найдено несколько кандидатов товара/подписки.
+    def test_validate_slot_import_rows_warns_for_multiple_game_candidates(self):
+        rows = [{
+            "account": "user1@gmail.com",
+            "status": "ЗАНЯТ",
+            "slot": "PS5(1)",
+            "game": "",
+            "_game_candidates": ["EA FC 26", "EA PLAY"],
+            "customer": "Buyer",
+            "source": "ASAT TG",
+            "date": "01.04.2026",
+        }]
+        script = [
+            {"all": [("play_ps5",)]},   # slot_types
+            {"one": (1,)},              # account exists
+            {"one": (1,)},              # source exists
+        ]
+        with _ScriptedConnCtx(script) as conn:
+            errors, warnings, total = app_module.validate_slot_import_rows(conn, rows)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(total, 1)
+        self.assertTrue(any("Найдено несколько товаров/подписок для аккаунта" in str(w.get("message") or "") for w in warnings))
+
+    # Проверяет, что для "будущего" аккаунта из этого же файла не показываем предупреждение "Аккаунт не найден".
+    def test_validate_slot_import_rows_skips_missing_account_warning_for_staged_account(self):
+        rows = [{
+            "account": "future@gmail.com",
+            "_account_declared_in_file": True,
+            "status": "ЗАНЯТ",
+            "slot": "PS5(1)",
+            "game": "EA FC 26",
+            "customer": "Buyer",
+            "source": "ASAT TG",
+            "date": "01.04.2026",
+        }]
+        script = [
+            {"all": [("play_ps5",)]},   # slot_types
+            {"one": None},              # account missing in DB
+            {"one": (77,)},             # product exists
+            {"one": (1,)},              # source exists
+        ]
+        with _ScriptedConnCtx(script) as conn:
+            errors, warnings, total = app_module.validate_slot_import_rows(conn, rows)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(total, 1)
+        self.assertFalse(any(w.get("field") == "Аккаунт" and "Аккаунт не найден" in str(w.get("message") or "") for w in warnings))
+
     # Проверяет валидацию сроков подписок: аккаунт должен существовать, дата обязательна и парсится.
     def test_accounts_import_validate_subscription_terms_requires_account_and_date(self):
         wb = Workbook()
