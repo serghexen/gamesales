@@ -440,7 +440,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 raw = str(cell.value).strip()
                 headers.append(slot_import_header_map.get(raw, raw))
         data = []
-        for row in ws.iter_rows(min_row=2, values_only=True):
+        for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
             if not any(row):
                 continue
             item = {}
