@@ -1548,7 +1548,6 @@ function collectQuickAccountMissingLabels(state, { subscriptionMode = false, has
   if (!String(state?.login_name || '').trim()) missing.push('логин')
   if (!String(state?.domain_code || '').trim()) missing.push('домен')
   if (!String(state?.password || '').trim()) missing.push('пароль аккаунта')
-  if (!String(state?.notes || '').trim()) missing.push('комментарий')
   if (subscriptionMode && !hasSelectedProduct && !Number(state?.subscription_product_id || 0)) missing.push('подписка')
   return missing
 }

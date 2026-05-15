@@ -572,10 +572,6 @@ export function useDealsFlow({
       error.value = 'Укажите пароль аккаунта'
       return
     }
-    if (!String(state.notes || '').trim()) {
-      error.value = 'Укажите комментарий'
-      return
-    }
     const selectedRefs = resolveSelectedDealRefs(target)
     const selectedProductId = Number(selectedRefs.productId || 0)
     const selectedProductIsSubscription = selectedProductId && isSubscriptionProduct(selectedProductId)
@@ -595,10 +591,6 @@ export function useDealsFlow({
       return
     }
     const regionCode = resolveQuickAccountRegionCode(target, selectedProductId, quickSubscriptionProductId)
-    if (!regionCode) {
-      error.value = 'Укажите регион у товара или сделки'
-      return
-    }
     loading.value = true
     try {
       const created = await apiPost(
@@ -606,7 +598,7 @@ export function useDealsFlow({
         {
           login_name: state.login_name,
           domain_code: state.domain_code,
-          region_code: regionCode,
+          region_code: regionCode || null,
           account_date: getTodayAccountDate(),
           notes: state.notes ? String(state.notes).trim() : null,
         },
