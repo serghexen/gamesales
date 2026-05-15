@@ -379,19 +379,19 @@ describe('useDealsActions', () => {
     expect(deps.dealError.value).toBe('deal was modified by another user')
   })
 
-  it('shows warning for market order duplicate during updateDeal', async () => {
-    const conflict = new Error('order_number must be unique for market source')
+  it('shows warning for ym/ozon/wb order duplicate during updateDeal', async () => {
+    const conflict = new Error('order_number must be unique for source ym/ozon/wb')
     conflict.status = 409
     const deps = createDeps({
       apiPut: vi.fn().mockRejectedValue(conflict),
-      mapApiError: vi.fn(() => 'Для market-источника номер заказа уже используется'),
+      mapApiError: vi.fn(() => 'Для источников ym/ozon/wb номер заказа уже используется'),
     })
     const { updateDeal } = useDealsActions(deps)
 
     await updateDeal()
 
-    expect(deps.showDealWarning).toHaveBeenCalledWith('Для market-источника номер заказа уже используется')
-    expect(deps.dealError.value).toBe('Для market-источника номер заказа уже используется')
+    expect(deps.showDealWarning).toHaveBeenCalledWith('Для источников ym/ozon/wb номер заказа уже используется')
+    expect(deps.dealError.value).toBe('Для источников ym/ozon/wb номер заказа уже используется')
   })
 
   it('shows warning on version conflict during markDealCompleted', async () => {

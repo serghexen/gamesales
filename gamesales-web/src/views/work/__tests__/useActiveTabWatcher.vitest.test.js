@@ -10,8 +10,8 @@ function createHarness({ role = 'manager', responsible = '', preset = '', tab = 
     responsible_q: preset,
     search_q: '',
   })
-  const productFilters = reactive({ q: '' })
-  const accountFilters = reactive({ search_q: '' })
+  const productFilters = reactive({ q: '', type_code: '', platform_code: '', region_code: '' })
+  const accountFilters = reactive({ search_q: '', login_q: '', product_q: '', region_q: '', status_q: '', date_from: '', date_to: '' })
   const productFilterDraft = reactive({ title: '', type: '', platform: '', region: '' })
   const accountFilterDraft = reactive({ login: '', product: '', region: '', status: '', date_from: '', date_to: '' })
   const defaultDealsResponsibleFilter = ref(responsible)
@@ -20,6 +20,8 @@ function createHarness({ role = 'manager', responsible = '', preset = '', tab = 
   const loadNsGiftBalance = vi.fn().mockResolvedValue(undefined)
   const loadNsGiftCategories = vi.fn().mockResolvedValue(undefined)
   const reloadNsGiftData = vi.fn().mockResolvedValue(undefined)
+
+  const loadProducts = vi.fn().mockResolvedValue(undefined)
 
   useActiveTabWatcher({
     activeTab,
@@ -66,7 +68,7 @@ function createHarness({ role = 'manager', responsible = '', preset = '', tab = 
     loadDomains: vi.fn().mockResolvedValue(undefined),
     loadSources: vi.fn().mockResolvedValue(undefined),
     loadSlotTypes: vi.fn().mockResolvedValue(undefined),
-    loadProducts: vi.fn().mockResolvedValue(undefined),
+    loadProducts,
     loadProductsAll: vi.fn().mockResolvedValue(undefined),
     loadAccounts: vi.fn().mockResolvedValue(undefined),
     loadAccountsAll: vi.fn().mockResolvedValue(undefined),
@@ -87,6 +89,7 @@ function createHarness({ role = 'manager', responsible = '', preset = '', tab = 
     productFilterDraft,
     accountFilterDraft,
     loadDeals,
+    loadProducts,
     loadNsGiftBalance,
     loadNsGiftCategories,
     reloadNsGiftData,
@@ -205,16 +208,39 @@ describe('useActiveTabWatcher', () => {
   it('clears search fields after switching top tabs', async () => {
     const h = createHarness({ tab: 'accounts' })
     h.accountFilters.search_q = 'тест'
+    h.accountFilters.login_q = 'acc'
+    h.accountFilters.product_q = 'game'
+    h.accountFilters.region_q = 'TR'
+    h.accountFilters.status_q = 'active'
+    h.accountFilters.date_from = '2026-01-01'
+    h.accountFilters.date_to = '2026-01-31'
     h.accountFilterDraft.login = 'mail'
     h.activeTab.value = 'deals'
     await Promise.resolve()
     expect(h.dealFilters.search_q).toBe('')
 
     h.dealFilters.search_q = 'поиск'
+    h.productFilters.type_code = 'subscription'
+    h.productFilters.platform_code = 'ps4'
+    h.productFilters.region_code = 'TR'
     h.activeTab.value = 'products'
     await Promise.resolve()
     expect(h.productFilters.q).toBe('')
+    expect(h.productFilters.type_code).toBe('')
+    expect(h.productFilters.platform_code).toBe('')
+    expect(h.productFilters.region_code).toBe('')
     expect(h.productFilterDraft.title).toBe('')
+    expect(h.loadProducts).toHaveBeenCalled()
+
+    h.activeTab.value = 'accounts'
+    await Promise.resolve()
+    expect(h.accountFilters.search_q).toBe('')
+    expect(h.accountFilters.login_q).toBe('')
+    expect(h.accountFilters.product_q).toBe('')
+    expect(h.accountFilters.region_q).toBe('')
+    expect(h.accountFilters.status_q).toBe('')
+    expect(h.accountFilters.date_from).toBe('')
+    expect(h.accountFilters.date_to).toBe('')
   })
 
 })

@@ -87,7 +87,7 @@ export const mapApiError = (message) => {
   if (text.includes('slots_used must be >= 1 for rental')) return 'Для шеринга укажите количество слотов (минимум 1)'
   if (text.includes('slots_used must be >= 1')) return 'Количество слотов должно быть не меньше 1'
   if (text.includes('deal_type_code must be sale or rental')) return 'Тип сделки должен быть продажа или шеринг'
-  if (text.includes('order_number must be unique for market source')) {
+  if (text.includes('order_number must be unique for source ym/ozon/wb')) {
     // Оставляем подробности конфликта в тексте, чтобы менеджер мог быстро найти нужную сделку.
     const conflictDealId = text.match(/deal_id=([0-9]+)/)?.[1]
     const conflictCustomer = text.match(/customer=([^;]+)/)?.[1]?.trim()
@@ -100,8 +100,8 @@ export const mapApiError = (message) => {
       conflictDate ? `дата: ${conflictDate}` : '',
     ].filter(Boolean).join(', ')
     return details
-      ? `Для market-источника номер заказа уже используется. ${details}`
-      : 'Для market-источника номер заказа уже используется'
+      ? `Для источников ym/ozon/wb номер заказа уже используется. ${details}`
+      : 'Для источников ym/ozon/wb номер заказа уже используется'
   }
   if (text.includes('Unknown flow_status_code')) return 'Неизвестный статус'
   if (text.includes('flow_status_code draft is allowed only for sale deals')) return 'Черновик доступен только для продажи'

@@ -34,7 +34,6 @@ export function useActiveTabWatcher({
   domains,
   sources,
   slotTypes,
-  products,
   productsAll,
   accountsAll,
   productsPage,
@@ -64,10 +63,21 @@ export function useActiveTabWatcher({
       dealFilters.search_q = ''
     }
     if (tab === 'accounts' && accountFilters) {
+      // Сбрасываем все примененные фильтры аккаунтов, чтобы таблица не оставалась в старом состоянии.
       accountFilters.search_q = ''
+      accountFilters.login_q = ''
+      accountFilters.product_q = ''
+      accountFilters.region_q = ''
+      accountFilters.status_q = ''
+      accountFilters.date_from = ''
+      accountFilters.date_to = ''
     }
     if (tab === 'products' && productFilters) {
+      // Сбрасываем все фильтры товаров, не только строку поиска.
       productFilters.q = ''
+      productFilters.type_code = ''
+      productFilters.platform_code = ''
+      productFilters.region_code = ''
     }
     // Черновики фильтров тоже чистим, чтобы попапы не показывали старый поиск.
     if (tab === 'accounts' && accountFilterDraft) {
@@ -109,9 +119,8 @@ export function useActiveTabWatcher({
         if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
       }
       productsPage.value = 1
-      if (!products.value.length) {
-        await loadProducts()
-      }
+      // Всегда перезагружаем список после сброса фильтров, иначе останется старый отфильтрованный массив.
+      await loadProducts()
       if (!productsAllLoadedOnce.value && !productsAll.value.length) {
         await loadProductsAll()
         if (productsAll.value.length) productsAllLoadedOnce.value = true

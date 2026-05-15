@@ -688,10 +688,8 @@ const deactivationDaysLeft = computed(() => {
 
 // Блокирует чекбокс деактивации до окончания таймера повторной активации.
 const deactivationToggleDisabled = computed(() => {
-  if (accountBusy.value) return true
-  if (!props.editAccount?.is_deactivated) return false
-  const days = deactivationDaysLeft.value
-  return typeof days === 'number' && days > 0
+  // Разрешаем ручное снятие деактивации в любой момент; блокируем только на время сохранения/загрузки.
+  return accountBusy.value
 })
 
 // В режиме просмотра показываем статус рядом с именем только для деактивированного аккаунта.

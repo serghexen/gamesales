@@ -61,7 +61,7 @@ export function useDealsActions({
   // Определяет ошибку дубля market-заказа по устойчивым фрагментам сообщения API.
   function isMarketOrderDuplicate(error) {
     const text = String(error?.message || '').toLowerCase()
-    return text.includes('order_number must be unique for market source')
+    return text.includes('order_number must be unique for source ym/ozon/wb')
       || text.includes('номер заказа уже используется')
   }
 

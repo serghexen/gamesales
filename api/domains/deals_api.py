@@ -167,7 +167,7 @@ def mount_deals_routes(
         params.append(customer_id)
         exec1(conn, f"UPDATE app.customers SET {', '.join(updates)} WHERE customer_id=%s", tuple(params))
 
-    # Проверяет уникальность номера заказа для market-источников в связке (source_id, order_number).
+    # Проверяет уникальность номера заказа для источников ym/ozon/wb в связке (source_id, order_number).
     def validate_market_order_number_unique(
         conn,
         source_id: Optional[int],
@@ -183,8 +183,9 @@ def mount_deals_routes(
             (source_id,),
         )
         source_code = str(source_row[0] or "") if source_row else ""
-        # Правило включается только для источников, где код содержит market.
-        if "market" not in source_code.lower():
+        # Правило включается только для источников ym/ozon/wb.
+        normalized_source_code = source_code.lower().strip()
+        if normalized_source_code not in {"ym", "ozon", "wb"}:
             return
         # Разделяем запросы на две ветки, чтобы Postgres не получал "безтиповый" NULL-параметр.
         if exclude_deal_id is None:
@@ -250,7 +251,7 @@ def mount_deals_routes(
             # Возвращаем подсказку с deal_id, чтобы менеджер мог сразу открыть конфликтующую сделку.
             raise HTTPException(
                 409,
-                f"order_number must be unique for market source; deal_id={conflict_deal_id}; customer={conflict_customer}; product={conflict_product}; created_at={conflict_date_text}",
+                f"order_number must be unique for source ym/ozon/wb; deal_id={conflict_deal_id}; customer={conflict_customer}; product={conflict_product}; created_at={conflict_date_text}",
             )
 
     # Валидирует product_id и тип товара для операций со сделками.
