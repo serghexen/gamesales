@@ -39,6 +39,18 @@ export function useWorkActions({
   closeProductModal,
   goToAccount,
 }) {
+  let accountSlotAssignmentsRequestSeq = 0
+
+  // Распознает кратковременный сетевой сбой браузера, который стоит тихо повторить.
+  function isTransientFetchError(error) {
+    const text = String(error?.message || '').toLowerCase()
+    return text.includes('failed to fetch') || text.includes('networkerror')
+  }
+
+  // Небольшая пауза перед повтором, чтобы сгладить редкие скачки сети/прокси.
+  async function sleep(ms) {
+    await new Promise((resolve) => setTimeout(resolve, ms))
+  }
   // Переход из карточки товара прямо к аккаунту.
   function openAccountFromProduct(login) {
     if (!login) return
@@ -87,6 +99,7 @@ export function useWorkActions({
 
   // Подгружает назначения слотов у аккаунта для модалки аккаунта.
   async function loadAccountSlotAssignments(accountId) {
+    const requestId = ++accountSlotAssignmentsRequestSeq
     if (!accountId) {
       accountSlotAssignments.value = []
       return
@@ -94,13 +107,25 @@ export function useWorkActions({
     accountSlotAssignmentsLoading.value = true
     accountSlotAssignmentsError.value = null
     try {
-      const data = await apiGet(`/accounts/${accountId}/slot-assignments`, { token: auth.state.token })
+      let data
+      try {
+        data = await apiGet(`/accounts/${accountId}/slot-assignments`, { token: auth.state.token })
+      } catch (e) {
+        if (!isTransientFetchError(e)) throw e
+        await sleep(250)
+        data = await apiGet(`/accounts/${accountId}/slot-assignments`, { token: auth.state.token })
+      }
+      // Если пользователь уже переключился на другую карточку, старый ответ игнорируем.
+      if (requestId !== accountSlotAssignmentsRequestSeq || Number(editAccount?.account_id || 0) !== Number(accountId || 0)) return
       accountSlotAssignments.value = data || []
     } catch (e) {
+      if (requestId !== accountSlotAssignmentsRequestSeq || Number(editAccount?.account_id || 0) !== Number(accountId || 0)) return
       accountSlotAssignmentsError.value = mapApiError(e?.message)
       accountSlotAssignments.value = []
     } finally {
-      accountSlotAssignmentsLoading.value = false
+      if (requestId === accountSlotAssignmentsRequestSeq) {
+        accountSlotAssignmentsLoading.value = false
+      }
     }
   }
 

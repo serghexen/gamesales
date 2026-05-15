@@ -74,6 +74,19 @@ export function useAccountsFlow({
   }
 
   let initialEditAccountSnapshot = null
+  let accountDealsRequestSeq = 0
+
+  // Определяет кратковременный сетевой сбой, который можно безопасно повторить.
+  function isTransientFetchError(error) {
+    const text = String(error?.message || '').toLowerCase()
+    return text.includes('failed to fetch') || text.includes('networkerror')
+  }
+
+  // Делает короткую паузу перед повтором запроса, чтобы снизить шанс ложной ошибки.
+  async function sleep(ms) {
+    await new Promise((resolve) => setTimeout(resolve, ms))
+  }
+
   // Раскодирует base64-строку с учетом UTF-8.
   function decodeSecret(value) {
     try {
@@ -299,6 +312,7 @@ export function useAccountsFlow({
 
   // Загружает сделки по конкретному аккаунту.
   async function loadAccountDeals(accountId) {
+    const requestId = ++accountDealsRequestSeq
     accountDealsLoading.value = true
     accountDealsError.value = null
     try {
@@ -306,13 +320,25 @@ export function useAccountsFlow({
       params.set('account_id', String(accountId))
       params.set('page', '1')
       params.set('page_size', '200')
-      const res = await apiGet(`/deals?${params.toString()}`, { token: auth.state.token })
+      let res
+      try {
+        res = await apiGet(`/deals?${params.toString()}`, { token: auth.state.token })
+      } catch (e) {
+        if (!isTransientFetchError(e)) throw e
+        await sleep(250)
+        res = await apiGet(`/deals?${params.toString()}`, { token: auth.state.token })
+      }
+      // Не затираем карточку данными от старого запроса, если пользователь уже переключился.
+      if (requestId !== accountDealsRequestSeq || Number(editAccount?.account_id || 0) !== Number(accountId || 0)) return
       accountDeals.value = res?.items || []
     } catch (e) {
+      if (requestId !== accountDealsRequestSeq || Number(editAccount?.account_id || 0) !== Number(accountId || 0)) return
       accountDealsError.value = mapApiError(e?.message)
       accountDeals.value = []
     } finally {
-      accountDealsLoading.value = false
+      if (requestId === accountDealsRequestSeq) {
+        accountDealsLoading.value = false
+      }
     }
   }
 
