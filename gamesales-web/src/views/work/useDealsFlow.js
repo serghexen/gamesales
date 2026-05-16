@@ -361,7 +361,13 @@ export function useDealsFlow({
         }
         dealAccountsForProductEdit.value = list
       } else {
-        dealAccountsForProductNew.value = data || []
+        let list = data || []
+        const currentId = newDeal.account_id
+        if (currentId && !list.find((a) => a.account_id === currentId)) {
+          const fallback = (accountsAll.value || []).find((a) => a.account_id === currentId)
+          if (fallback) list = [fallback, ...list]
+        }
+        dealAccountsForProductNew.value = list
       }
     } catch {
       if (isEdit) dealAccountsForProductEdit.value = []

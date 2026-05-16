@@ -29,7 +29,7 @@ function buildCtx(overrides = {}) {
 }
 
 describe('WorkTopBar', () => {
-  it('renders all managers without limiting preview list', () => {
+  it('renders only managers with active pending deals', () => {
     const wrapper = mount(WorkTopBar, {
       props: {
         ctx: buildCtx({
@@ -52,8 +52,8 @@ describe('WorkTopBar', () => {
       },
     })
 
-    expect(wrapper.findAll('.tab-workload__item')).toHaveLength(5)
-    expect(wrapper.text()).toContain('Менеджер 5')
+    expect(wrapper.findAll('.tab-workload__item')).toHaveLength(4)
+    expect(wrapper.text()).not.toContain('Менеджер 5')
   })
 
   it('marks only online users with blinking dot class', () => {

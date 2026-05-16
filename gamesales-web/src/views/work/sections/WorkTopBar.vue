@@ -122,9 +122,11 @@ const canViewProfileSection = computed(() => unref(props.ctx.canViewProfileSecti
 const canViewDashboardSection = computed(() => unref(props.ctx.canViewDashboardSection))
 const userRoleName = computed(() => unref(props.ctx.userRoleName))
 const managerLoadPreview = computed(() => {
-  // Показываем полный список менеджеров/операторов и онлайн-флаг для индикатора в шапке.
+  // В шапке показываем только тех, у кого есть активные сделки в работе.
   const raw = unref(props.ctx.managersLoadItems) || []
-  return (Array.isArray(raw) ? raw : []).map((item) => {
+  return (Array.isArray(raw) ? raw : [])
+    .filter((item) => Number(item?.pending_count || 0) > 0)
+    .map((item) => {
     const username = String(item?.username || '').trim()
     const name = String(item?.name || '').trim()
     const pendingCount = Number(item?.pending_count || 0)
