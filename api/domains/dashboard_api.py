@@ -11,7 +11,7 @@ PRESENCE_INDEX_KEY = "app.presence.index"
 PRESENCE_META_HASH_KEY = "app.presence.meta"
 PRESENCE_TTL_SECONDS = 90
 MSK_TZ_NAME = "Europe/Moscow"
-WORKLOAD_ROLE_CODES = ("manager", "operator")
+WORKLOAD_ROLE_CODES = ("manager", "operator", "owner")
 
 
 def mount_dashboard_routes(
@@ -47,7 +47,7 @@ def mount_dashboard_routes(
         except Exception:
             return
 
-    # Собирает из Redis активных менеджеров/операторов и их timestamp последнего пинга.
+    # Собирает из Redis активных пользователей рабочих ролей и их timestamp последнего пинга.
     def load_online_managers_from_presence():
         online = {}
         now_ts = datetime.now(timezone.utc).timestamp()
@@ -115,7 +115,7 @@ def mount_dashboard_routes(
                   FROM app.deals d
                   LEFT JOIN app.deal_items di ON di.deal_id = d.deal_id
                   JOIN app.users match_u
-                    ON lower(match_u.role_code) IN ('manager', 'operator')
+                    ON lower(match_u.role_code) IN ('manager', 'operator', 'owner')
                    AND (
                      lower(match_u.username) = lower(COALESCE(d.responsible_username, ''))
                      OR lower(COALESCE(match_u.name, '')) = lower(COALESCE(d.responsible_username, ''))
@@ -123,7 +123,7 @@ def mount_dashboard_routes(
                   WHERE d.flow_status_code = 'pending'
                   GROUP BY lower(match_u.username)
                 ) work ON work.manager_username = lower(u.username)
-                WHERE lower(u.role_code) IN ('manager', 'operator')
+                WHERE lower(u.role_code) IN ('manager', 'operator', 'owner')
                 ORDER BY COALESCE(work.pending_count, 0) DESC, u.username ASC
                 """,
                 (),
