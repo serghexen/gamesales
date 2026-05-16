@@ -18,7 +18,7 @@
             <input
               v-model.trim="accountFilters.search_q"
               class="input input--compact input--account-search"
-              placeholder="почта, домен, регион, игра"
+              placeholder="почта, домен, регион, игра, покупатель"
               @keydown.enter.prevent="applyAccountSearch"
             />
           </label>

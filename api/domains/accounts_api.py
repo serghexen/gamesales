@@ -158,8 +158,27 @@ def mount_accounts_routes(
             filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR (a.login_name || '@' || d.name) ILIKE %s)")
             params.extend([f"%{login_q}%", f"%{login_q}%", f"%{login_q}%"])
         if q:
-            filters.append("(a.login_name ILIKE %s OR d.name ILIKE %s OR (a.login_name || '@' || d.name) ILIKE %s OR r.code ILIKE %s OR apa.product_titles_text ILIKE %s)")
-            params.extend([f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"])
+            filters.append(
+                """
+                (
+                  a.login_name ILIKE %s
+                  OR d.name ILIKE %s
+                  OR (a.login_name || '@' || d.name) ILIKE %s
+                  OR r.code ILIKE %s
+                  OR apa.product_titles_text ILIKE %s
+                  OR EXISTS (
+                    SELECT 1
+                    FROM app.deal_items di_q
+                    JOIN app.deals d_q ON d_q.deal_id = di_q.deal_id
+                    JOIN app.customers c_q ON c_q.customer_id = d_q.customer_id
+                    WHERE di_q.account_id = a.account_id
+                      AND c_q.nickname ILIKE %s
+                      AND d_q.status_code <> 'cancelled'
+                  )
+                )
+                """
+            )
+            params.extend([f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"])
         if product_q:
             filters.append("apa.product_titles_text ILIKE %s")
             params.append(f"%{product_q}%")
@@ -376,10 +395,8 @@ def mount_accounts_routes(
     
     @app.post("/accounts", response_model=AccountOut)
     def create_account(payload: AccountCreate, user=Depends(get_current_user)):
-        # Для создания аккаунта требуем полный базовый набор полей карточки.
+        # Для создания аккаунта требуем базовые поля; регион можно не указывать.
         missing_fields = []
-        if not payload.region_code:
-            missing_fields.append("region_code")
         if not payload.login_name:
             missing_fields.append("login_name")
         if not payload.domain_code:
@@ -390,7 +407,7 @@ def mount_accounts_routes(
             raise HTTPException(400, f"required fields are missing: {', '.join(missing_fields)}")
         validate_date_not_future(payload.account_date, "account_date")
         with psycopg.connect(DB_DSN) as conn:
-            region_id = get_region_id(conn, payload.region_code)
+            region_id = get_region_id(conn, payload.region_code) if payload.region_code else None
             domain_id = get_domain_id(conn, payload.domain_code)
 
             try:
