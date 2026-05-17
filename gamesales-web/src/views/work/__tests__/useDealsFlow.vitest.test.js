@@ -3,6 +3,16 @@ import { reactive, ref } from 'vue'
 
 import { useDealsFlow } from '../useDealsFlow.js'
 
+function createDeferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 function createHarness() {
   const h = {
     auth: { state: reactive({ token: 'token-1' }) },
@@ -54,6 +64,10 @@ function createHarness() {
     subscriptionFreeProductIdsEdit: ref([]),
     subscriptionFreeProductIdsLoadingNew: ref(false),
     subscriptionFreeProductIdsLoadingEdit: ref(false),
+    subscriptionTermsNew: ref([]),
+    subscriptionTermsEdit: ref([]),
+    subscriptionTermsLoadingNew: ref(false),
+    subscriptionTermsLoadingEdit: ref(false),
     subscriptionAvailableItemsNew: ref([]),
     subscriptionAvailableItemsEdit: ref([]),
     subscriptionAvailableItemsLoadingNew: ref(false),
@@ -136,6 +150,24 @@ describe('useDealsFlow', () => {
     expect(h.apiPut).not.toHaveBeenCalledWith('/accounts/9/products', expect.anything(), { token: 'token-1' })
   })
 
+  it('createQuickAccount does not require platform selection', async () => {
+    const h = createHarness()
+    h.quickNewAccount.platform_codes = []
+    h.apiPost.mockResolvedValueOnce({ account_id: 10 })
+
+    await h.createQuickAccount('new')
+
+    expect(h.quickNewAccountError.value).toBe('')
+    expect(h.apiPost).toHaveBeenCalledWith(
+      '/accounts',
+      expect.objectContaining({
+        login_name: 'qa',
+        domain_code: 'gmail.com',
+      }),
+      { token: 'token-1' },
+    )
+  })
+
   it('createQuickAccount creates subscription term when product selected in quick block', async () => {
     const h = createHarness()
     h.newDeal.deal_type_code = 'rental'
@@ -199,6 +231,17 @@ describe('useDealsFlow', () => {
     })
   })
 
+  it('loadDealProductAssignments skips API for subscription', async () => {
+    const h = createHarness()
+    h.productsAll.value = [{ product_id: 55, type_code: 'subscription' }]
+    h.newDeal.product_id = 55
+
+    await h.loadDealProductAssignments('new')
+
+    expect(h.apiGet).not.toHaveBeenCalledWith('/products/55/slot-assignments', { token: 'token-1' })
+    expect(h.dealGameAssignmentsNew.value).toEqual([])
+  })
+
   it('loadSubscriptionFreeProductIds returns only subscriptions with free selected slot', async () => {
     const h = createHarness()
     h.productsAll.value = [
@@ -219,6 +262,7 @@ describe('useDealsFlow', () => {
 
   it('loadAvailableSubscriptionItems loads flat list of available items by slot', async () => {
     const h = createHarness()
+    h.newDeal.slot_type_code = 'play_ps5'
     h.apiGet.mockResolvedValueOnce([{ term_id: 10, product_id: 55 }])
 
     await h.loadAvailableSubscriptionItems('new', 'play_ps5')
@@ -259,5 +303,70 @@ describe('useDealsFlow', () => {
     expect(h.newDeal.product_id).toBe('')
     expect(h.newDeal.subscription_term_id).toBe('')
     expect(h.newDeal.account_id).toBe('')
+  })
+
+  it('loadDealAccountsForProduct ignores stale response after slot switch', async () => {
+    const h = createHarness()
+    const first = createDeferred()
+    const second = createDeferred()
+    h.apiGet
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+
+    h.newDeal.slot_type_code = 'slot_a'
+    const requestA = h.loadDealAccountsForProduct('new')
+    h.newDeal.slot_type_code = 'slot_b'
+    const requestB = h.loadDealAccountsForProduct('new')
+
+    second.resolve([{ account_id: 22 }])
+    await requestB
+    first.resolve([{ account_id: 11 }])
+    await requestA
+
+    expect(h.dealAccountsForProductNew.value).toEqual([{ account_id: 22 }])
+  })
+
+  it('loadAvailableSubscriptionItems ignores stale response after slot switch', async () => {
+    const h = createHarness()
+    const first = createDeferred()
+    const second = createDeferred()
+    h.apiGet
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+
+    h.newDeal.slot_type_code = 'slot_a'
+    const requestA = h.loadAvailableSubscriptionItems('new', 'slot_a')
+    h.newDeal.slot_type_code = 'slot_b'
+    const requestB = h.loadAvailableSubscriptionItems('new', 'slot_b')
+
+    second.resolve([{ term_id: 2 }])
+    await requestB
+    first.resolve([{ term_id: 1 }])
+    await requestA
+
+    expect(h.subscriptionAvailableItemsNew.value).toEqual([{ term_id: 2 }])
+  })
+
+  it('loadSubscriptionTerms ignores stale response after slot switch', async () => {
+    const h = createHarness()
+    h.productsAll.value = [{ product_id: 55, type_code: 'subscription' }]
+    const first = createDeferred()
+    const second = createDeferred()
+    h.apiGet
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+
+    h.newDeal.product_id = 55
+    h.newDeal.slot_type_code = 'slot_a'
+    const requestA = h.loadSubscriptionTerms('new')
+    h.newDeal.slot_type_code = 'slot_b'
+    const requestB = h.loadSubscriptionTerms('new')
+
+    second.resolve([{ term_id: 200, account_id: 9, valid_until: '2027-01-01' }])
+    await requestB
+    first.resolve([{ term_id: 100, account_id: 7, valid_until: '2026-01-01' }])
+    await requestA
+
+    expect(h.subscriptionTermsNew.value).toEqual([{ term_id: 200, account_id: 9, valid_until: '2027-01-01' }])
   })
 })

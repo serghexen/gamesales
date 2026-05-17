@@ -1281,6 +1281,14 @@ const {
   dealFilters,
   dealShowCompleted,
 })
+
+// Возвращает тип товара по id для валидации шеринга при сохранении сделки.
+function resolveProductTypeCode(productId) {
+  const targetId = Number(productId || 0)
+  if (!targetId) return ''
+  const found = (productsAll.value || []).find((item) => Number(item?.product_id || 0) === targetId)
+  return String(found?.type_code || '').trim().toLowerCase()
+}
 // Отдельно подключаем действия создания/обновления сделок.
 const { createDeal, createDealDraft, updateDeal, updateDealDraft, deleteDeal, markDealCompleted, markDealReturned } = useDealsActions({
   auth,
@@ -1306,6 +1314,7 @@ const { createDeal, createDealDraft, updateDeal, updateDealDraft, deleteDeal, ma
   suppressUnsavedConfirm,
   showDealWarning,
   requestDealConfirm,
+  resolveProductTypeCode,
 })
 const usersSort = ref({ key: 'created_at', dir: 'desc' })
 const domainsSortAsc = ref(true)

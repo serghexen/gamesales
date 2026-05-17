@@ -112,6 +112,21 @@ export function useDealsFlow({
 
   // Используем единый product-first загрузчик справочника.
   const reloadProductsAll = loadProductsAll
+  // Счетчики запросов: защищают от перезаписи состояния "устаревшими" ответами при быстрых переключениях.
+  const dealAccountsRequestSeq = { new: 0, edit: 0 }
+  const subscriptionTermsRequestSeq = { new: 0, edit: 0 }
+  const availableSubscriptionItemsRequestSeq = { new: 0, edit: 0 }
+
+  // Проверяет, что ответ относится к актуально выбранным товару и слоту.
+  function isSameDealSelection(target, { productId = null, slotTypeCode = null } = {}) {
+    const isEdit = target === 'edit'
+    const deal = isEdit ? editDeal : newDeal
+    const currentProductId = Number(deal?.product_id || 0) || null
+    const currentSlotTypeCode = String(deal?.slot_type_code || '').trim()
+    if (productId !== null && Number(productId || 0) !== Number(currentProductId || 0)) return false
+    if (slotTypeCode !== null && String(slotTypeCode || '').trim() !== currentSlotTypeCode) return false
+    return true
+  }
 
   // Возвращает выбранный товар в форме сделки.
   function resolveSelectedDealRefs(target) {
@@ -165,6 +180,7 @@ export function useDealsFlow({
   // Загружает доступные сроки подписки под выбранные товар+слот.
   async function loadSubscriptionTerms(target) {
     const isEdit = target === 'edit'
+    const targetKey = isEdit ? 'edit' : 'new'
     const deal = isEdit ? editDeal : newDeal
     const listRef = isEdit ? subscriptionTermsEditRef : subscriptionTermsNewRef
     const loadingRef = isEdit ? subscriptionTermsLoadingEditRef : subscriptionTermsLoadingNewRef
@@ -175,12 +191,16 @@ export function useDealsFlow({
       loadingRef.value = false
       return
     }
+    const requestId = ++subscriptionTermsRequestSeq[targetKey]
     loadingRef.value = true
     try {
       const available = await apiGet(
         `/products/subscriptions/${encodeURIComponent(productId)}/terms/available?slot_type_code=${encodeURIComponent(slotTypeCode)}`,
         { token: auth.state.token }
       )
+      // Если пользователь уже переключил товар/слот, этот ответ больше не актуален.
+      if (requestId !== subscriptionTermsRequestSeq[targetKey]) return
+      if (!isSameDealSelection(target, { productId, slotTypeCode })) return
       let list = Array.isArray(available) ? available : []
       // Для редактирования сохраняем отображение уже выбранного срока, даже если он занят текущей сделкой.
       const selectedTermId = Number(deal?.subscription_term_id || 0)
@@ -188,6 +208,8 @@ export function useDealsFlow({
       if (isEdit && selectedTermId && !hasSelected) {
         try {
           const allTerms = await apiGet(`/products/subscriptions/${encodeURIComponent(productId)}/terms`, { token: auth.state.token })
+          if (requestId !== subscriptionTermsRequestSeq[targetKey]) return
+          if (!isSameDealSelection(target, { productId, slotTypeCode })) return
           const selected = (Array.isArray(allTerms) ? allTerms : []).find((item) => Number(item?.term_id || 0) === selectedTermId)
           if (selected) list = [selected, ...list]
         } catch {
@@ -204,15 +226,20 @@ export function useDealsFlow({
         deal.account_id = Number(selected.account_id)
       }
     } catch {
+      if (requestId !== subscriptionTermsRequestSeq[targetKey]) return
+      if (!isSameDealSelection(target, { productId, slotTypeCode })) return
       listRef.value = []
     } finally {
-      loadingRef.value = false
+      if (requestId === subscriptionTermsRequestSeq[targetKey]) {
+        loadingRef.value = false
+      }
     }
   }
 
   // Загружает плоский список доступных подписок (товар + срок) для выбранного слота.
   async function loadAvailableSubscriptionItems(target, slotTypeCode) {
     const isEdit = target === 'edit'
+    const targetKey = isEdit ? 'edit' : 'new'
     const listRef = isEdit ? subscriptionAvailableItemsEditRef : subscriptionAvailableItemsNewRef
     const loadingRef = isEdit ? subscriptionAvailableItemsLoadingEditRef : subscriptionAvailableItemsLoadingNewRef
     const normalizedSlotTypeCode = String(slotTypeCode || '').trim()
@@ -221,17 +248,25 @@ export function useDealsFlow({
       loadingRef.value = false
       return
     }
+    const requestId = ++availableSubscriptionItemsRequestSeq[targetKey]
     loadingRef.value = true
     try {
       const data = await apiGet(
         `/products/subscriptions/terms/available-for-deal?slot_type_code=${encodeURIComponent(normalizedSlotTypeCode)}`,
         { token: auth.state.token }
       )
+      // Игнорируем устаревший ответ, если слот уже изменился.
+      if (requestId !== availableSubscriptionItemsRequestSeq[targetKey]) return
+      if (!isSameDealSelection(target, { slotTypeCode: normalizedSlotTypeCode })) return
       listRef.value = Array.isArray(data) ? data : []
     } catch {
+      if (requestId !== availableSubscriptionItemsRequestSeq[targetKey]) return
+      if (!isSameDealSelection(target, { slotTypeCode: normalizedSlotTypeCode })) return
       listRef.value = []
     } finally {
-      loadingRef.value = false
+      if (requestId === availableSubscriptionItemsRequestSeq[targetKey]) {
+        loadingRef.value = false
+      }
     }
   }
 
@@ -336,6 +371,7 @@ export function useDealsFlow({
   // Загружает подходящие аккаунты для выбранного товара и типа слота.
   async function loadDealAccountsForProduct(target) {
     const isEdit = target === 'edit'
+    const targetKey = isEdit ? 'edit' : 'new'
     const refs = resolveSelectedDealRefs(target)
     const productId = refs.productId
     const slotTypeCode = isEdit ? editDeal.slot_type_code : newDeal.slot_type_code
@@ -345,6 +381,7 @@ export function useDealsFlow({
       else dealAccountsForProductNew.value = []
       return
     }
+    const requestId = ++dealAccountsRequestSeq[targetKey]
     dealAccountsForProductLoading.value = true
     try {
       // Список аккаунтов всегда берем из общего for-deal, чтобы учитывались реальные привязки товара к аккаунту.
@@ -352,6 +389,9 @@ export function useDealsFlow({
       params.set('product_id', String(productId))
       if (slotTypeCode) params.set('slot_type_code', slotTypeCode)
       const data = await apiGet(`/accounts/for-deal?${params.toString()}`, { token: auth.state.token })
+      // Отбрасываем устаревшие ответы от предыдущего товара/слота.
+      if (requestId !== dealAccountsRequestSeq[targetKey]) return
+      if (!isSameDealSelection(target, { productId, slotTypeCode })) return
       if (isEdit) {
         let list = data || []
         const currentId = editDeal.account_id
@@ -370,10 +410,14 @@ export function useDealsFlow({
         dealAccountsForProductNew.value = list
       }
     } catch {
+      if (requestId !== dealAccountsRequestSeq[targetKey]) return
+      if (!isSameDealSelection(target, { productId, slotTypeCode })) return
       if (isEdit) dealAccountsForProductEdit.value = []
       else dealAccountsForProductNew.value = []
     } finally {
-      dealAccountsForProductLoading.value = false
+      if (requestId === dealAccountsRequestSeq[targetKey]) {
+        dealAccountsForProductLoading.value = false
+      }
     }
   }
 
@@ -425,6 +469,12 @@ export function useDealsFlow({
     const refs = resolveSelectedDealRefs(target)
     const productId = refs.productId
     if (!productId) {
+      if (isEdit) dealGameAssignmentsEdit.value = []
+      else dealGameAssignmentsNew.value = []
+      return
+    }
+    if (isSubscriptionProduct(productId)) {
+      // Для подписок список slot-assignments не нужен: он используется только игровым сценарием дублей.
       if (isEdit) dealGameAssignmentsEdit.value = []
       else dealGameAssignmentsNew.value = []
       return
@@ -570,10 +620,7 @@ export function useDealsFlow({
       error.value = 'Выберите домен'
       return
     }
-    if (!state.platform_codes.length) {
-      error.value = 'Выберите платформу'
-      return
-    }
+    // Платформа в quick-форме нужна только как вспомогательная пометка и не участвует в payload аккаунта.
     if (!String(state.password || '').trim()) {
       error.value = 'Укажите пароль аккаунта'
       return

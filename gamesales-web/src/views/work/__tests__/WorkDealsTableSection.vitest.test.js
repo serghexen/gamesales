@@ -156,6 +156,32 @@ describe('WorkDealsTableSection', () => {
     expect(markDealCompleted).toHaveBeenCalledTimes(1)
   })
 
+  it('does not show complete action for draft deal in pending list', () => {
+    const markDealCompleted = vi.fn()
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        markDealCompleted,
+        dealShowCompleted: false,
+        sortedDeals: [
+          {
+            deal_id: 3,
+            deal_type: 'Продажа',
+            deal_type_code: 'sale',
+            flow_status: 'Черновик',
+            flow_status_code: 'draft',
+            customer_nickname: 'Покупатель',
+            responsible_username: 'manager',
+            is_refund: false,
+          },
+        ],
+      }),
+    })
+
+    expect(wrapper.find('button.mini-btn--complete').exists()).toBe(false)
+    expect(wrapper.find('button.mini-btn--danger').exists()).toBe(false)
+    expect(markDealCompleted).not.toHaveBeenCalled()
+  })
+
   it('supports multi-select for type filter', async () => {
     const dealFilters = {
       type_q: '',

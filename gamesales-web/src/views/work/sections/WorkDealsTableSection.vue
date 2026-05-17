@@ -355,7 +355,7 @@
             {{ getDealLockLabel(d.deal_id) }}
           </span>
           <button
-            v-else-if="!dealShowCompleted"
+            v-else-if="!dealShowCompleted && String(d.flow_status_code || '').toLowerCase() !== 'draft'"
             class="mini-btn mini-btn--complete"
             type="button"
             @click.stop="onMarkDealCompletedClick($event, d)"
@@ -365,7 +365,7 @@
             {{ dealSaving && dealCompletingId === d.deal_id ? 'Завершаем...' : 'Завершить' }}
           </button>
           <button
-            v-else-if="(d.deal_type_code === 'sale' || d.deal_type_code === 'rental') && !d.is_refund"
+            v-else-if="dealShowCompleted && (d.deal_type_code === 'sale' || d.deal_type_code === 'rental') && !d.is_refund"
             class="mini-btn mini-btn--danger"
             type="button"
             @click.stop="markDealReturned(d)"

@@ -83,7 +83,10 @@ export function useDealsViewState({
     if (!editDeal.slot_type_code) return []
     const selectedSlotType = normalizeSlotTypeCode(editDeal.slot_type_code)
     return (dealProductAssignmentsEdit.value || []).filter((s) => {
-      return !s.released_at && normalizeSlotTypeCode(s.slot_type_code) === selectedSlotType
+      // Для edit используем тот же порог 3 месяца, чтобы сценарий дубля был одинаковым с create.
+      return !s.released_at
+        && normalizeSlotTypeCode(s.slot_type_code) === selectedSlotType
+        && canUseAssignmentForDuplicateFlow(s)
     })
   })
 

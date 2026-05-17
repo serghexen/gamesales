@@ -66,6 +66,7 @@ function createDeps(overrides = {}) {
     suppressUnsavedConfirm: ref(false),
     showDealWarning: vi.fn(),
     requestDealConfirm: vi.fn().mockResolvedValue(true),
+    resolveProductTypeCode: vi.fn(() => 'game'),
     loadDeals: vi.fn().mockResolvedValue(undefined),
     loadAccountsAll: vi.fn().mockResolvedValue(undefined),
     closeDealModal: vi.fn(),
@@ -194,6 +195,34 @@ describe('useDealsActions', () => {
 
     expect(deps.apiPut).toHaveBeenCalledTimes(1)
     expect(deps.dealError.value).toBeNull()
+  })
+
+  it('updateDeal requires customer nickname for non-draft deal', async () => {
+    const deps = createDeps()
+    deps.editDeal.customer_nickname = ''
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.apiPut).not.toHaveBeenCalled()
+    expect(deps.dealError.value).toBe('Укажите покупателя')
+  })
+
+  it('createDeal requires subscription term for rental subscription', async () => {
+    const deps = createDeps({
+      resolveProductTypeCode: vi.fn(() => 'subscription'),
+    })
+    deps.newDeal.deal_type_code = 'rental'
+    deps.newDeal.account_id = 15
+    deps.newDeal.product_id = 56
+    deps.newDeal.slot_type_code = 'share'
+    deps.newDeal.subscription_term_id = ''
+    const { createDeal } = useDealsActions(deps)
+
+    await createDeal()
+
+    expect(deps.apiPost).not.toHaveBeenCalled()
+    expect(deps.dealError.value).toBe('Для подписки выберите срок')
   })
 
   it('updateDeal sends responsible and order number', async () => {

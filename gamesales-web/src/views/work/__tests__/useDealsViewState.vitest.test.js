@@ -20,7 +20,7 @@ function createHarness() {
     { slot_type_code: 'full', released_at: '2026-01-01' },
   ])
   const dealGameAssignmentsEdit = ref([
-    { slot_type_code: 'share', released_at: null },
+    { slot_type_code: 'share', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
   ])
 
   const state = useDealsViewState({
@@ -86,7 +86,7 @@ describe('useDealsViewState', () => {
       { assignment_id: 1, slot_type_code: 'full', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
     ])
     expect(h.state.dealProductAssignmentsForSelectedSlotEdit.value).toEqual([
-      { slot_type_code: 'share', released_at: null },
+      { slot_type_code: 'share', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
     ])
     expect(h.state.hasAnyProductAssignmentsNew.value).toBe(true)
     expect(h.state.hasAnyProductAssignmentsEdit.value).toBe(true)
@@ -101,7 +101,7 @@ describe('useDealsViewState', () => {
 
     expect(h.state.dealProductAssignmentsForSelectedSlotNew.value.map((item) => item.assignment_id)).toEqual([1])
     expect(h.state.dealProductAssignmentsForSelectedSlotEdit.value).toEqual([
-      { slot_type_code: 'share', released_at: null },
+      { slot_type_code: 'share', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
     ])
   })
 })

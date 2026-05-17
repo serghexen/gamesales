@@ -22,6 +22,7 @@ export function useDealsActions({
   suppressUnsavedConfirm,
   showDealWarning,
   requestDealConfirm,
+  resolveProductTypeCode,
 }) {
   // Проверяет, может ли текущий пользователь проводить возврат (admin/owner).
   function canCompleteRefund() {
@@ -139,16 +140,21 @@ export function useDealsActions({
   }
 
   // Проверяет обязательные поля. Для черновика сделки допускаем пустые поля.
-  function validateDealBeforeSave(deal, { saveAsDraft = false, isUpdate = false } = {}) {
+  function validateDealBeforeSave(deal, { saveAsDraft = false } = {}) {
     const draftSave = isDraftSave(saveAsDraft)
-    // Для update не блокируем правку по отсутствующему покупателю в старых сделках.
-    if (!draftSave && !isUpdate && !deal.customer_nickname) return 'Укажите покупателя'
+    // Для рабочей сделки покупатель обязателен и на create, и на update.
+    if (!draftSave && !deal.customer_nickname) return 'Укажите покупателя'
     if (deal.deal_type_code === 'rental' && !draftSave) {
       // Проверяем в нормализованном виде, чтобы не отправлять в API пустые/невалидные id.
       const accountId = normalizeOptionalInt(deal.account_id)
       const productId = normalizeOptionalInt(deal.product_id)
       if (!accountId || !productId) return 'Для шеринга укажите аккаунт и товар'
       if (!deal.slot_type_code) return 'Для шеринга выберите тип слота'
+      // Для подписки срок обязателен: без него нельзя корректно выбрать конкретную позицию.
+      const productTypeCode = String(resolveProductTypeCode?.(productId) || '').trim().toLowerCase()
+      if (productTypeCode === 'subscription' && !normalizeOptionalInt(deal.subscription_term_id)) {
+        return 'Для подписки выберите срок'
+      }
     }
     if (deal.deal_type_code === 'sale' && !draftSave) {
       if (!deal.region_code) return 'Укажите регион'
@@ -236,7 +242,7 @@ export function useDealsActions({
     dealError.value = null
     dealOk.value = null
     if (!editDeal.deal_id) return
-    const validationError = validateDealBeforeSave(editDeal, { saveAsDraft, isUpdate: true })
+    const validationError = validateDealBeforeSave(editDeal, { saveAsDraft })
     if (validationError) {
       dealError.value = validationError
       if (typeof showDealWarning === 'function') showDealWarning(validationError)
