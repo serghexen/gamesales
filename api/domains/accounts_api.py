@@ -14,6 +14,7 @@ from .accounts_models import (
     AccountListOut,
     AccountSecretIn,
     AccountSecretOut,
+    AccountSecretsPatchIn,
     AccountSecretsBatchIn,
     AccountSecretsBatchItem,
     SlotAvailabilityOut,
@@ -671,6 +672,53 @@ def mount_accounts_routes(
                 (account_id, payload.secret_key),
             )
         return AccountSecretOut(secret_key=row[0], secret_value_b64=row[1], created_at=row[2])
+
+    @app.put("/accounts/{account_id}/secrets")
+    def patch_account_secrets(
+        account_id: int,
+        payload: AccountSecretsPatchIn,
+        user=Depends(require_role("admin", "owner", "manager", "operator")),
+    ):
+        # Обновляем и удаляем секреты в одной транзакции, чтобы не оставлять частично сохраненное состояние.
+        with psycopg.connect(DB_DSN) as conn:
+            ensure_account_exists(conn, account_id)
+            upserts = payload.upserts or []
+            delete_keys = [str(k or "").strip() for k in (payload.delete_keys or []) if str(k or "").strip()]
+
+            # Если один и тот же ключ пришел несколько раз, оставляем последнее значение.
+            upserts_map: dict[str, str] = {}
+            for item in upserts:
+                key = str(item.secret_key or "").strip()
+                if not key:
+                    raise HTTPException(400, "secret_key is required")
+                upserts_map[key] = b64_encode(item.secret_value)
+
+            if upserts_map:
+                rows = [(account_id, key, value_b64) for key, value_b64 in upserts_map.items()]
+                with conn.cursor() as cur:
+                    cur.executemany(
+                        """
+                        INSERT INTO app.account_secrets(account_id, secret_key, secret_value)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (account_id, secret_key)
+                        DO UPDATE SET secret_value=excluded.secret_value
+                        """,
+                        rows,
+                    )
+
+            if delete_keys:
+                exec1(
+                    conn,
+                    """
+                    DELETE FROM app.account_secrets
+                    WHERE account_id=%s
+                      AND secret_key = ANY(%s)
+                    """,
+                    (account_id, delete_keys),
+                )
+
+            conn.commit()
+        return {"ok": True}
     
     @app.delete("/accounts/{account_id}/secrets/{secret_key}")
     def delete_account_secret(

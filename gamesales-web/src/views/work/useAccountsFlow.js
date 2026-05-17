@@ -200,62 +200,8 @@ export function useAccountsFlow({
       // Используем только новый product endpoint для привязок аккаунта.
       const items = await apiGet(`/accounts/${accountId}/products`, { token: auth.state.token })
       editAccount.product_ids = [...new Set((items || []).map((p) => Number(p?.product_id || 0)).filter(Boolean))]
-      // Храним названия из ответа API; для подписок при необходимости дособираем даты сроков.
-      const baseTitles = [...new Set((items || []).map((p) => String(p?.title || '').trim()).filter(Boolean))]
-      const needsSubscriptionEnrich = (items || []).some((p) => {
-        const typeCode = String(p?.type_code || '').trim().toLowerCase()
-        const title = String(p?.title || '').trim().toLowerCase()
-        return typeCode === 'subscription' && title && !title.includes(' до ')
-      })
-      if (!needsSubscriptionEnrich) {
-        editAccount.product_titles = baseTitles
-      } else {
-        const enrichedTitles = []
-        for (const item of (items || [])) {
-          const typeCode = String(item?.type_code || '').trim().toLowerCase()
-          const title = String(item?.title || '').trim()
-          const productId = Number(item?.product_id || 0)
-          if (typeCode !== 'subscription' || !title || !productId) {
-            if (title) enrichedTitles.push(title)
-            continue
-          }
-          if (title.toLowerCase().includes(' до ')) {
-            enrichedTitles.push(title)
-            continue
-          }
-          try {
-            // Подтягиваем сроки подписки товара и оставляем только сроки текущего аккаунта.
-            const terms = await apiGet(`/products/subscriptions/${productId}/terms`, { token: auth.state.token })
-            const ownTerms = (Array.isArray(terms) ? terms : []).filter(
-              (term) => Number(term?.account_id || 0) === Number(accountId || 0) && !term?.is_archived
-            )
-            if (!ownTerms.length) {
-              enrichedTitles.push(title)
-              continue
-            }
-            for (const term of ownTerms) {
-              const rawDate = String(term?.valid_until || '').trim()
-              if (!rawDate) {
-                enrichedTitles.push(title)
-                continue
-              }
-              const parsed = new Date(rawDate)
-              if (Number.isNaN(parsed.getTime())) {
-                enrichedTitles.push(`${title} до ${rawDate}`)
-                continue
-              }
-              const day = String(parsed.getDate()).padStart(2, '0')
-              const month = String(parsed.getMonth() + 1).padStart(2, '0')
-              const year = String(parsed.getFullYear())
-              enrichedTitles.push(`${title} до ${day}.${month}.${year}`)
-            }
-          } catch {
-            // Если сроки не удалось загрузить, не ломаем карточку аккаунта.
-            enrichedTitles.push(title)
-          }
-        }
-        editAccount.product_titles = [...new Set(enrichedTitles.filter(Boolean))]
-      }
+      // Доверяем API: backend уже возвращает подписки с датами, если они есть.
+      editAccount.product_titles = [...new Set((items || []).map((p) => String(p?.title || '').trim()).filter(Boolean))]
     } catch {
       editAccount.product_ids = []
       editAccount.product_titles = []
@@ -668,49 +614,30 @@ export function useAccountsFlow({
         { token: auth.state.token }
       )
 
-      const secretTasks = []
+      // Готовим пачку секретов и сохраняем ее атомарно одним запросом.
+      const secretUpserts = []
       if (newAccount.email_password) {
-        secretTasks.push(
-          apiPost(
-            `/accounts/${created.account_id}/secrets`,
-            { secret_key: 'email_password', secret_value: newAccount.email_password },
-            { token: auth.state.token }
-          )
-        )
+        secretUpserts.push({ secret_key: 'email_password', secret_value: newAccount.email_password })
       }
       if (newAccount.account_password) {
-        secretTasks.push(
-          apiPost(
-            `/accounts/${created.account_id}/secrets`,
-            { secret_key: 'account_password', secret_value: newAccount.account_password },
-            { token: auth.state.token }
-          )
-        )
+        secretUpserts.push({ secret_key: 'account_password', secret_value: newAccount.account_password })
       }
       if (newAccount.auth_code) {
-        secretTasks.push(
-          apiPost(
-            `/accounts/${created.account_id}/secrets`,
-            { secret_key: 'auth_code', secret_value: newAccount.auth_code },
-            { token: auth.state.token }
-          )
-        )
+        secretUpserts.push({ secret_key: 'auth_code', secret_value: newAccount.auth_code })
       }
       const reserveValues = (newAccount.reserve_text || '')
         .split(/\s+/)
         .map((v) => v.trim())
         .filter(Boolean)
       reserveValues.forEach((val, idx) => {
-        secretTasks.push(
-          apiPost(
-            `/accounts/${created.account_id}/secrets`,
-            { secret_key: `reserve${idx + 1}`, secret_value: val },
-            { token: auth.state.token }
-          )
-        )
+        secretUpserts.push({ secret_key: `reserve${idx + 1}`, secret_value: val })
       })
-      if (secretTasks.length) {
-        await Promise.all(secretTasks)
+      if (secretUpserts.length) {
+        await apiPut(
+          `/accounts/${created.account_id}/secrets`,
+          { upserts: secretUpserts, delete_keys: [] },
+          { token: auth.state.token }
+        )
       }
 
       if (newAccount.product_ids.length) {
@@ -803,53 +730,34 @@ export function useAccountsFlow({
         { token: auth.state.token }
       )
 
-      const secretTasks = []
+      // Секреты сохраняем одной операцией, чтобы исключить частичное обновление при сетевой ошибке.
+      const secretUpserts = []
+      const secretDeleteKeys = []
       if (editAccount.email_password) {
-        secretTasks.push(
-          apiPost(
-            `/accounts/${editAccount.account_id}/secrets`,
-            { secret_key: editAccount.email_key || 'email_password', secret_value: editAccount.email_password },
-            { token: auth.state.token }
-          )
-        )
+        secretUpserts.push({
+          secret_key: editAccount.email_key || 'email_password',
+          secret_value: editAccount.email_password,
+        })
       } else if (editAccount.has_email) {
-        secretTasks.push(
-          apiDelete(`/accounts/${editAccount.account_id}/secrets/${editAccount.email_key || 'email_password'}`, {
-            token: auth.state.token,
-          })
-        )
+        secretDeleteKeys.push(editAccount.email_key || 'email_password')
       }
 
       if (editAccount.account_password) {
-        secretTasks.push(
-          apiPost(
-            `/accounts/${editAccount.account_id}/secrets`,
-            { secret_key: editAccount.account_key || 'account_password', secret_value: editAccount.account_password },
-            { token: auth.state.token }
-          )
-        )
+        secretUpserts.push({
+          secret_key: editAccount.account_key || 'account_password',
+          secret_value: editAccount.account_password,
+        })
       } else if (editAccount.has_account) {
-        secretTasks.push(
-          apiDelete(`/accounts/${editAccount.account_id}/secrets/${editAccount.account_key || 'account_password'}`, {
-            token: auth.state.token,
-          })
-        )
+        secretDeleteKeys.push(editAccount.account_key || 'account_password')
       }
 
       if (editAccount.auth_code) {
-        secretTasks.push(
-          apiPost(
-            `/accounts/${editAccount.account_id}/secrets`,
-            { secret_key: editAccount.auth_key || 'auth_code', secret_value: editAccount.auth_code },
-            { token: auth.state.token }
-          )
-        )
+        secretUpserts.push({
+          secret_key: editAccount.auth_key || 'auth_code',
+          secret_value: editAccount.auth_code,
+        })
       } else if (editAccount.has_auth) {
-        secretTasks.push(
-          apiDelete(`/accounts/${editAccount.account_id}/secrets/${editAccount.auth_key || 'auth_code'}`, {
-            token: auth.state.token,
-          })
-        )
+        secretDeleteKeys.push(editAccount.auth_key || 'auth_code')
       }
 
       const reserveValues = (editAccount.reserve_text || '')
@@ -860,22 +768,20 @@ export function useAccountsFlow({
       reserveValues.forEach((val, idx) => {
         const key = `reserve${idx + 1}`
         keepKeys.push(key)
-        secretTasks.push(
-          apiPost(
-            `/accounts/${editAccount.account_id}/secrets`,
-            { secret_key: key, secret_value: val },
-            { token: auth.state.token }
-          )
-        )
+        secretUpserts.push({ secret_key: key, secret_value: val })
       })
       editAccount.existing_reserve_keys
         .filter((k) => !keepKeys.includes(k))
         .forEach((k) => {
-          secretTasks.push(apiDelete(`/accounts/${editAccount.account_id}/secrets/${k}`, { token: auth.state.token }))
+          secretDeleteKeys.push(k)
         })
 
-      if (secretTasks.length) {
-        await Promise.all(secretTasks)
+      if (secretUpserts.length || secretDeleteKeys.length) {
+        await apiPut(
+          `/accounts/${editAccount.account_id}/secrets`,
+          { upserts: secretUpserts, delete_keys: secretDeleteKeys },
+          { token: auth.state.token }
+        )
       }
 
       await apiPut(

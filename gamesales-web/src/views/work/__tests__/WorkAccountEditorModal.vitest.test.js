@@ -116,7 +116,7 @@ describe('WorkAccountEditorModal', () => {
     const checkbox = wrapper.find('input[type="checkbox"]')
     expect(checkbox.exists()).toBe(true)
     expect(wrapper.text()).not.toContain('Деактивация:')
-    expect(wrapper.text()).not.toContain('Повтораня деактивация')
+    expect(wrapper.text()).not.toContain('Повторная деактивация')
   })
 
   it('shows deactivation status near account name in view mode', () => {
@@ -134,7 +134,7 @@ describe('WorkAccountEditorModal', () => {
       }),
       global: { stubs: { teleport: true } },
     })
-    expect(wrapper.text()).toContain('Повтораня деактивация через 10 дней')
+    expect(wrapper.text()).toContain('Повторная деактивация через 10 дней')
   })
 
   it('keeps deactivation checkbox enabled before timer expiry for manual revert', () => {
@@ -152,7 +152,7 @@ describe('WorkAccountEditorModal', () => {
       }),
       global: { stubs: { teleport: true } },
     })
-    expect(wrapper.text()).toContain('Повтораня деактивация через 10 дней')
+    expect(wrapper.text()).toContain('Повторная деактивация через 10 дней')
     expect(wrapper.text()).not.toContain('Деактивирован.')
     const checkbox = wrapper.find('input[type="checkbox"]')
     expect(checkbox.exists()).toBe(true)
@@ -174,7 +174,7 @@ describe('WorkAccountEditorModal', () => {
       }),
       global: { stubs: { teleport: true } },
     })
-    expect(wrapper.text()).toContain('Повтораня деактивация через 0 дней')
+    expect(wrapper.text()).toContain('Повторная деактивация через 0 дней')
     const checkbox = wrapper.find('input[type="checkbox"]')
     expect(checkbox.exists()).toBe(true)
     expect(checkbox.attributes('disabled')).toBeUndefined()
@@ -198,7 +198,7 @@ describe('WorkAccountEditorModal', () => {
     })
     const checkbox = wrapper.find('input[type="checkbox"]')
     expect(checkbox.exists()).toBe(false)
-    expect(wrapper.text()).toContain('Повтораня деактивация через 10 дней')
+    expect(wrapper.text()).toContain('Повторная деактивация через 10 дней')
   })
 
   it('create mode keeps only game/subscription types and defaults to game', () => {

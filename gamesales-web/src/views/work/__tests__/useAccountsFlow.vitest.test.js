@@ -65,12 +65,14 @@ function createHarness() {
 describe('useAccountsFlow', () => {
   it('loadAccountProducts prefers /accounts/{id}/products', async () => {
     const h = createHarness()
-    h.apiGet.mockResolvedValueOnce([{ product_id: 55 }, { product_id: 56 }])
+    h.apiGet.mockResolvedValueOnce([{ product_id: 55, title: 'Game A' }, { product_id: 56, title: 'PS Plus до 09/04/27' }])
 
     await h.loadAccountProducts(5)
 
+    expect(h.apiGet).toHaveBeenCalledTimes(1)
     expect(h.apiGet).toHaveBeenCalledWith('/accounts/5/products', { token: 'token-1' })
     expect(h.editAccount.product_ids).toEqual([55, 56])
+    expect(h.editAccount.product_titles).toEqual(['Game A', 'PS Plus до 09/04/27'])
   })
 
   it('loadAccountProducts returns empty list on products endpoint error', async () => {
@@ -138,6 +140,17 @@ describe('useAccountsFlow', () => {
 
     await h.createAccount()
 
+    expect(h.apiPut).toHaveBeenCalledWith(
+      '/accounts/9/secrets',
+      expect.objectContaining({
+        upserts: expect.arrayContaining([
+          { secret_key: 'email_password', secret_value: 'mail-pass' },
+          { secret_key: 'account_password', secret_value: 'acc-pass' },
+          { secret_key: 'auth_code', secret_value: 'auth-code' },
+        ]),
+      }),
+      { token: 'token-1' }
+    )
     expect(h.apiPost).toHaveBeenCalledWith(
       '/products/subscriptions/77/terms',
       { account_id: 9, valid_until: '2027-03-26', notes: null },
@@ -232,6 +245,41 @@ describe('useAccountsFlow', () => {
     expect(h.apiPut).toHaveBeenCalledWith(
       '/accounts/5',
       expect.objectContaining({ is_deactivated: true }),
+      { token: 'token-1' }
+    )
+  })
+
+  it('updateAccount updates secrets atomically via batch endpoint', async () => {
+    const h = createHarness()
+    h.editAccount.login_name = 'user'
+    h.editAccount.domain_code = 'mail.com'
+    h.editAccount.region_code = 'RU'
+    h.editAccount.email_password = ''
+    h.editAccount.email_key = 'email_password'
+    h.editAccount.has_email = true
+    h.editAccount.account_password = 'acc-pass'
+    h.editAccount.account_key = 'account_password'
+    h.editAccount.has_account = true
+    h.editAccount.auth_code = 'auth-pass'
+    h.editAccount.auth_key = 'auth_code'
+    h.editAccount.has_auth = true
+    h.editAccount.reserve_text = 'r1'
+    h.editAccount.existing_reserve_keys = ['reserve1', 'reserve2']
+    h.apiPut.mockResolvedValue({ ok: true })
+    h.suppressUnsavedConfirm.value = true
+
+    await h.updateAccount()
+
+    expect(h.apiPut).toHaveBeenCalledWith(
+      '/accounts/5/secrets',
+      {
+        upserts: [
+          { secret_key: 'account_password', secret_value: 'acc-pass' },
+          { secret_key: 'auth_code', secret_value: 'auth-pass' },
+          { secret_key: 'reserve1', secret_value: 'r1' },
+        ],
+        delete_keys: ['email_password', 'reserve2'],
+      },
       { token: 'token-1' }
     )
   })

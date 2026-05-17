@@ -101,6 +101,16 @@ class AccountSecretsBatchItem(BaseModel):
     secrets: List[AccountSecretOut]
 
 
+class AccountSecretPatchItemIn(BaseModel):
+    secret_key: str
+    secret_value: str
+
+
+class AccountSecretsPatchIn(BaseModel):
+    upserts: List[AccountSecretPatchItemIn] = Field(default_factory=list)
+    delete_keys: List[str] = Field(default_factory=list)
+
+
 class SlotAvailabilityOut(BaseModel):
     slot_type_code: str
     has_free: bool

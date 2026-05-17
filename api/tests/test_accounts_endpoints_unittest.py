@@ -440,6 +440,34 @@ class AccountsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 200)
 
+    # Пакетное обновление секретов должно применяться атомарно в рамках одного запроса.
+    def test_patch_account_secrets_success(self):
+        script = [
+            {"one": (1,)},
+            {"rowcount": 2},
+            {"rowcount": 1},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/accounts/7/secrets",
+                    headers=self._auth_headers(role="manager"),
+                    json={
+                        "upserts": [
+                            {"secret_key": "account_password", "secret_value": "abc"},
+                            {"secret_key": "reserve1", "secret_value": "r1"},
+                        ],
+                        "delete_keys": ["reserve2"],
+                    },
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json().get("ok"), True)
+
     # Проверяем новый безопасный сценарий: доступность слотов по product_id.
     def test_slot_availability_for_deal_supports_product_id(self):
         script = [

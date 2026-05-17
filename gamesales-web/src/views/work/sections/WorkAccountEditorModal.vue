@@ -709,9 +709,9 @@ const showDeactivatedEditStatus = computed(() => {
 // Текст статуса для формы просмотра рядом с именем аккаунта.
 const deactivationViewLabel = computed(() => {
   const days = deactivationDaysLeft.value
-  if (days === null) return 'Повтораня деактивация: ожидание'
-  if (days <= 0) return 'Повтораня деактивация через 0 дней'
-  return `Повтораня деактивация через ${days} дней`
+  if (days === null) return 'Повторная деактивация: ожидание'
+  if (days <= 0) return 'Повторная деактивация через 0 дней'
+  return `Повторная деактивация через ${days} дней`
 })
 
 // Формирует заголовок модалки аккаунта в нужном формате.
