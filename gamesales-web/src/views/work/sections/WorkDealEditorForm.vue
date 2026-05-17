@@ -151,6 +151,53 @@
                                   {{ a.login_full || a.account_id }}
                                 </option>
                               </select>
+                              <div
+                                v-if="dealEditMode !== 'view'
+                                  && !dealAccountsForProductLoading
+                                  && !isEditRentalSubscriptionMode
+                                  && editDeal.slot_type_code
+                                  && !editDeal.account_id
+                                  && !isDealSlotTypeUnsupported('edit')
+                                  && editDeal.product_id
+                                  && !hasFreeDealSlots('edit')"
+                                :class="[
+                                  'quick-create',
+                                  { 'quick-create--plain': isEditRentalSubscriptionMode || !hasAnyProductAssignmentsEdit || !dealProductAssignmentsForSelectedSlotEdit.length }
+                                ]"
+                              >
+                                <div v-if="!isEditRentalSubscriptionMode && hasAnyProductAssignmentsEdit && dealGameAssignmentsLoadingEdit" class="loader-wrap loader-wrap--compact">
+                                  <div class="newtons-cradle" aria-label="Loading" role="img">
+                                    <div class="newtons-cradle__dot"></div>
+                                    <div class="newtons-cradle__dot"></div>
+                                    <div class="newtons-cradle__dot"></div>
+                                    <div class="newtons-cradle__dot"></div>
+                                  </div>
+                                </div>
+                                <div v-else-if="!isEditRentalSubscriptionMode && hasAnyProductAssignmentsEdit && dealProductAssignmentsForSelectedSlotEdit.length" class="quick-create__table-scroll">
+                                  <div class="quick-create__title">Список занятых слотов</div>
+                                  <table class="table table--compact table--dense">
+                                    <thead>
+                                      <tr>
+                                        <th>Аккаунт</th>
+                                        <th>Слот</th>
+                                        <th>Покупатель</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      <tr
+                                        v-for="s in dealProductAssignmentsForSelectedSlotEdit"
+                                        :key="s.assignment_id"
+                                        class="table-row--slot-release"
+                                        @click="releaseSlotFromDeal(s, 'edit')"
+                                      >
+                                        <td>{{ getAccountLabelById(s.account_id) }}</td>
+                                        <td>{{ getSlotTypeLabel(s.slot_type_code) }}</td>
+                                        <td>{{ s.customer_nickname || '—' }}</td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
                             </label>
                             <div class="field field--comment-collapsible">
                               <button class="comment-toggle" type="button" @click="editDealCommentOpen = !editDealCommentOpen">
@@ -1288,6 +1335,9 @@ const {
   getReserveSecretEntries,
   sortedDeals,
   hasFreeDealSlots,
+  hasAnyProductAssignmentsEdit,
+  dealGameAssignmentsLoadingEdit,
+  dealProductAssignmentsForSelectedSlotEdit,
   hasAnyProductAssignmentsNew,
   dealGameAssignmentsLoadingNew,
   dealProductAssignmentsForSelectedSlotNew,
