@@ -15,7 +15,12 @@ export function useAccountsViewState({
 
   // Если страниц стало меньше, текущая страница не должна выходить за пределы.
   watch(accountsTotalPages, (total) => {
-    if (accountsPage.value > total) accountsPage.value = total
+    if (accountsPage.value <= total) return
+    // Если после фильтрации ушли на несуществующую страницу, догружаем последнюю доступную.
+    accountsPage.value = total
+    if (accountsTotal.value > 0) {
+      loadAccounts()
+    }
   })
 
   // Синхронизируем поле ввода страницы и реальную страницу.

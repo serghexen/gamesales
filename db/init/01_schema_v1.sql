@@ -403,6 +403,10 @@ CREATE INDEX IF NOT EXISTS idx_deal_items_product_id
   ON app.deal_items (product_id);
 CREATE INDEX IF NOT EXISTS idx_deal_items_subscription_term_id
   ON app.deal_items (subscription_term_id);
+CREATE INDEX IF NOT EXISTS idx_deal_items_deal_id
+  ON app.deal_items (deal_id);
+CREATE INDEX IF NOT EXISTS idx_deal_items_account_id
+  ON app.deal_items (account_id);
 
 CREATE TABLE IF NOT EXISTS app.account_slot_assignments (
   assignment_id bigserial PRIMARY KEY,
@@ -427,6 +431,15 @@ CREATE INDEX IF NOT EXISTS idx_account_slot_assignments_product_id
   ON app.account_slot_assignments(product_id);
 CREATE INDEX IF NOT EXISTS idx_slot_assignments_subscription_term_id
   ON app.account_slot_assignments(subscription_term_id);
+CREATE INDEX IF NOT EXISTS idx_asa_deal_item_active
+  ON app.account_slot_assignments(deal_item_id)
+  WHERE released_at IS NULL;
+
+-- Индексы для ускорения поиска/фильтрации по сделкам и клиентам.
+CREATE INDEX IF NOT EXISTS idx_customers_nickname
+  ON app.customers(nickname);
+CREATE INDEX IF NOT EXISTS idx_deals_status_flow_created_deal
+  ON app.deals(status_code, flow_status_code, created_at, deal_id);
 
 CREATE TABLE IF NOT EXISTS app.deal_audit (
   audit_id bigserial PRIMARY KEY,

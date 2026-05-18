@@ -24,7 +24,12 @@ export function useProductsViewState({
 
   // Если страниц стало меньше, держим текущую страницу в рамках.
   watch(productsTotalPages, (total) => {
-    if (productsPage.value > total) productsPage.value = total
+    if (productsPage.value <= total) return
+    // Если после фильтрации ушли на несуществующую страницу, догружаем последнюю доступную.
+    productsPage.value = total
+    if (productsTotal.value > 0) {
+      loadProducts()
+    }
   })
 
   // Синхронизируем поле ввода страницы и реальную страницу.
@@ -59,6 +64,13 @@ export function useProductsViewState({
   const productAccountsTotalPages = computed(() => {
     const pages = Math.ceil(sortedProductAccounts.value.length / productAccountsPageSize)
     return pages > 0 ? pages : 1
+  })
+
+  // Не даем локальной пагинации аккаунтов товара выйти за пределы.
+  watch(productAccountsTotalPages, (total) => {
+    if (productAccountsPage.value > total) {
+      productAccountsPage.value = total
+    }
   })
 
   // Текущая страница аккаунтов игры.

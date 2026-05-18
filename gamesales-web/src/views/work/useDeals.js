@@ -9,6 +9,7 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
   const dealPageInput = ref(1)
   const dealPageSize = ref(20)
   const dealTotal = ref(0)
+  let dealListRequestSeq = 0
   // По умолчанию показываем сделки по дате от старых к новым, чтобы новые оказывались внизу.
   const dealSort = ref({ key: 'date', dir: 'asc' })
 
@@ -20,7 +21,12 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
 
   // Если страниц стало меньше, возвращаемся в допустимый диапазон.
   watch(totalPages, (total) => {
-    if (dealPage.value > total) dealPage.value = total
+    if (dealPage.value <= total) return
+    // Если текущая страница стала недоступной, переключаемся на последнюю валидную и догружаем данные.
+    dealPage.value = total
+    if (dealTotal.value > 0) {
+      loadDeals(total)
+    }
   })
 
   // Держим поле "номер страницы" синхронно с реальной страницей.
@@ -91,6 +97,7 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
 
   // Загружает сделки с учетом фильтров и пагинации.
   async function loadDeals(page = 1) {
+    const requestId = ++dealListRequestSeq
     dealListError.value = null
     dealListLoading.value = true
     try {
@@ -106,6 +113,7 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
       params.set('page', String(page))
       params.set('page_size', String(dealPageSize.value))
       const res = await apiGet(`/deals?${params.toString()}`, { token: auth.state.token })
+      if (requestId !== dealListRequestSeq) return
       // Нормализуем ответ в product-first поля для единого контракта UI.
       dealItems.value = (res?.items || []).map((item) => ({
         ...item,
@@ -118,9 +126,12 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
       dealTotal.value = res?.total || 0
       dealPage.value = page
     } catch (e) {
+      if (requestId !== dealListRequestSeq) return
       dealListError.value = mapApiError(e?.message)
     } finally {
-      dealListLoading.value = false
+      if (requestId === dealListRequestSeq) {
+        dealListLoading.value = false
+      }
     }
   }
 

@@ -39,6 +39,7 @@ function createHarness() {
     productsPageInput,
     productsPageSize,
     loadProducts,
+    productAccounts,
     productAccountsSort,
     productAccountsPage,
   }
@@ -60,6 +61,7 @@ describe('useProductsViewState', () => {
     await nextTick()
     expect(h.state.productsTotalPages.value).toBe(1)
     expect(h.productsPage.value).toBe(1)
+    expect(h.loadProducts).toHaveBeenCalledTimes(1)
   })
 
   it('reloads list and resets page when page size changes', async () => {
@@ -78,5 +80,14 @@ describe('useProductsViewState', () => {
     h.productAccountsSort.value = { key: 'score', dir: 'desc' }
     h.productAccountsPage.value = 2
     expect(h.state.pagedProductAccounts.value.map((a) => a.score)).toEqual([1])
+  })
+
+  it('clamps product accounts page when items count decreases', async () => {
+    const h = createHarness()
+    h.productAccountsPage.value = 2
+    h.productAccounts.value = [{ login_name: 'single', score: 1 }]
+    await nextTick()
+    expect(h.productAccountsPage.value).toBe(1)
+    expect(h.state.productAccountsTotalPages.value).toBe(1)
   })
 })
