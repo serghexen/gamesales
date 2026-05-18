@@ -125,7 +125,13 @@
             {{ formatAccountSlotStatusLine(s) }}
           </span>
         </td>
-        <td class="cell--selectable" @click.stop>{{ formatSecret(getReserveSecrets(a.account_id)) }}</td>
+        <td
+          class="cell--selectable"
+          @click.stop
+          @mouseenter="ensureAccountSecretsLoaded(a.account_id)"
+        >
+          {{ formatSecret(getReserveSecrets(a.account_id)) }}
+        </td>
       </tr>
     </tbody>
   </table>
@@ -165,5 +171,6 @@ defineProps({
   formatAccountSlotStatusLine: { type: Function, required: true },
   formatSecret: { type: Function, required: true },
   getReserveSecrets: { type: Function, required: true },
+  ensureAccountSecretsLoaded: { type: Function, required: true },
 })
 </script>

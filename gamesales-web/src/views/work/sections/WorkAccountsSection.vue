@@ -79,6 +79,7 @@
         :format-account-slot-status-line="ctx.formatAccountSlotStatusLine"
         :format-secret="ctx.formatSecret"
         :get-reserve-secrets="ctx.getReserveSecrets"
+        :ensure-account-secrets-loaded="ctx.ensureAccountSecretsLoaded"
       />
       <div v-if="ctx.accountsTotal > 0" class="pager">
         <span class="muted">Всего: {{ ctx.accountsTotal }}</span>

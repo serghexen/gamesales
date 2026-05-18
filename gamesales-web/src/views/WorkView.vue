@@ -2511,6 +2511,7 @@ const accountsSectionCtx = asCtx({
   formatAccountSlotStatusLine,
   formatSecret,
   getReserveSecrets,
+  ensureAccountSecretsLoaded,
   getReserveSecretEntries,
   accountsTotal,
   accountsPageSize,

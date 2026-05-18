@@ -149,51 +149,6 @@ export function useAccountsFlow({
     return item?.secret_value_b64 ? decodeSecret(item.secret_value_b64) : ''
   }
 
-  // Загружает секреты пачкой, с запасным вариантом по одному аккаунту.
-  async function loadAccountSecrets(list, requestId = null) {
-    const isLatestAccountsRequest = () => requestId === null || requestId === accountsRequestSeq
-    if (!isLatestAccountsRequest()) return
-    if (!list.length) {
-      accountSecrets.value = {}
-      return
-    }
-    const ids = list.map((a) => a.account_id).filter(Boolean)
-    if (!ids.length) {
-      accountSecrets.value = {}
-      return
-    }
-    const nextSecretsMap = {}
-    try {
-      const batch = await apiPost('/accounts/secrets/batch', { account_ids: ids }, { token: auth.state.token })
-      for (const item of batch || []) {
-        nextSecretsMap[item.account_id] = item.secrets || []
-      }
-      for (const accountId of ids) {
-        if (!Object.prototype.hasOwnProperty.call(nextSecretsMap, accountId)) {
-          nextSecretsMap[accountId] = []
-        }
-      }
-      if (isLatestAccountsRequest()) {
-        // Применяем секреты только для актуального списка аккаунтов, чтобы старый ответ не перетирал новые данные.
-        accountSecrets.value = nextSecretsMap
-      }
-    } catch {
-      await Promise.all(
-        ids.map(async (accountId) => {
-          try {
-            const s = await apiGet(`/accounts/${accountId}/secrets`, { token: auth.state.token })
-            nextSecretsMap[accountId] = s || []
-          } catch {
-            nextSecretsMap[accountId] = []
-          }
-        })
-      )
-      if (isLatestAccountsRequest()) {
-        accountSecrets.value = nextSecretsMap
-      }
-    }
-  }
-
   // Догружает секреты для одного аккаунта, если их еще нет в локальном кеше.
   async function ensureAccountSecretsLoaded(accountId) {
     const targetId = Number(accountId || 0)
@@ -212,6 +167,32 @@ export function useAccountsFlow({
         [targetId]: [],
       }
     }
+  }
+
+  // Подставляет секреты из кеша в открытую карточку аккаунта.
+  function applyCachedSecretsToEditAccount(accountId) {
+    const targetId = Number(accountId || 0)
+    if (!targetId || Number(editAccount.account_id || 0) !== targetId) return
+    const secrets = accountSecrets.value[targetId] || []
+    const email = secrets.find((s) => s.secret_key === 'email_password')
+    const account = secrets.find((s) => s.secret_key === 'account_password' || s.secret_key === 'primary' || s.secret_key === 'password')
+    const authSecret = secrets.find((s) => s.secret_key === 'auth_code')
+    const reserves = secrets.filter((s) => s.secret_key?.startsWith('reserve'))
+    editAccount.email_password = email?.secret_value_b64 ? decodeSecret(email.secret_value_b64) : ''
+    editAccount.email_key = email?.secret_key || 'email_password'
+    editAccount.account_password = account?.secret_value_b64 ? decodeSecret(account.secret_value_b64) : ''
+    editAccount.account_key = account?.secret_key || 'account_password'
+    editAccount.auth_code = authSecret?.secret_value_b64 ? decodeSecret(authSecret.secret_value_b64) : ''
+    editAccount.auth_key = authSecret?.secret_key || 'auth_code'
+    editAccount.reserve_text = reserves
+      .sort((a1, a2) => a1.secret_key.localeCompare(a2.secret_key))
+      .map((s) => (s.secret_value_b64 ? decodeSecret(s.secret_value_b64) : ''))
+      .filter(Boolean)
+      .join(' ')
+    editAccount.existing_reserve_keys = reserves.map((s) => s.secret_key)
+    editAccount.has_account = Boolean(account)
+    editAccount.has_email = Boolean(email)
+    editAccount.has_auth = Boolean(authSecret)
   }
 
   // Загружает товары, привязанные к аккаунту.
@@ -263,7 +244,6 @@ export function useAccountsFlow({
       const items = data?.items || []
       accounts.value = items
       accountsTotal.value = Number(data?.total || 0)
-      await loadAccountSecrets(items, requestId)
     } catch (e) {
       if (requestId !== accountsRequestSeq) return
       accountsError.value = mapApiError(e?.message)
@@ -343,26 +323,14 @@ export function useAccountsFlow({
     editAccount.notes = a.notes || ''
     editAccount.account_date = a.account_date || ''
 
-    const secrets = accountSecrets.value[a.account_id] || []
-    const email = secrets.find((s) => s.secret_key === 'email_password')
-    const account = secrets.find((s) => s.secret_key === 'account_password' || s.secret_key === 'primary' || s.secret_key === 'password')
-    const authSecret = secrets.find((s) => s.secret_key === 'auth_code')
-    const reserves = secrets.filter((s) => s.secret_key?.startsWith('reserve'))
-    editAccount.email_password = email?.secret_value_b64 ? decodeSecret(email.secret_value_b64) : ''
-    editAccount.email_key = email?.secret_key || 'email_password'
-    editAccount.account_password = account?.secret_value_b64 ? decodeSecret(account.secret_value_b64) : ''
-    editAccount.account_key = account?.secret_key || 'account_password'
-    editAccount.auth_code = authSecret?.secret_value_b64 ? decodeSecret(authSecret.secret_value_b64) : ''
-    editAccount.auth_key = authSecret?.secret_key || 'auth_code'
-    editAccount.reserve_text = reserves
-      .sort((a1, a2) => a1.secret_key.localeCompare(a2.secret_key))
-      .map((s) => (s.secret_value_b64 ? decodeSecret(s.secret_value_b64) : ''))
-      .filter(Boolean)
-      .join(' ')
-    editAccount.existing_reserve_keys = reserves.map((s) => s.secret_key)
-    editAccount.has_account = Boolean(account)
-    editAccount.has_email = Boolean(email)
-    editAccount.has_auth = Boolean(authSecret)
+    // Сначала показываем то, что уже есть в локальном кеше.
+    applyCachedSecretsToEditAccount(a.account_id)
+    // Если кеша нет, тихо догружаем и обновляем поля без повторного открытия карточки.
+    ensureAccountSecretsLoaded(a.account_id).then(() => {
+      if (editAccount.open && Number(editAccount.account_id || 0) === Number(a.account_id || 0)) {
+        applyCachedSecretsToEditAccount(a.account_id)
+      }
+    })
     editAccountProductType.value = 'game'
     quickEditAccountProduct.title = ''
     quickEditAccountProduct.platform_codes = []
@@ -882,7 +850,6 @@ export function useAccountsFlow({
     getReserveSecrets,
     getReserveSecretEntries,
     getAuthSecret,
-    loadAccountSecrets,
     ensureAccountSecretsLoaded,
     loadAccountProducts,
     loadAccounts,
