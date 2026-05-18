@@ -3,6 +3,16 @@ import { reactive, ref } from 'vue'
 
 import { useAccountsFlow } from '../useAccountsFlow.js'
 
+function createDeferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 function createHarness() {
   const h = {
     auth: { state: reactive({ token: 'token-1' }) },
@@ -282,5 +292,47 @@ describe('useAccountsFlow', () => {
       },
       { token: 'token-1' }
     )
+  })
+
+  it('loadAccountProducts ignores stale response after account switch', async () => {
+    const h = createHarness()
+    const first = createDeferred()
+    const second = createDeferred()
+    h.apiGet
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+
+    h.editAccount.account_id = 5
+    const requestA = h.loadAccountProducts(5)
+    h.editAccount.account_id = 9
+    const requestB = h.loadAccountProducts(9)
+
+    second.resolve([{ product_id: 99, title: 'Second Product' }])
+    await requestB
+    first.resolve([{ product_id: 55, title: 'First Product' }])
+    await requestA
+
+    expect(h.editAccount.product_ids).toEqual([99])
+    expect(h.editAccount.product_titles).toEqual(['Second Product'])
+  })
+
+  it('loadAccounts ignores stale list response', async () => {
+    const h = createHarness()
+    const first = createDeferred()
+    const second = createDeferred()
+    h.apiGet
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+    h.apiPost.mockResolvedValue([])
+
+    const requestA = h.loadAccounts()
+    const requestB = h.loadAccounts()
+    second.resolve({ items: [{ account_id: 2, login_name: 'new' }], total: 1 })
+    await requestB
+    first.resolve({ items: [{ account_id: 1, login_name: 'old' }], total: 1 })
+    await requestA
+
+    expect(h.accounts.value).toEqual([{ account_id: 2, login_name: 'new' }])
+    expect(h.accountsTotal.value).toBe(1)
   })
 })

@@ -75,6 +75,9 @@ export function useAccountsFlow({
 
   let initialEditAccountSnapshot = null
   let accountDealsRequestSeq = 0
+  let accountsRequestSeq = 0
+  let accountsAllRequestSeq = 0
+  let accountProductsRequestSeq = 0
 
   // Определяет кратковременный сетевой сбой, который можно безопасно повторить.
   function isTransientFetchError(error) {
@@ -147,29 +150,47 @@ export function useAccountsFlow({
   }
 
   // Загружает секреты пачкой, с запасным вариантом по одному аккаунту.
-  async function loadAccountSecrets(list) {
-    accountSecrets.value = {}
-    if (!list.length) return
+  async function loadAccountSecrets(list, requestId = null) {
+    const isLatestAccountsRequest = () => requestId === null || requestId === accountsRequestSeq
+    if (!isLatestAccountsRequest()) return
+    if (!list.length) {
+      accountSecrets.value = {}
+      return
+    }
     const ids = list.map((a) => a.account_id).filter(Boolean)
-    if (!ids.length) return
+    if (!ids.length) {
+      accountSecrets.value = {}
+      return
+    }
+    const nextSecretsMap = {}
     try {
       const batch = await apiPost('/accounts/secrets/batch', { account_ids: ids }, { token: auth.state.token })
-      const map = {}
       for (const item of batch || []) {
-        map[item.account_id] = item.secrets || []
+        nextSecretsMap[item.account_id] = item.secrets || []
       }
-      accountSecrets.value = map
+      for (const accountId of ids) {
+        if (!Object.prototype.hasOwnProperty.call(nextSecretsMap, accountId)) {
+          nextSecretsMap[accountId] = []
+        }
+      }
+      if (isLatestAccountsRequest()) {
+        // Применяем секреты только для актуального списка аккаунтов, чтобы старый ответ не перетирал новые данные.
+        accountSecrets.value = nextSecretsMap
+      }
     } catch {
       await Promise.all(
         ids.map(async (accountId) => {
           try {
             const s = await apiGet(`/accounts/${accountId}/secrets`, { token: auth.state.token })
-            accountSecrets.value[accountId] = s || []
+            nextSecretsMap[accountId] = s || []
           } catch {
-            accountSecrets.value[accountId] = []
+            nextSecretsMap[accountId] = []
           }
         })
       )
+      if (isLatestAccountsRequest()) {
+        accountSecrets.value = nextSecretsMap
+      }
     }
   }
 
@@ -195,23 +216,30 @@ export function useAccountsFlow({
 
   // Загружает товары, привязанные к аккаунту.
   async function loadAccountProducts(accountId) {
+    const requestId = ++accountProductsRequestSeq
     accountProductsLoading.value = true
     try {
       // Используем только новый product endpoint для привязок аккаунта.
       const items = await apiGet(`/accounts/${accountId}/products`, { token: auth.state.token })
+      // Применяем ответ только если это последний запрос и карточка все еще открыта на тот же аккаунт.
+      if (requestId !== accountProductsRequestSeq || Number(editAccount?.account_id || 0) !== Number(accountId || 0)) return
       editAccount.product_ids = [...new Set((items || []).map((p) => Number(p?.product_id || 0)).filter(Boolean))]
       // Доверяем API: backend уже возвращает подписки с датами, если они есть.
       editAccount.product_titles = [...new Set((items || []).map((p) => String(p?.title || '').trim()).filter(Boolean))]
     } catch {
+      if (requestId !== accountProductsRequestSeq || Number(editAccount?.account_id || 0) !== Number(accountId || 0)) return
       editAccount.product_ids = []
       editAccount.product_titles = []
     } finally {
-      accountProductsLoading.value = false
+      if (requestId === accountProductsRequestSeq) {
+        accountProductsLoading.value = false
+      }
     }
   }
 
   // Загружает список аккаунтов с фильтрами/сортировкой/пагинацией.
   async function loadAccounts() {
+    const requestId = ++accountsRequestSeq
     accountsLoading.value = true
     accountsError.value = null
     accountsOk.value = null
@@ -231,27 +259,35 @@ export function useAccountsFlow({
       params.set('page', String(accountsPage.value))
       params.set('page_size', String(accountsPageSize.value))
       const data = await apiGet(`/accounts?${params.toString()}`, { token: auth.state.token })
-      accounts.value = data?.items || []
+      if (requestId !== accountsRequestSeq) return
+      const items = data?.items || []
+      accounts.value = items
       accountsTotal.value = Number(data?.total || 0)
-      await loadAccountSecrets(accounts.value)
+      await loadAccountSecrets(items, requestId)
     } catch (e) {
+      if (requestId !== accountsRequestSeq) return
       accountsError.value = mapApiError(e?.message)
       accountsTotal.value = 0
     } finally {
-      accountsLoading.value = false
+      if (requestId === accountsRequestSeq) {
+        accountsLoading.value = false
+      }
     }
   }
 
   // Загружает все аккаунты целиком для выпадающих списков.
   async function loadAccountsAll() {
+    const requestId = ++accountsAllRequestSeq
     try {
       const params = new URLSearchParams()
       params.set('all', 'true')
       params.set('sort_key', 'login')
       params.set('sort_dir', 'asc')
       const data = await apiGet(`/accounts?${params.toString()}`, { token: auth.state.token })
+      if (requestId !== accountsAllRequestSeq) return
       accountsAll.value = data?.items || []
     } catch {
+      if (requestId !== accountsAllRequestSeq) return
       accountsAll.value = []
     }
   }

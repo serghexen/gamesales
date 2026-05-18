@@ -56,8 +56,18 @@ export function useActiveTabWatcher({
   startTelegramPolling,
   stopTelegramPolling,
 }) {
+  let activeTabRequestSeq = 0
+
   // Главный watcher вкладок: подгружает данные только для активного раздела.
   watch(activeTab, async (tab) => {
+    const requestId = ++activeTabRequestSeq
+    // Гарантирует, что пост-эффекты применяются только для самого свежего переключения вкладки.
+    const isCurrentRequest = (expectedTab = null) => {
+      if (requestId !== activeTabRequestSeq) return false
+      if (!expectedTab) return true
+      return activeTab.value === expectedTab
+    }
+
     // На каждом входе во вкладку очищаем поисковые поля, чтобы не тянуть старый запрос.
     if (tab === 'deals' && dealFilters) {
       dealFilters.search_q = ''
@@ -100,10 +110,12 @@ export function useActiveTabWatcher({
       stopTelegramPolling()
     }
     if (tab === 'dashboard') {
+      if (!isCurrentRequest('dashboard')) return
       checkApi()
       return
     }
     if (tab === 'profile') {
+      if (!isCurrentRequest('profile')) return
       pwdOk.value = false
       showPwdForm.value = false
       return
@@ -116,13 +128,17 @@ export function useActiveTabWatcher({
       editProduct.open = false
       if (!catalogsLoadedOnce.value && (!platforms.value.length || !regions.value.length)) {
         await loadCatalogs()
+        if (!isCurrentRequest('products')) return
         if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
       }
+      if (!isCurrentRequest('products')) return
       productsPage.value = 1
       // Всегда перезагружаем список после сброса фильтров, иначе останется старый отфильтрованный массив.
       await loadProducts()
+      if (!isCurrentRequest('products')) return
       if (!productsAllLoadedOnce.value && !productsAll.value.length) {
         await loadProductsAll()
+        if (!isCurrentRequest('products')) return
         if (productsAll.value.length) productsAllLoadedOnce.value = true
       }
       return
@@ -134,24 +150,29 @@ export function useActiveTabWatcher({
       accountsPage.value = 1
       // Список аккаунтов грузим первым, а вспомогательные справочники подтягиваем в фоне.
       await loadAccounts()
+      if (!isCurrentRequest('accounts')) return
       const backgroundTasks = []
       if (!catalogsLoadedOnce.value && (!platforms.value.length || !regions.value.length)) {
         backgroundTasks.push(loadCatalogs().then(() => {
+          if (!isCurrentRequest('accounts')) return
           if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
         }))
       }
       if (!domainsLoadedOnce.value && !domains.value.length) {
         backgroundTasks.push(loadDomains().then(() => {
+          if (!isCurrentRequest('accounts')) return
           if (domains.value.length) domainsLoadedOnce.value = true
         }))
       }
       if (!productsAllLoadedOnce.value && !productsAll.value.length) {
         backgroundTasks.push(loadProductsAll().then(() => {
+          if (!isCurrentRequest('accounts')) return
           if (productsAll.value.length) productsAllLoadedOnce.value = true
         }))
       }
       if (!slotTypesLoadedOnce.value && !slotTypes.value.length) {
         backgroundTasks.push(loadSlotTypes().then(() => {
+          if (!isCurrentRequest('accounts')) return
           if (slotTypes.value.length) slotTypesLoadedOnce.value = true
         }))
       }
@@ -179,36 +200,43 @@ export function useActiveTabWatcher({
       if (!dealsBootstrapped.value) {
         if (!accountsAllLoadedOnce.value) {
           tasks.push(loadAccountsAll().then(() => {
+            if (!isCurrentRequest('deals')) return
             if (accountsAll.value.length) accountsAllLoadedOnce.value = true
           }))
         }
         if (!productsAllLoadedOnce.value) {
           tasks.push(loadProductsAll().then(() => {
+            if (!isCurrentRequest('deals')) return
             if (productsAll.value.length) productsAllLoadedOnce.value = true
           }))
         }
         if (!catalogsLoadedOnce.value) {
           tasks.push(loadCatalogs().then(() => {
+            if (!isCurrentRequest('deals')) return
             if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
           }))
         }
         if (!sourcesLoadedOnce.value) {
           tasks.push(loadSources().then(() => {
+            if (!isCurrentRequest('deals')) return
             if (sources.value.length) sourcesLoadedOnce.value = true
           }))
         }
         if (!domainsLoadedOnce.value) {
           tasks.push(loadDomains().then(() => {
+            if (!isCurrentRequest('deals')) return
             if (domains.value.length) domainsLoadedOnce.value = true
           }))
         }
         if (!slotTypesLoadedOnce.value) {
           tasks.push(loadSlotTypes().then(() => {
+            if (!isCurrentRequest('deals')) return
             if (slotTypes.value.length) slotTypesLoadedOnce.value = true
           }))
         }
       }
       await Promise.all(tasks)
+      if (!isCurrentRequest('deals')) return
       dealsBootstrapped.value = true
       return
     }
@@ -216,11 +244,13 @@ export function useActiveTabWatcher({
       const tasks = []
       if (!catalogsLoadedOnce.value && (!platforms.value.length || !regions.value.length)) {
         tasks.push(loadCatalogs().then(() => {
+          if (!isCurrentRequest('analytics')) return
           if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
         }))
       }
       if (!sourcesLoadedOnce.value && !sources.value.length) {
         tasks.push(loadSources().then(() => {
+          if (!isCurrentRequest('analytics')) return
           if (sources.value.length) sourcesLoadedOnce.value = true
         }))
       }
@@ -238,18 +268,22 @@ export function useActiveTabWatcher({
     }
     if (tab === 'telegram') {
       await loadTelegramStatus()
+      if (!isCurrentRequest('telegram')) return
       startTelegramPolling()
       return
     }
     if (tab === 'catalogs') {
       const tasks = []
       if (!domainsLoadedOnce.value && !domains.value.length) tasks.push(loadDomains().then(() => {
+        if (!isCurrentRequest('catalogs')) return
         if (domains.value.length) domainsLoadedOnce.value = true
       }))
       if (!sourcesLoadedOnce.value && !sources.value.length) tasks.push(loadSources().then(() => {
+        if (!isCurrentRequest('catalogs')) return
         if (sources.value.length) sourcesLoadedOnce.value = true
       }))
       if (!catalogsLoadedOnce.value && (!platforms.value.length || !regions.value.length)) tasks.push(loadCatalogs().then(() => {
+        if (!isCurrentRequest('catalogs')) return
         if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
       }))
       await Promise.all(tasks)

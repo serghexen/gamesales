@@ -54,6 +54,11 @@ export function useProductsFlow({
 }) {
   let initialEditProductSnapshot = null
   let initialCreateProductSnapshot = null
+  let productsRequestSeq = 0
+  let productsAllRequestSeq = 0
+  let productAccountsRequestSeq = 0
+  let productAccountOptionsRequestSeq = 0
+  let productSubscriptionTermsRequestSeq = 0
   const productSubscriptionTermsRef = productSubscriptionTerms || { value: [] }
   const productSubscriptionTermsLoadingRef = productSubscriptionTermsLoading || { value: false }
   const productSubscriptionTermsErrorRef = productSubscriptionTermsError || { value: null }
@@ -152,6 +157,7 @@ export function useProductsFlow({
 
   // Загружает сроки подписки для карточки товара типа "subscription".
   async function loadProductSubscriptionTerms(productId, typeCode) {
+    const requestId = ++productSubscriptionTermsRequestSeq
     const normalizedType = String(typeCode || '').trim().toLowerCase()
     if (!productId || normalizedType !== 'subscription') {
       productSubscriptionTermsRef.value = []
@@ -163,12 +169,21 @@ export function useProductsFlow({
     productSubscriptionTermsErrorRef.value = null
     try {
       const data = await apiGet(`/products/subscriptions/${encodeURIComponent(productId)}/terms`, { token: auth.state.token })
+      // Защита от устаревшего ответа: применяем только для текущей карточки и последнего запроса.
+      if (
+        requestId !== productSubscriptionTermsRequestSeq
+        || Number(editProduct.product_id || 0) !== Number(productId || 0)
+        || String(editProduct.type_code || '').trim().toLowerCase() !== 'subscription'
+      ) return
       productSubscriptionTermsRef.value = Array.isArray(data) ? data : []
     } catch (e) {
+      if (requestId !== productSubscriptionTermsRequestSeq) return
       productSubscriptionTermsRef.value = []
       productSubscriptionTermsErrorRef.value = mapApiError(e?.message)
     } finally {
-      productSubscriptionTermsLoadingRef.value = false
+      if (requestId === productSubscriptionTermsRequestSeq) {
+        productSubscriptionTermsLoadingRef.value = false
+      }
     }
   }
 
@@ -348,6 +363,7 @@ export function useProductsFlow({
 
   // Загружает список игр для таблицы.
   async function loadProducts() {
+    const requestId = ++productsRequestSeq
     productsLoading.value = true
     try {
       const params = new URLSearchParams()
@@ -360,26 +376,33 @@ export function useProductsFlow({
       params.set('page', String(productsPage.value))
       params.set('page_size', String(productsPageSize.value))
       const res = await apiGet(`/products?${params.toString()}`, { token: auth.state.token })
+      if (requestId !== productsRequestSeq) return
       products.value = (res?.items || []).map(normalizeProduct)
       productsTotal.value = Number(res?.total || 0)
     } catch {
+      if (requestId !== productsRequestSeq) return
       products.value = []
       productsTotal.value = 0
     } finally {
-      productsLoading.value = false
+      if (requestId === productsRequestSeq) {
+        productsLoading.value = false
+      }
     }
   }
 
   async function loadProductsAll() {
+    const requestId = ++productsAllRequestSeq
     try {
       const params = new URLSearchParams()
       params.set('all', 'true')
       params.set('sort_key', 'title')
       params.set('sort_dir', 'asc')
       const res = await apiGet(`/products?${params.toString()}`, { token: auth.state.token })
+      if (requestId !== productsAllRequestSeq) return
       // Для переходов из сделок держим все типы товаров, чтобы корректно открывать игру и подписку.
       productsAll.value = (res?.items || []).map(normalizeProduct)
     } catch {
+      if (requestId !== productsAllRequestSeq) return
       productsAll.value = []
     }
   }
@@ -389,21 +412,27 @@ export function useProductsFlow({
       productAccounts.value = []
       return
     }
+    const requestId = ++productAccountsRequestSeq
     productAccountsLoading.value = true
     productAccountsError.value = null
     try {
       // Используем только product-маршрут для связанных аккаунтов товара.
       const data = await apiGet(`/products/${productId}/accounts`, { token: auth.state.token })
+      if (requestId !== productAccountsRequestSeq) return
       productAccounts.value = data || []
     } catch (e) {
+      if (requestId !== productAccountsRequestSeq) return
       productAccountsError.value = mapApiError(e?.message)
       productAccounts.value = []
     } finally {
-      productAccountsLoading.value = false
+      if (requestId === productAccountsRequestSeq) {
+        productAccountsLoading.value = false
+      }
     }
   }
 
   async function loadAvailableProductAccounts(typeCode, productId = null) {
+    const requestId = ++productAccountOptionsRequestSeq
     const normalizedType = String(typeCode || PRODUCT_TYPE_PRIMARY).trim().toLowerCase() === 'subscription'
       ? 'subscription'
       : PRODUCT_TYPE_PRIMARY
@@ -412,8 +441,10 @@ export function useProductsFlow({
       params.set('type_code', normalizedType)
       if (productId) params.set('product_id', String(productId))
       const data = await apiGet(`/accounts/available-for-product?${params.toString()}`, { token: auth.state.token })
+      if (requestId !== productAccountOptionsRequestSeq) return
       productAccountOptions.value = Array.isArray(data) ? data : []
     } catch {
+      if (requestId !== productAccountOptionsRequestSeq) return
       productAccountOptions.value = []
     }
   }

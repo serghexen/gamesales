@@ -3,6 +3,16 @@ import { ref, reactive } from 'vue'
 
 import { useActiveTabWatcher } from '../useActiveTabWatcher.js'
 
+function createDeferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 function createHarness({ role = 'manager', responsible = '', preset = '', tab = 'deals' } = {}) {
   const activeTab = ref(tab)
   const isAdmin = ref(role === 'admin')
@@ -241,6 +251,152 @@ describe('useActiveTabWatcher', () => {
     expect(h.accountFilters.status_q).toBe('')
     expect(h.accountFilters.date_from).toBe('')
     expect(h.accountFilters.date_to).toBe('')
+  })
+
+  it('does not start telegram polling when tab changed before status load resolved', async () => {
+    const telegramStatusDeferred = createDeferred()
+    const startTelegramPolling = vi.fn()
+    const stopTelegramPolling = vi.fn()
+    const activeTab = ref('telegram')
+
+    useActiveTabWatcher({
+      activeTab,
+      isAdmin: ref(false),
+      dealFilters: reactive({ responsible_q: '' }),
+      productFilters: reactive({ q: '', type_code: '', platform_code: '', region_code: '' }),
+      accountFilters: reactive({ search_q: '', login_q: '', product_q: '', region_q: '', status_q: '', date_from: '', date_to: '' }),
+      productFilterDraft: reactive({ title: '', type: '', platform: '', region: '' }),
+      accountFilterDraft: reactive({ login: '', product: '', region: '', status: '', date_from: '', date_to: '' }),
+      defaultDealsResponsibleFilter: ref(''),
+      mustPrefillDealsResponsible: ref(false),
+      showUserForm: ref(false),
+      showProductForm: ref(false),
+      showProductFilters: ref(false),
+      showDealForm: ref(false),
+      showAccountFilters: ref(false),
+      activeProductFilter: ref(''),
+      activeAccountFilter: ref(''),
+      nsGiftOk: ref(''),
+      nsGiftError: ref(''),
+      editProduct: reactive({ open: false }),
+      pwdOk: ref(false),
+      showPwdForm: ref(false),
+      catalogsLoadedOnce: ref(true),
+      domainsLoadedOnce: ref(true),
+      sourcesLoadedOnce: ref(true),
+      slotTypesLoadedOnce: ref(true),
+      accountsAllLoadedOnce: ref(true),
+      productsAllLoadedOnce: ref(true),
+      dealsBootstrapped: ref(false),
+      platforms: ref([]),
+      regions: ref([]),
+      domains: ref([]),
+      sources: ref([]),
+      slotTypes: ref([]),
+      productsAll: ref([]),
+      accountsAll: ref([]),
+      productsPage: ref(1),
+      accountsPage: ref(1),
+      checkApi: vi.fn(),
+      loadUsers: vi.fn().mockResolvedValue(undefined),
+      loadCatalogs: vi.fn().mockResolvedValue(undefined),
+      loadDomains: vi.fn().mockResolvedValue(undefined),
+      loadSources: vi.fn().mockResolvedValue(undefined),
+      loadSlotTypes: vi.fn().mockResolvedValue(undefined),
+      loadProducts: vi.fn().mockResolvedValue(undefined),
+      loadProductsAll: vi.fn().mockResolvedValue(undefined),
+      loadAccounts: vi.fn().mockResolvedValue(undefined),
+      loadAccountsAll: vi.fn().mockResolvedValue(undefined),
+      loadDeals: vi.fn().mockResolvedValue(undefined),
+      loadNsGiftBalance: vi.fn().mockResolvedValue(undefined),
+      loadNsGiftCategories: vi.fn().mockResolvedValue(undefined),
+      reloadNsGiftData: vi.fn().mockResolvedValue(undefined),
+      loadTelegramStatus: vi.fn().mockImplementation(() => telegramStatusDeferred.promise),
+      startTelegramPolling,
+      stopTelegramPolling,
+    })
+
+    await Promise.resolve()
+    activeTab.value = 'deals'
+    await Promise.resolve()
+    telegramStatusDeferred.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(stopTelegramPolling).toHaveBeenCalled()
+    expect(startTelegramPolling).not.toHaveBeenCalled()
+  })
+
+  it('does not mark deals bootstrapped when user leaves deals tab before load resolves', async () => {
+    const loadDealsDeferred = createDeferred()
+    const dealsBootstrapped = ref(false)
+    const activeTab = ref('deals')
+
+    useActiveTabWatcher({
+      activeTab,
+      isAdmin: ref(false),
+      dealFilters: reactive({ responsible_q: 'Иван' }),
+      productFilters: reactive({ q: '', type_code: '', platform_code: '', region_code: '' }),
+      accountFilters: reactive({ search_q: '', login_q: '', product_q: '', region_q: '', status_q: '', date_from: '', date_to: '' }),
+      productFilterDraft: reactive({ title: '', type: '', platform: '', region: '' }),
+      accountFilterDraft: reactive({ login: '', product: '', region: '', status: '', date_from: '', date_to: '' }),
+      defaultDealsResponsibleFilter: ref('Иван'),
+      mustPrefillDealsResponsible: ref(true),
+      showUserForm: ref(false),
+      showProductForm: ref(false),
+      showProductFilters: ref(false),
+      showDealForm: ref(false),
+      showAccountFilters: ref(false),
+      activeProductFilter: ref(''),
+      activeAccountFilter: ref(''),
+      nsGiftOk: ref(''),
+      nsGiftError: ref(''),
+      editProduct: reactive({ open: false }),
+      pwdOk: ref(false),
+      showPwdForm: ref(false),
+      catalogsLoadedOnce: ref(true),
+      domainsLoadedOnce: ref(true),
+      sourcesLoadedOnce: ref(true),
+      slotTypesLoadedOnce: ref(true),
+      accountsAllLoadedOnce: ref(true),
+      productsAllLoadedOnce: ref(true),
+      dealsBootstrapped,
+      platforms: ref([]),
+      regions: ref([]),
+      domains: ref([]),
+      sources: ref([]),
+      slotTypes: ref([]),
+      productsAll: ref([]),
+      accountsAll: ref([]),
+      productsPage: ref(1),
+      accountsPage: ref(1),
+      checkApi: vi.fn(),
+      loadUsers: vi.fn().mockResolvedValue(undefined),
+      loadCatalogs: vi.fn().mockResolvedValue(undefined),
+      loadDomains: vi.fn().mockResolvedValue(undefined),
+      loadSources: vi.fn().mockResolvedValue(undefined),
+      loadSlotTypes: vi.fn().mockResolvedValue(undefined),
+      loadProducts: vi.fn().mockResolvedValue(undefined),
+      loadProductsAll: vi.fn().mockResolvedValue(undefined),
+      loadAccounts: vi.fn().mockResolvedValue(undefined),
+      loadAccountsAll: vi.fn().mockResolvedValue(undefined),
+      loadDeals: vi.fn().mockImplementation(() => loadDealsDeferred.promise),
+      loadNsGiftBalance: vi.fn().mockResolvedValue(undefined),
+      loadNsGiftCategories: vi.fn().mockResolvedValue(undefined),
+      reloadNsGiftData: vi.fn().mockResolvedValue(undefined),
+      loadTelegramStatus: vi.fn().mockResolvedValue(undefined),
+      startTelegramPolling: vi.fn(),
+      stopTelegramPolling: vi.fn(),
+    })
+
+    await Promise.resolve()
+    activeTab.value = 'accounts'
+    await Promise.resolve()
+    loadDealsDeferred.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(dealsBootstrapped.value).toBe(false)
   })
 
 })

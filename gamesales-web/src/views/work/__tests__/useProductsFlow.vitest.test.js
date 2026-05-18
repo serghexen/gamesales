@@ -3,6 +3,16 @@ import { reactive, ref } from 'vue'
 
 import { useProductsFlow } from '../useProductsFlow.js'
 
+function createDeferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 function createHarness() {
   const auth = { state: reactive({ token: 'token-1' }) }
   const apiGet = vi.fn()
@@ -83,6 +93,9 @@ function createHarness() {
     productSlotAssignments: ref([]),
     productSlotAssignmentsError: ref(null),
     productSlotAssignmentsLoading: ref(false),
+    productSubscriptionTerms: ref([]),
+    productSubscriptionTermsLoading: ref(false),
+    productSubscriptionTermsError: ref(null),
     loadProductSlotAssignments: vi.fn(),
     suppressUnsavedConfirm: ref(false),
     requestUnsavedConfirm: vi.fn(async () => true),
@@ -324,5 +337,44 @@ describe('useProductsFlow', () => {
 
     expect(h.deps.requestDealConfirm).toHaveBeenCalledTimes(1)
     expect(h.deps.apiDelete).toHaveBeenCalledWith('/products/55', { token: 'token-1' })
+  })
+
+  it('loadProductAccounts ignores stale response after product switch', async () => {
+    const h = createHarness()
+    const first = createDeferred()
+    const second = createDeferred()
+    h.apiGet
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+
+    const requestA = h.flow.loadProductAccounts(55)
+    const requestB = h.flow.loadProductAccounts(77)
+    second.resolve([{ account_id: 2 }])
+    await requestB
+    first.resolve([{ account_id: 1 }])
+    await requestA
+
+    expect(h.deps.productAccounts.value).toEqual([{ account_id: 2 }])
+  })
+
+  it('loadProducts ignores stale response after quick filter changes', async () => {
+    const h = createHarness()
+    const first = createDeferred()
+    const second = createDeferred()
+    h.apiGet
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+
+    h.productFilters.q = 'old'
+    const requestA = h.flow.loadProducts()
+    h.productFilters.q = 'new'
+    const requestB = h.flow.loadProducts()
+
+    second.resolve({ items: [{ product_id: 200, title: 'New Product' }], total: 1 })
+    await requestB
+    first.resolve({ items: [{ product_id: 100, title: 'Old Product' }], total: 1 })
+    await requestA
+
+    expect(h.products.value).toEqual([expect.objectContaining({ product_id: 200, title: 'New Product' })])
   })
 })
