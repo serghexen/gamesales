@@ -4,7 +4,7 @@ import { reactive, ref } from 'vue'
 import { useDeals } from '../useDeals.js'
 
 describe('useDeals', () => {
-  it('sorts deals by date ascending by default so newer deals are at the bottom', async () => {
+  it('requests deals with server sort by date asc by default', async () => {
     const dealFilters = reactive({
       search_q: '',
       type_q: '',
@@ -16,13 +16,7 @@ describe('useDeals', () => {
       purchase_to: '',
     })
     const dealShowCompleted = ref(false)
-    const apiGet = vi.fn().mockResolvedValue({
-      items: [
-        { deal_id: 2, purchase_at: '2026-03-02T10:00:00Z', created_at: '2026-03-02T10:00:00Z' },
-        { deal_id: 1, purchase_at: '2026-03-01T10:00:00Z', created_at: '2026-03-01T10:00:00Z' },
-      ],
-      total: 2,
-    })
+    const apiGet = vi.fn().mockResolvedValue({ items: [], total: 0 })
 
     const h = useDeals({
       auth: { state: { token: 't' } },
@@ -34,8 +28,10 @@ describe('useDeals', () => {
     })
 
     await h.loadDeals(1)
-
-    expect(h.sortedDeals.value.map((item) => item.deal_id)).toEqual([1, 2])
+    const calledUrl = String(apiGet.mock.calls[0]?.[0] || '')
+    expect(calledUrl).toContain('sort_key=date')
+    expect(calledUrl).toContain('sort_dir=asc')
+    expect(calledUrl).toContain('page=1')
   })
 
   it('ignores stale responses when requests overlap', async () => {
@@ -130,5 +126,47 @@ describe('useDeals', () => {
     expect(apiGet).toHaveBeenCalledTimes(2)
     expect(h.dealPage.value).toBe(2)
     expect(h.dealItems.value.map((item) => item.deal_id)).toEqual([7])
+  })
+
+  it('toggleDealSort changes direction/key and reloads first page', async () => {
+    const dealFilters = reactive({
+      search_q: '',
+      type_q: '',
+      customer_q: '',
+      responsible_q: '',
+      region_q: '',
+      status_q: '',
+      purchase_from: '',
+      purchase_to: '',
+    })
+    const dealShowCompleted = ref(false)
+    const apiGet = vi.fn().mockResolvedValue({ items: [], total: 0 })
+
+    const h = useDeals({
+      auth: { state: { token: 't' } },
+      apiGet,
+      mapApiError: (v) => v,
+      resolveDealFlowStatusFilter: () => '',
+      dealFilters,
+      dealShowCompleted,
+    })
+
+    await h.loadDeals(2)
+    h.toggleDealSort('date')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(h.dealSort.value).toEqual({ key: 'date', dir: 'desc' })
+    expect(h.dealPage.value).toBe(1)
+    const firstSortUrl = String(apiGet.mock.calls[1]?.[0] || '')
+    expect(firstSortUrl).toContain('sort_key=date')
+    expect(firstSortUrl).toContain('sort_dir=desc')
+    expect(firstSortUrl).toContain('page=1')
+
+    h.toggleDealSort('status')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(h.dealSort.value).toEqual({ key: 'status', dir: 'asc' })
+    const secondSortUrl = String(apiGet.mock.calls[2]?.[0] || '')
+    expect(secondSortUrl).toContain('sort_key=status')
+    expect(secondSortUrl).toContain('sort_dir=asc')
+    expect(secondSortUrl).toContain('page=1')
   })
 })

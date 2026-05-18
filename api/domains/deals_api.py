@@ -1313,6 +1313,8 @@ def mount_deals_routes(
         price_q: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
+        sort_key: str = "date",
+        sort_dir: str = "asc",
         user=Depends(get_current_user),
     ):
         if page < 1:
@@ -1320,6 +1322,18 @@ def mount_deals_routes(
         if page_size < 1 or page_size > 200:
             raise HTTPException(400, "page_size must be between 1 and 200")
         offset = (page - 1) * page_size
+        sort_dir = "desc" if str(sort_dir).lower() == "desc" else "asc"
+        sort_map = {
+            # Сортировки сделок приводим к тем же ключам, что использует фронт в таблице.
+            "type": "COALESCE(dt.name, '')",
+            "customer": "COALESCE(c.nickname, '')",
+            "responsible": "COALESCE(d.responsible_username, '')",
+            # В UI колонка называется "Товар", но ключ исторически остался region.
+            "region": "COALESCE(pr.title, '')",
+            "status": "COALESCE(fs.name, '')",
+            "date": "COALESCE(di.purchase_at, d.created_at)",
+        }
+        sort_expr = sort_map.get(sort_key, sort_map["date"])
     
         with psycopg.connect(DB_DSN) as conn:
             where_sql, params = build_deals_filters(
@@ -1445,7 +1459,7 @@ def mount_deals_routes(
                 LEFT JOIN app.customers c ON c.customer_id = d.customer_id
                 LEFT JOIN app.sources src ON src.source_id = c.source_id
                 {where_sql}
-                ORDER BY COALESCE(di.purchase_at, d.created_at) ASC, d.deal_id ASC
+                ORDER BY {sort_expr} {sort_dir}, d.deal_id ASC
                 LIMIT %s OFFSET %s
             """, params + [page_size, offset])
     

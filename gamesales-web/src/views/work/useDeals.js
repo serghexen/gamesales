@@ -40,31 +40,8 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
     loadDeals(1)
   })
 
-  // Локальная сортировка уже загруженных строк.
-  const sortedDeals = computed(() => {
-    const list = [...dealItems.value]
-    const { key, dir } = dealSort.value
-    const getVal = (d) => {
-      if (key === 'type') return d.deal_type || ''
-      if (key === 'customer') return d.customer_nickname || ''
-      if (key === 'responsible') return d.responsible_username || ''
-      if (key === 'region') return d.product_title || ''
-      if (key === 'status') return d.flow_status || ''
-      if (key === 'date') return new Date(d.purchase_at || d.created_at || 0).getTime()
-      return ''
-    }
-    list.sort((a, b) => {
-      const av = getVal(a)
-      const bv = getVal(b)
-      if (typeof av === 'number' && typeof bv === 'number') {
-        return dir === 'asc' ? av - bv : bv - av
-      }
-      return dir === 'asc'
-        ? String(av || '').localeCompare(String(bv || ''))
-        : String(bv || '').localeCompare(String(av || ''))
-    })
-    return list
-  })
+  // Таблица использует порядок, который вернул backend (сортировка теперь серверная).
+  const sortedDeals = computed(() => [...dealItems.value])
 
   // Переключает направление сортировки по колонке.
   function toggleDealSort(key) {
@@ -74,6 +51,8 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
     } else {
       dealSort.value = { key, dir: 'asc' }
     }
+    dealPage.value = 1
+    loadDeals(1)
   }
 
   // Безопасный переход на страницу.
@@ -110,6 +89,8 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
       params.set('flow_status_q', resolveDealFlowStatusFilter(dealFilters.status_q, dealShowCompleted.value))
       if (dealFilters.purchase_from) params.set('purchase_from', dealFilters.purchase_from)
       if (dealFilters.purchase_to) params.set('purchase_to', dealFilters.purchase_to)
+      params.set('sort_key', String(dealSort.value?.key || 'date'))
+      params.set('sort_dir', String(dealSort.value?.dir || 'asc'))
       params.set('page', String(page))
       params.set('page_size', String(dealPageSize.value))
       const res = await apiGet(`/deals?${params.toString()}`, { token: auth.state.token })
