@@ -188,8 +188,8 @@ class AccountsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 400)
 
-    # При создании аккаунта базовые поля карточки должны быть обязательны.
-    def test_create_account_requires_region_and_date(self):
+    # При создании аккаунта обязательна дата, регион можно не указывать.
+    def test_create_account_requires_date(self):
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
@@ -205,7 +205,6 @@ class AccountsEndpointsTests(unittest.TestCase):
                     },
                 )
             self.assertEqual(res.status_code, 400)
-            self.assertIn("region_code", str(res.json().get("detail", "")))
             self.assertIn("account_date", str(res.json().get("detail", "")))
 
     # Создание аккаунта должно вернуть карточку с платформами и статусом слотов.

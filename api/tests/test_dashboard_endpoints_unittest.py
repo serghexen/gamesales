@@ -9,7 +9,7 @@ try:
 except Exception:  # pragma: no cover
     TestClient = None
 
-from api.domains.dashboard_api import mount_dashboard_routes
+from domains.dashboard_api import mount_dashboard_routes
 
 
 class _FakeRedis:
@@ -103,7 +103,7 @@ class DashboardEndpointsTests(unittest.TestCase):
             sql_collector.append((sql, params))
             return [("dmitry", "Дмитрий", 1)]
 
-        with patch("api.domains.dashboard_api.redis.Redis.from_url", return_value=fake_redis):
+        with patch("domains.dashboard_api.redis.Redis.from_url", return_value=fake_redis):
             mount_dashboard_routes(
                 app,
                 DB_DSN="postgresql://test",
@@ -137,7 +137,7 @@ class DashboardEndpointsTests(unittest.TestCase):
             sql_collector.append((sql, params))
             return [("operator1", "Оператор", 2)]
 
-        with patch("api.domains.dashboard_api.redis.Redis.from_url", return_value=fake_redis):
+        with patch("domains.dashboard_api.redis.Redis.from_url", return_value=fake_redis):
             mount_dashboard_routes(
                 app,
                 DB_DSN="postgresql://test",
@@ -158,7 +158,7 @@ class DashboardEndpointsTests(unittest.TestCase):
         self.assertTrue(body["items"][0]["is_online"])
         self.assertTrue(sql_collector, "SQL query was not executed")
         sql_text = sql_collector[0][0]
-        self.assertIn("lower(u.role_code) IN ('manager', 'operator')", sql_text)
+        self.assertIn("lower(u.role_code) IN ('manager', 'operator', 'owner')", sql_text)
 
     # В ответе должны быть и офлайн менеджеры/операторы, онлайн отмечаем отдельным флагом.
     def test_managers_load_returns_all_roles_with_online_flag(self):
@@ -169,7 +169,7 @@ class DashboardEndpointsTests(unittest.TestCase):
             _ = params
             return [("dmitry", "Дмитрий", 3), ("lera", "Лера", 1)]
 
-        with patch("api.domains.dashboard_api.redis.Redis.from_url", return_value=fake_redis):
+        with patch("domains.dashboard_api.redis.Redis.from_url", return_value=fake_redis):
             mount_dashboard_routes(
                 app,
                 DB_DSN="postgresql://test",

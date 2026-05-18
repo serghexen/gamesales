@@ -489,7 +489,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (1,)},  # ensure_source_exists
             {"one": (22, 5)},  # customer lookup
             {"one": (5,)},  # customer source_id
-            {"one": ("my_market_source",)},  # source code
+            {"one": ("ym",)},  # source code
             {"one": (99,)},  # conflicting deal
         ]
         with (
