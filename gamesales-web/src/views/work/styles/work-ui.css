@@ -1140,6 +1140,10 @@
   pointer-events: all;
 }
 
+.work-modal-root.modal-backdrop .modal__body-overlay .loader-wrap .muted {
+  margin-top: 0;
+}
+
 .work-modal-root.modal-backdrop .modal__body-overlay-content {
   display: inline-flex;
   align-items: center;
