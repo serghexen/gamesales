@@ -1140,8 +1140,20 @@
   pointer-events: all;
 }
 
+.work-modal-root.modal-backdrop .modal__body-overlay .loader-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 0;
+  padding: 0;
+}
+
 .work-modal-root.modal-backdrop .modal__body-overlay .loader-wrap .muted {
-  margin-top: 0;
+  margin: 0;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .work-modal-root.modal-backdrop .modal__body-overlay-content {
