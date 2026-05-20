@@ -48,6 +48,12 @@
                       <button class="ghost" type="button" @click="downloadAccountTemplate">
                         Шаблон
                       </button>
+                      <button class="ghost" type="button" @click="downloadAccountImportExport" :disabled="accountImportLoading">
+                        Экспорт
+                      </button>
+                      <button class="ghost" type="button" @click="validateAccountSlotsCheck" :disabled="!accountImportFile || accountImportLoading">
+                        Проверка слотов
+                      </button>
                       <button class="ghost" type="button" @click="validateAccountImport" :disabled="!accountImportFile || accountImportLoading">
                         <span v-if="accountImportLoading && accountImportAction === 'validate'" class="spinner spinner--small"></span>
                         Проверка
@@ -101,6 +107,20 @@
                       <p v-if="accountImportStats" class="muted">
                         Итог: создано {{ accountImportStats.created }}, обновлено {{ accountImportStats.updated }}, пропущено {{ accountImportStats.skipped }}, ошибок {{ accountImportStats.failed }}, всего {{ accountImportStats.total }}
                       </p>
+                      <div v-if="accountImportStats?.details" class="import-errors">
+                        <p class="muted">
+                          Создано: {{ accountImportStats.details.created.accounts_from_bindings_sheet }} — аккаунтов (лист Аккаунты), {{ accountImportStats.details.created.accounts_from_mail_sheets }} — аккаунтов (листы Почты*), {{ accountImportStats.details.created.subscription_terms }} — сроков подписок
+                        </p>
+                        <p class="muted">
+                          Обновлено: {{ accountImportStats.details.updated.game_bindings }} — привязок игр, {{ accountImportStats.details.updated.accounts_from_mail_sheets }} — существующих аккаунтов (листы Почты*), {{ accountImportStats.details.updated.subscription_terms }} — существующих сроков подписок
+                        </p>
+                        <p class="muted">
+                          Пропущено: {{ accountImportStats.details.skipped.binding_rows }} — строки листа Аккаунты, {{ accountImportStats.details.skipped.mail_rows }} — строки листов Почты*, {{ accountImportStats.details.skipped.subscription_rows }} — строки листов ПЛЮС/EA PLAY
+                        </p>
+                        <p class="muted">
+                          Дополнительно: создано базовых товаров подписки {{ accountImportStats.details.meta.subscription_products_created }}
+                        </p>
+                      </div>
                       <div v-if="accountImportWarnings.length" class="import-errors">
                         <p class="muted">Предупреждения: {{ accountImportWarnings.length }}</p>
                         <table class="table table--compact table--dense">
@@ -160,6 +180,8 @@ defineProps([
   'startModalDrag',
   'accountImportLoading',
   'downloadAccountTemplate',
+  'downloadAccountImportExport',
+  'validateAccountSlotsCheck',
   'validateAccountImport',
   'accountImportFile',
   'accountImportAction',

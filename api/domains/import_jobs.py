@@ -145,8 +145,8 @@ def build_import_jobs(
             return "EA PLAY"
         return title
 
-    # Возвращает существующий subscription-товар или создает его при первом импорте.
-    def get_or_create_subscription_product_id(conn, title: str) -> int:
+    # Возвращает subscription-товар и признак, что запись была создана в этой операции.
+    def get_or_create_subscription_product_id(conn, title: str) -> tuple[int, bool]:
         row = q1(
             conn,
             """
@@ -161,7 +161,7 @@ def build_import_jobs(
             (title,),
         )
         if row:
-            return int(row[0])
+            return int(row[0]), False
         row_new = q1(
             conn,
             """
@@ -181,7 +181,7 @@ def build_import_jobs(
             """,
             (product_id,),
         )
-        return product_id
+        return product_id, True
 
     def ensure_account_platforms(conn, account_id: int):
         ps4_id, ps4_slots = get_platform_info(conn, "ps4")
@@ -373,6 +373,29 @@ def build_import_jobs(
                 updated = 0
                 skipped = 0
                 failed = 0
+                # Детализация нужна для понятного аудита импорта по видам строк.
+                details = {
+                    "created": {
+                        "accounts_from_mail_sheets": 0,
+                        "accounts_from_bindings_sheet": 0,
+                        "subscription_terms": 0,
+                    },
+                    "updated": {
+                        "accounts_from_mail_sheets": 0,
+                        "game_bindings": 0,
+                        "subscription_terms": 0,
+                    },
+                    "skipped": {
+                        "mail_rows": 0,
+                        "binding_rows": 0,
+                        "subscription_rows": 0,
+                    },
+                    # Показываем отдельно, сколько базовых subscription-товаров появилось на лету.
+                    # Это справочная метрика и не входит в общий счетчик created.
+                    "meta": {
+                        "subscription_products_created": 0,
+                    },
+                }
                 upload_done = 0
                 last_success_row = None
                 row_errors = []
@@ -390,6 +413,7 @@ def build_import_jobs(
                             game_title = (item.get("game") or "").strip()
                             if not login or not domain or not game_title:
                                 skipped += 1
+                                details["skipped"]["binding_rows"] += 1
                                 upload_done += 1
                                 set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
                                 continue
@@ -421,9 +445,11 @@ def build_import_jobs(
                                 account_id = int(row_new_acc[0])
                                 ensure_account_platforms(conn, account_id)
                                 created += 1
+                                details["created"]["accounts_from_bindings_sheet"] += 1
                             product_id = find_slot_product_link_by_title(conn, game_title)
                             if product_id is None:
                                 skipped += 1
+                                details["skipped"]["binding_rows"] += 1
                                 upload_done += 1
                                 set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
                                 continue
@@ -449,6 +475,7 @@ def build_import_jobs(
                                     (account_id, product_id),
                                 )
                             updated += 1
+                            details["updated"]["game_bindings"] += 1
                         elif row_kind in {"subscription_term_plus", "subscription_term_ea_play"}:
                             subscription_raw = item.get("subscription")
                             valid_until_raw = item.get("valid_until")
@@ -456,6 +483,7 @@ def build_import_jobs(
                             valid_until_dt = normalize_slot_date_to_dt(valid_until_raw)
                             if not login or not domain or not subscription_title or not valid_until_dt:
                                 skipped += 1
+                                details["skipped"]["subscription_rows"] += 1
                                 upload_done += 1
                                 set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
                                 continue
@@ -472,11 +500,14 @@ def build_import_jobs(
                             )
                             if not row_acc:
                                 skipped += 1
+                                details["skipped"]["subscription_rows"] += 1
                                 upload_done += 1
                                 set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
                                 continue
                             account_id = int(row_acc[0])
-                            product_id = get_or_create_subscription_product_id(conn, subscription_title)
+                            product_id, product_created = get_or_create_subscription_product_id(conn, subscription_title)
+                            if product_created:
+                                details["meta"]["subscription_products_created"] += 1
                             # Держим прямую привязку подписки к аккаунту, чтобы она отображалась в карточке аккаунта.
                             exec1(
                                 conn,
@@ -504,6 +535,7 @@ def build_import_jobs(
                             )
                             if existing_term:
                                 updated += 1
+                                details["updated"]["subscription_terms"] += 1
                             else:
                                 exec1(
                                     conn,
@@ -514,10 +546,12 @@ def build_import_jobs(
                                     (product_id, account_id, valid_until_date, "import"),
                                 )
                                 created += 1
+                                details["created"]["subscription_terms"] += 1
                         else:
                             password = (item.get("password") or "").strip()
                             if not login or not domain:
                                 skipped += 1
+                                details["skipped"]["mail_rows"] += 1
                                 upload_done += 1
                                 set_import_progress(job_id, owner, {"phase": "upload", "current": upload_done, "total": total, "done": False})
                                 continue
@@ -534,6 +568,7 @@ def build_import_jobs(
                             if account_row:
                                 account_id = int(account_row[0])
                                 updated += 1
+                                details["updated"]["accounts_from_mail_sheets"] += 1
                             else:
                                 row = q1(
                                     conn,
@@ -547,6 +582,7 @@ def build_import_jobs(
                                 account_id = int(row[0])
                                 ensure_account_platforms(conn, account_id)
                                 created += 1
+                                details["created"]["accounts_from_mail_sheets"] += 1
                             if password:
                                 exec1(
                                     conn,
@@ -593,6 +629,7 @@ def build_import_jobs(
                     "skipped": skipped,
                     "failed": failed,
                     "total": total,
+                    "details": details,
                     "errors": row_errors,
                     "warnings": warnings,
                     "success_until_row": last_success_row,

@@ -509,7 +509,15 @@ export function useImportFlow({
     } else {
       accountImportMessage.value = `Загрузка с ошибками. Ошибок: ${failed}`
     }
-    accountImportStats.value = { created, updated, skipped, failed, total: res?.total || 0 }
+    // Сохраняем детализацию из бэка, чтобы в модалке было видно, что именно изменилось.
+    accountImportStats.value = {
+      created,
+      updated,
+      skipped,
+      failed,
+      total: res?.total || 0,
+      details: res?.details || null,
+    }
     accountImportLoading.value = false
     accountImportAction.value = ''
     accountImportJobId.value = ''
@@ -647,6 +655,21 @@ export function useImportFlow({
     }
   }
 
+  // Скачивает полный экспорт БД в структуре импортного файла.
+  async function downloadAccountImportExport() {
+    try {
+      const blob = await apiGetFile('/accounts/import/export', { token: auth.state.token })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'gamesales_import_export.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      accountImportMessage.value = mapApiError(e?.message)
+    }
+  }
+
   async function downloadProductImportReportInternal() {
     try {
       const payload = { errors: productImportErrors.value || [], warnings: productImportWarnings.value || [] }
@@ -759,6 +782,39 @@ export function useImportFlow({
       }
     } catch (e) {
       accountImportValidated.value = false
+      accountImportErrors.value = []
+      accountImportWarnings.value = []
+      accountImportMessage.value = mapApiError(e?.message)
+    } finally {
+      accountImportLoading.value = false
+      accountImportAction.value = ''
+      stopAccountImportStatusPolling()
+    }
+  }
+
+  // Отдельная проверка листа "Пользователи": ищет неполный набор слотов по аккаунтам.
+  async function validateAccountSlotsCheck() {
+    if (!accountImportFile.value) return
+    const form = new FormData()
+    form.append('file', accountImportFile.value)
+    accountImportAction.value = 'validate'
+    accountImportLoading.value = true
+    accountImportProgress.current = 0
+    accountImportProgress.total = accountImportTotal.value || 0
+    accountImportProgress.phase = ''
+    try {
+      const res = await apiPostForm('/accounts/import/slots-check', form, { token: auth.state.token })
+      accountImportErrors.value = res?.errors || []
+      accountImportWarnings.value = res?.warnings || []
+      const totalRows = Number(res?.total || 0)
+      if (res?.ok) {
+        accountImportMessage.value = totalRows
+          ? `Проверка слотов пройдена. Проверено строк: ${totalRows}.`
+          : 'Проверка слотов пройдена. Отклонений не найдено.'
+      } else {
+        accountImportMessage.value = `Проверка слотов завершена. Найдено отклонений: ${accountImportErrors.value.length + accountImportWarnings.value.length}.`
+      }
+    } catch (e) {
       accountImportErrors.value = []
       accountImportWarnings.value = []
       accountImportMessage.value = mapApiError(e?.message)
@@ -1032,10 +1088,12 @@ export function useImportFlow({
     onSlotImportFile,
     downloadProductTemplate,
     downloadAccountTemplate,
+    downloadAccountImportExport,
     downloadProductImportReport,
     downloadAccountImportReport,
     validateProductImport,
     validateAccountImport,
+    validateAccountSlotsCheck,
     validateSlotImport,
     uploadProductImport,
     uploadAccountImport,

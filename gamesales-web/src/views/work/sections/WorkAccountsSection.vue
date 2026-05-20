@@ -45,6 +45,8 @@
         :start-modal-drag="ctx.startModalDrag"
         :account-import-loading="ctx.accountImportLoading"
         :download-account-template="ctx.downloadAccountTemplate"
+        :download-account-import-export="ctx.downloadAccountImportExport"
+        :validate-account-slots-check="ctx.validateAccountSlotsCheck"
         :validate-account-import="ctx.validateAccountImport"
         :account-import-file="ctx.accountImportFile"
         :account-import-action="ctx.accountImportAction"
