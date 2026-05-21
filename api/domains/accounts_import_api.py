@@ -272,52 +272,71 @@ def mount_accounts_import_routes(
             }
 
         checked_rows = 0
-        with conn.cursor() as cur:
-            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                if not any(row):
-                    continue
-                checked_rows += 1
-                nick_raw = _norm(row[idx_nick] if idx_nick < len(row) else "")
-                date_raw = row[idx_date] if idx_date < len(row) else None
-                date_iso = _parse_import_date_to_iso(date_raw)
+        # Сначала разбираем и валидируем строки, а затем делаем одну пакетную сверку с БД.
+        parsed_rows = []
+        nick_set = set()
+        date_set = set()
+        for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            if not any(row):
+                continue
+            checked_rows += 1
+            nick_raw = _norm(row[idx_nick] if idx_nick < len(row) else "")
+            date_raw = row[idx_date] if idx_date < len(row) else None
+            date_iso = _parse_import_date_to_iso(date_raw)
 
-                if not nick_raw:
-                    warnings.append({
-                        "row": row_idx,
-                        "field": "Ник",
-                        "value": "",
-                        "message": "Ник не указан",
-                    })
-                    continue
-                if not date_iso:
-                    warnings.append({
-                        "row": row_idx,
-                        "field": "Дата",
-                        "value": _norm(date_raw),
-                        "message": "Не удалось распознать дату",
-                    })
-                    continue
+            if not nick_raw:
+                warnings.append({
+                    "row": row_idx,
+                    "field": "Ник",
+                    "value": "",
+                    "message": "Ник не указан",
+                })
+                continue
+            if not date_iso:
+                warnings.append({
+                    "row": row_idx,
+                    "field": "Дата",
+                    "value": _norm(date_raw),
+                    "message": "Не удалось распознать дату",
+                })
+                continue
 
+            nick_norm = nick_raw.strip().lower()
+            parsed_rows.append({"row": row_idx, "nick_raw": nick_raw, "nick_norm": nick_norm, "date_iso": date_iso})
+            nick_set.add(nick_norm)
+            date_set.add(date_iso)
+
+        found_pairs = set()
+        if parsed_rows:
+            with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT 1
+                    SELECT DISTINCT
+                      lower(trim(c.nickname)) AS nick_norm,
+                      coalesce(di.purchase_at, d.completed_at, d.created_at)::date AS deal_date
                     FROM app.deals d
                     JOIN app.customers c ON c.customer_id = d.customer_id
                     LEFT JOIN app.deal_items di ON di.deal_id = d.deal_id
-                    WHERE lower(trim(c.nickname)) = lower(trim(%s))
-                      AND coalesce(di.purchase_at, d.completed_at, d.created_at)::date = %s::date
-                    LIMIT 1
+                    WHERE lower(trim(c.nickname)) = ANY(%s)
+                      AND coalesce(di.purchase_at, d.completed_at, d.created_at)::date = ANY(%s::date[])
                     """,
-                    (nick_raw, date_iso),
+                    (list(nick_set), list(date_set)),
                 )
-                found = cur.fetchone()
-                if not found:
-                    warnings.append({
-                        "row": row_idx,
-                        "field": "Сделка",
-                        "value": f"{nick_raw} | {date_iso}",
-                        "message": "Сделка не найдена по связке дата + ник",
-                    })
+                for nick_norm, deal_date in cur.fetchall():
+                    if not nick_norm or not deal_date:
+                        continue
+                    found_pairs.add((str(nick_norm).strip().lower(), deal_date.isoformat()))
+
+        for item in parsed_rows:
+            key = (item["nick_norm"], item["date_iso"])
+            if key in found_pairs:
+                continue
+            warnings.append({
+                "row": item["row"],
+                "field": "Сделка",
+                "value": f"{item['nick_raw']} | {item['date_iso']}",
+                "message": "Сделка не найдена по связке дата + ник",
+            })
 
         return {
             "ok": len(errors) == 0 and len(warnings) == 0,

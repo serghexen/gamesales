@@ -1,5 +1,6 @@
 import unittest
 from io import BytesIO
+from datetime import date
 from unittest.mock import patch
 
 try:
@@ -500,10 +501,9 @@ class AccountsImportFormatTests(unittest.TestCase):
         wb.save(out)
         content = out.getvalue()
 
-        # Первая строка найдена, вторая не найдена.
+        # Пакетная сверка: в БД найдена только первая связка.
         script = [
-            {"one": (1,)},
-            {"one": None},
+            {"all": [("andilino", date(2025, 11, 24))]},
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
@@ -535,7 +535,7 @@ class AccountsImportFormatTests(unittest.TestCase):
         wb.save(out)
         content = out.getvalue()
 
-        script = [{"one": (1,)}]
+        script = [{"all": [("andilino", date(2025, 11, 24))]}]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
