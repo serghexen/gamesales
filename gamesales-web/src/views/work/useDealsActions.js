@@ -108,7 +108,7 @@ export function useDealsActions({
       order_number: deal.order_number || null,
       responsible_username: normalizeResponsible(responsible?.value),
       source_id: normalizeOptionalInt(deal.source_id),
-      // Мессенджер храним отдельно от источника: поле опциональное и не влияет на обязательность.
+      // Мессенджер храним отдельно от источника.
       messenger_id: normalizeOptionalInt(deal.messenger_id),
       region_code: deal.region_code || null,
       slot_type_code: dealTypeCode === 'rental' ? (deal.slot_type_code || null) : null,
@@ -147,6 +147,7 @@ export function useDealsActions({
     // Для рабочей сделки покупатель обязателен и на create, и на update.
     if (!draftSave && !deal.customer_nickname) return 'Укажите покупателя'
     if (deal.deal_type_code === 'rental' && !draftSave) {
+      if (!normalizeOptionalInt(deal.messenger_id)) return 'Укажите мессенджер'
       // Проверяем в нормализованном виде, чтобы не отправлять в API пустые/невалидные id.
       const accountId = normalizeOptionalInt(deal.account_id)
       const productId = normalizeOptionalInt(deal.product_id)
@@ -160,7 +161,7 @@ export function useDealsActions({
     }
     if (deal.deal_type_code === 'sale' && !draftSave) {
       if (!deal.region_code) return 'Укажите регион'
-      if (!deal.source_id) return 'Укажите источник'
+      if (!normalizeOptionalInt(deal.messenger_id)) return 'Укажите мессенджер'
     }
     const systemDatesError = validateManualSystemDates(deal)
     if (systemDatesError) return systemDatesError

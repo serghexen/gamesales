@@ -21,6 +21,7 @@ function createDeps(overrides = {}) {
       customer_nickname: 'buyer',
       order_number: 'ORD-1',
       source_id: 10,
+      messenger_id: 20,
       region_code: 'RU',
       slot_type_code: '',
       reserve_key: '',
@@ -42,6 +43,7 @@ function createDeps(overrides = {}) {
       customer_nickname: 'buyer',
       order_number: 'ORD-2',
       source_id: 10,
+      messenger_id: 20,
       region_code: 'RU',
       slot_type_code: '',
       reserve_key: '',
@@ -112,15 +114,27 @@ describe('useDealsActions', () => {
     expect(deps.dealError.value).toBe('save failed')
   })
 
-  it('createDeal validates required source for sale', async () => {
+  it('createDeal validates required messenger for sale', async () => {
     const deps = createDeps()
-    deps.newDeal.source_id = ''
+    deps.newDeal.messenger_id = ''
     const { createDeal } = useDealsActions(deps)
 
     await createDeal()
 
     expect(deps.apiPost).not.toHaveBeenCalled()
-    expect(deps.dealError.value).toBe('Укажите источник')
+    expect(deps.dealError.value).toBe('Укажите мессенджер')
+  })
+
+  it('createDeal allows empty source for sale when messenger is set', async () => {
+    const deps = createDeps()
+    deps.newDeal.source_id = ''
+    deps.newDeal.messenger_id = 20
+    const { createDeal } = useDealsActions(deps)
+
+    await createDeal()
+
+    expect(deps.apiPost).toHaveBeenCalledTimes(1)
+    expect(deps.dealError.value).toBeNull()
   })
 
   it('createDeal forces is_refund=false for sale', async () => {

@@ -510,6 +510,8 @@ def mount_deals_routes(
                 raise HTTPException(400, "customer_nickname is required for non-draft sale")
             if not payload.region_code:
                 raise HTTPException(400, "region_code is required for sale")
+        if new_flow_status != "draft" and not payload.messenger_id:
+            raise HTTPException(400, "messenger_id is required for non-draft deal")
         if deal_type == "sale":
             payload.slots_used = 0
             if not payload.purchase_at and not sale_is_draft:
@@ -816,8 +818,13 @@ def mount_deals_routes(
             rental_is_draft = deal_type == "rental" and new_flow_status == "draft"
 
             new_account_id = payload.account_id if payload.account_id is not None else account_id
+            # Источник теперь опциональный, поэтому валидируем только если значение передано.
             ensure_source_exists(conn, payload.source_id if payload.source_id is not None else None)
-            ensure_messenger_exists(conn, payload.messenger_id if payload.messenger_id is not None else None)
+            # Для non-draft сделки мессенджер обязателен; в draft допускаем пустое значение.
+            new_messenger_id = current_messenger_id if payload.messenger_id is None else payload.messenger_id
+            if str(new_flow_status or "").strip().lower() != "draft" and not new_messenger_id:
+                raise HTTPException(400, "messenger_id is required for non-draft deal")
+            ensure_messenger_exists(conn, new_messenger_id)
             if new_product_id is not None and deal_type != "rental":
                 # Для продажи валидируем только product_id.
                 validate_deal_product_id(
@@ -870,7 +877,6 @@ def mount_deals_routes(
                 else game_link
             )
             new_order_number = order_number if payload.order_number is None else ((payload.order_number or "").strip() or None)
-            new_messenger_id = current_messenger_id if payload.messenger_id is None else payload.messenger_id
             current_order_number = ((order_number or "").strip() or None)
             if payload.responsible_username is None:
                 new_responsible_username = responsible_username

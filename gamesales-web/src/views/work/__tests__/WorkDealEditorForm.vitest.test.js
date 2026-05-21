@@ -181,4 +181,17 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain("return status === 'pending' || status === 'draft'")
     expect(source).toContain("return Boolean(allowCompletedDealEdit?.value)")
   })
+
+  it('renders messenger and new sale field order', () => {
+    const source = readTemplateSource()
+
+    expect(source).toContain('<span class="label">Мессенджер</span>')
+    expect(source).toContain('getMessengerLabelById(editDeal.messenger_id)')
+    expect(source).toContain('v-model.number="newDeal.messenger_id"')
+    expect(source).toContain('v-model.number="editDeal.messenger_id"')
+    expect(source).toContain('<span class="label">Номер заказа</span>')
+    expect(source).toContain('<span class="label">Ответственный</span>')
+    expect(source).toContain('<span class="label">Ссылка на товар</span>')
+    expect(source).toContain("v-if=\"newDeal.deal_type_code === 'sale'\" class=\"deal-form__double\"")
+  })
 })

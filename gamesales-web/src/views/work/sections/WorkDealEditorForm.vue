@@ -657,27 +657,23 @@
                             </select>
                           </label>
                           <label class="field">
-                            <span class="label">Номер заказа</span>
-                            <input v-model.trim="editDeal.order_number" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
-                          </label>
-                          <label class="field">
-                            <span class="label">Ответственный</span>
+                            <span class="label">Мессенджер</span>
                             <input
                               v-if="dealEditMode === 'view'"
                               class="input"
-                              :value="editDealResponsible || '— не выбрано —'"
+                              :value="getMessengerLabelById(editDeal.messenger_id)"
                               readonly
                             />
-                            <select v-else v-model="editDealResponsible" class="input input--select">
+                            <select v-else v-model.number="editDeal.messenger_id" class="input input--select">
                               <option value="">— не выбрано —</option>
-                              <option
-                                v-for="responsibleName in responsibleUserOptions"
-                                :key="`edit-responsible-${responsibleName}`"
-                                :value="responsibleName"
-                              >
-                                {{ responsibleName }}
+                              <option v-for="m in messengersByCode" :key="m.messenger_id" :value="m.messenger_id">
+                                {{ m.name }} ({{ m.code }})
                               </option>
                             </select>
+                          </label>
+                          <label class="field">
+                            <span class="label">Номер заказа</span>
+                            <input v-model.trim="editDeal.order_number" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
                           </label>
                         </div>
                         <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-auth">
@@ -735,15 +731,36 @@
                             />
                           </label>
                         </div>
-                        <label v-if="editDeal.deal_type_code === 'sale'" class="field">
-                          <span class="label">Ссылка на товар</span>
-                          <input
-                            v-model.trim="editDeal.product_link"
-                            class="input"
-                            placeholder="https://..."
-                            :readonly="dealEditMode === 'view'"
-                          />
-                        </label>
+                        <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__double">
+                          <label class="field">
+                            <span class="label">Ответственный</span>
+                            <input
+                              v-if="dealEditMode === 'view'"
+                              class="input"
+                              :value="editDealResponsible || '— не выбрано —'"
+                              readonly
+                            />
+                            <select v-else v-model="editDealResponsible" class="input input--select">
+                              <option value="">— не выбрано —</option>
+                              <option
+                                v-for="responsibleName in responsibleUserOptions"
+                                :key="`edit-responsible-${responsibleName}`"
+                                :value="responsibleName"
+                              >
+                                {{ responsibleName }}
+                              </option>
+                            </select>
+                          </label>
+                          <label class="field">
+                            <span class="label">Ссылка на товар</span>
+                            <input
+                              v-model.trim="editDeal.product_link"
+                              class="input"
+                              placeholder="https://..."
+                              :readonly="dealEditMode === 'view'"
+                            />
+                          </label>
+                        </div>
                         <label v-if="editDeal.deal_type_code === 'sale'" class="field">
                           <span class="label">Комментарий</span>
                           <textarea
@@ -785,22 +802,18 @@
                               </option>
                             </select>
                           </label>
-                          <label v-if="newDeal.deal_type_code === 'sale' || newDeal.deal_type_code === 'rental'" class="field">
-                            <span class="label">{{ newDeal.deal_type_code === 'rental' ? 'Номер заявки' : 'Номер заказа' }}</span>
-                            <input v-model.trim="newDeal.order_number" class="input" placeholder="-" />
-                          </label>
-                          <label v-if="newDeal.deal_type_code === 'sale'" class="field">
-                            <span class="label">Ответственный</span>
-                            <select v-model="newDealResponsible" class="input input--select">
+                          <label class="field">
+                            <span class="label">Мессенджер</span>
+                            <select v-model.number="newDeal.messenger_id" class="input input--select">
                               <option value="">— не выбрано —</option>
-                              <option
-                                v-for="responsibleName in responsibleUserOptions"
-                                :key="`new-sale-responsible-${responsibleName}`"
-                                :value="responsibleName"
-                              >
-                                {{ responsibleName }}
+                              <option v-for="m in messengersByCode" :key="m.messenger_id" :value="m.messenger_id">
+                                {{ m.name }} ({{ m.code }})
                               </option>
                             </select>
+                          </label>
+                          <label class="field">
+                            <span class="label">Номер заказа</span>
+                            <input v-model.trim="newDeal.order_number" class="input" placeholder="-" />
                           </label>
                         </div>
                         <div v-if="newDeal.deal_type_code === 'rental'" class="deal-form__rental-layout">
@@ -1304,10 +1317,25 @@
                             />
                           </label>
                         </div>
-                        <label v-if="newDeal.deal_type_code === 'sale'" class="field">
-                          <span class="label">Ссылка на товар</span>
-                          <input v-model.trim="newDeal.product_link" class="input" placeholder="https://..." />
-                        </label>
+                        <div v-if="newDeal.deal_type_code === 'sale'" class="deal-form__double">
+                          <label class="field">
+                            <span class="label">Ответственный</span>
+                            <select v-model="newDealResponsible" class="input input--select">
+                              <option value="">— не выбрано —</option>
+                              <option
+                                v-for="responsibleName in responsibleUserOptions"
+                                :key="`new-sale-responsible-${responsibleName}`"
+                                :value="responsibleName"
+                              >
+                                {{ responsibleName }}
+                              </option>
+                            </select>
+                          </label>
+                          <label class="field">
+                            <span class="label">Ссылка на товар</span>
+                            <input v-model.trim="newDeal.product_link" class="input" placeholder="https://..." />
+                          </label>
+                        </div>
                         <div v-if="newDeal.deal_type_code === 'sale'" class="field field--comment-collapsible">
                           <button class="comment-toggle" type="button" @click="newDealCommentOpen = !newDealCommentOpen">
                             {{ newDealCommentOpen || newDeal.notes ? 'Комментарий' : '+ Комментарий' }}
