@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi import Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from openpyxl import Workbook, load_workbook
+from openpyxl.utils.datetime import from_excel
 
 
 def mount_accounts_import_routes(
@@ -198,6 +199,130 @@ def mount_accounts_import_routes(
             "total": checked_rows,
         }
 
+    # Преобразует дату из ячейки в ISO-формат YYYY-MM-DD для сверки с БД.
+    def _parse_import_date_to_iso(value):
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            try:
+                return from_excel(float(value)).date().isoformat()
+            except Exception:
+                pass
+        if isinstance(value, datetime):
+            return value.date().isoformat()
+        if hasattr(value, "isoformat") and not isinstance(value, str):
+            try:
+                return value.isoformat()
+            except Exception:
+                pass
+        raw = _norm(value)
+        if not raw:
+            return None
+        # Поддерживаем самый частый формат файла: dd.mm.yyyy (и dd/mm/yyyy).
+        for fmt in ("%d.%m.%Y", "%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(raw, fmt).date().isoformat()
+            except Exception:
+                continue
+        # Поддерживаем короткий год, который часто встречается в выгрузках: dd.mm.yy.
+        for fmt in ("%d.%m.%y", "%d/%m/%y"):
+            try:
+                return datetime.strptime(raw, fmt).date().isoformat()
+            except Exception:
+                continue
+        # Поддерживаем ISO datetime из внешних выгрузок.
+        try:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).date().isoformat()
+        except Exception:
+            return None
+
+    # Проверяет файл с внешней выгрузкой: ищет сделки по связке дата + ник.
+    def _validate_deals_lookup(content: bytes, conn):
+        wb = load_workbook(BytesIO(content), data_only=True)
+        ws = wb.active
+
+        header_alias = {
+            "дата": "deal_date",
+            "ник": "nickname",
+            "пользователь": "nickname",
+        }
+        headers = []
+        for cell in ws[1]:
+            headers.append(header_alias.get(_norm(cell.value).lower(), _norm(cell.value).lower()))
+
+        errors = []
+        warnings = []
+        try:
+            idx_date = headers.index("deal_date")
+            idx_nick = headers.index("nickname")
+        except ValueError:
+            return {
+                "ok": False,
+                "errors": [{
+                    "row": 1,
+                    "field": "Заголовки",
+                    "value": ", ".join(headers),
+                    "message": "Нужны колонки: Дата и Ник",
+                }],
+                "warnings": [],
+                "total": 0,
+            }
+
+        checked_rows = 0
+        with conn.cursor() as cur:
+            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                if not any(row):
+                    continue
+                checked_rows += 1
+                nick_raw = _norm(row[idx_nick] if idx_nick < len(row) else "")
+                date_raw = row[idx_date] if idx_date < len(row) else None
+                date_iso = _parse_import_date_to_iso(date_raw)
+
+                if not nick_raw:
+                    warnings.append({
+                        "row": row_idx,
+                        "field": "Ник",
+                        "value": "",
+                        "message": "Ник не указан",
+                    })
+                    continue
+                if not date_iso:
+                    warnings.append({
+                        "row": row_idx,
+                        "field": "Дата",
+                        "value": _norm(date_raw),
+                        "message": "Не удалось распознать дату",
+                    })
+                    continue
+
+                cur.execute(
+                    """
+                    SELECT 1
+                    FROM app.deals d
+                    JOIN app.customers c ON c.customer_id = d.customer_id
+                    LEFT JOIN app.deal_items di ON di.deal_id = d.deal_id
+                    WHERE lower(trim(c.nickname)) = lower(trim(%s))
+                      AND coalesce(di.purchase_at, d.completed_at, d.created_at)::date = %s::date
+                    LIMIT 1
+                    """,
+                    (nick_raw, date_iso),
+                )
+                found = cur.fetchone()
+                if not found:
+                    warnings.append({
+                        "row": row_idx,
+                        "field": "Сделка",
+                        "value": f"{nick_raw} | {date_iso}",
+                        "message": "Сделка не найдена по связке дата + ник",
+                    })
+
+        return {
+            "ok": len(errors) == 0 and len(warnings) == 0,
+            "errors": errors,
+            "warnings": warnings,
+            "total": checked_rows,
+        }
+
     @app.get("/accounts/import/template")
     def accounts_import_template(user: UserOut = Depends(require_role("admin", "owner"))):
         wb = Workbook()
@@ -260,6 +385,18 @@ def mount_accounts_import_routes(
         if len(content) > 5 * 1024 * 1024:
             raise HTTPException(400, "File too large. Max 5MB")
         return _validate_users_slot_matrix(content)
+
+    @app.post("/accounts/import/deals-check")
+    def accounts_import_deals_check(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin", "owner"))):
+        if not file or not file.filename:
+            raise HTTPException(400, "file is required")
+        if not file.filename.lower().endswith((".xlsx", ".xls")):
+            raise HTTPException(400, "Only .xlsx/.xls are supported")
+        content = file.file.read()
+        if len(content) > 5 * 1024 * 1024:
+            raise HTTPException(400, "File too large. Max 5MB")
+        with psycopg.connect(DB_DSN) as conn:
+            return _validate_deals_lookup(content, conn)
 
     @app.post("/accounts/import")
     def accounts_import(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin", "owner"))):

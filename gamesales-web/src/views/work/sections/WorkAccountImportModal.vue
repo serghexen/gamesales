@@ -54,6 +54,9 @@
                       <button class="ghost" type="button" @click="validateAccountSlotsCheck" :disabled="!accountImportFile || accountImportLoading">
                         Проверка слотов
                       </button>
+                      <button class="ghost" type="button" @click="validateAccountDealsCheck" :disabled="!accountImportFile || accountImportLoading">
+                        Проверка сделок
+                      </button>
                       <button class="ghost" type="button" @click="validateAccountImport" :disabled="!accountImportFile || accountImportLoading">
                         <span v-if="accountImportLoading && accountImportAction === 'validate'" class="spinner spinner--small"></span>
                         Проверка
@@ -182,6 +185,7 @@ defineProps([
   'downloadAccountTemplate',
   'downloadAccountImportExport',
   'validateAccountSlotsCheck',
+  'validateAccountDealsCheck',
   'validateAccountImport',
   'accountImportFile',
   'accountImportAction',

@@ -488,6 +488,71 @@ class AccountsImportFormatTests(unittest.TestCase):
             warnings = body.get("warnings", [])
             self.assertFalse(any("Конфликт слотов" in str(w.get("message") or "") for w in warnings))
 
+    # Проверяет поиск сделок по связке "дата + ник" в отдельном файле проверки.
+    def test_accounts_import_deals_check_warns_when_deal_not_found(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Проверка"
+        ws.append(["Номер заказа", "Источник", "Мессенджер", "Дата", "Ник"])
+        ws.append(["51281052034", "SPS", "TG ASAT", "24.11.2025", "AndiLino"])
+        ws.append(["51252120576", "SPS", "TG ASAT", "24.11.2025", "Дмитрий"])
+        out = BytesIO()
+        wb.save(out)
+        content = out.getvalue()
+
+        # Первая строка найдена, вторая не найдена.
+        script = [
+            {"one": (1,)},
+            {"one": None},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/accounts/import/deals-check",
+                    headers=self._auth_headers(role="admin"),
+                    files={"file": ("deals-check.xlsx", content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertFalse(body.get("ok"))
+            warnings = body.get("warnings", [])
+            self.assertTrue(any(w.get("field") == "Сделка" for w in warnings))
+            self.assertTrue(any("дата + ник" in str(w.get("message") or "") for w in warnings))
+
+    # Проверяет, что при полном совпадении связок ошибок и предупреждений нет.
+    def test_accounts_import_deals_check_passes_when_all_deals_found(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Проверка"
+        ws.append(["Номер заказа", "Источник", "Мессенджер", "Дата", "Ник"])
+        ws.append(["51281052034", "SPS", "TG ASAT", "24.11.2025", "AndiLino"])
+        out = BytesIO()
+        wb.save(out)
+        content = out.getvalue()
+
+        script = [{"one": (1,)}]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/accounts/import/deals-check",
+                    headers=self._auth_headers(role="admin"),
+                    files={"file": ("deals-check.xlsx", content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertTrue(body.get("ok"))
+            self.assertEqual(body.get("warnings", []), [])
+
 
 if __name__ == "__main__":
     unittest.main()

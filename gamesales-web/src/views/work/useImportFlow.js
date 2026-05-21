@@ -825,6 +825,39 @@ export function useImportFlow({
     }
   }
 
+  // Отдельная проверка внешнего файла: ищет сделки по связке дата + ник покупателя.
+  async function validateAccountDealsCheck() {
+    if (!accountImportFile.value) return
+    const form = new FormData()
+    form.append('file', accountImportFile.value)
+    accountImportAction.value = 'validate'
+    accountImportLoading.value = true
+    accountImportProgress.current = 0
+    accountImportProgress.total = accountImportTotal.value || 0
+    accountImportProgress.phase = ''
+    try {
+      const res = await apiPostForm('/accounts/import/deals-check', form, { token: auth.state.token })
+      accountImportErrors.value = res?.errors || []
+      accountImportWarnings.value = res?.warnings || []
+      const totalRows = Number(res?.total || 0)
+      if (res?.ok) {
+        accountImportMessage.value = totalRows
+          ? `Проверка сделок пройдена. Проверено строк: ${totalRows}.`
+          : 'Проверка сделок пройдена. Отклонений не найдено.'
+      } else {
+        accountImportMessage.value = `Проверка сделок завершена. Найдено отклонений: ${accountImportErrors.value.length + accountImportWarnings.value.length}.`
+      }
+    } catch (e) {
+      accountImportErrors.value = []
+      accountImportWarnings.value = []
+      accountImportMessage.value = mapApiError(e?.message)
+    } finally {
+      accountImportLoading.value = false
+      accountImportAction.value = ''
+      stopAccountImportStatusPolling()
+    }
+  }
+
   async function cleanSlotImport() {
     if (!slotImportFile.value) return
     slotImportLoading.value = true
@@ -1094,6 +1127,7 @@ export function useImportFlow({
     validateProductImport,
     validateAccountImport,
     validateAccountSlotsCheck,
+    validateAccountDealsCheck,
     validateSlotImport,
     uploadProductImport,
     uploadAccountImport,

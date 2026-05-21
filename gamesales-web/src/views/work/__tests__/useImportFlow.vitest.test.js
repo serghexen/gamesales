@@ -120,4 +120,20 @@ describe('useImportFlow', () => {
     expect(h.deps.productImportValidated.value).toBe(true)
     expect(h.deps.productImportTotal.value).toBe(3)
   })
+
+  it('validateAccountDealsCheck posts to accounts deals check endpoint', async () => {
+    const h = createHarness()
+    h.deps.accountImportFile.value = { name: 'deals_check.xlsx' }
+    h.apiPostForm.mockResolvedValueOnce({ ok: false, total: 2, errors: [], warnings: [{ row: 3, field: 'Сделка', message: 'not found' }] })
+
+    await h.flow.validateAccountDealsCheck()
+
+    expect(h.apiPostForm).toHaveBeenCalledWith(
+      '/accounts/import/deals-check',
+      expect.any(FormData),
+      { token: 'token-1' },
+    )
+    expect(h.deps.accountImportWarnings.value.length).toBe(1)
+    expect(String(h.deps.accountImportMessage.value || '')).toContain('Проверка сделок завершена')
+  })
 })
