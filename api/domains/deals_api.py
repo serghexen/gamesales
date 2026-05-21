@@ -1474,6 +1474,7 @@ def mount_deals_routes(
                   d.completed_at,
                   di.slots_used,
                   di.slot_type_code,
+                  di.subscription_term_id,
                   di.reserve_key,
                   di.notes,
                   di.game_link as product_link,
@@ -1517,15 +1518,18 @@ def mount_deals_routes(
             completed_at = r[24]
             slots_used = r[25]
             slot_type_code = r[26]
-            if len(r) > 32:
-                reserve_key = r[27]
-                notes = r[28]
-                product_link = r[29]
-                is_refund = bool(r[30])
-                lock_version = int((r[31] if len(r) > 31 else 1) or 1)
-                messenger_id = r[32]
+            # Срок подписки обязателен для корректного открытия шеринга в режиме редактирования.
+            if len(r) > 33:
+                subscription_term_id = r[27]
+                reserve_key = r[28]
+                notes = r[29]
+                product_link = r[30]
+                is_refund = bool(r[31])
+                lock_version = int((r[32] if len(r) > 32 else 1) or 1)
+                messenger_id = r[33]
             else:
                 # Поддерживаем старые тестовые строки без reserve_key.
+                subscription_term_id = None
                 reserve_key = None
                 notes = r[27]
                 product_link = r[28]
@@ -1562,6 +1566,7 @@ def mount_deals_routes(
                     completed_at=completed_at,
                     slots_used=slots_used,
                     slot_type_code=slot_type_code,
+                    subscription_term_id=subscription_term_id,
                     reserve_key=reserve_key,
                     notes=notes,
                     product_link=product_link,

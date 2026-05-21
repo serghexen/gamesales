@@ -160,6 +160,65 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(body["items"][0]["responsible_username"], "admin")
             self.assertEqual(body["items"][0]["is_refund"], True)
 
+    # Для шеринга со сроком подписки API списка должен вернуть subscription_term_id.
+    def test_list_deals_success_includes_subscription_term_id(self):
+        script = [
+            {"one": (1,)},  # total
+            {
+                "all": [
+                    (
+                        16,  # deal_id
+                        "Шеринг",  # deal_type_name
+                        "rental",  # deal_type_code
+                        "Подтверждена",  # status_name
+                        "completed",  # flow_status_code
+                        "Завершен",  # flow_status_name
+                        "ORD-2",  # order_number
+                        "admin",  # responsible_username
+                        "TR",  # region_code
+                        8,  # account_id
+                        "animal",  # login_name
+                        "spsasa.com",  # domain_name
+                        81,  # product_id
+                        "EA PLAY",  # product_title
+                        "EA",  # product_short_title
+                        "ps5",  # platform_code
+                        "Ruslan",  # customer_nickname
+                        None,  # customer_login
+                        None,  # customer_password
+                        3,  # source_id
+                        0.0,  # price
+                        0.0,  # purchase_cost
+                        datetime(2026, 1, 1, 3, 0, tzinfo=timezone.utc),  # purchase_at
+                        datetime(2026, 1, 1, 2, 0, tzinfo=timezone.utc),  # created_at
+                        datetime(2026, 1, 1, 3, 0, tzinfo=timezone.utc),  # completed_at
+                        1,  # slots_used
+                        "ps5_p3",  # slot_type_code
+                        901,  # subscription_term_id
+                        None,  # reserve_key
+                        "note",  # notes
+                        None,  # product_link
+                        False,  # is_refund
+                        4,  # lock_version
+                        None,  # messenger_id
+                    )
+                ]
+            },
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get("/deals?page=1&page_size=20", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(body["total"], 1)
+            self.assertEqual(body["items"][0]["deal_id"], 16)
+            self.assertEqual(body["items"][0]["subscription_term_id"], 901)
+
     # Для manager/operator возвратные сделки должны отсеиваться на уровне SQL.
     def test_list_deals_hides_refunds_for_manager(self):
         script = [
