@@ -81,9 +81,12 @@ def mount_accounts_import_routes(
                 "warnings": [],
                 "total": 0,
             }
+        idx_status = headers.index("status") if "status" in headers else None
 
         known_slots = {"п4", "п5", "ps4(1)", "ps4(2)", "ps5(1)", "ps5(2)"}
         account_slots = {}
+        # Собираем по аккаунту состояние каждого слота (свободен/занят) и строки, чтобы ловить конфликт дублирования.
+        account_slot_state = {}
         account_first_row = {}
         warnings = []
         errors = []
@@ -96,6 +99,8 @@ def mount_accounts_import_routes(
             checked_rows += 1
             account_val = _norm(row[idx_account] if idx_account < len(row) else "")
             slot_val = _norm(row[idx_slot] if idx_slot < len(row) else "").lower()
+            status_val = _norm(row[idx_status] if idx_status is not None and idx_status < len(row) else "").lower()
+            is_free = status_val == "свободен"
             login, domain = _split_account(account_val)
             if not login or not domain:
                 warnings.append({
@@ -116,10 +121,57 @@ def mount_accounts_import_routes(
 
             account_key = f"{login.lower()}@{domain.lower()}"
             account_slots.setdefault(account_key, set()).add(slot_val)
+            slot_state = account_slot_state.setdefault(
+                account_key,
+                defaultdict(lambda: {"busy_count": 0, "busy_rows": [], "free_count": 0, "free_rows": []}),
+            )
+            if is_free:
+                slot_state[slot_val]["free_count"] += 1
+                slot_state[slot_val]["free_rows"].append(row_idx)
+            else:
+                slot_state[slot_val]["busy_count"] += 1
+                slot_state[slot_val]["busy_rows"].append(row_idx)
             account_first_row.setdefault(account_key, row_idx)
 
         missing_order = ["п4", "п5", "ps4(1)", "ps4(2)", "ps5(1)", "ps5(2)"]
         for account_key, slots in account_slots.items():
+            # Ловим только конфликт: занятый слот указан повторно, хотя в группе есть свободный альтернативный слот.
+            duplicate_conflicts = []
+            slot_state = account_slot_state.get(account_key, {})
+            sibling_slots = {
+                "ps4(1)": ["ps4(2)"],
+                "ps4(2)": ["ps4(1)"],
+                "ps5(1)": ["ps5(2)"],
+                "ps5(2)": ["ps5(1)"],
+            }
+            for slot in ["ps4(1)", "ps4(2)", "ps5(1)", "ps5(2)"]:
+                state = slot_state.get(slot) or {}
+                busy_count = int(state.get("busy_count") or 0)
+                if busy_count <= 1:
+                    continue
+                alternatives = sibling_slots.get(slot, [])
+                free_alternatives = []
+                for alt_slot in alternatives:
+                    alt_state = slot_state.get(alt_slot) or {}
+                    if int(alt_state.get("free_count") or 0) > 0:
+                        free_alternatives.append(alt_slot.upper())
+                if not free_alternatives:
+                    continue
+                busy_rows = state.get("busy_rows") or []
+                rows_text = ", ".join(str(r) for r in busy_rows)
+                duplicate_conflicts.append(
+                    f"{slot.upper()} (строки: {rows_text}; свободный: {', '.join(free_alternatives)})"
+                    if rows_text
+                    else f"{slot.upper()} (свободный: {', '.join(free_alternatives)})"
+                )
+            if duplicate_conflicts:
+                warnings.append({
+                    "row": account_first_row.get(account_key, 0),
+                    "field": "Слоты",
+                    "value": account_key,
+                    "message": f"Конфликт слотов: повторно занят слот при наличии свободного альтернативного — {', '.join(duplicate_conflicts)}",
+                })
+
             has_ps4_group = any(s in slots for s in {"п4", "ps4(1)", "ps4(2)"})
             has_ps5_group = any(s in slots for s in {"п5", "ps5(1)", "ps5(2)"})
             required = set()

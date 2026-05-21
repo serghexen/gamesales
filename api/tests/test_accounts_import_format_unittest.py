@@ -427,6 +427,67 @@ class AccountsImportFormatTests(unittest.TestCase):
             warnings = body.get("warnings", [])
             self.assertFalse(any(w.get("field") == "Аккаунт" and "Аккаунт не найден" in str(w.get("message") or "") for w in warnings))
 
+    # Проверяет конфликт: один и тот же занятый слот указан повторно, когда соседний слот свободен.
+    def test_accounts_import_slots_check_warns_for_duplicate_busy_slot_with_free_alternative(self):
+        wb = Workbook()
+        ws_users = wb.active
+        ws_users.title = "Пользователи"
+        ws_users.append(["Почта", "Статус", "Платформа", "Пользователь", "Откуда", "Покупка"])
+        ws_users.append(["winner@example.com", "ЗАНЯТ", "PS5(1)", "Buyer1", "ASAT TG", "17.05.2026"])
+        ws_users.append(["winner@example.com", "СВОБОДЕН", "PS5(2)", "", "", ""])
+        ws_users.append(["winner@example.com", "ЗАНЯТ", "PS5(1)", "Buyer2", "VK", "21.05.2026"])
+        out = BytesIO()
+        wb.save(out)
+        content = out.getvalue()
+
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/accounts/import/slots-check",
+                    headers=self._auth_headers(role="admin"),
+                    files={"file": ("accounts.xlsx", content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertFalse(body.get("ok"))
+            warnings = body.get("warnings", [])
+            self.assertTrue(any("Конфликт слотов" in str(w.get("message") or "") for w in warnings))
+            self.assertTrue(any("PS5(1)" in str(w.get("message") or "") for w in warnings))
+            self.assertTrue(any("PS5(2)" in str(w.get("message") or "") for w in warnings))
+
+    # Проверяет, что исторический повтор без свободной альтернативы не помечается как конфликт.
+    def test_accounts_import_slots_check_does_not_warn_when_no_free_alternative(self):
+        wb = Workbook()
+        ws_users = wb.active
+        ws_users.title = "Пользователи"
+        ws_users.append(["Почта", "Статус", "Платформа", "Пользователь", "Откуда", "Покупка"])
+        ws_users.append(["winner@example.com", "ЗАНЯТ", "PS5(1)", "Buyer1", "ASAT TG", "17.05.2026"])
+        ws_users.append(["winner@example.com", "ЗАНЯТ", "PS5(1)", "Buyer2", "VK", "21.05.2026"])
+        ws_users.append(["winner@example.com", "ЗАНЯТ", "PS5(2)", "Buyer3", "VK", "22.05.2026"])
+        out = BytesIO()
+        wb.save(out)
+        content = out.getvalue()
+
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/accounts/import/slots-check",
+                    headers=self._auth_headers(role="admin"),
+                    files={"file": ("accounts.xlsx", content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            warnings = body.get("warnings", [])
+            self.assertFalse(any("Конфликт слотов" in str(w.get("message") or "") for w in warnings))
+
 
 if __name__ == "__main__":
     unittest.main()
