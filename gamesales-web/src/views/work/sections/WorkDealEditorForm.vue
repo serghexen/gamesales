@@ -506,7 +506,7 @@
                                 <span class="label">Резерв</span>
                                 <input
                                   class="input"
-                                  :value="getDealReserveLabel(editDeal.account_id, editDeal.reserve_key, editDeal.deal_id, { allowFallback: dealEditMode === 'edit', emptyLabel: '— не назначен (импорт)' })"
+                                  :value="getDealReserveLabel(editDeal.account_id, editDeal.reserve_key, editDeal.deal_id, { allowFallback: dealEditMode === 'edit', emptyLabel: '— не назначен' })"
                                   readonly
                                 />
                               </label>

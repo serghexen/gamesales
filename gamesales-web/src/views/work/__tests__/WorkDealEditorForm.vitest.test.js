@@ -145,7 +145,7 @@ describe('WorkDealEditorForm template', () => {
 
     expect(source).toContain('v-if="editDeal.account_id"')
     expect(source).toContain('getAccountPasswordById(editDeal.account_id)')
-    expect(source).toContain("getDealReserveLabel(editDeal.account_id, editDeal.reserve_key, editDeal.deal_id, { allowFallback: dealEditMode === 'edit', emptyLabel: '— не назначен (импорт)' })")
+    expect(source).toContain("getDealReserveLabel(editDeal.account_id, editDeal.reserve_key, editDeal.deal_id, { allowFallback: dealEditMode === 'edit', emptyLabel: '— не назначен' })")
     expect(source).toContain('v-if="newDeal.account_id"')
     expect(source).toContain('getAccountPasswordById(newDeal.account_id)')
     expect(source).toContain('getDealReserveLabel(newDeal.account_id, newDeal.reserve_key, null, { allowFallback: true })')
