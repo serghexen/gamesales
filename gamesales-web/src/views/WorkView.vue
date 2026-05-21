@@ -335,6 +335,7 @@ const platforms = ref([])
 const regions = ref([])
 const domains = ref([])
 const sources = ref([])
+const messengers = ref([])
 const catalogsError = ref(null)
 const catalogsOk = ref(null)
 const catalogsLoading = ref(false)
@@ -536,6 +537,7 @@ const responsibleNameByUsername = computed(() => {
 const catalogsLoadedOnce = ref(false)
 const domainsLoadedOnce = ref(false)
 const sourcesLoadedOnce = ref(false)
+const messengersLoadedOnce = ref(false)
 const slotTypesLoadedOnce = ref(false)
 const accountsAllLoadedOnce = ref(false)
 const productsAllLoadedOnce = ref(false)
@@ -546,6 +548,7 @@ const {
   getDomainLabel,
   getAccountStatusLabel,
   getSourceLabelById,
+  getMessengerLabelById,
   getFlowStatusLabel,
   getDealProductTitleDisplay,
   getDealProductTitleTooltip,
@@ -558,6 +561,7 @@ const {
   regions,
   domains,
   sources,
+  messengers,
   dealFlowStatusOptions,
   maxProductTitleLength,
 })
@@ -1152,6 +1156,12 @@ const newSource = reactive({
 })
 const editSource = reactive({ open: false, source_id: null, code: '', name: '' })
 const sourceEditMode = ref('view')
+const newMessenger = reactive({
+  code: '',
+  name: '',
+})
+const editMessenger = reactive({ open: false, messenger_id: null, code: '', name: '' })
+const messengerEditMode = ref('view')
 const newPlatform = reactive({
   code: '',
   name: '',
@@ -1252,6 +1262,7 @@ const importDetailsRef = ref(null)
 const accountImportDetailsRef = ref(null)
 const showDomainForm = ref(false)
 const showSourceForm = ref(false)
+const showMessengerForm = ref(false)
 const showPlatformForm = ref(false)
 const showRegionForm = ref(false)
 const accountFilters = reactive(createAccountFiltersState())
@@ -1319,6 +1330,7 @@ const { createDeal, createDealDraft, updateDeal, updateDealDraft, deleteDeal, ma
 const usersSort = ref({ key: 'created_at', dir: 'desc' })
 const domainsSortAsc = ref(true)
 const sourcesSort = ref({ key: 'code', dir: 'asc' })
+const messengersSort = ref({ key: 'code', dir: 'asc' })
 const platformsSort = ref({ key: 'code', dir: 'asc' })
 const regionsSort = ref({ key: 'code', dir: 'asc' })
 const productsPage = ref(1)
@@ -2238,6 +2250,7 @@ const {
   loadSlotTypes,
   loadDomains,
   loadSources,
+  loadMessengers,
   openEditDomain,
   openDomainModal,
   closeDomainModal,
@@ -2246,6 +2259,10 @@ const {
   openSourceModal,
   closeSourceModal,
   saveEditSource,
+  openEditMessenger,
+  openMessengerModal,
+  closeMessengerModal,
+  saveEditMessenger,
   openEditPlatform,
   openPlatformModal,
   closePlatformModal,
@@ -2256,10 +2273,12 @@ const {
   saveEditRegion,
   createDomain,
   createSource,
+  createMessenger,
   createPlatform,
   createRegion,
   deleteDomain,
   deleteSource,
+  deleteMessenger,
   deletePlatform,
   deleteRegion,
 } = useCatalogs({
@@ -2273,6 +2292,7 @@ const {
   resetModalPos,
   showDomainForm,
   showSourceForm,
+  showMessengerForm,
   showPlatformForm,
   showRegionForm,
   newDomain,
@@ -2281,6 +2301,9 @@ const {
   newSource,
   editSource,
   sourceEditMode,
+  newMessenger,
+  editMessenger,
+  messengerEditMode,
   newPlatform,
   editPlatform,
   platformEditMode,
@@ -2295,6 +2318,7 @@ const {
   regions,
   domains,
   sources,
+  messengers,
   slotTypes,
   newDeal,
   editDeal,
@@ -2336,6 +2360,8 @@ const {
   sortedDomains,
   sortedSources,
   sourcesByCode,
+  sortedMessengers,
+  messengersByCode,
   sortedPlatforms,
   sortedRegions,
 } = useCatalogsViewState({
@@ -2345,6 +2371,8 @@ const {
   domainsSortAsc,
   sources,
   sourcesSort,
+  messengers,
+  messengersSort,
   platforms,
   platformsSort,
   regions,
@@ -2358,6 +2386,7 @@ const {
   toggleUsersSort,
   toggleDomainsSort,
   toggleSourcesSort,
+  toggleMessengersSort,
   togglePlatformsSort,
   toggleRegionsSort,
   setProductsPage,
@@ -2391,6 +2420,7 @@ const {
   usersSort,
   domainsSortAsc,
   sourcesSort,
+  messengersSort,
   platformsSort,
   regionsSort,
   activeDealFilter,
@@ -2705,6 +2735,14 @@ const {
   deleteSource,
   createSource,
   newSource,
+  showMessengerForm,
+  editMessenger,
+  closeMessengerModal,
+  messengerEditMode,
+  saveEditMessenger,
+  deleteMessenger,
+  createMessenger,
+  newMessenger,
   showPlatformForm,
   editPlatform,
   closePlatformModal,
@@ -2819,7 +2857,9 @@ const {
   dealAccountAssignmentsLoadingEdit,
   dealAccountAssignmentsEdit,
   getSourceLabelById,
+  getMessengerLabelById,
   sourcesByCode,
+  messengersByCode,
   maxPrice,
   clampPrice,
   getFlowStatusLabel,
@@ -2894,6 +2934,12 @@ const {
   getKeyedSortClass,
   sourcesSort,
   openEditSource,
+  openMessengerModal,
+  loadMessengers,
+  sortedMessengers,
+  toggleMessengersSort,
+  messengersSort,
+  openEditMessenger,
   openPlatformModal,
   loadCatalogs,
   sortedPlatforms,
@@ -3140,6 +3186,7 @@ useActiveTabWatcher({
   catalogsLoadedOnce,
   domainsLoadedOnce,
   sourcesLoadedOnce,
+  messengersLoadedOnce,
   slotTypesLoadedOnce,
   accountsAllLoadedOnce,
   productsAllLoadedOnce,
@@ -3148,6 +3195,7 @@ useActiveTabWatcher({
   regions,
   domains,
   sources,
+  messengers,
   slotTypes,
   products,
   productsAll,
@@ -3159,6 +3207,7 @@ useActiveTabWatcher({
   loadCatalogs,
   loadDomains,
   loadSources,
+  loadMessengers,
   loadSlotTypes,
   loadProducts,
   loadProductsAll,

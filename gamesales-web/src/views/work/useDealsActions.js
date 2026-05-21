@@ -108,6 +108,8 @@ export function useDealsActions({
       order_number: deal.order_number || null,
       responsible_username: normalizeResponsible(responsible?.value),
       source_id: normalizeOptionalInt(deal.source_id),
+      // Мессенджер храним отдельно от источника: поле опциональное и не влияет на обязательность.
+      messenger_id: normalizeOptionalInt(deal.messenger_id),
       region_code: deal.region_code || null,
       slot_type_code: dealTypeCode === 'rental' ? (deal.slot_type_code || null) : null,
       // Для подписочного шеринга сохраняем выбранный срок подписки как отдельный id.

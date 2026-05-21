@@ -64,6 +64,25 @@ def ensure_analytics_schema():
                 conn,
                 "CREATE INDEX IF NOT EXISTS idx_slot_assignments_subscription_term_id ON app.account_slot_assignments(subscription_term_id)",
             )
+            # Готовим справочник мессенджеров и ссылку сделки на него.
+            exec1(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS app.messengers (
+                  messenger_id bigserial PRIMARY KEY,
+                  code text NOT NULL,
+                  name text NOT NULL,
+                  is_archived boolean NOT NULL DEFAULT false
+                )
+                """,
+            )
+            exec1(conn, "CREATE INDEX IF NOT EXISTS ix_messengers_archived ON app.messengers (is_archived)")
+            exec1(conn, "CREATE INDEX IF NOT EXISTS ix_messengers_code ON app.messengers (code)")
+            exec1(
+                conn,
+                "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS messenger_id bigint REFERENCES app.messengers(messenger_id)",
+            )
+            exec1(conn, "CREATE INDEX IF NOT EXISTS ix_deals_messenger_id ON app.deals (messenger_id)")
             # Новая логика подписок считает занятость по типу слота/емкости, поэтому
             # глобальный unique по subscription_term_id больше не нужен.
             exec1(conn, "DROP INDEX IF EXISTS app.uq_slot_assignments_active_subscription_term")
@@ -411,6 +430,11 @@ class SourceOut(BaseModel):
     code: str
     name: str
 
+class MessengerOut(BaseModel):
+    messenger_id: int
+    code: str
+    name: str
+
 class RegionOut(BaseModel):
     code: str
     name: str
@@ -478,6 +502,14 @@ class SourceIn(BaseModel):
     name: str
 
 class SourceUpdate(BaseModel):
+    code: Optional[str] = None
+    name: Optional[str] = None
+
+class MessengerIn(BaseModel):
+    code: str
+    name: str
+
+class MessengerUpdate(BaseModel):
     code: Optional[str] = None
     name: Optional[str] = None
 
@@ -838,6 +870,9 @@ mount_catalogs_routes(
     SourceOut=SourceOut,
     SourceIn=SourceIn,
     SourceUpdate=SourceUpdate,
+    MessengerOut=MessengerOut,
+    MessengerIn=MessengerIn,
+    MessengerUpdate=MessengerUpdate,
 )
 
 mount_accounts_routes(

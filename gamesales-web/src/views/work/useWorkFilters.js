@@ -14,6 +14,7 @@ export function useWorkFilters({
   usersSort,
   domainsSortAsc,
   sourcesSort,
+  messengersSort,
   platformsSort,
   regionsSort,
   activeDealFilter,
@@ -86,6 +87,16 @@ export function useWorkFilters({
       current.dir = current.dir === 'asc' ? 'desc' : 'asc'
     } else {
       sourcesSort.value = { key, dir: 'asc' }
+    }
+  }
+
+  // Переключает сортировку списка мессенджеров.
+  function toggleMessengersSort(key) {
+    const current = messengersSort.value
+    if (current.key === key) {
+      current.dir = current.dir === 'asc' ? 'desc' : 'asc'
+    } else {
+      messengersSort.value = { key, dir: 'asc' }
     }
   }
 
@@ -336,6 +347,7 @@ export function useWorkFilters({
     toggleUsersSort,
     toggleDomainsSort,
     toggleSourcesSort,
+    toggleMessengersSort,
     togglePlatformsSort,
     toggleRegionsSort,
     setProductsPage,

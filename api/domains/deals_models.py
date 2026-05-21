@@ -44,6 +44,7 @@ class DealCreate(BaseModel):
     order_number: Optional[str] = None
     responsible_username: Optional[str] = None
     source_id: Optional[int] = None
+    messenger_id: Optional[int] = None
     login: Optional[str] = None
     password: Optional[str] = None
     region_code: Optional[str] = None
@@ -76,6 +77,7 @@ class DealUpdate(BaseModel):
     order_number: Optional[str] = None
     responsible_username: Optional[str] = None
     source_id: Optional[int] = None
+    messenger_id: Optional[int] = None
     login: Optional[str] = None
     password: Optional[str] = None
     region_code: Optional[str] = None
@@ -126,6 +128,7 @@ class DealListItem(BaseModel):
     order_number: Optional[str] = None
     responsible_username: Optional[str] = None
     source_id: Optional[int]
+    messenger_id: Optional[int] = None
     price: float
     purchase_cost: Optional[float] = None
     product_link: Optional[str] = None

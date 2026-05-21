@@ -248,6 +248,133 @@
 
   <teleport to="body">
     <div
+      v-if="showMessengerForm || editMessenger.open"
+      class="work-page work-modal-root modal-backdrop"
+      @click.self="closeMessengerModal"
+    >
+      <div :ref="modalRef" class="modal modal--auto" :style="modalStyle">
+        <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
+          <h3>{{ editMessenger.open ? (messengerEditMode === 'edit' ? 'Редактирование мессенджера' : 'Мессенджер') : 'Новый мессенджер' }}</h3>
+          <div class="toolbar-actions">
+            <button
+              v-if="editMessenger.open && messengerEditMode === 'edit'"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
+              @click="saveEditMessenger"
+              :disabled="catalogsLoading"
+              aria-label="Сохранить"
+              title="Сохранить"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 4h12l4 4v12H4z" />
+                <path d="M7 4v6h8V4" />
+                <path d="M7 20v-6h10v6" />
+              </svg>
+            </button>
+            <button
+              v-if="editMessenger.open"
+              class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--edit"
+              type="button"
+              aria-label="Редактировать"
+              title="Редактировать"
+              @click="messengerEditMode = 'edit'"
+              :disabled="messengerEditMode === 'edit'"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 20h4l10-10-4-4L4 16v4Z" />
+                <path d="M13 6l4 4" />
+              </svg>
+            </button>
+            <button
+              v-if="editMessenger.open"
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--delete"
+              type="button"
+              aria-label="Удалить"
+              title="Удалить"
+              @click="deleteMessenger(editMessenger.messenger_id)"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" />
+              </svg>
+            </button>
+            <button
+              v-else
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
+              @click="createMessenger"
+              :disabled="catalogsLoading"
+              aria-label="Добавить мессенджер"
+              title="Добавить мессенджер"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 4h12l4 4v12H4z" />
+                <path d="M7 4v6h8V4" />
+                <path d="M7 20v-6h10v6" />
+              </svg>
+            </button>
+            <button
+              class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close"
+              type="button"
+              aria-label="Закрыть"
+              title="Закрыть"
+              @click="closeMessengerModal"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 6l12 12M18 6l-12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="modal__body" :class="{ 'modal__body--locked': catalogsLoading }">
+          <div v-if="catalogsLoading" class="modal__body-overlay">
+            <div class="loader-wrap loader-wrap--compact">
+              <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                <div class="wheel"></div>
+                <div class="hamster">
+                  <div class="hamster__body">
+                    <div class="hamster__head">
+                      <div class="hamster__ear"></div>
+                      <div class="hamster__eye"></div>
+                      <div class="hamster__nose"></div>
+                    </div>
+                    <div class="hamster__limb hamster__limb--fr"></div>
+                    <div class="hamster__limb hamster__limb--fl"></div>
+                    <div class="hamster__limb hamster__limb--br"></div>
+                    <div class="hamster__limb hamster__limb--bl"></div>
+                    <div class="hamster__tail"></div>
+                  </div>
+                </div>
+                <div class="spoke"></div>
+              </div>
+              <p class="muted">Загрузка…</p>
+            </div>
+          </div>
+          <div v-if="editMessenger.open" class="form form--stack form--compact">
+            <label class="field">
+              <span class="label">Код</span>
+              <input v-model.trim="editMessenger.code" class="input" :readonly="messengerEditMode === 'view'" />
+            </label>
+            <label class="field">
+              <span class="label">Название</span>
+              <input v-model.trim="editMessenger.name" class="input" :readonly="messengerEditMode === 'view'" />
+            </label>
+            <div class="toolbar-actions"></div>
+          </div>
+          <div v-else class="form form--stack form--compact">
+            <label class="field">
+              <span class="label">Мессенджер (код)</span>
+              <input v-model.trim="newMessenger.code" class="input" placeholder="wa" />
+            </label>
+            <label class="field">
+              <span class="label">Мессенджер (название)</span>
+              <input v-model.trim="newMessenger.name" class="input" placeholder="WhatsApp" />
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </teleport>
+
+  <teleport to="body">
+    <div
       v-if="showPlatformForm || editPlatform.open"
       class="work-page work-modal-root modal-backdrop"
       @click.self="closePlatformModal"
@@ -547,6 +674,14 @@ const {
   deleteSource,
   createSource,
   newSource,
+  showMessengerForm,
+  editMessenger,
+  closeMessengerModal,
+  messengerEditMode,
+  saveEditMessenger,
+  deleteMessenger,
+  createMessenger,
+  newMessenger,
   showPlatformForm,
   editPlatform,
   closePlatformModal,

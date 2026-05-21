@@ -11,6 +11,7 @@ export function useCatalogs({
   resetModalPos,
   showDomainForm,
   showSourceForm,
+  showMessengerForm,
   showPlatformForm,
   showRegionForm,
   newDomain,
@@ -19,6 +20,9 @@ export function useCatalogs({
   newSource,
   editSource,
   sourceEditMode,
+  newMessenger,
+  editMessenger,
+  messengerEditMode,
   newPlatform,
   editPlatform,
   platformEditMode,
@@ -33,6 +37,7 @@ export function useCatalogs({
   regions,
   domains,
   sources,
+  messengers,
   slotTypes,
   newDeal,
   editDeal,
@@ -42,6 +47,7 @@ export function useCatalogs({
 }) {
   let initialDomainSnapshot = null
   let initialSourceSnapshot = null
+  let initialMessengerSnapshot = null
   let initialPlatformSnapshot = null
   let initialRegionSnapshot = null
   // Закрывает модалку программно и временно отключает confirm о несохраненных изменениях.
@@ -105,6 +111,19 @@ export function useCatalogs({
       sources.value = s || []
     } catch {
       sources.value = []
+    } finally {
+      catalogsLoading.value = false
+    }
+  }
+
+  // Загружает список мессенджеров.
+  async function loadMessengers() {
+    catalogsLoading.value = true
+    try {
+      const data = await apiGet('/messengers', { token: auth.state.token })
+      messengers.value = data || []
+    } catch {
+      messengers.value = []
     } finally {
       catalogsLoading.value = false
     }
@@ -203,6 +222,78 @@ export function useCatalogs({
     cancelEditSource()
     catalogsError.value = null
     catalogsOk.value = null
+  }
+
+  // Открывает мессенджер в режиме просмотра/редактирования.
+  function openEditMessenger(m) {
+    closeAllModals()
+    resetModalPos()
+    showMessengerForm.value = false
+    editMessenger.open = true
+    editMessenger.messenger_id = m.messenger_id
+    editMessenger.code = m.code
+    editMessenger.name = m.name
+    messengerEditMode.value = 'view'
+    initialMessengerSnapshot = { code: m.code, name: m.name }
+  }
+
+  function cancelEditMessenger() {
+    editMessenger.open = false
+    editMessenger.messenger_id = null
+    editMessenger.code = ''
+    editMessenger.name = ''
+    messengerEditMode.value = 'view'
+    initialMessengerSnapshot = null
+  }
+
+  function openMessengerModal() {
+    closeAllModals()
+    resetModalPos()
+    showMessengerForm.value = true
+    cancelEditMessenger()
+    catalogsError.value = null
+    catalogsOk.value = null
+  }
+
+  async function closeMessengerModal() {
+    const guardEnabled = !suppressUnsavedConfirm?.value
+    const createDirty = showMessengerForm.value && !isSameNormalized(newMessenger, { code: '', name: '' })
+    const editDirty = editMessenger.open
+      && messengerEditMode.value === 'edit'
+      && !isSameNormalized({ code: editMessenger.code, name: editMessenger.name }, initialMessengerSnapshot || {})
+    if (guardEnabled && !(await confirmDiscardIfNeeded(createDirty || editDirty, { requestConfirm: requestUnsavedConfirm }))) return false
+
+    showMessengerForm.value = false
+    cancelEditMessenger()
+    catalogsError.value = null
+    catalogsOk.value = null
+    newMessenger.code = ''
+    newMessenger.name = ''
+    return true
+  }
+
+  // Сохраняет изменения мессенджера.
+  async function saveEditMessenger() {
+    if (!editMessenger.messenger_id || !editMessenger.code || !editMessenger.name) return
+    catalogsError.value = null
+    catalogsOk.value = null
+    catalogsLoading.value = true
+    catalogSaving.value = true
+    try {
+      await apiPut(
+        `/messengers/${encodeURIComponent(editMessenger.messenger_id)}`,
+        { code: editMessenger.code, name: editMessenger.name },
+        { token: auth.state.token }
+      )
+      catalogsOk.value = 'Мессенджер обновлён'
+      await loadMessengers()
+      await closeModalSilently(closeMessengerModal)
+    } catch (e) {
+      catalogsError.value = mapApiError(e?.message)
+    } finally {
+      catalogsLoading.value = false
+      catalogSaving.value = false
+    }
   }
 
   async function closeSourceModal() {
@@ -430,6 +521,30 @@ export function useCatalogs({
     }
   }
 
+  async function createMessenger() {
+    catalogsError.value = null
+    catalogsOk.value = null
+    if (!newMessenger.code || !newMessenger.name) {
+      catalogsError.value = 'Введите код и название мессенджера'
+      return
+    }
+    catalogsLoading.value = true
+    catalogSaving.value = true
+    try {
+      await apiPost('/messengers', newMessenger, { token: auth.state.token })
+      catalogsOk.value = `Мессенджер ${newMessenger.code} добавлен`
+      newMessenger.code = ''
+      newMessenger.name = ''
+      await loadMessengers()
+      await closeModalSilently(closeMessengerModal)
+    } catch (e) {
+      catalogsError.value = mapApiError(e?.message)
+    } finally {
+      catalogsLoading.value = false
+      catalogSaving.value = false
+    }
+  }
+
   async function createPlatform() {
     catalogsError.value = null
     catalogsOk.value = null
@@ -519,6 +634,26 @@ export function useCatalogs({
     }
   }
 
+  async function deleteMessenger(messengerId) {
+    if (!messengerId) return
+    if (!window.confirm('Удалить мессенджер?')) return
+    catalogsError.value = null
+    catalogsOk.value = null
+    catalogsLoading.value = true
+    catalogSaving.value = true
+    try {
+      await apiDelete(`/messengers/${encodeURIComponent(messengerId)}`, { token: auth.state.token })
+      catalogsOk.value = 'Мессенджер удалён'
+      await loadMessengers()
+      if (editMessenger.open && editMessenger.messenger_id === messengerId) await closeModalSilently(closeMessengerModal)
+    } catch (e) {
+      catalogsError.value = mapApiError(e?.message)
+    } finally {
+      catalogsLoading.value = false
+      catalogSaving.value = false
+    }
+  }
+
   async function deletePlatform(code) {
     if (!window.confirm(`Удалить платформу ${code}?`)) return
     catalogsError.value = null
@@ -562,6 +697,7 @@ export function useCatalogs({
     loadSlotTypes,
     loadDomains,
     loadSources,
+    loadMessengers,
     openEditDomain,
     cancelEditDomain,
     openDomainModal,
@@ -572,6 +708,11 @@ export function useCatalogs({
     openSourceModal,
     closeSourceModal,
     saveEditSource,
+    openEditMessenger,
+    cancelEditMessenger,
+    openMessengerModal,
+    closeMessengerModal,
+    saveEditMessenger,
     openEditPlatform,
     cancelEditPlatform,
     openPlatformModal,
@@ -584,10 +725,12 @@ export function useCatalogs({
     saveEditRegion,
     createDomain,
     createSource,
+    createMessenger,
     createPlatform,
     createRegion,
     deleteDomain,
     deleteSource,
+    deleteMessenger,
     deletePlatform,
     deleteRegion,
   }

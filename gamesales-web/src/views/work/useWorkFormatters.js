@@ -3,6 +3,7 @@ export function useWorkFormatters({
   regions,
   domains,
   sources,
+  messengers,
   dealFlowStatusOptions,
   maxProductTitleLength,
 }) {
@@ -41,6 +42,13 @@ export function useWorkFormatters({
     if (!sourceId) return '—'
     const source = (sources.value || []).find((s) => s.source_id === sourceId)
     return source ? `${source.name} (${source.code})` : String(sourceId)
+  }
+
+  // Подпись мессенджера по id.
+  const getMessengerLabelById = (messengerId) => {
+    if (!messengerId) return '—'
+    const messenger = (messengers.value || []).find((m) => m.messenger_id === messengerId)
+    return messenger ? `${messenger.name} (${messenger.code})` : String(messengerId)
   }
 
   // Подпись статуса сделки по коду.
@@ -107,6 +115,7 @@ export function useWorkFormatters({
     getDomainLabel,
     getAccountStatusLabel,
     getSourceLabelById,
+    getMessengerLabelById,
     getFlowStatusLabel,
     getDealProductTitleDisplay,
     getDealProductTitleTooltip,

@@ -7,6 +7,8 @@ export function useCatalogsViewState({
   domainsSortAsc,
   sources,
   sourcesSort,
+  messengers,
+  messengersSort,
   platforms,
   platformsSort,
   regions,
@@ -61,6 +63,27 @@ export function useCatalogsViewState({
     return list
   })
 
+  // Сортировка мессенджеров.
+  const sortedMessengers = computed(() => {
+    const list = [...messengers.value]
+    const { key, dir } = messengersSort.value
+    list.sort((a, b) => {
+      const av = a[key]
+      const bv = b[key]
+      return dir === 'asc'
+        ? String(av || '').localeCompare(String(bv || ''))
+        : String(bv || '').localeCompare(String(av || ''))
+    })
+    return list
+  })
+
+  // Мессенджеры, отсортированные по коду (удобно для выбора в форме шеринга).
+  const messengersByCode = computed(() => {
+    const list = [...messengers.value]
+    list.sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')))
+    return list
+  })
+
   // Сортировка платформ.
   const sortedPlatforms = computed(() => {
     const list = [...platforms.value]
@@ -97,6 +120,8 @@ export function useCatalogsViewState({
     sortedDomains,
     sortedSources,
     sourcesByCode,
+    sortedMessengers,
+    messengersByCode,
     sortedPlatforms,
     sortedRegions,
   }

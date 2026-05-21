@@ -72,6 +72,13 @@ CREATE TABLE IF NOT EXISTS app.sources (
   is_archived  boolean NOT NULL DEFAULT false
 );
 
+CREATE TABLE IF NOT EXISTS app.messengers (
+  messenger_id bigserial PRIMARY KEY,
+  code text NOT NULL,
+  name text NOT NULL,
+  is_archived boolean NOT NULL DEFAULT false
+);
+
 CREATE TABLE IF NOT EXISTS app.domains (
   domain_id smallserial PRIMARY KEY,
   name text NOT NULL UNIQUE,
@@ -90,6 +97,13 @@ COMMENT ON COLUMN app.sources.name IS 'Название источника';
 COMMENT ON COLUMN app.sources.is_archived IS 'Архивная запись';
 CREATE INDEX IF NOT EXISTS ix_sources_archived ON app.sources (is_archived);
 CREATE INDEX IF NOT EXISTS ix_sources_code ON app.sources (code);
+COMMENT ON TABLE app.messengers IS 'Справочник мессенджеров';
+COMMENT ON COLUMN app.messengers.messenger_id IS 'Идентификатор мессенджера';
+COMMENT ON COLUMN app.messengers.code IS 'Код мессенджера';
+COMMENT ON COLUMN app.messengers.name IS 'Название мессенджера';
+COMMENT ON COLUMN app.messengers.is_archived IS 'Архивная запись';
+CREATE INDEX IF NOT EXISTS ix_messengers_archived ON app.messengers (is_archived);
+CREATE INDEX IF NOT EXISTS ix_messengers_code ON app.messengers (code);
 COMMENT ON TABLE app.domains IS 'Справочник доменов аккаунтов';
 COMMENT ON COLUMN app.domains.domain_id IS 'Идентификатор домена';
 COMMENT ON COLUMN app.domains.name IS 'Домен (например, example.com)';
@@ -328,6 +342,7 @@ CREATE TABLE IF NOT EXISTS app.deals (
   flow_status_code text NOT NULL DEFAULT 'pending' REFERENCES app.deal_flow_statuses(code),
   region_id    smallint REFERENCES app.regions(region_id),
   customer_id  bigint REFERENCES app.customers(customer_id),
+  messenger_id bigint REFERENCES app.messengers(messenger_id),
   order_number text,
   responsible_username text,
   currency     text NOT NULL DEFAULT 'RUB',
@@ -344,6 +359,7 @@ COMMENT ON COLUMN app.deals.status_code IS 'Статус сделки';
 COMMENT ON COLUMN app.deals.flow_status_code IS 'Статус процесса сделки';
 COMMENT ON COLUMN app.deals.region_id IS 'Регион сделки';
 COMMENT ON COLUMN app.deals.customer_id IS 'Клиент';
+COMMENT ON COLUMN app.deals.messenger_id IS 'Мессенджер коммуникации с клиентом';
 COMMENT ON COLUMN app.deals.order_number IS 'Номер заказа/заявки';
 COMMENT ON COLUMN app.deals.responsible_username IS 'Ответственный менеджер';
 COMMENT ON COLUMN app.deals.currency IS 'Валюта';
@@ -352,6 +368,7 @@ COMMENT ON COLUMN app.deals.notes IS 'Заметки';
 COMMENT ON COLUMN app.deals.lock_version IS 'Версия записи для optimistic locking';
 COMMENT ON COLUMN app.deals.created_at IS 'Дата создания сделки';
 COMMENT ON COLUMN app.deals.completed_at IS 'Дата завершения сделки';
+CREATE INDEX IF NOT EXISTS ix_deals_messenger_id ON app.deals (messenger_id);
 
 CREATE TABLE IF NOT EXISTS app.deal_items (
   deal_item_id     bigserial PRIMARY KEY,

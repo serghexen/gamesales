@@ -254,6 +254,14 @@ def mount_deals_routes(
                 f"order_number must be unique for source ym/ozon/wb; deal_id={conflict_deal_id}; customer={conflict_customer}; product={conflict_product}; created_at={conflict_date_text}",
             )
 
+    # Проверяет, что мессенджер существует и не в архиве.
+    def ensure_messenger_exists(conn, messenger_id: Optional[int]):
+        if not messenger_id:
+            return
+        row = q1(conn, "SELECT 1 FROM app.messengers WHERE messenger_id=%s AND is_archived IS NOT TRUE", (messenger_id,))
+        if not row:
+            raise HTTPException(400, f"Unknown messenger_id: {messenger_id}")
+
     # Валидирует product_id и тип товара для операций со сделками.
     def validate_deal_product_id(
         conn,
@@ -534,6 +542,7 @@ def mount_deals_routes(
             if deal_type == "rental" and not rental_is_draft:
                 ensure_account_exists(conn, payload.account_id)
             ensure_source_exists(conn, payload.source_id)
+            ensure_messenger_exists(conn, payload.messenger_id)
             platform_id = None
             if deal_type == "rental" and not rental_is_draft:
                 slot_type = ensure_account_allows_slot_type(conn, payload.account_id, payload.slot_type_code)
@@ -623,11 +632,11 @@ def mount_deals_routes(
     
             deal_row = q1(conn, """
                 INSERT INTO app.deals(
-                  deal_type_code, status_code, flow_status_code, region_id, customer_id, currency, total_amount, order_number, responsible_username
+                  deal_type_code, status_code, flow_status_code, region_id, customer_id, messenger_id, currency, total_amount, order_number, responsible_username
                 )
-                VALUES (%s, 'confirmed', %s, %s, %s, 'RUB', %s, %s, %s)
+                VALUES (%s, 'confirmed', %s, %s, %s, %s, 'RUB', %s, %s, %s)
                 RETURNING deal_id
-            """, (deal_type, new_flow_status, region_id, customer_id, payload.price, order_number, responsible_username))
+            """, (deal_type, new_flow_status, region_id, customer_id, payload.messenger_id, payload.price, order_number, responsible_username))
             deal_id = int(deal_row[0])
     
             # Для новых сделок (sale/rental) храним только product_id.
@@ -726,6 +735,7 @@ def mount_deals_routes(
                   d.total_amount,
                   d.order_number,
                   d.responsible_username,
+                  d.messenger_id,
                   di.deal_item_id,
                   di.account_id,
                   di.platform_id,
@@ -752,8 +762,8 @@ def mount_deals_routes(
             if not row:
                 raise HTTPException(404, "Deal not found")
     
-            if len(row) >= 23:
-                current_type, status_code, flow_status_code, current_lock_version, region_id, customer_id, total_amount, order_number, responsible_username, deal_item_id, \
+            if len(row) >= 25:
+                current_type, status_code, flow_status_code, current_lock_version, region_id, customer_id, total_amount, order_number, responsible_username, current_messenger_id, deal_item_id, \
                     account_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, subscription_term_id, reserve_key, notes, game_link, returned_at = row
             else:
                 # Поддерживаем старый формат строки (без lock_version) в тестовых моках.
@@ -762,6 +772,7 @@ def mount_deals_routes(
                 current_lock_version = 1
                 subscription_term_id = None
                 reserve_key = None
+                current_messenger_id = None
             # Проверяем версию записи, чтобы не перезаписать чужие правки при одновременном редактировании.
             expected_lock_version = payload.lock_version
             # Для обратной совместимости допускаем старые клиенты без lock_version.
@@ -806,6 +817,7 @@ def mount_deals_routes(
 
             new_account_id = payload.account_id if payload.account_id is not None else account_id
             ensure_source_exists(conn, payload.source_id if payload.source_id is not None else None)
+            ensure_messenger_exists(conn, payload.messenger_id if payload.messenger_id is not None else None)
             if new_product_id is not None and deal_type != "rental":
                 # Для продажи валидируем только product_id.
                 validate_deal_product_id(
@@ -858,6 +870,7 @@ def mount_deals_routes(
                 else game_link
             )
             new_order_number = order_number if payload.order_number is None else ((payload.order_number or "").strip() or None)
+            new_messenger_id = current_messenger_id if payload.messenger_id is None else payload.messenger_id
             current_order_number = ((order_number or "").strip() or None)
             if payload.responsible_username is None:
                 new_responsible_username = responsible_username
@@ -991,6 +1004,7 @@ def mount_deals_routes(
                 UPDATE app.deals
                 SET deal_type_code=%s,
                     customer_id=%s,
+                    messenger_id=%s,
                     total_amount=%s,
                     flow_status_code=%s,
                     region_id=%s,
@@ -1009,6 +1023,7 @@ def mount_deals_routes(
                 (
                     deal_type,
                     customer_id,
+                    new_messenger_id,
                     new_price,
                     new_flow_status,
                     region_id,
@@ -1444,7 +1459,8 @@ def mount_deals_routes(
                   di.notes,
                   di.game_link as product_link,
                   (di.returned_at IS NOT NULL) as is_refund,
-                  d.lock_version
+                  d.lock_version,
+                  d.messenger_id
                 FROM app.deal_items di
                 JOIN app.deals d ON d.deal_id = di.deal_id
                 LEFT JOIN app.deal_types dt ON dt.code = d.deal_type_code
@@ -1482,12 +1498,13 @@ def mount_deals_routes(
             completed_at = r[24]
             slots_used = r[25]
             slot_type_code = r[26]
-            if len(r) > 31:
+            if len(r) > 32:
                 reserve_key = r[27]
                 notes = r[28]
                 product_link = r[29]
                 is_refund = bool(r[30])
                 lock_version = int((r[31] if len(r) > 31 else 1) or 1)
+                messenger_id = r[32]
             else:
                 # Поддерживаем старые тестовые строки без reserve_key.
                 reserve_key = None
@@ -1495,6 +1512,7 @@ def mount_deals_routes(
                 product_link = r[28]
                 is_refund = bool(r[29])
                 lock_version = int((r[30] if len(r) > 30 else 1) or 1)
+                messenger_id = None
             items.append(
                 DealListItem(
                     deal_id=r[0],
@@ -1517,6 +1535,7 @@ def mount_deals_routes(
                     login=login,
                     password=password,
                     source_id=source_id,
+                    messenger_id=messenger_id,
                     price=float(price_value or 0),
                     purchase_cost=float(purchase_cost_value or 0),
                     purchase_at=purchase_at,

@@ -23,6 +23,9 @@ def mount_catalogs_routes(
     SourceOut,
     SourceIn,
     SourceUpdate,
+    MessengerOut,
+    MessengerIn,
+    MessengerUpdate,
 ):
     @app.get("/platforms", response_model=list[PlatformOut])
     def list_platforms(user: UserOut = Depends(get_current_user)):
@@ -148,6 +151,15 @@ def mount_catalogs_routes(
             rows = qall(conn, "SELECT source_id, code, name FROM app.sources WHERE is_archived IS NOT TRUE ORDER BY source_id")
         return [SourceOut(source_id=int(r0), code=r1, name=r2) for (r0, r1, r2) in rows]
 
+    @app.get("/messengers", response_model=list[MessengerOut])
+    def list_messengers(user: UserOut = Depends(get_current_user)):
+        with psycopg.connect(DB_DSN) as conn:
+            rows = qall(
+                conn,
+                "SELECT messenger_id, code, name FROM app.messengers WHERE is_archived IS NOT TRUE ORDER BY messenger_id",
+            )
+        return [MessengerOut(messenger_id=int(r0), code=r1, name=r2) for (r0, r1, r2) in rows]
+
     @app.post("/domains", response_model=PlatformOut)
     def create_domain(payload: DomainIn, user: UserOut = Depends(require_role("admin", "owner"))):
         name = (payload.name or "").strip().lower()
@@ -236,5 +248,58 @@ def mount_catalogs_routes(
             if not row:
                 raise HTTPException(404, "Source not found")
             exec1(conn, "UPDATE app.sources SET is_archived=true WHERE source_id=%s", (source_id,))
+            conn.commit()
+        return {"ok": True}
+
+    @app.post("/messengers", response_model=MessengerOut)
+    def create_messenger(payload: MessengerIn, user: UserOut = Depends(require_role("admin", "owner"))):
+        code = (payload.code or "").strip().lower()
+        name = (payload.name or "").strip()
+        if not code or not name:
+            raise HTTPException(400, "Messenger code and name are required")
+        with psycopg.connect(DB_DSN) as conn:
+            row = q1(
+                conn,
+                """
+                INSERT INTO app.messengers(code, name, is_archived)
+                VALUES (%s, %s, false)
+                RETURNING messenger_id, code, name
+                """,
+                (code, name),
+            )
+            conn.commit()
+        if not row:
+            raise HTTPException(500, "Failed to create messenger")
+        return MessengerOut(messenger_id=int(row[0]), code=row[1], name=row[2])
+
+    @app.put("/messengers/{messenger_id}", response_model=MessengerOut)
+    def update_messenger(messenger_id: int, payload: MessengerUpdate, user: UserOut = Depends(require_role("admin", "owner"))):
+        code = (payload.code or "").strip().lower() if payload.code is not None else None
+        name = (payload.name or "").strip() if payload.name is not None else None
+        if code is not None and not code:
+            raise HTTPException(400, "Messenger code is required")
+        if name is not None and not name:
+            raise HTTPException(400, "Name is required")
+        with psycopg.connect(DB_DSN) as conn:
+            row = q1(
+                conn,
+                "SELECT code, name FROM app.messengers WHERE messenger_id=%s AND is_archived IS NOT TRUE",
+                (messenger_id,),
+            )
+            if not row:
+                raise HTTPException(404, "Messenger not found")
+            new_code = code if code is not None else row[0]
+            new_name = name if name is not None else row[1]
+            exec1(conn, "UPDATE app.messengers SET code=%s, name=%s WHERE messenger_id=%s", (new_code, new_name, messenger_id))
+            conn.commit()
+        return MessengerOut(messenger_id=messenger_id, code=new_code, name=new_name)
+
+    @app.delete("/messengers/{messenger_id}")
+    def delete_messenger(messenger_id: int, user: UserOut = Depends(require_role("admin", "owner"))):
+        with psycopg.connect(DB_DSN) as conn:
+            row = q1(conn, "SELECT 1 FROM app.messengers WHERE messenger_id=%s", (messenger_id,))
+            if not row:
+                raise HTTPException(404, "Messenger not found")
+            exec1(conn, "UPDATE app.messengers SET is_archived=true WHERE messenger_id=%s", (messenger_id,))
             conn.commit()
         return {"ok": True}

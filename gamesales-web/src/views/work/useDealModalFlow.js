@@ -87,6 +87,7 @@ export function useDealModalFlow({
       customer_nickname: newDeal.customer_nickname,
       order_number: newDeal.order_number,
       source_id: newDeal.source_id,
+      messenger_id: newDeal.messenger_id,
       region_code: newDeal.region_code,
       slot_type_code: newDeal.slot_type_code,
       subscription_term_id: newDeal.subscription_term_id,
@@ -118,6 +119,7 @@ export function useDealModalFlow({
     editDeal.customer_nickname = deal.customer_nickname || ''
     editDeal.order_number = deal.order_number || ''
     editDeal.source_id = deal.source_id || ''
+    editDeal.messenger_id = deal.messenger_id || ''
     editDeal.region_code = deal.region_code || ''
     editDeal.slot_type_code = deal.slot_type_code || ''
     editDeal.subscription_term_id = deal.subscription_term_id || ''
@@ -149,6 +151,7 @@ export function useDealModalFlow({
     editDeal.customer_nickname = ''
     editDeal.order_number = ''
     editDeal.source_id = ''
+    editDeal.messenger_id = ''
     editDeal.region_code = ''
     editDeal.slot_type_code = ''
     editDeal.subscription_term_id = ''
@@ -228,6 +231,7 @@ export function useDealModalFlow({
       customer_nickname: '',
       order_number: '',
       source_id: '',
+      messenger_id: '',
       region_code: '',
       slot_type_code: '',
       subscription_term_id: '',
@@ -250,6 +254,7 @@ export function useDealModalFlow({
       customer_nickname: newDeal.customer_nickname,
       order_number: newDeal.order_number,
       source_id: newDeal.source_id,
+      messenger_id: newDeal.messenger_id,
       region_code: newDeal.region_code,
       slot_type_code: newDeal.slot_type_code,
       subscription_term_id: newDeal.subscription_term_id,
@@ -273,6 +278,7 @@ export function useDealModalFlow({
       customer_nickname: editDeal.customer_nickname,
       order_number: editDeal.order_number,
       source_id: editDeal.source_id,
+      messenger_id: editDeal.messenger_id,
       region_code: editDeal.region_code,
       slot_type_code: editDeal.slot_type_code,
       subscription_term_id: editDeal.subscription_term_id,
@@ -304,6 +310,7 @@ export function useDealModalFlow({
     // Очищаем номер заказа, чтобы старое значение не переносилось в новую сделку.
     newDeal.order_number = ''
     newDeal.source_id = ''
+    newDeal.messenger_id = ''
     newDeal.region_code = ''
     newDeal.slot_type_code = ''
     newDeal.subscription_term_id = ''
@@ -395,6 +402,7 @@ export function useDealModalFlow({
       customer_nickname: deal.customer_nickname || '',
       order_number: deal.order_number || '',
       source_id: deal.source_id || '',
+      messenger_id: deal.messenger_id || '',
       region_code: deal.region_code || '',
       slot_type_code: deal.slot_type_code || '',
       subscription_term_id: deal.subscription_term_id || '',

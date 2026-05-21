@@ -227,6 +227,103 @@
           <p v-else class="muted">Пока нет источников.</p>
         </div>
 
+        <div class="catalog catalog--source">
+          <div class="panel__head">
+            <div class="toolbar-actions">
+              <button class="deal-create-btn" type="button" @click="openMessengerModal" aria-label="Добавить мессенджер" title="Добавить мессенджер">
+                <span class="deal-create-btn__text">Мессенджер</span>
+                <span class="deal-create-btn__icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
+                    <line y2="19" y1="5" x2="12" x1="12"></line>
+                    <line y2="12" y1="12" x2="19" x1="5"></line>
+                  </svg>
+                </span>
+              </button>
+            </div>
+            <div class="toolbar-actions">
+              <button
+                class="catalog-refresh-btn"
+                title="Обновить список"
+                aria-label="Обновить список"
+                @click="loadMessengers"
+                :disabled="catalogsLoading"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+                  <path d="M20 4v6h-6" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <table v-if="sortedMessengers.length" ref="messengersTableEl" class="table table--compact">
+            <colgroup>
+              <col :style="getMessengersColumnStyle('code')" />
+              <col :style="getMessengersColumnStyle('name')" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>
+                  <span class="th-title">
+                    Код
+                    <button
+                      class="filter-icon filter-icon--sort"
+                      type="button"
+                      aria-label="Сортировка по коду"
+                      title="Сортировка по коду"
+                      @click.stop="toggleMessengersSort('code')"
+                      :class="getKeyedSortClass(messengersSort, 'code')"
+                    >
+                      <svg viewBox="0 0 24 24">
+                        <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                        <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                      </svg>
+                    </button>
+                  </span>
+                  <button
+                    class="table-col-resizer"
+                    type="button"
+                    aria-label="Изменить ширину колонки Код мессенджера"
+                    title="Потяните для изменения ширины"
+                    @mousedown.stop.prevent="startMessengersResize($event, 'code')"
+                  />
+                </th>
+                <th>
+                  <span class="th-title">
+                    Название
+                    <button
+                      class="filter-icon filter-icon--sort"
+                      type="button"
+                      aria-label="Сортировка по названию"
+                      title="Сортировка по названию"
+                      @click.stop="toggleMessengersSort('name')"
+                      :class="getKeyedSortClass(messengersSort, 'name')"
+                    >
+                      <svg viewBox="0 0 24 24">
+                        <path class="sort-icon__up" d="M7 10l5-5 5 5" />
+                        <path class="sort-icon__down" d="M7 14l5 5 5-5" />
+                      </svg>
+                    </button>
+                  </span>
+                  <button
+                    class="table-col-resizer"
+                    type="button"
+                    aria-label="Изменить ширину колонки Название мессенджера"
+                    title="Потяните для изменения ширины"
+                    @mousedown.stop.prevent="startMessengersResize($event, 'name')"
+                  />
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="m in sortedMessengers" :key="m.messenger_id" class="clickable-row" @click="openEditMessenger(m)">
+                <td>{{ m.code }}</td>
+                <td>{{ m.name }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-else class="muted">Пока нет мессенджеров.</p>
+        </div>
+
         <div class="catalog catalog--platform">
           <div class="panel__head">
             <div class="toolbar-actions">
@@ -480,6 +577,7 @@ const ctx = reactive(props.ctx)
 
 const domainsTableEl = ref(null)
 const sourcesTableEl = ref(null)
+const messengersTableEl = ref(null)
 const platformsTableEl = ref(null)
 const regionsTableEl = ref(null)
 
@@ -507,6 +605,15 @@ const { getColumnStyle: getPlatformsColumnStyle, startResize: startPlatformsResi
     { key: 'code', defaultWidth: 24, minWidth: 14 },
     { key: 'name', defaultWidth: 56, minWidth: 30 },
     { key: 'slots', defaultWidth: 20, minWidth: 12 },
+  ],
+})
+
+const { getColumnStyle: getMessengersColumnStyle, startResize: startMessengersResize } = useResizableTableColumns({
+  tableRef: messengersTableEl,
+  storageKey: 'work.catalogs.messengers.columns.v1',
+  columns: [
+    { key: 'code', defaultWidth: 34, minWidth: 18 },
+    { key: 'name', defaultWidth: 66, minWidth: 32 },
   ],
 })
 
@@ -567,6 +674,12 @@ const {
   getKeyedSortClass,
   sourcesSort,
   openEditSource,
+  openMessengerModal,
+  loadMessengers,
+  sortedMessengers,
+  toggleMessengersSort,
+  messengersSort,
+  openEditMessenger,
   openPlatformModal,
   loadCatalogs,
   sortedPlatforms,

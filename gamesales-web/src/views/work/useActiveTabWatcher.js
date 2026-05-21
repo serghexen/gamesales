@@ -25,6 +25,7 @@ export function useActiveTabWatcher({
   catalogsLoadedOnce,
   domainsLoadedOnce,
   sourcesLoadedOnce,
+  messengersLoadedOnce = { value: false },
   slotTypesLoadedOnce,
   accountsAllLoadedOnce,
   productsAllLoadedOnce,
@@ -33,6 +34,7 @@ export function useActiveTabWatcher({
   regions,
   domains,
   sources,
+  messengers = { value: [] },
   slotTypes,
   productsAll,
   accountsAll,
@@ -43,6 +45,7 @@ export function useActiveTabWatcher({
   loadCatalogs,
   loadDomains,
   loadSources,
+  loadMessengers = async () => {},
   loadSlotTypes,
   loadProducts,
   loadProductsAll,
@@ -222,6 +225,12 @@ export function useActiveTabWatcher({
             if (sources.value.length) sourcesLoadedOnce.value = true
           }))
         }
+        if (!messengersLoadedOnce.value) {
+          tasks.push(loadMessengers().then(() => {
+            if (!isCurrentRequest('deals')) return
+            if (messengers.value.length) messengersLoadedOnce.value = true
+          }))
+        }
         if (!domainsLoadedOnce.value) {
           tasks.push(loadDomains().then(() => {
             if (!isCurrentRequest('deals')) return
@@ -254,6 +263,12 @@ export function useActiveTabWatcher({
           if (sources.value.length) sourcesLoadedOnce.value = true
         }))
       }
+      if (!messengersLoadedOnce.value && !messengers.value.length) {
+        tasks.push(loadMessengers().then(() => {
+          if (!isCurrentRequest('analytics')) return
+          if (messengers.value.length) messengersLoadedOnce.value = true
+        }))
+      }
       await Promise.all(tasks)
       return
     }
@@ -281,6 +296,10 @@ export function useActiveTabWatcher({
       if (!sourcesLoadedOnce.value && !sources.value.length) tasks.push(loadSources().then(() => {
         if (!isCurrentRequest('catalogs')) return
         if (sources.value.length) sourcesLoadedOnce.value = true
+      }))
+      if (!messengersLoadedOnce.value && !messengers.value.length) tasks.push(loadMessengers().then(() => {
+        if (!isCurrentRequest('catalogs')) return
+        if (messengers.value.length) messengersLoadedOnce.value = true
       }))
       if (!catalogsLoadedOnce.value && (!platforms.value.length || !regions.value.length)) tasks.push(loadCatalogs().then(() => {
         if (!isCurrentRequest('catalogs')) return
