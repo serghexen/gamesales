@@ -333,7 +333,7 @@
       >
         <td class="cell--tight deal-col-type">{{ d.deal_type || '—' }}</td>
         <td class="deal-col-customer">{{ d.customer_nickname || '—' }}</td>
-        <td class="cell--tight deal-col-region">{{ d.product_title || '—' }}</td>
+        <td class="cell--tight deal-col-region">{{ getDealProductCellLabel(d) }}</td>
         <td class="deal-col-date">
           <template v-if="dealShowCompleted">
             <div class="deal-date-lines">
@@ -630,6 +630,31 @@ function isDealEditedByAnotherUser(dealId) {
   if (!actorUsername) return false
   const me = String(props.currentUsername || '').trim().toLowerCase()
   return actorUsername.toLowerCase() !== me
+}
+
+// Форматирует дату срока подписки в вид dd.mm.yyyy для колонки "Товар" в списке сделок.
+function formatSubscriptionValidUntil(value) {
+  if (!value) return ''
+  const raw = String(value).trim()
+  if (!raw) return ''
+  const datePart = raw.includes('T') ? raw.slice(0, 10) : raw
+  const chunks = datePart.split('-')
+  if (chunks.length !== 3) return ''
+  const [year, month, day] = chunks
+  if (!year || !month || !day) return ''
+  return `${day.padStart(2, '0')}.${month.padStart(2, '0')}.${year}`
+}
+
+// Собирает подпись товара в таблице: для подписки добавляем срок, чтобы менеджер видел нужную позицию сразу.
+function getDealProductCellLabel(deal) {
+  const title = String(deal?.product_title || '').trim()
+  if (!title) return '—'
+  const isRental = String(deal?.deal_type_code || '').toLowerCase() === 'rental'
+  const hasTerm = Number(deal?.subscription_term_id || 0) > 0
+  if (!isRental || !hasTerm) return title
+  const validUntil = formatSubscriptionValidUntil(deal?.subscription_valid_until)
+  if (!validUntil) return title
+  return `${title} до ${validUntil}`
 }
 
 function spawnCompletionCoins(originPoint) {

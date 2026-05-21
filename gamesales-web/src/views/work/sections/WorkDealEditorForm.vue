@@ -1875,9 +1875,14 @@ function getDealProductDisplayLabel(target) {
   const productId = Number(deal?.product_id || 0)
   if (!productId) return '—'
   let productLabel = getProductLabelById.value(productId)
-  const subscriptionMode = isEdit ? isEditRentalSubscriptionMode.value : isNewRentalSubscriptionMode.value
   const termId = Number(deal?.subscription_term_id || 0)
-  if (!subscriptionMode || !termId) return productLabel
+  const subscriptionMode = isEdit ? isEditRentalSubscriptionMode.value : isNewRentalSubscriptionMode.value
+  // В просмотре сделки показываем срок всегда по факту сохраненного term_id, даже если фильтр типа еще не синхронизировался.
+  const showTermInView = isEdit
+    && dealEditMode.value === 'view'
+    && String(deal?.deal_type_code || '').toLowerCase() === 'rental'
+    && termId > 0
+  if ((!subscriptionMode && !showTermInView) || !termId) return productLabel
   const allTerms = isEdit
     ? (Array.isArray(subscriptionTermsEdit.value) ? subscriptionTermsEdit.value : [])
     : (Array.isArray(subscriptionTermsNew.value) ? subscriptionTermsNew.value : [])

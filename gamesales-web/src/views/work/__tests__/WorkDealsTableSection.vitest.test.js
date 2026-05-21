@@ -130,6 +130,28 @@ describe('WorkDealsTableSection', () => {
     expect(markDealReturned).toHaveBeenCalledTimes(1)
   })
 
+  it('shows subscription term date in product column for rental subscriptions', () => {
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        sortedDeals: [
+          {
+            deal_id: 21,
+            deal_type: 'Шеринг',
+            deal_type_code: 'rental',
+            customer_nickname: 'Покупатель',
+            product_title: 'EA PLAY',
+            subscription_term_id: 901,
+            subscription_valid_until: '2026-10-28',
+            flow_status: 'Завершен',
+            responsible_username: 'manager',
+          },
+        ],
+      }),
+    })
+
+    expect(wrapper.text()).toContain('EA PLAY до 28.10.2026')
+  })
+
   it('calls completion action from complete button in pending list', async () => {
     const markDealCompleted = vi.fn()
     const wrapper = mount(WorkDealsTableSection, {

@@ -121,6 +121,7 @@ class DealListItem(BaseModel):
     platform_code: Optional[str]
     slot_type_code: Optional[str] = None
     subscription_term_id: Optional[int] = None
+    subscription_valid_until: Optional[date] = None
     reserve_key: Optional[str] = None
     customer_nickname: Optional[str]
     login: Optional[str] = None

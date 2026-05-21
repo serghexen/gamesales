@@ -1475,6 +1475,7 @@ def mount_deals_routes(
                   di.slots_used,
                   di.slot_type_code,
                   di.subscription_term_id,
+                  st.valid_until AS subscription_valid_until,
                   di.reserve_key,
                   di.notes,
                   di.game_link as product_link,
@@ -1491,6 +1492,7 @@ def mount_deals_routes(
                 LEFT JOIN app.regions ra ON ra.region_id = a.region_id
                 LEFT JOIN app.regions rd ON rd.region_id = d.region_id
                 LEFT JOIN app.products pr ON pr.product_id = di.product_id
+                LEFT JOIN app.subscription_terms st ON st.term_id = di.subscription_term_id
                 LEFT JOIN app.platforms p ON p.platform_id = di.platform_id
                 LEFT JOIN app.customers c ON c.customer_id = d.customer_id
                 LEFT JOIN app.sources src ON src.source_id = c.source_id
@@ -1519,8 +1521,19 @@ def mount_deals_routes(
             slots_used = r[25]
             slot_type_code = r[26]
             # Срок подписки обязателен для корректного открытия шеринга в режиме редактирования.
-            if len(r) > 33:
+            if len(r) > 34:
                 subscription_term_id = r[27]
+                subscription_valid_until = r[28]
+                reserve_key = r[29]
+                notes = r[30]
+                product_link = r[31]
+                is_refund = bool(r[32])
+                lock_version = int((r[33] if len(r) > 33 else 1) or 1)
+                messenger_id = r[34]
+            elif len(r) > 33:
+                # Поддерживаем переходный формат строки без даты срока подписки.
+                subscription_term_id = r[27]
+                subscription_valid_until = None
                 reserve_key = r[28]
                 notes = r[29]
                 product_link = r[30]
@@ -1530,6 +1543,7 @@ def mount_deals_routes(
             else:
                 # Поддерживаем старые тестовые строки без reserve_key.
                 subscription_term_id = None
+                subscription_valid_until = None
                 reserve_key = None
                 notes = r[27]
                 product_link = r[28]
@@ -1567,6 +1581,7 @@ def mount_deals_routes(
                     slots_used=slots_used,
                     slot_type_code=slot_type_code,
                     subscription_term_id=subscription_term_id,
+                    subscription_valid_until=subscription_valid_until,
                     reserve_key=reserve_key,
                     notes=notes,
                     product_link=product_link,

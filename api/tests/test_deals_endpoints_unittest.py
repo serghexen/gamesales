@@ -195,6 +195,7 @@ class DealsEndpointsTests(unittest.TestCase):
                         1,  # slots_used
                         "ps5_p3",  # slot_type_code
                         901,  # subscription_term_id
+                        datetime(2026, 10, 28, 0, 0, tzinfo=timezone.utc),  # subscription_valid_until
                         None,  # reserve_key
                         "note",  # notes
                         None,  # product_link
@@ -218,6 +219,7 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(body["total"], 1)
             self.assertEqual(body["items"][0]["deal_id"], 16)
             self.assertEqual(body["items"][0]["subscription_term_id"], 901)
+            self.assertEqual(body["items"][0]["subscription_valid_until"], "2026-10-28")
 
     # Для manager/operator возвратные сделки должны отсеиваться на уровне SQL.
     def test_list_deals_hides_refunds_for_manager(self):
