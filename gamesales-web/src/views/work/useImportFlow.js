@@ -1,5 +1,11 @@
 import { confirmDiscardIfNeeded } from './unsavedChanges'
 
+// Проверяет, что загруженный файл подходит для excel-импорта.
+const isSupportedExcelFile = (file) => {
+  const fileName = String(file?.name || '').toLowerCase().trim()
+  return Boolean(fileName.endsWith('.xlsx') || fileName.endsWith('.xls'))
+}
+
 export function useImportFlow({
   auth,
   API_BASE,
@@ -604,6 +610,10 @@ export function useImportFlow({
     accountImportProgress.phase = ''
     accountImportJobId.value = ''
     stopAccountImportStatusPolling()
+    // Сразу подсказываем нужный формат и не запускаем серверные проверки с неподходящим файлом.
+    if (accountImportFile.value && !isSupportedExcelFile(accountImportFile.value)) {
+      accountImportMessage.value = 'Поддерживаются только файлы .xlsx/.xls'
+    }
   }
 
   function onSlotImportFile(event) {
@@ -759,6 +769,10 @@ export function useImportFlow({
 
   async function validateAccountImport() {
     if (!accountImportFile.value) return
+    if (!isSupportedExcelFile(accountImportFile.value)) {
+      accountImportMessage.value = 'Поддерживаются только файлы .xlsx/.xls'
+      return
+    }
     const form = new FormData()
     form.append('file', accountImportFile.value)
     accountImportValidated.value = false
@@ -795,6 +809,10 @@ export function useImportFlow({
   // Отдельная проверка листа "Пользователи": ищет неполный набор слотов по аккаунтам.
   async function validateAccountSlotsCheck() {
     if (!accountImportFile.value) return
+    if (!isSupportedExcelFile(accountImportFile.value)) {
+      accountImportMessage.value = 'Поддерживаются только файлы .xlsx/.xls'
+      return
+    }
     const form = new FormData()
     form.append('file', accountImportFile.value)
     accountImportAction.value = 'validate'
@@ -828,6 +846,10 @@ export function useImportFlow({
   // Отдельная проверка внешнего файла: ищет сделки по связке дата + ник покупателя.
   async function validateAccountDealsCheck() {
     if (!accountImportFile.value) return
+    if (!isSupportedExcelFile(accountImportFile.value)) {
+      accountImportMessage.value = 'Поддерживаются только файлы .xlsx/.xls'
+      return
+    }
     const form = new FormData()
     form.append('file', accountImportFile.value)
     accountImportAction.value = 'validate'
@@ -1039,6 +1061,10 @@ export function useImportFlow({
 
   async function uploadAccountImport() {
     if (!accountImportFile.value || !accountImportValidated.value) return
+    if (!isSupportedExcelFile(accountImportFile.value)) {
+      accountImportMessage.value = 'Поддерживаются только файлы .xlsx/.xls'
+      return
+    }
     const form = new FormData()
     form.append('file', accountImportFile.value)
     accountImportAction.value = 'upload'

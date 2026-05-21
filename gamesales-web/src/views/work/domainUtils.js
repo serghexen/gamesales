@@ -77,6 +77,7 @@ export const mapApiError = (message) => {
   // Приводим ошибки API к коротким и понятным текстам для интерфейса.
   const text = String(message || '')
   if (!text) return 'Ошибка'
+  if (text.includes('Load failed')) return 'Не удалось отправить файл. Проверьте формат (.xlsx/.xls) и доступность API'
   if (text.includes('Not enough free slots.')) {
     const free = text.match(/free_slots=([0-9]+)/)?.[1]
     const req = text.match(/requested=([0-9]+)/)?.[1]

@@ -59,6 +59,7 @@ describe('domainUtils', () => {
     expect(mapApiError('is_refund can be changed only for pending deals')).toBe('Признак возврата можно менять только у сделки в ожидании')
     expect(mapApiError('не достаточно прав для проведения возврата')).toBe('не достаточно прав для проведения возврата')
     expect(mapApiError('query.payload: Field required')).toBe('Некорректный формат запроса. Обновите страницу и попробуйте снова')
+    expect(mapApiError('Load failed')).toBe('Не удалось отправить файл. Проверьте формат (.xlsx/.xls) и доступность API')
     expect(mapApiError('Account already exists')).toBe('Данный аккаунт уже есть в базе данных')
     expect(mapApiError('duplicate key value violates unique constraint "uq_account_login"')).toBe('Данный аккаунт уже есть в базе данных')
     expect(mapApiError('custom backend error')).toBe('custom backend error')

@@ -238,7 +238,10 @@ def mount_accounts_import_routes(
 
     # Проверяет файл с внешней выгрузкой: ищет сделки по связке дата + ник.
     def _validate_deals_lookup(content: bytes, conn):
-        wb = load_workbook(BytesIO(content), data_only=True)
+        try:
+            wb = load_workbook(BytesIO(content), data_only=True)
+        except Exception as exc:
+            raise HTTPException(400, f"Не удалось прочитать Excel-файл: {exc}")
         ws = wb.active
 
         header_alias = {
