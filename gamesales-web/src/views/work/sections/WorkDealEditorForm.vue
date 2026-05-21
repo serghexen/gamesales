@@ -757,12 +757,27 @@
                           </label>
                           <label class="field">
                             <span class="label">Ссылка на товар</span>
-                            <input
-                              v-model.trim="editDeal.product_link"
-                              class="input"
-                              placeholder="https://..."
-                              :readonly="dealEditMode === 'view'"
-                            />
+                            <div class="input--select-wrap">
+                              <input
+                                v-model.trim="editDeal.product_link"
+                                class="input input--with-copy"
+                                placeholder="https://..."
+                                :readonly="dealEditMode === 'view'"
+                              />
+                              <button
+                                class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                type="button"
+                                :aria-label="getSaleLinkCopyLabel('edit')"
+                                :title="getSaleLinkCopyLabel('edit')"
+                                :disabled="!String(editDeal.product_link || '').trim()"
+                                @click="copySaleProductLink('edit')"
+                              >
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                  <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                  <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                                </svg>
+                              </button>
+                            </div>
                           </label>
                         </div>
                         <label v-if="editDeal.deal_type_code === 'sale'" class="field">
@@ -1337,7 +1352,22 @@
                           </label>
                           <label class="field">
                             <span class="label">Ссылка на товар</span>
-                            <input v-model.trim="newDeal.product_link" class="input" placeholder="https://..." />
+                            <div class="input--select-wrap">
+                              <input v-model.trim="newDeal.product_link" class="input input--with-copy" placeholder="https://..." />
+                              <button
+                                class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                type="button"
+                                :aria-label="getSaleLinkCopyLabel('new')"
+                                :title="getSaleLinkCopyLabel('new')"
+                                :disabled="!String(newDeal.product_link || '').trim()"
+                                @click="copySaleProductLink('new')"
+                              >
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                  <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                  <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                                </svg>
+                              </button>
+                            </div>
                           </label>
                         </div>
                         <div v-if="newDeal.deal_type_code === 'sale'" class="field field--comment-collapsible">
@@ -1480,6 +1510,8 @@ const editQuickSubscriptionTermOpen = ref(false)
 const newQuickProductOpen = ref(false)
 const newQuickAccountOpen = ref(false)
 const newQuickSubscriptionTermOpen = ref(false)
+const copiedSaleLinkTarget = ref('')
+let copiedSaleLinkTimerId = 0
 
 const isEditRentalSubscriptionMode = computed(() => {
   return editDeal.value?.deal_type_code === 'rental' && editDealProductTypeFilter.value === 'subscription'
@@ -2055,4 +2087,40 @@ const editFlowStatusOptions = computed(() => {
   if (currentStatus !== 'draft') return list
   return list.filter((item) => String(item?.code || '').trim().toLowerCase() !== 'completed')
 })
+
+// Возвращает подпись для иконки копирования ссылки с учетом короткого статуса после клика.
+function getSaleLinkCopyLabel(target) {
+  return copiedSaleLinkTarget.value === target ? 'Скопировано' : 'Копировать ссылку'
+}
+
+// Копирует ссылку товара в буфер обмена; нужен быстрый доступ к ссылке из формы продаж.
+async function copySaleProductLink(target) {
+  const isEditTarget = target === 'edit'
+  const rawValue = isEditTarget ? editDeal.value?.product_link : newDeal.value?.product_link
+  const value = String(rawValue || '').trim()
+  if (!value) return
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value)
+    } else {
+      const tempInput = document.createElement('textarea')
+      tempInput.value = value
+      tempInput.setAttribute('readonly', '')
+      tempInput.style.position = 'absolute'
+      tempInput.style.left = '-9999px'
+      document.body.appendChild(tempInput)
+      tempInput.select()
+      document.execCommand('copy')
+      document.body.removeChild(tempInput)
+    }
+    copiedSaleLinkTarget.value = target
+    if (copiedSaleLinkTimerId) window.clearTimeout(copiedSaleLinkTimerId)
+    copiedSaleLinkTimerId = window.setTimeout(() => {
+      copiedSaleLinkTarget.value = ''
+      copiedSaleLinkTimerId = 0
+    }, 1400)
+  } catch {
+    showDealWarning.value?.('Не удалось скопировать ссылку')
+  }
+}
 </script>

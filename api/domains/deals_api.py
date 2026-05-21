@@ -1278,6 +1278,19 @@ def mount_deals_routes(
                 "UPDATE app.deal_items SET returned_at=%s WHERE deal_id=%s",
                 (returned_at_value, deal_id),
             )
+            # Для шеринга при возврате снимаем все активные назначения слотов по сделке.
+            if normalized_deal_type == "rental":
+                exec1(
+                    conn,
+                    """
+                    UPDATE app.account_slot_assignments
+                    SET released_at=now(),
+                        released_by=%s
+                    WHERE deal_id=%s
+                      AND released_at IS NULL
+                    """,
+                    (user.username, deal_id),
+                )
             conn.commit()
             if publish_deal_event:
                 try:

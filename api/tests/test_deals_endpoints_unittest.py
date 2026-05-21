@@ -1482,6 +1482,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": ("Owner Name", "owner_user")},  # owner name + username
             {"rowcount": 1},  # update deals
             {"rowcount": 1},  # update deal_items
+            {"rowcount": 1},  # release slot assignments
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),

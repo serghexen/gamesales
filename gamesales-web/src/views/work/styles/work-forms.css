@@ -328,6 +328,10 @@
   font-size: 13px;
 }
 
+.work-page .deal-form .input--with-copy {
+  padding-right: 44px;
+}
+
 .work-page .deal-form .input--compact {
   height: 30px;
   font-size: 12px;
