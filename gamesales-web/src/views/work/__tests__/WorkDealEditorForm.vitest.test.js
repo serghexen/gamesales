@@ -145,10 +145,10 @@ describe('WorkDealEditorForm template', () => {
 
     expect(source).toContain('v-if="editDeal.account_id"')
     expect(source).toContain('getAccountPasswordById(editDeal.account_id)')
-    expect(source).toContain('getDealReserveLabel(editDeal.account_id, editDeal.reserve_key, editDeal.deal_id)')
+    expect(source).toContain("getDealReserveLabel(editDeal.account_id, editDeal.reserve_key, editDeal.deal_id, { allowFallback: dealEditMode === 'edit', emptyLabel: '— не назначен (импорт)' })")
     expect(source).toContain('v-if="newDeal.account_id"')
     expect(source).toContain('getAccountPasswordById(newDeal.account_id)')
-    expect(source).toContain('getDealReserveLabel(newDeal.account_id, newDeal.reserve_key)')
+    expect(source).toContain('getDealReserveLabel(newDeal.account_id, newDeal.reserve_key, null, { allowFallback: true })')
     expect(source).toContain('deal-form__account-details-head')
     expect(source).toContain('Данные аккаунта')
     expect(source).toContain('const value = String(getAccountSecret.value?.(accountId) || \'\').trim()')
@@ -158,7 +158,7 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('deal-form__account-details-head">Данные аккаунта</div>')
     expect(newRentalMain).not.toContain('getAccountPasswordById(newDeal.account_id)')
     expect(newRentalSide).toContain('getAccountPasswordById(newDeal.account_id)')
-    expect(newRentalSide).toContain('getDealReserveLabel(newDeal.account_id, newDeal.reserve_key)')
+    expect(newRentalSide).toContain('getDealReserveLabel(newDeal.account_id, newDeal.reserve_key, null, { allowFallback: true })')
     expect(source.indexOf('<span class="label">Логин</span>'))
       .toBeLessThan(source.indexOf('<span class="label">Пароль</span>'))
   })
@@ -169,7 +169,7 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain("showDealWarning.value('У выбранного аккаунта нет доступных резервов')")
     expect(source).toContain('const reserveKey = pickFirstFreeReserveKey(accountId)')
     expect(source).toContain('newDeal.value.reserve_key = reserveKey')
-    expect(source).toContain('if (!fallbackKey) return \'—\'')
+    expect(source).toContain('if (!normalizedKey && !allowFallback) return emptyLabel')
   })
 
   it('hides refund field in pending and draft statuses and keeps it only for other flows', () => {

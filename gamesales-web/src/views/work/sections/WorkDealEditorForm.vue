@@ -504,7 +504,11 @@
                               </label>
                               <label class="field">
                                 <span class="label">Резерв</span>
-                                <input class="input" :value="getDealReserveLabel(editDeal.account_id, editDeal.reserve_key, editDeal.deal_id)" readonly />
+                                <input
+                                  class="input"
+                                  :value="getDealReserveLabel(editDeal.account_id, editDeal.reserve_key, editDeal.deal_id, { allowFallback: dealEditMode === 'edit', emptyLabel: '— не назначен (импорт)' })"
+                                  readonly
+                                />
                               </label>
                             </div>
                             <div
@@ -1199,7 +1203,7 @@
                               </label>
                               <label class="field">
                                 <span class="label">Резерв</span>
-                                <input class="input" :value="getDealReserveLabel(newDeal.account_id, newDeal.reserve_key)" readonly />
+                                <input class="input" :value="getDealReserveLabel(newDeal.account_id, newDeal.reserve_key, null, { allowFallback: true })" readonly />
                               </label>
                             </div>
                             <div
@@ -1780,17 +1784,20 @@ function pickFirstFreeReserveKey(accountId, currentDealId = null) {
 }
 
 // Возвращает строку для отображения резерва в блоке выбранного аккаунта.
-function getDealReserveLabel(accountId, reserveKey, currentDealId = null) {
+function getDealReserveLabel(accountId, reserveKey, currentDealId = null, options = {}) {
   if (!accountId) return '—'
+  const allowFallback = options?.allowFallback !== false
+  const emptyLabel = options?.emptyLabel || '—'
   const normalizedKey = normalizeReserveKey(reserveKey)
   const entries = getAccountReserveEntriesForDeal(accountId, currentDealId)
-  if (!entries.length) return '—'
-  // Если ключ не выбран, берем только свободный резерв; занятый по умолчанию не подставляем.
-  const fallbackKey = normalizedKey || pickFirstFreeReserveKey(accountId, currentDealId)
-  if (!fallbackKey) return '—'
-  const selected = entries.find((item) => item.key === fallbackKey)
-  if (!selected) return '—'
-  if (!selected?.value) return '—'
+  if (!entries.length) return emptyLabel
+  // В просмотре показываем только фактический reserve_key; fallback включаем только в создании/редактировании.
+  if (!normalizedKey && !allowFallback) return emptyLabel
+  const selectedKey = normalizedKey || pickFirstFreeReserveKey(accountId, currentDealId)
+  if (!selectedKey) return emptyLabel
+  const selected = entries.find((item) => item.key === selectedKey)
+  if (!selected) return emptyLabel
+  if (!selected?.value) return emptyLabel
   return selected.used ? `${selected.value} (использован)` : selected.value
 }
 
@@ -1999,7 +2006,7 @@ watch(() => newDeal.value?.account_id, (accountId) => {
 })
 
 watch(() => editDeal.value?.account_id, (accountId) => {
-  if (!editDeal.value?.open || editDeal.value?.deal_type_code !== 'rental') return
+  if (!editDeal.value?.open || editDeal.value?.deal_type_code !== 'rental' || dealEditMode.value !== 'edit') return
   if (!accountId) {
     editDeal.value.reserve_key = ''
     return
@@ -2008,6 +2015,15 @@ watch(() => editDeal.value?.account_id, (accountId) => {
   if (currentKey) return
   // В редактировании подбираем резерв только когда в сделке еще нет ключа.
   editDeal.value.reserve_key = pickFirstFreeReserveKey(accountId, editDeal.value?.deal_id)
+})
+
+watch(() => dealEditMode.value, (mode) => {
+  if (mode !== 'edit') return
+  if (!editDeal.value?.open || editDeal.value?.deal_type_code !== 'rental') return
+  if (!editDeal.value?.account_id) return
+  if (normalizeReserveKey(editDeal.value?.reserve_key)) return
+  // При входе в редактирование импортной сделки подбираем свободный резерв, но в режиме просмотра ничего не подставляем.
+  editDeal.value.reserve_key = pickFirstFreeReserveKey(editDeal.value.account_id, editDeal.value?.deal_id)
 })
 
 const isEditDealPendingFlow = computed(() => {

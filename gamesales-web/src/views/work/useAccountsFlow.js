@@ -101,6 +101,20 @@ export function useAccountsFlow({
     }
   }
 
+  // Нормализует ключ резерва к формату reserveN для единой обработки во всех блоках UI.
+  function normalizeReserveKey(value) {
+    const raw = String(value || '').trim().toLowerCase()
+    if (!/^reserve\d+$/.test(raw)) return ''
+    return `reserve${Number(raw.replace('reserve', ''))}`
+  }
+
+  // Сравнивает ключи reserveN по числовому номеру, чтобы порядок был предсказуемым.
+  function compareReserveKeys(leftKey, rightKey) {
+    const leftNum = Number(String(leftKey || '').replace('reserve', '')) || 0
+    const rightNum = Number(String(rightKey || '').replace('reserve', '')) || 0
+    return leftNum - rightNum
+  }
+
   // Достает пароль почты для аккаунта.
   function getEmailSecret(accountId) {
     const list = accountSecrets.value[accountId] || []
@@ -117,12 +131,8 @@ export function useAccountsFlow({
 
   // Склеивает резервные пароли в одну строку для отображения.
   function getReserveSecrets(accountId) {
-    const list = accountSecrets.value[accountId] || []
-    const reserves = list
-      .filter((s) => s.secret_key?.startsWith('reserve'))
-      .map((s) => (s.secret_value_b64 ? decodeSecret(s.secret_value_b64) : ''))
-      .filter(Boolean)
-    return reserves.join(' ')
+    const reserves = getReserveSecretEntries(accountId)
+    return reserves.map((item) => item.value).filter(Boolean).join(' ')
   }
 
   // Возвращает резервы аккаунта как список пар key/value, отсортированных по номеру reserveN.
@@ -131,15 +141,11 @@ export function useAccountsFlow({
     return list
       .filter((s) => /^reserve\d+$/i.test(String(s.secret_key || '').trim()))
       .map((s) => ({
-        key: String(s.secret_key || '').trim().toLowerCase(),
+        key: normalizeReserveKey(s.secret_key),
         value: s.secret_value_b64 ? decodeSecret(s.secret_value_b64).trim() : '',
       }))
-      .filter((item) => item.value)
-      .sort((a, b) => {
-        const aNum = Number(String(a.key).replace('reserve', '')) || 0
-        const bNum = Number(String(b.key).replace('reserve', '')) || 0
-        return aNum - bNum
-      })
+      .filter((item) => item.key && item.value)
+      .sort((a, b) => compareReserveKeys(a.key, b.key))
   }
 
   // Достает код/секрет для входа (2FA/код).
@@ -177,19 +183,16 @@ export function useAccountsFlow({
     const email = secrets.find((s) => s.secret_key === 'email_password')
     const account = secrets.find((s) => s.secret_key === 'account_password' || s.secret_key === 'primary' || s.secret_key === 'password')
     const authSecret = secrets.find((s) => s.secret_key === 'auth_code')
-    const reserves = secrets.filter((s) => s.secret_key?.startsWith('reserve'))
+    const reserveEntries = getReserveSecretEntries(targetId)
     editAccount.email_password = email?.secret_value_b64 ? decodeSecret(email.secret_value_b64) : ''
     editAccount.email_key = email?.secret_key || 'email_password'
     editAccount.account_password = account?.secret_value_b64 ? decodeSecret(account.secret_value_b64) : ''
     editAccount.account_key = account?.secret_key || 'account_password'
     editAccount.auth_code = authSecret?.secret_value_b64 ? decodeSecret(authSecret.secret_value_b64) : ''
     editAccount.auth_key = authSecret?.secret_key || 'auth_code'
-    editAccount.reserve_text = reserves
-      .sort((a1, a2) => a1.secret_key.localeCompare(a2.secret_key))
-      .map((s) => (s.secret_value_b64 ? decodeSecret(s.secret_value_b64) : ''))
-      .filter(Boolean)
-      .join(' ')
-    editAccount.existing_reserve_keys = reserves.map((s) => s.secret_key)
+    // Держим текст и список ключей в одном и том же порядке, чтобы не переименовывать резервы при сохранении.
+    editAccount.reserve_text = reserveEntries.map((item) => item.value).join(' ')
+    editAccount.existing_reserve_keys = reserveEntries.map((item) => item.key)
     editAccount.has_account = Boolean(account)
     editAccount.has_email = Boolean(email)
     editAccount.has_auth = Boolean(authSecret)
@@ -768,13 +771,34 @@ export function useAccountsFlow({
         .split(/\s+/)
         .map((v) => v.trim())
         .filter(Boolean)
+
+      // Сохраняем существующие ключи резервов, чтобы редактирование не сбивало их нумерацию.
+      const existingReserveKeys = Array.from(
+        new Set(
+          (Array.isArray(editAccount.existing_reserve_keys) ? editAccount.existing_reserve_keys : [])
+            .map((key) => normalizeReserveKey(key))
+            .filter(Boolean)
+        )
+      ).sort(compareReserveKeys)
+
+      // Для новых значений подбираем ближайший свободный reserveN без конфликтов.
+      const takeNextFreeReserveKey = (usedKeys) => {
+        for (let idx = 1; idx <= 50; idx += 1) {
+          const key = `reserve${idx}`
+          if (!usedKeys.has(key)) return key
+        }
+        return `reserve${usedKeys.size + 1}`
+      }
+
       const keepKeys = []
+      const usedKeys = new Set(existingReserveKeys)
       reserveValues.forEach((val, idx) => {
-        const key = `reserve${idx + 1}`
+        const key = existingReserveKeys[idx] || takeNextFreeReserveKey(usedKeys)
+        usedKeys.add(key)
         keepKeys.push(key)
         secretUpserts.push({ secret_key: key, secret_value: val })
       })
-      editAccount.existing_reserve_keys
+      existingReserveKeys
         .filter((k) => !keepKeys.includes(k))
         .forEach((k) => {
           secretDeleteKeys.push(k)

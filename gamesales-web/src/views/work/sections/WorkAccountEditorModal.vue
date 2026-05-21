@@ -194,14 +194,14 @@
                         />
                         <div v-else-if="editAccountReserveOpen || editAccount.reserve_text" class="field field--full account-reserve-list">
                           <div
-                            v-for="(reserveValue, idx) in editReserveRows"
-                            :key="`edit-reserve-${idx}`"
+                            v-for="(reserveItem, idx) in editReserveRows"
+                            :key="`edit-reserve-${reserveItem.key || idx}`"
                             class="account-reserve-row"
                           >
                             <div class="account-reserve-row__meta">
-                              <span class="label account-reserve-row__label">Резерв {{ idx + 1 }}</span>
+                              <span class="label account-reserve-row__label">{{ reserveItem.label }}</span>
                               <span
-                                v-if="isReserveUsedByIndex(idx)"
+                                v-if="isReserveUsedByKey(reserveItem.key)"
                                 class="account-reserve-row__badge"
                               >
                                 использован
@@ -209,7 +209,7 @@
                             </div>
                             <input
                               class="input input--compact"
-                              :value="reserveValue"
+                              :value="reserveItem.value"
                               placeholder="код резерва"
                               readonly
                             />
@@ -732,7 +732,7 @@ const newSubscriptionTermOpen = ref(false)
 const editQuickProductOpen = ref(false)
 const editAccountReserveOpen = ref(false)
 const editAccountCommentOpen = ref(false)
-const editReserveRows = ref([''])
+const editReserveRows = ref([])
 
 // Возвращает дату срока подписки по умолчанию: текущая дата плюс один год.
 const getDefaultSubscriptionTermDate = () => {
@@ -751,13 +751,13 @@ const getCompactNotesRows = (value) => {
   return Math.max(2, Math.min(6, Math.ceil(text.length / 110)))
 }
 
-// Разбивает строку резервов по пробелам, чтобы показывать их отдельными полями.
-const getReserveRows = (value) => {
+// Разбивает строку резервов по пробелам и убирает пустые элементы.
+const parseReserveValues = (value) => {
   const rows = String(value || '')
     .split(/\s+/)
     .map((item) => item.trim())
     .filter(Boolean)
-  return rows.length ? rows : ['']
+  return rows
 }
 
 // Нормализует ключ резерва к формату reserveN, чтобы сравнение работало стабильно.
@@ -765,6 +765,30 @@ const normalizeReserveKey = (value) => {
   const raw = String(value || '').trim().toLowerCase()
   if (!/^reserve\d+$/.test(raw)) return ''
   return `reserve${Number(raw.replace('reserve', ''))}`
+}
+
+// Вычисляет номер из reserve-ключа, чтобы показывать пользователю реальный идентификатор.
+const getReserveNumber = (key) => Number(String(key || '').replace('reserve', '')) || 0
+
+// Собирает ряды резервов с реальными ключами и читабельными подписями.
+const buildReserveRows = (reserveText, existingKeys) => {
+  const values = parseReserveValues(reserveText)
+  const keys = Array.from(
+    new Set(
+      (Array.isArray(existingKeys) ? existingKeys : [])
+        .map((key) => normalizeReserveKey(key))
+        .filter(Boolean)
+    )
+  ).sort((left, right) => getReserveNumber(left) - getReserveNumber(right))
+  return values.map((value, idx) => {
+    const key = keys[idx] || `reserve${idx + 1}`
+    const reserveNumber = getReserveNumber(key) || idx + 1
+    return {
+      key,
+      value,
+      label: `Резерв ${reserveNumber}`,
+    }
+  })
 }
 
 // Собирает использованные резервы по сделкам аккаунта (шеринг).
@@ -779,15 +803,19 @@ const usedReserveKeys = computed(() => {
   return keys
 })
 
-// Проверяет, используется ли резерв с индексом (reserve1/reserve2/...).
-const isReserveUsedByIndex = (index) => {
-  const key = normalizeReserveKey(`reserve${Number(index) + 1}`)
-  return key ? usedReserveKeys.value.has(key) : false
+// Проверяет, занят ли конкретный reserve-ключ в активных шеринговых сделках аккаунта.
+const isReserveUsedByKey = (key) => {
+  const normalizedKey = normalizeReserveKey(key)
+  if (!normalizedKey) return false
+  return usedReserveKeys.value.has(normalizedKey)
 }
 
 // Синхронизирует локальные строки резервов с полем reserve_text из формы.
 const syncReserveRows = () => {
-  editReserveRows.value = getReserveRows(props.editAccount?.reserve_text || '')
+  editReserveRows.value = buildReserveRows(
+    props.editAccount?.reserve_text || '',
+    props.editAccount?.existing_reserve_keys || []
+  )
 }
 
 // Синхронизирует состояние сворачиваемых полей по содержимому при каждом открытии модалки.
@@ -801,7 +829,7 @@ const syncCollapsiblePanels = () => {
     editQuickProductOpen.value = false
     editAccountReserveOpen.value = false
     editAccountCommentOpen.value = false
-    editReserveRows.value = ['']
+    editReserveRows.value = []
     return
   }
   const isCreate = props.accountModalMode === 'create'
