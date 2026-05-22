@@ -245,4 +245,46 @@ describe('useDealModalFlow', () => {
     expect(deps.ensureAccountSecretsLoaded).toHaveBeenCalledWith(7)
     expect(deps.dealLoading.value).toBe(false)
   })
+
+  it('opens edit modal without waiting for heavy accounts preload', async () => {
+    const deps = createDeps()
+    let resolveAccountsAll
+    deps.loadAccountsAll = vi.fn().mockImplementation(
+      () => new Promise((resolve) => { resolveAccountsAll = resolve })
+    )
+    const api = useDealModalFlow(deps)
+
+    const openPromise = api.startEditDeal({
+      deal_id: 33,
+      created_at: '2026-02-09T10:00:00Z',
+      completed_at: '',
+      deal_type_code: 'sale',
+      account_id: 7,
+      product_id: 55,
+      customer_nickname: 'buyer',
+      order_number: 'A-3',
+      source_id: 1,
+      region_code: 'RU',
+      slot_type_code: 'ps5_p1',
+      reserve_key: '',
+      price: 100,
+      purchase_cost: 10,
+      login: '',
+      password: '',
+      product_link: '',
+      purchase_at: '',
+      slots_used: 1,
+      notes: '',
+      flow_status_code: 'pending',
+      is_refund: false,
+      responsible_username: 'admin',
+    })
+
+    await openPromise
+
+    expect(deps.loadAccountsAll).toHaveBeenCalledTimes(1)
+    expect(deps.editDeal.open).toBe(true)
+    expect(deps.dealLoading.value).toBe(false)
+    resolveAccountsAll?.()
+  })
 })

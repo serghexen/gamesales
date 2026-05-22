@@ -71,15 +71,25 @@ export function useDealModalFlow({
   let initialEditDealSnapshot = null
   let initialCreateDealSnapshot = null
 
-  // Перед открытием карточки сделки гарантирует, что в кеше есть подпись выбранного аккаунта.
+  // Проверяет, есть ли в кеше подпись выбранного аккаунта.
+  // Возвращает true, если подпись уже есть и ждать загрузку не нужно.
   async function ensureDealAccountLabelLoaded(accountId) {
+    const targetId = Number(accountId || 0)
+    if (!targetId) return true
+    const hasLabel = (accountsAll?.value || []).some((a) => Number(a?.account_id || 0) === targetId)
+    if (hasLabel) return true
+    return false
+  }
+
+  // Догружает справочник аккаунтов в фоне, чтобы не блокировать открытие модалки сделки.
+  function preloadDealAccountLabelInBackground(accountId) {
     const targetId = Number(accountId || 0)
     if (!targetId) return
     const hasLabel = (accountsAll?.value || []).some((a) => Number(a?.account_id || 0) === targetId)
     if (hasLabel) return
-    if (typeof loadAccountsAll === 'function') {
-      await loadAccountsAll()
-    }
+    if (typeof loadAccountsAll !== 'function') return
+    // Ошибки фоновой загрузки здесь не должны ломать открытие формы.
+    void Promise.resolve(loadAccountsAll()).catch(() => {})
   }
 
   // Приводит дату к формату datetime-local, чтобы поле в форме было редактируемым.
@@ -395,8 +405,9 @@ export function useDealModalFlow({
     showDealForm.value = false
     dealInitLock.value = true
     try {
-      // Сначала догружаем подпись аккаунта, чтобы поле "Аккаунт" не показывало id.
-      await ensureDealAccountLabelLoaded(deal?.account_id)
+      // Подпись аккаунта догружаем в фоне: форма должна открыться сразу, без ожидания тяжелого /accounts.
+      const hasAccountLabel = await ensureDealAccountLabelLoaded(deal?.account_id)
+      if (!hasAccountLabel) preloadDealAccountLabelInBackground(deal?.account_id)
       editDeal.open = true
       dealEditMode.value = 'view'
       if (editDealCommentOpen?.value !== undefined) editDealCommentOpen.value = false
