@@ -880,6 +880,41 @@ export function useImportFlow({
     }
   }
 
+  // Отдельная заливка: ставит номер заявки в найденные сделки из текущего файла.
+  async function fillAccountDealsOrderNumbers() {
+    if (!accountImportFile.value) return
+    if (!isSupportedExcelFile(accountImportFile.value)) {
+      accountImportMessage.value = 'Поддерживаются только файлы .xlsx/.xls'
+      return
+    }
+    const form = new FormData()
+    form.append('file', accountImportFile.value)
+    accountImportAction.value = 'upload'
+    accountImportLoading.value = true
+    accountImportProgress.current = 0
+    accountImportProgress.total = accountImportTotal.value || 0
+    accountImportProgress.phase = ''
+    try {
+      const res = await apiPostForm('/accounts/import/deals-fill', form, { token: auth.state.token })
+      accountImportErrors.value = res?.errors || []
+      accountImportWarnings.value = res?.warnings || []
+      const updated = Number(res?.updated || 0)
+      const skipped = Number(res?.skipped || 0)
+      const totalRows = Number(res?.total || 0)
+      accountImportMessage.value = totalRows
+        ? `Заливка заявок завершена. Обновлено сделок: ${updated}, пропущено строк: ${skipped}.`
+        : 'Заливка заявок завершена. Подходящих строк не найдено.'
+    } catch (e) {
+      accountImportErrors.value = []
+      accountImportWarnings.value = []
+      accountImportMessage.value = mapApiError(e?.message)
+    } finally {
+      accountImportLoading.value = false
+      accountImportAction.value = ''
+      stopAccountImportStatusPolling()
+    }
+  }
+
   async function cleanSlotImport() {
     if (!slotImportFile.value) return
     slotImportLoading.value = true
@@ -1154,6 +1189,7 @@ export function useImportFlow({
     validateAccountImport,
     validateAccountSlotsCheck,
     validateAccountDealsCheck,
+    fillAccountDealsOrderNumbers,
     validateSlotImport,
     uploadProductImport,
     uploadAccountImport,

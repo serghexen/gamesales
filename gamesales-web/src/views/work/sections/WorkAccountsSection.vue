@@ -48,6 +48,7 @@
         :download-account-import-export="ctx.downloadAccountImportExport"
         :validate-account-slots-check="ctx.validateAccountSlotsCheck"
         :validate-account-deals-check="ctx.validateAccountDealsCheck"
+        :fill-account-deals-order-numbers="ctx.fillAccountDealsOrderNumbers"
         :validate-account-import="ctx.validateAccountImport"
         :account-import-file="ctx.accountImportFile"
         :account-import-action="ctx.accountImportAction"

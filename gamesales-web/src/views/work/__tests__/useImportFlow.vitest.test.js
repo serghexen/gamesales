@@ -136,4 +136,19 @@ describe('useImportFlow', () => {
     expect(h.deps.accountImportWarnings.value.length).toBe(1)
     expect(String(h.deps.accountImportMessage.value || '')).toContain('Проверка сделок завершена')
   })
+
+  it('fillAccountDealsOrderNumbers posts to accounts deals fill endpoint', async () => {
+    const h = createHarness()
+    h.deps.accountImportFile.value = { name: 'deals_fill.xlsx' }
+    h.apiPostForm.mockResolvedValueOnce({ ok: true, total: 2, updated: 1, skipped: 1, warnings: [] })
+
+    await h.flow.fillAccountDealsOrderNumbers()
+
+    expect(h.apiPostForm).toHaveBeenCalledWith(
+      '/accounts/import/deals-fill',
+      expect.any(FormData),
+      { token: 'token-1' },
+    )
+    expect(String(h.deps.accountImportMessage.value || '')).toContain('Обновлено сделок: 1')
+  })
 })

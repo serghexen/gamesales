@@ -553,6 +553,66 @@ class AccountsImportFormatTests(unittest.TestCase):
             self.assertTrue(body.get("ok"))
             self.assertEqual(body.get("warnings", []), [])
 
+    # Проверяет заливку номера заявки в найденную сделку.
+    def test_accounts_import_deals_fill_updates_found_deals(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Проверка"
+        ws.append(["Номер заявки", "Дата", "Ник"])
+        ws.append(["REQ-100", "24.11.2025", "AndiLino"])
+        out = BytesIO()
+        wb.save(out)
+        content = out.getvalue()
+
+        script = [{"rowcount": 1}]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/accounts/import/deals-fill",
+                    headers=self._auth_headers(role="admin"),
+                    files={"file": ("deals-fill.xlsx", content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertTrue(body.get("ok"))
+            self.assertEqual(body.get("updated"), 1)
+            self.assertEqual(body.get("skipped"), 0)
+
+    # Проверяет, что номер заявки нормализуется и пустой номер пропускается.
+    def test_accounts_import_deals_fill_skips_rows_without_order_number(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Проверка"
+        ws.append(["Номер заявки", "Дата", "Ник"])
+        ws.append(["   ", "24.11.2025", "AndiLino"])
+        ws.append(["  REQ   200  ", "24.11.2025", "AndiLino"])
+        out = BytesIO()
+        wb.save(out)
+        content = out.getvalue()
+
+        script = [{"rowcount": 1}]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/accounts/import/deals-fill",
+                    headers=self._auth_headers(role="admin"),
+                    files={"file": ("deals-fill.xlsx", content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(body.get("updated"), 1)
+            self.assertEqual(body.get("skipped"), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

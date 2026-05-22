@@ -237,7 +237,15 @@ def mount_accounts_import_routes(
             return None
 
     # Проверяет файл с внешней выгрузкой: ищет сделки по связке дата + ник.
-    def _validate_deals_lookup(content: bytes, conn):
+    def _normalize_order_number(value):
+        # Убираем лишние пробелы, чтобы номер заявки сохранялся в единообразном виде.
+        raw = _norm(value)
+        if not raw:
+            return ""
+        return " ".join(raw.split())
+
+    # Разбирает строки внешнего файла для сверки/заливки сделок по дате и нику.
+    def _parse_deals_lookup_rows(content: bytes):
         try:
             wb = load_workbook(BytesIO(content), data_only=True)
         except Exception as exc:
@@ -248,32 +256,26 @@ def mount_accounts_import_routes(
             "дата": "deal_date",
             "ник": "nickname",
             "пользователь": "nickname",
+            "номер заявки": "order_number",
+            "номер заказа": "order_number",
+            "заявка": "order_number",
+            "заказ": "order_number",
         }
         headers = []
         for cell in ws[1]:
             headers.append(header_alias.get(_norm(cell.value).lower(), _norm(cell.value).lower()))
 
-        errors = []
-        warnings = []
         try:
             idx_date = headers.index("deal_date")
             idx_nick = headers.index("nickname")
         except ValueError:
-            return {
-                "ok": False,
-                "errors": [{
-                    "row": 1,
-                    "field": "Заголовки",
-                    "value": ", ".join(headers),
-                    "message": "Нужны колонки: Дата и Ник",
-                }],
-                "warnings": [],
-                "total": 0,
-            }
+            raise HTTPException(400, "Нужны колонки: Дата и Ник")
+        idx_order = headers.index("order_number") if "order_number" in headers else None
 
         checked_rows = 0
-        # Сначала разбираем и валидируем строки, а затем делаем одну пакетную сверку с БД.
+        # Сначала разбираем и валидируем строки, чтобы потом сверять и обновлять пакетно.
         parsed_rows = []
+        parse_warnings = []
         nick_set = set()
         date_set = set()
         for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
@@ -283,9 +285,10 @@ def mount_accounts_import_routes(
             nick_raw = _norm(row[idx_nick] if idx_nick < len(row) else "")
             date_raw = row[idx_date] if idx_date < len(row) else None
             date_iso = _parse_import_date_to_iso(date_raw)
+            order_number = _normalize_order_number(row[idx_order] if idx_order is not None and idx_order < len(row) else "")
 
             if not nick_raw:
-                warnings.append({
+                parse_warnings.append({
                     "row": row_idx,
                     "field": "Ник",
                     "value": "",
@@ -293,7 +296,7 @@ def mount_accounts_import_routes(
                 })
                 continue
             if not date_iso:
-                warnings.append({
+                parse_warnings.append({
                     "row": row_idx,
                     "field": "Дата",
                     "value": _norm(date_raw),
@@ -302,9 +305,45 @@ def mount_accounts_import_routes(
                 continue
 
             nick_norm = nick_raw.strip().lower()
-            parsed_rows.append({"row": row_idx, "nick_raw": nick_raw, "nick_norm": nick_norm, "date_iso": date_iso})
+            parsed_rows.append({
+                "row": row_idx,
+                "nick_raw": nick_raw,
+                "nick_norm": nick_norm,
+                "date_iso": date_iso,
+                "order_number": order_number,
+            })
             nick_set.add(nick_norm)
             date_set.add(date_iso)
+        return {
+            "rows": parsed_rows,
+            "checked_rows": checked_rows,
+            "parse_warnings": parse_warnings,
+            "nick_set": nick_set,
+            "date_set": date_set,
+        }
+
+    # Проверяет файл с внешней выгрузкой: ищет сделки по связке дата + ник.
+    def _validate_deals_lookup(content: bytes, conn):
+        errors = []
+        try:
+            parsed = _parse_deals_lookup_rows(content)
+        except HTTPException as exc:
+            if int(exc.status_code or 0) == 400:
+                return {
+                    "ok": False,
+                    "errors": [{
+                        "row": 1,
+                        "field": "Заголовки",
+                        "value": "",
+                        "message": str(exc.detail or "Нужны колонки: Дата и Ник"),
+                    }],
+                    "warnings": [],
+                    "total": 0,
+                }
+            raise
+        warnings = list(parsed["parse_warnings"])
+        parsed_rows = parsed["rows"]
+        checked_rows = parsed["checked_rows"]
 
         found_pairs = set()
         if parsed_rows:
@@ -320,7 +359,7 @@ def mount_accounts_import_routes(
                     WHERE lower(trim(c.nickname)) = ANY(%s)
                       AND coalesce(di.purchase_at, d.completed_at, d.created_at)::date = ANY(%s::date[])
                     """,
-                    (list(nick_set), list(date_set)),
+                    (list(parsed["nick_set"]), list(parsed["date_set"])),
                 )
                 for nick_norm, deal_date in cur.fetchall():
                     if not nick_norm or not deal_date:
@@ -343,6 +382,56 @@ def mount_accounts_import_routes(
             "errors": errors,
             "warnings": warnings,
             "total": checked_rows,
+        }
+
+    # Проставляет номера заявок в найденные сделки по связке дата + ник.
+    def _fill_deals_order_numbers(content: bytes, conn):
+        parsed = _parse_deals_lookup_rows(content)
+        parsed_rows = parsed["rows"]
+        updated = 0
+        skipped = len(parsed["parse_warnings"])
+        warnings = list(parsed["parse_warnings"])
+        if not parsed_rows:
+            return {"ok": len(warnings) == 0, "updated": 0, "skipped": skipped, "warnings": warnings, "total": parsed["checked_rows"]}
+
+        for item in parsed_rows:
+            if not item["order_number"]:
+                skipped += 1
+                continue
+            with conn.cursor() as cur:
+                # Обновляем только найденные сделки и не трогаем пустые номера заявок.
+                cur.execute(
+                    """
+                    UPDATE app.deals d
+                    SET order_number = %s
+                    WHERE d.deal_id IN (
+                      SELECT DISTINCT d2.deal_id
+                      FROM app.deals d2
+                      JOIN app.customers c ON c.customer_id = d2.customer_id
+                      LEFT JOIN app.deal_items di ON di.deal_id = d2.deal_id
+                      WHERE lower(trim(c.nickname)) = %s
+                        AND coalesce(di.purchase_at, d2.completed_at, d2.created_at)::date = %s::date
+                    )
+                    """,
+                    (item["order_number"], item["nick_norm"], item["date_iso"]),
+                )
+                if cur.rowcount > 0:
+                    updated += int(cur.rowcount)
+                else:
+                    skipped += 1
+                    warnings.append({
+                        "row": item["row"],
+                        "field": "Сделка",
+                        "value": f"{item['nick_raw']} | {item['date_iso']}",
+                        "message": "Сделка не найдена по связке дата + ник",
+                    })
+        conn.commit()
+        return {
+            "ok": len(warnings) == 0,
+            "updated": updated,
+            "skipped": skipped,
+            "warnings": warnings,
+            "total": parsed["checked_rows"],
         }
 
     @app.get("/accounts/import/template")
@@ -419,6 +508,18 @@ def mount_accounts_import_routes(
             raise HTTPException(400, "File too large. Max 5MB")
         with psycopg.connect(DB_DSN) as conn:
             return _validate_deals_lookup(content, conn)
+
+    @app.post("/accounts/import/deals-fill")
+    def accounts_import_deals_fill(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin", "owner"))):
+        if not file or not file.filename:
+            raise HTTPException(400, "file is required")
+        if not file.filename.lower().endswith((".xlsx", ".xls")):
+            raise HTTPException(400, "Only .xlsx/.xls are supported")
+        content = file.file.read()
+        if len(content) > 5 * 1024 * 1024:
+            raise HTTPException(400, "File too large. Max 5MB")
+        with psycopg.connect(DB_DSN) as conn:
+            return _fill_deals_order_numbers(content, conn)
 
     @app.post("/accounts/import")
     def accounts_import(file: UploadFile = File(...), user: UserOut = Depends(require_role("admin", "owner"))):
