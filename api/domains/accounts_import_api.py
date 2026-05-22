@@ -388,43 +388,98 @@ def mount_accounts_import_routes(
     def _fill_deals_order_numbers(content: bytes, conn):
         parsed = _parse_deals_lookup_rows(content)
         parsed_rows = parsed["rows"]
-        updated = 0
         skipped = len(parsed["parse_warnings"])
         warnings = list(parsed["parse_warnings"])
         if not parsed_rows:
             return {"ok": len(warnings) == 0, "updated": 0, "skipped": skipped, "warnings": warnings, "total": parsed["checked_rows"]}
 
+        # Сначала одной пачкой находим существующие пары, чтобы не делать UPDATE на каждую строку.
+        found_pairs = set()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT
+                  lower(trim(c.nickname)) AS nick_norm,
+                  coalesce(di.purchase_at, d.completed_at, d.created_at)::date AS deal_date
+                FROM app.deals d
+                JOIN app.customers c ON c.customer_id = d.customer_id
+                LEFT JOIN app.deal_items di ON di.deal_id = d.deal_id
+                WHERE lower(trim(c.nickname)) = ANY(%s)
+                  AND coalesce(di.purchase_at, d.completed_at, d.created_at)::date = ANY(%s::date[])
+                """,
+                (list(parsed["nick_set"]), list(parsed["date_set"])),
+            )
+            for nick_norm, deal_date in cur.fetchall():
+                if not nick_norm or not deal_date:
+                    continue
+                found_pairs.add((str(nick_norm).strip().lower(), deal_date.isoformat()))
+
+        # Сводим строки к уникальным ключам (дата+ник), как и раньше при повторе берём последнее значение.
+        updates_by_key = {}
         for item in parsed_rows:
             if not item["order_number"]:
                 skipped += 1
                 continue
-            with conn.cursor() as cur:
-                # Обновляем только найденные сделки и не трогаем пустые номера заявок.
-                cur.execute(
-                    """
-                    UPDATE app.deals d
-                    SET order_number = %s
-                    WHERE d.deal_id IN (
-                      SELECT DISTINCT d2.deal_id
-                      FROM app.deals d2
-                      JOIN app.customers c ON c.customer_id = d2.customer_id
-                      LEFT JOIN app.deal_items di ON di.deal_id = d2.deal_id
-                      WHERE lower(trim(c.nickname)) = %s
-                        AND coalesce(di.purchase_at, d2.completed_at, d2.created_at)::date = %s::date
-                    )
-                    """,
-                    (item["order_number"], item["nick_norm"], item["date_iso"]),
+            key = (item["nick_norm"], item["date_iso"])
+            if key not in found_pairs:
+                skipped += 1
+                warnings.append({
+                    "row": item["row"],
+                    "field": "Сделка",
+                    "value": f"{item['nick_raw']} | {item['date_iso']}",
+                    "message": "Сделка не найдена по связке дата + ник",
+                })
+                continue
+            updates_by_key[key] = item["order_number"]
+
+        if not updates_by_key:
+            return {
+                "ok": len(warnings) == 0,
+                "updated": 0,
+                "skipped": skipped,
+                "warnings": warnings,
+                "total": parsed["checked_rows"],
+            }
+
+        nick_values = []
+        date_values = []
+        order_values = []
+        for (nick_norm, date_iso), order_number in updates_by_key.items():
+            nick_values.append(nick_norm)
+            date_values.append(date_iso)
+            order_values.append(order_number)
+
+        updated = 0
+        with conn.cursor() as cur:
+            # Обновляем сделки одной SQL-пачкой, чтобы снизить риск таймаута на больших файлах.
+            cur.execute(
+                """
+                WITH input_rows AS (
+                  SELECT
+                    u.nick_norm,
+                    u.deal_date,
+                    u.order_number
+                  FROM unnest(%s::text[], %s::date[], %s::text[]) AS u(nick_norm, deal_date, order_number)
+                ),
+                target_deals AS (
+                  SELECT DISTINCT d.deal_id, i.order_number
+                  FROM input_rows i
+                  JOIN app.customers c
+                    ON lower(trim(c.nickname)) = i.nick_norm
+                  JOIN app.deals d
+                    ON d.customer_id = c.customer_id
+                  LEFT JOIN app.deal_items di
+                    ON di.deal_id = d.deal_id
+                  WHERE coalesce(di.purchase_at, d.completed_at, d.created_at)::date = i.deal_date
                 )
-                if cur.rowcount > 0:
-                    updated += int(cur.rowcount)
-                else:
-                    skipped += 1
-                    warnings.append({
-                        "row": item["row"],
-                        "field": "Сделка",
-                        "value": f"{item['nick_raw']} | {item['date_iso']}",
-                        "message": "Сделка не найдена по связке дата + ник",
-                    })
+                UPDATE app.deals d
+                SET order_number = t.order_number
+                FROM target_deals t
+                WHERE d.deal_id = t.deal_id
+                """,
+                (nick_values, date_values, order_values),
+            )
+            updated = int(cur.rowcount or 0)
         conn.commit()
         return {
             "ok": len(warnings) == 0,

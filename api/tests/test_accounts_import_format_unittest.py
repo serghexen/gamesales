@@ -564,7 +564,10 @@ class AccountsImportFormatTests(unittest.TestCase):
         wb.save(out)
         content = out.getvalue()
 
-        script = [{"rowcount": 1}]
+        script = [
+            {"all": [("andilino", date(2025, 11, 24))]},
+            {"rowcount": 1},
+        ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
@@ -595,7 +598,10 @@ class AccountsImportFormatTests(unittest.TestCase):
         wb.save(out)
         content = out.getvalue()
 
-        script = [{"rowcount": 1}]
+        script = [
+            {"all": [("andilino", date(2025, 11, 24))]},
+            {"rowcount": 1},
+        ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
