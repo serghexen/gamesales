@@ -27,7 +27,6 @@ export function useActiveTabWatcher({
   sourcesLoadedOnce,
   messengersLoadedOnce = { value: false },
   slotTypesLoadedOnce,
-  accountsAllLoadedOnce,
   productsAllLoadedOnce,
   dealsBootstrapped,
   platforms,
@@ -37,7 +36,6 @@ export function useActiveTabWatcher({
   messengers = { value: [] },
   slotTypes,
   productsAll,
-  accountsAll,
   productsPage,
   accountsPage,
   checkApi,
@@ -50,7 +48,6 @@ export function useActiveTabWatcher({
   loadProducts,
   loadProductsAll,
   loadAccounts,
-  loadAccountsAll,
   loadDeals,
   loadNsGiftBalance,
   loadNsGiftCategories,
@@ -201,12 +198,6 @@ export function useActiveTabWatcher({
       const canLoadDealsNow = !needResponsiblePrefill || Boolean(String(dealFilters.responsible_q || '').trim())
       const tasks = canLoadDealsNow ? [loadDeals(1)] : []
       if (!dealsBootstrapped.value) {
-        if (!accountsAllLoadedOnce.value) {
-          tasks.push(loadAccountsAll().then(() => {
-            if (!isCurrentRequest('deals')) return
-            if (accountsAll.value.length) accountsAllLoadedOnce.value = true
-          }))
-        }
         if (!productsAllLoadedOnce.value) {
           tasks.push(loadProductsAll().then(() => {
             if (!isCurrentRequest('deals')) return

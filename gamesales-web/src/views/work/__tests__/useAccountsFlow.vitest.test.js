@@ -96,6 +96,23 @@ describe('useAccountsFlow', () => {
     expect(h.editAccount.product_ids).toEqual([])
   })
 
+  it('loadAccountsAll supports lightweight labels lookup by id list', async () => {
+    const h = createHarness()
+    h.accountsAll.value = [{ account_id: 5, login_full: 'old@old.com', notes: 'keep' }]
+    h.apiGet.mockResolvedValueOnce([
+      { account_id: 5, login_name: 'acc5', domain_code: 'mail.com', login_full: 'acc5@mail.com' },
+      { account_id: 9, login_name: 'acc9', domain_code: 'mail.com', login_full: 'acc9@mail.com' },
+    ])
+
+    await h.loadAccountsAll([5, 9, 9, 0])
+
+    expect(h.apiGet).toHaveBeenCalledWith('/accounts/labels?account_id=5&account_id=9', { token: 'token-1' })
+    expect(h.accountsAll.value).toEqual([
+      { account_id: 5, login_full: 'acc5@mail.com', notes: 'keep', login_name: 'acc5', domain_code: 'mail.com' },
+      { account_id: 9, login_name: 'acc9', domain_code: 'mail.com', login_full: 'acc9@mail.com' },
+    ])
+  })
+
   it('openCreateAccountModal sets product type filter to game', () => {
     const h = createHarness()
     h.accountProductType.value = 'subscription'

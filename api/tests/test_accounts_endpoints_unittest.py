@@ -513,6 +513,50 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(len(res.json()), 1)
             self.assertEqual(res.json()[0]["slot_type_code"], "ps5_p1")
 
+    # Легкий lookup подписей аккаунтов должен возвращать только запрошенные account_id.
+    def test_list_account_labels_success(self):
+        script = [
+            {
+                "all": [
+                    (5, "acc5", "mail.com"),
+                    (9, "acc9", "gmail.com"),
+                ]
+            },
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/labels?account_id=5&account_id=9&account_id=9",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(len(body), 2)
+            self.assertEqual(body[0]["account_id"], 5)
+            self.assertEqual(body[0]["login_full"], "acc5@mail.com")
+            self.assertEqual(body[1]["account_id"], 9)
+            self.assertEqual(body[1]["login_full"], "acc9@gmail.com")
+
+    # Легкий lookup должен валидировать размер списка id.
+    def test_list_account_labels_rejects_too_many_ids(self):
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            params = "&".join([f"account_id={idx}" for idx in range(1, 203)])
+            with self._client() as client:
+                res = client.get(
+                    f"/accounts/labels?{params}",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 400)
+
     # Список аккаунтов для шеринга должен поддерживать выбор по product_id.
     def test_list_accounts_for_deal_supports_product_id(self):
         script = [

@@ -121,6 +121,13 @@ class AccountProductsIn(BaseModel):
     product_ids: Optional[List[int]] = None
 
 
+class AccountLabelOut(BaseModel):
+    account_id: int
+    login_name: Optional[str] = None
+    domain_code: Optional[str] = None
+    login_full: Optional[str] = None
+
+
 class ProductAccountOut(BaseModel):
     deal_item_id: int
     account_id: int

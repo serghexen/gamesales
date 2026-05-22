@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Query
 
 from .accounts_models import (
     AccountCreate,
@@ -19,6 +19,7 @@ from .accounts_models import (
     AccountSecretsBatchItem,
     SlotAvailabilityOut,
     AccountProductsIn,
+    AccountLabelOut,
     ProductAccountOut,
     ProductLinkedAccountOut,
     ProductSelectableAccountOut,
@@ -393,6 +394,55 @@ def mount_accounts_routes(
                     )
                 )
         return {"total": total, "items": acc_list}
+
+    @app.get("/accounts/labels", response_model=List[AccountLabelOut])
+    def list_account_labels(
+        account_id: List[int] = Query(default=[]),
+        user=Depends(get_current_user),
+    ):
+        # Легкий lookup для сделок: возвращает подписи только по запрошенным account_id.
+        normalized_ids = []
+        seen_ids = set()
+        for raw_id in account_id:
+            account_id_value = int(raw_id or 0)
+            if account_id_value <= 0 or account_id_value in seen_ids:
+                continue
+            seen_ids.add(account_id_value)
+            normalized_ids.append(account_id_value)
+        if not normalized_ids:
+            return []
+        if len(normalized_ids) > 200:
+            raise HTTPException(400, "too many account_id values")
+        with psycopg.connect(DB_DSN) as conn:
+            rows = qall(
+                conn,
+                """
+                SELECT
+                  a.account_id,
+                  a.login_name,
+                  d.name AS domain_name
+                FROM app.accounts a
+                LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+                WHERE a.account_id = ANY(%s)
+                ORDER BY a.account_id ASC
+                """,
+                (normalized_ids,),
+            )
+        labels = []
+        for row in rows:
+            account_id_value = int(row[0])
+            login_name = str(row[1]).strip() if row[1] is not None else None
+            domain_code = str(row[2]).strip() if row[2] is not None else None
+            login_full = f"{login_name}@{domain_code}" if login_name and domain_code else (login_name or str(account_id_value))
+            labels.append(
+                AccountLabelOut(
+                    account_id=account_id_value,
+                    login_name=login_name,
+                    domain_code=domain_code,
+                    login_full=login_full,
+                )
+            )
+        return labels
     
     @app.post("/accounts", response_model=AccountOut)
     def create_account(payload: AccountCreate, user=Depends(get_current_user)):

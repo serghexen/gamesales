@@ -539,7 +539,6 @@ const domainsLoadedOnce = ref(false)
 const sourcesLoadedOnce = ref(false)
 const messengersLoadedOnce = ref(false)
 const slotTypesLoadedOnce = ref(false)
-const accountsAllLoadedOnce = ref(false)
 const productsAllLoadedOnce = ref(false)
 
 const {
@@ -3205,7 +3204,6 @@ useActiveTabWatcher({
   sourcesLoadedOnce,
   messengersLoadedOnce,
   slotTypesLoadedOnce,
-  accountsAllLoadedOnce,
   productsAllLoadedOnce,
   dealsBootstrapped,
   platforms,
@@ -3229,7 +3227,6 @@ useActiveTabWatcher({
   loadProducts,
   loadProductsAll,
   loadAccounts,
-  loadAccountsAll,
   loadDeals,
   loadNsGiftBalance,
   loadNsGiftCategories,

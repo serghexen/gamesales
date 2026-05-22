@@ -79,6 +79,14 @@ export function useAccountsFlow({
   let accountsAllRequestSeq = 0
   let accountProductsRequestSeq = 0
 
+  // Сравнивает account_id как число, чтобы корректно мержить строки и числа.
+  function isSameAccountId(leftId, rightId) {
+    const leftNum = Number(leftId)
+    const rightNum = Number(rightId)
+    if (Number.isFinite(leftNum) && Number.isFinite(rightNum)) return leftNum === rightNum
+    return String(leftId || '').trim() === String(rightId || '').trim()
+  }
+
   // Определяет кратковременный сетевой сбой, который можно безопасно повторить.
   function isTransientFetchError(error) {
     const text = String(error?.message || '').toLowerCase()
@@ -258,8 +266,37 @@ export function useAccountsFlow({
     }
   }
 
-  // Загружает все аккаунты целиком для выпадающих списков.
-  async function loadAccountsAll() {
+  // Загружает справочник аккаунтов: полный список или легкий lookup по account_id.
+  async function loadAccountsAll(accountIds = null) {
+    const normalizedIds = Array.isArray(accountIds)
+      ? [...new Set(accountIds.map((id) => Number(id || 0)).filter((id) => id > 0))]
+      : []
+    if (normalizedIds.length) {
+      try {
+        const params = new URLSearchParams()
+        normalizedIds.forEach((id) => params.append('account_id', String(id)))
+        const labels = await apiGet(`/accounts/labels?${params.toString()}`, { token: auth.state.token })
+        const current = Array.isArray(accountsAll.value) ? [...accountsAll.value] : []
+        for (const item of (Array.isArray(labels) ? labels : [])) {
+          const targetId = Number(item?.account_id || 0)
+          if (!targetId) continue
+          const foundIndex = current.findIndex((row) => isSameAccountId(row?.account_id, targetId))
+          const merged = {
+            ...(foundIndex >= 0 ? current[foundIndex] : {}),
+            account_id: targetId,
+            login_name: String(item?.login_name || '').trim() || null,
+            domain_code: String(item?.domain_code || '').trim() || null,
+            login_full: String(item?.login_full || '').trim() || String(targetId),
+          }
+          if (foundIndex >= 0) current[foundIndex] = merged
+          else current.push(merged)
+        }
+        accountsAll.value = current
+      } catch {
+        // На сетевом сбое сохраняем прошлый кеш подписей аккаунтов.
+      }
+      return
+    }
     const requestId = ++accountsAllRequestSeq
     try {
       const params = new URLSearchParams()

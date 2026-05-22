@@ -152,7 +152,7 @@
                               <input
                                 v-if="dealEditMode === 'view'"
                                 class="input"
-                                :value="getAccountLabelById(editDeal.account_id)"
+                                :value="getDealAccountLoginLabel('edit')"
                                 readonly
                               />
                               <select
@@ -518,7 +518,7 @@
                                 <label class="field">
                                   <span class="label">Логин</span>
                                   <div class="input--select-wrap">
-                                    <input class="input input--with-copy" :value="getAccountLabelById(editDeal.account_id)" readonly />
+                                    <input class="input input--with-copy" :value="getDealAccountLoginLabel('edit')" readonly />
                                     <button
                                       class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
                                       type="button"
@@ -1324,7 +1324,7 @@
                                 <label class="field">
                                   <span class="label">Логин</span>
                                   <div class="input--select-wrap">
-                                    <input class="input input--with-copy" :value="getAccountLabelById(newDeal.account_id)" readonly />
+                                    <input class="input input--with-copy" :value="getDealAccountLoginLabel('new')" readonly />
                                     <button
                                       class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
                                       type="button"
@@ -2062,6 +2062,14 @@ function getDealAccountIdByTarget(target) {
   return Number(newDeal.value?.account_id || 0)
 }
 
+// Проверяет, что подпись аккаунта не свалилась в сырой account_id.
+function hasHumanDealAccountLabel(accountId, label) {
+  const targetId = String(accountId || '').trim()
+  const targetLabel = String(label || '').trim()
+  if (!targetId || !targetLabel) return false
+  return targetLabel !== targetId
+}
+
 // Говорит, нужно ли показывать лоадер в блоке "Данные аккаунта".
 function shouldShowDealAccountDetailsLoader(target) {
   const accountId = getDealAccountIdByTarget(target)
@@ -2069,6 +2077,15 @@ function shouldShowDealAccountDetailsLoader(target) {
   const loading = target === 'edit' ? editDealAccountDetailsLoading.value : newDealAccountDetailsLoading.value
   if (loading) return true
   return !hasAccountLabelForDetails(accountId) || !hasAccountSecretsForDetails(accountId)
+}
+
+// Возвращает логин аккаунта для полей сделки без fallback к сырому id.
+function getDealAccountLoginLabel(target) {
+  const accountId = getDealAccountIdByTarget(target)
+  if (!accountId) return '—'
+  if (shouldShowDealAccountDetailsLoader(target)) return '—'
+  const label = String(getAccountLabelById.value?.(accountId) || '').trim()
+  return hasHumanDealAccountLabel(accountId, label) ? label : '—'
 }
 
 // Догружает справочник и секреты для выбранного аккаунта перед показом блока с деталями.
@@ -2083,7 +2100,8 @@ async function ensureDealAccountDetailsLoaded(target) {
   try {
     const tasks = []
     if (!hasLabel && typeof loadAccountsAll.value === 'function') {
-      tasks.push(loadAccountsAll.value())
+      // Для карточки сделки подгружаем только подпись нужного аккаунта, без полного /accounts.
+      tasks.push(loadAccountsAll.value([accountId]))
     }
     if (!hasSecrets && typeof ensureAccountSecretsLoaded.value === 'function') {
       tasks.push(ensureAccountSecretsLoaded.value(accountId))
@@ -2443,7 +2461,7 @@ function getSharingFieldCopyValue(target, field) {
     const reserveValue = String(reserveLabel || '').replace(/\s+\(использован\)\s*$/i, '').trim()
     return isCopyPlaceholderValue(reserveValue) ? '' : reserveValue
   }
-  const login = String(getAccountLabelById.value(accountId) || '').trim()
+  const login = String(getDealAccountLoginLabel(target) || '').trim()
   return isCopyPlaceholderValue(login) ? '' : login
 }
 

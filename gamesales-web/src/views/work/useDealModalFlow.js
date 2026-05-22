@@ -89,7 +89,7 @@ export function useDealModalFlow({
     if (hasLabel) return
     if (typeof loadAccountsAll !== 'function') return
     // Ошибки фоновой загрузки здесь не должны ломать открытие формы.
-    void Promise.resolve(loadAccountsAll()).catch(() => {})
+    void Promise.resolve(loadAccountsAll([targetId])).catch(() => {})
   }
 
   // Приводит дату к формату datetime-local, чтобы поле в форме было редактируемым.
