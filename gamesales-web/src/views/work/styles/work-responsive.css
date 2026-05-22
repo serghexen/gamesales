@@ -110,6 +110,14 @@
     grid-template-columns: 1fr;
   }
 
+  .work-page .deal-form__sale-link-row {
+    grid-template-columns: 1fr;
+  }
+
+  .work-page .deal-form__sale-link-remove {
+    justify-self: start;
+  }
+
   .work-page .form,
   .work-page .form--stack {
     grid-template-columns: 1fr;

@@ -21,6 +21,7 @@ describe('useWorkFormatters', () => {
   it('returns labels with fallback values', () => {
     const f = createHarness()
     expect(f.getAccountLabelById(1)).toBe('user@domain')
+    expect(f.getAccountLabelById('1')).toBe('user@domain')
     expect(f.getAccountLabelById(2)).toBe('just_user')
     expect(f.getAccountLabelById(999)).toBe('999')
     expect(f.getRegionLabel('RU')).toBe('Россия (RU)')

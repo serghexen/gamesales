@@ -14,6 +14,7 @@ function createDeps() {
     showDealForm: ref(false),
     dealError: ref(null),
     dealOk: ref(null),
+    dealLoading: ref(false),
     newDeal: {
       deal_type_code: 'sale',
       account_id: '',
@@ -86,7 +87,16 @@ function createDeps() {
     dealSlotAvailabilityNew: ref({}),
     dealSlotAvailabilityEdit: ref({}),
     nextTick: (cb) => cb(),
+    loadDealAccountsForProduct: vi.fn(),
+    loadDealProductAssignments: vi.fn(),
+    loadAccountSlotStatus: vi.fn(),
+    loadDealAccountAssignments: vi.fn(),
     loadDealSlotAvailability: vi.fn(),
+    loadSubscriptionTerms: vi.fn(),
+    loadAvailableSubscriptionItems: vi.fn(),
+    ensureAccountSecretsLoaded: vi.fn(),
+    accountsAll: ref([]),
+    loadAccountsAll: vi.fn(),
     suppressUnsavedConfirm: ref(false),
     requestUnsavedConfirm: vi.fn().mockResolvedValue(true),
     currentResponsibleName: 'Тестер',
@@ -105,10 +115,10 @@ describe('useDealModalFlow', () => {
     expect(deps.dealEditMode.value).toBe('edit')
   })
 
-  it('returns to view mode and restores original deal on second click', () => {
+  it('returns to view mode and restores original deal on second click', async () => {
     const deps = createDeps()
     const api = useDealModalFlow(deps)
-    api.startEditDeal({
+    await api.startEditDeal({
       deal_id: 11,
       created_at: '2026-02-09T10:00:00Z',
       completed_at: '',
@@ -194,5 +204,45 @@ describe('useDealModalFlow', () => {
 
     expect(deps.dealEditMode.value).toBe('view')
     expect(deps.showDealWarning).toHaveBeenCalledWith('Редактирование завершенных сделок доступно только администратору и владельцу')
+  })
+
+  it('keeps modal loading until primary edit dependencies are loaded', async () => {
+    const deps = createDeps()
+    const api = useDealModalFlow(deps)
+    await api.startEditDeal({
+      deal_id: 22,
+      created_at: '2026-02-09T10:00:00Z',
+      completed_at: '',
+      deal_type_code: 'rental',
+      account_id: 7,
+      product_id: 55,
+      customer_nickname: 'buyer',
+      order_number: 'A-2',
+      source_id: 1,
+      region_code: 'RU',
+      slot_type_code: 'ps5_p1',
+      reserve_key: '',
+      price: 100,
+      purchase_cost: 10,
+      login: '',
+      password: '',
+      product_link: '',
+      purchase_at: '',
+      slots_used: 1,
+      notes: '',
+      flow_status_code: 'pending',
+      is_refund: false,
+      responsible_username: 'admin',
+    })
+
+    expect(deps.loadDealAccountsForProduct).toHaveBeenCalledWith('edit')
+    expect(deps.loadDealProductAssignments).toHaveBeenCalledWith('edit')
+    expect(deps.loadDealSlotAvailability).toHaveBeenCalledWith('edit')
+    expect(deps.loadAccountSlotStatus).toHaveBeenCalledWith('edit')
+    expect(deps.loadDealAccountAssignments).toHaveBeenCalledWith('edit')
+    expect(deps.loadSubscriptionTerms).toHaveBeenCalledWith('edit')
+    expect(deps.loadAvailableSubscriptionItems).toHaveBeenCalledWith('edit', 'ps5_p1')
+    expect(deps.ensureAccountSecretsLoaded).toHaveBeenCalledWith(7)
+    expect(deps.dealLoading.value).toBe(false)
   })
 })

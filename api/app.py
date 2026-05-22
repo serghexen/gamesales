@@ -229,7 +229,7 @@ pooled_psycopg = _PsycopgPoolProxy()
 
 JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ALG = os.getenv("JWT_ALG", "HS256")
-JWT_TTL_MIN = int(os.getenv("JWT_TTL_MIN", "720"))
+JWT_TTL_MIN = int(os.getenv("JWT_TTL_MIN", "1440"))
 PWD_SCHEME = "gs_pbkdf2_sha256"
 PWD_ITERATIONS = int(os.getenv("PWD_ITERATIONS", "210000"))
 PWD_SALT_BYTES = 16

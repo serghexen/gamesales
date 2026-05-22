@@ -10,10 +10,20 @@ export function useWorkFormatters({
   // Лимит нужен для показа короткого названия в таблице сделок.
   const maxTitleLength = Number(maxProductTitleLength ?? 0)
 
+  // Сравнивает id как число (когда возможно), чтобы строковые и числовые id считались одинаковыми.
+  function isSameEntityId(leftId, rightId) {
+    const leftNum = Number(leftId)
+    const rightNum = Number(rightId)
+    if (Number.isFinite(leftNum) && Number.isFinite(rightNum)) {
+      return leftNum === rightNum
+    }
+    return String(leftId || '').trim() === String(rightId || '').trim()
+  }
+
   // Подпись аккаунта по id для таблиц и форм.
   const getAccountLabelById = (accountId) => {
     if (!accountId) return '—'
-    const found = (accountsAll.value || []).find((a) => a.account_id === accountId)
+    const found = (accountsAll.value || []).find((a) => isSameEntityId(a?.account_id, accountId))
     return found?.login_full || found?.login_name || String(accountId)
   }
 

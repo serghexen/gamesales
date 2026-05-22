@@ -1957,6 +1957,28 @@
   gap: 8px;
 }
 
+.work-page .deal-form__sale-links {
+  display: grid;
+  gap: 6px;
+}
+
+.work-page .deal-form__sale-link-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.work-page .deal-form__sale-link-remove {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+}
+
+.work-page .deal-form__sale-link-add {
+  justify-self: start;
+}
+
 .work-page .deal-form__stack {
   display: grid;
   gap: 8px;
@@ -2124,9 +2146,10 @@
 }
 
 .work-page .wheel-and-hamster--mini {
-  width: 8em;
-  height: 8em;
-  font-size: 10px;
+  /* Уменьшаем мини-версию через font-size, чтобы сохранить пропорции хомяка и колеса. */
+  width: 11.5em;
+  height: 11.5em;
+  font-size: 7px;
 }
 
 .work-page .newtons-cradle {

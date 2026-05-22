@@ -7,6 +7,7 @@ export function useDealModalFlow({
   showDealForm,
   dealError,
   dealOk,
+  dealLoading,
   newDeal,
   editDeal,
   dealEditMode,
@@ -36,7 +37,16 @@ export function useDealModalFlow({
   dealSlotAvailabilityNew,
   dealSlotAvailabilityEdit,
   nextTick,
+  loadDealAccountsForProduct,
+  loadDealProductAssignments,
+  loadAccountSlotStatus,
+  loadDealAccountAssignments,
   loadDealSlotAvailability,
+  loadSubscriptionTerms,
+  loadAvailableSubscriptionItems,
+  ensureAccountSecretsLoaded,
+  accountsAll,
+  loadAccountsAll,
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
   currentResponsibleName,
@@ -60,6 +70,17 @@ export function useDealModalFlow({
 
   let initialEditDealSnapshot = null
   let initialCreateDealSnapshot = null
+
+  // Перед открытием карточки сделки гарантирует, что в кеше есть подпись выбранного аккаунта.
+  async function ensureDealAccountLabelLoaded(accountId) {
+    const targetId = Number(accountId || 0)
+    if (!targetId) return
+    const hasLabel = (accountsAll?.value || []).some((a) => Number(a?.account_id || 0) === targetId)
+    if (hasLabel) return
+    if (typeof loadAccountsAll === 'function') {
+      await loadAccountsAll()
+    }
+  }
 
   // Приводит дату к формату datetime-local, чтобы поле в форме было редактируемым.
   function toDateTimeLocalValue(value) {
@@ -367,67 +388,99 @@ export function useDealModalFlow({
     return true
   }
 
-  function startEditDeal(deal) {
+  async function startEditDeal(deal) {
+    dealLoading.value = true
     closeAllModals()
     resetModalPos()
     showDealForm.value = false
-    editDeal.open = true
     dealInitLock.value = true
-    dealEditMode.value = 'view'
-    if (editDealCommentOpen?.value !== undefined) editDealCommentOpen.value = false
-    editDealProductSearch.value = ''
-    quickEditProduct.title = ''
-    quickEditProduct.platform_codes = []
-    quickEditProductError.value = ''
-    quickEditAccount.login_name = ''
-    quickEditAccount.domain_code = ''
-    quickEditAccount.platform_codes = []
-    quickEditAccount.password = ''
-    quickEditAccount.notes = ''
-    quickEditAccount.subscription_product_id = ''
-    quickEditAccountError.value = ''
-    safeQuickEditSubscriptionTerm.account_id = ''
-    safeQuickEditSubscriptionTerm.valid_until = getDefaultSubscriptionTermDate()
-    safeQuickEditSubscriptionTerm.notes = ''
-    safeQuickEditSubscriptionTermError.value = ''
-    dealAccountsForProductEdit.value = []
-    // Сохраняем исходные данные в том же формате, что и форма, чтобы корректно сравнивать "грязные" изменения.
-    initialEditDealSnapshot = {
-      lock_version: Number(deal.lock_version || 1),
-      created_at: toDateTimeLocalValue(deal.created_at),
-      completed_at: toDateTimeLocalValue(deal.completed_at),
-      deal_type_code: deal.deal_type_code || (deal.deal_type === 'Шеринг' ? 'rental' : 'sale'),
-      account_id: deal.account_id,
-      product_id: deal.product_id || deal.game_id || '',
-      customer_nickname: deal.customer_nickname || '',
-      order_number: deal.order_number || '',
-      source_id: deal.source_id || '',
-      messenger_id: deal.messenger_id || '',
-      region_code: deal.region_code || '',
-      slot_type_code: deal.slot_type_code || '',
-      subscription_term_id: deal.subscription_term_id || '',
-      reserve_key: deal.reserve_key || '',
-      price: Number(deal.price || 0),
-      purchase_cost: Number(deal.purchase_cost || 0),
-      login: deal.login || '',
-      password: deal.password || '',
-      product_link: deal.product_link || '',
-      purchase_at: deal.purchase_at ? String(deal.purchase_at).slice(0, 10) : '',
-      slots_used: deal.slots_used || (deal.deal_type_code === 'rental' ? 1 : 0),
-      notes: deal.notes || '',
-      flow_status_code: deal.flow_status_code || '',
-      // Для снимка фиксируем и признак возврата, чтобы корректно откатывать изменения формы.
-      is_refund: Boolean(deal.is_refund),
-      // Снимок редактирования должен хранить фактическое значение сделки, чтобы не было ложной подстановки.
-      responsible_username: deal.responsible_username || '',
+    try {
+      // Сначала догружаем подпись аккаунта, чтобы поле "Аккаунт" не показывало id.
+      await ensureDealAccountLabelLoaded(deal?.account_id)
+      editDeal.open = true
+      dealEditMode.value = 'view'
+      if (editDealCommentOpen?.value !== undefined) editDealCommentOpen.value = false
+      editDealProductSearch.value = ''
+      quickEditProduct.title = ''
+      quickEditProduct.platform_codes = []
+      quickEditProductError.value = ''
+      quickEditAccount.login_name = ''
+      quickEditAccount.domain_code = ''
+      quickEditAccount.platform_codes = []
+      quickEditAccount.password = ''
+      quickEditAccount.notes = ''
+      quickEditAccount.subscription_product_id = ''
+      quickEditAccountError.value = ''
+      safeQuickEditSubscriptionTerm.account_id = ''
+      safeQuickEditSubscriptionTerm.valid_until = getDefaultSubscriptionTermDate()
+      safeQuickEditSubscriptionTerm.notes = ''
+      safeQuickEditSubscriptionTermError.value = ''
+      dealAccountsForProductEdit.value = []
+      // Сохраняем исходные данные в том же формате, что и форма, чтобы корректно сравнивать "грязные" изменения.
+      initialEditDealSnapshot = {
+        lock_version: Number(deal.lock_version || 1),
+        created_at: toDateTimeLocalValue(deal.created_at),
+        completed_at: toDateTimeLocalValue(deal.completed_at),
+        deal_type_code: deal.deal_type_code || (deal.deal_type === 'Шеринг' ? 'rental' : 'sale'),
+        account_id: deal.account_id,
+        product_id: deal.product_id || deal.game_id || '',
+        customer_nickname: deal.customer_nickname || '',
+        order_number: deal.order_number || '',
+        source_id: deal.source_id || '',
+        messenger_id: deal.messenger_id || '',
+        region_code: deal.region_code || '',
+        slot_type_code: deal.slot_type_code || '',
+        subscription_term_id: deal.subscription_term_id || '',
+        reserve_key: deal.reserve_key || '',
+        price: Number(deal.price || 0),
+        purchase_cost: Number(deal.purchase_cost || 0),
+        login: deal.login || '',
+        password: deal.password || '',
+        product_link: deal.product_link || '',
+        purchase_at: deal.purchase_at ? String(deal.purchase_at).slice(0, 10) : '',
+        slots_used: deal.slots_used || (deal.deal_type_code === 'rental' ? 1 : 0),
+        notes: deal.notes || '',
+        flow_status_code: deal.flow_status_code || '',
+        // Для снимка фиксируем и признак возврата, чтобы корректно откатывать изменения формы.
+        is_refund: Boolean(deal.is_refund),
+        // Снимок редактирования должен хранить фактическое значение сделки, чтобы не было ложной подстановки.
+        responsible_username: deal.responsible_username || '',
+      }
+      applyDealToEditState(deal)
+      await new Promise((resolve) => nextTick(resolve))
+      // Дожидаемся загрузки связанных полей формы, чтобы не показывать "полупустую" карточку.
+      const pendingLoads = []
+      if (editDeal.account_id && typeof ensureAccountSecretsLoaded === 'function') {
+        pendingLoads.push(ensureAccountSecretsLoaded(editDeal.account_id))
+      }
+      if (editDeal.product_id && editDeal.slot_type_code && typeof loadDealAccountsForProduct === 'function') {
+        pendingLoads.push(loadDealAccountsForProduct('edit'))
+      }
+      if (editDeal.product_id && typeof loadDealProductAssignments === 'function') {
+        pendingLoads.push(loadDealProductAssignments('edit'))
+      }
+      if (editDeal.product_id && typeof loadDealSlotAvailability === 'function') {
+        pendingLoads.push(loadDealSlotAvailability('edit'))
+      }
+      if (editDeal.account_id && typeof loadAccountSlotStatus === 'function') {
+        pendingLoads.push(loadAccountSlotStatus('edit'))
+      }
+      if (editDeal.account_id && typeof loadDealAccountAssignments === 'function') {
+        pendingLoads.push(loadDealAccountAssignments('edit'))
+      }
+      if (editDeal.product_id && editDeal.slot_type_code && typeof loadSubscriptionTerms === 'function') {
+        pendingLoads.push(loadSubscriptionTerms('edit'))
+      }
+      if (editDeal.slot_type_code && typeof loadAvailableSubscriptionItems === 'function') {
+        pendingLoads.push(loadAvailableSubscriptionItems('edit', editDeal.slot_type_code))
+      }
+      if (pendingLoads.length) {
+        await Promise.allSettled(pendingLoads)
+      }
+    } finally {
+      dealInitLock.value = false
+      dealLoading.value = false
     }
-    applyDealToEditState(deal)
-    nextTick(() => {
-      setTimeout(() => {
-        dealInitLock.value = false
-        if (editDeal.product_id) loadDealSlotAvailability('edit')
-      }, 0)
-    })
   }
 
   function toggleDealEditMode() {

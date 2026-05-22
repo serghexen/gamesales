@@ -22,10 +22,11 @@ class _DummyConnCtx:
 
 
 class _ScriptedCursor:
-    def __init__(self, script):
+    def __init__(self, script, sql_collector=None):
         self._script = script
         self._current = None
         self.rowcount = 0
+        self._sql_collector = sql_collector
 
     def __enter__(self):
         return self
@@ -34,6 +35,8 @@ class _ScriptedCursor:
         return False
 
     def execute(self, sql, params=None):
+        if self._sql_collector is not None:
+            self._sql_collector.append(str(sql))
         if not self._script:
             raise AssertionError(f"Unexpected SQL without scripted response: {sql}")
         self._current = self._script.pop(0)
@@ -59,8 +62,9 @@ class _ScriptedCursor:
 
 
 class _ScriptedConnCtx:
-    def __init__(self, script):
+    def __init__(self, script, sql_collector=None):
         self._script = list(script)
+        self._sql_collector = sql_collector
 
     def __enter__(self):
         return self
@@ -72,7 +76,7 @@ class _ScriptedConnCtx:
         return None
 
     def cursor(self):
-        return _ScriptedCursor(self._script)
+        return _ScriptedCursor(self._script, sql_collector=self._sql_collector)
 
 
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
@@ -585,6 +589,28 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(len(res.json()), 1)
             self.assertEqual(res.json()[0]["account_id"], 7)
 
+    # При выдаче аккаунтов для P2 учитываем задержку 2 месяца для второго слота.
+    def test_list_accounts_for_deal_applies_two_month_p2_gate(self):
+        script = [
+            {"one": ("game", False)},
+            {"all": []},
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/for-deal?product_id=55&slot_type_code=play_ps5",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertTrue(any("active_play_assignments" in sql for sql in sql_collector))
+            self.assertTrue(any("INTERVAL '2 months'" in sql for sql in sql_collector))
+
     # Для подписки список аккаунтов для шеринга тоже должен возвращаться.
     def test_list_accounts_for_deal_supports_subscription_product(self):
         script = [
@@ -642,6 +668,29 @@ class AccountsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json()[0]["slot_type_code"], "ps5_p1")
+
+    # В сводной доступности слотов для сделки также учитываем 2-месячный порог по второму P2.
+    def test_slot_availability_for_deal_applies_two_month_p2_gate(self):
+        script = [
+            {"one": ("game", False)},
+            {"all": [("play_ps5", False)]},
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/for-deal/availability?product_id=55",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json()[0]["slot_type_code"], "play_ps5")
+            self.assertTrue(any("active_play_assignments" in sql for sql in sql_collector))
+            self.assertTrue(any("INTERVAL '2 months'" in sql for sql in sql_collector))
 
     # Новый endpoint по товару должен возвращать назначения слотов с product-полями.
     def test_list_product_slot_assignments_success(self):

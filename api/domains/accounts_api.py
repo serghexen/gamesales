@@ -931,6 +931,18 @@ def mount_accounts_routes(
                   WHERE aa.asset_type_code IN ('game', 'subscription')
                   GROUP BY aa.account_id
                 ),
+                active_play_assignments AS (
+                  SELECT
+                    asa.account_id,
+                    asa.slot_type_code,
+                    COUNT(*) AS active_count,
+                    MIN(COALESCE(asa.assigned_at, now())) AS first_assigned_at
+                  FROM app.account_slot_assignments asa
+                  JOIN app.slot_types st ON st.code = asa.slot_type_code
+                  WHERE asa.released_at IS NULL
+                    AND st.mode = 'play'
+                  GROUP BY asa.account_id, asa.slot_type_code
+                ),
                 base AS (
                   SELECT
                     a.account_id,
@@ -956,8 +968,21 @@ def mount_accounts_routes(
                     AND EXISTS (
                     SELECT 1
                     FROM app.v_account_slot_status ss
+                    LEFT JOIN active_play_assignments apa
+                      ON apa.account_id = ss.account_id
+                     AND apa.slot_type_code = ss.slot_type_code
                     WHERE ss.account_id = a.account_id
-                      AND ss.free > 0
+                      AND (
+                        CASE
+                          -- Для П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
+                          WHEN ss.mode = 'play'
+                            AND COALESCE(ss.capacity, 0) >= 2
+                            AND COALESCE(apa.active_count, 0) = 1
+                            AND COALESCE(apa.first_assigned_at, now()) > (now() - INTERVAL '2 months')
+                          THEN 0
+                          ELSE COALESCE(ss.free, 0)
+                        END
+                      ) > 0
                       AND (COALESCE(ap.has_ps4, false) OR ss.platform_code = 'ps5')
                       AND (%s::text IS NULL OR ss.slot_type_code = %s)
                   )
@@ -1041,6 +1066,18 @@ def mount_accounts_routes(
                   WHERE aa.asset_type_code IN ('game', 'subscription')
                   GROUP BY aa.account_id
                 ),
+                active_play_assignments AS (
+                  SELECT
+                    asa.account_id,
+                    asa.slot_type_code,
+                    COUNT(*) AS active_count,
+                    MIN(COALESCE(asa.assigned_at, now())) AS first_assigned_at
+                  FROM app.account_slot_assignments asa
+                  JOIN app.slot_types stp ON stp.code = asa.slot_type_code
+                  WHERE asa.released_at IS NULL
+                    AND stp.mode = 'play'
+                  GROUP BY asa.account_id, asa.slot_type_code
+                ),
                 base_accounts AS (
                   SELECT a.account_id
                   FROM app.accounts a
@@ -1052,13 +1089,27 @@ def mount_accounts_routes(
                 )
                 SELECT
                   st.code AS slot_type_code,
-                  BOOL_OR(COALESCE(ss.free, 0) > 0) AS has_free
+                  BOOL_OR(
+                    (
+                      CASE
+                        -- Для П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
+                        WHEN st.mode = 'play'
+                          AND COALESCE(ss.capacity, 0) >= 2
+                          AND COALESCE(apa.active_count, 0) = 1
+                          AND COALESCE(apa.first_assigned_at, now()) > (now() - INTERVAL '2 months')
+                        THEN 0
+                        ELSE COALESCE(ss.free, 0)
+                      END
+                    ) > 0
+                  ) AS has_free
                 FROM base_accounts ba
                 LEFT JOIN account_platforms ap ON ap.account_id = ba.account_id
                 JOIN app.slot_types st
                   ON (COALESCE(ap.has_ps4, false) OR st.platform_code = 'ps5')
                 LEFT JOIN app.v_account_slot_status ss
                   ON ss.account_id = ba.account_id AND ss.slot_type_code = st.code
+                LEFT JOIN active_play_assignments apa
+                  ON apa.account_id = ba.account_id AND apa.slot_type_code = st.code
                 GROUP BY st.code
                 ORDER BY st.code
                 """,

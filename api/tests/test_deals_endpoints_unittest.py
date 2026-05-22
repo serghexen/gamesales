@@ -241,7 +241,7 @@ class DealsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 200)
             self.assertTrue(any("di.returned_at IS NULL" in sql for sql in sql_collector))
-            self.assertTrue(any("COALESCE(d.completed_at, di.purchase_at, d.created_at)::date = %s" in sql for sql in sql_collector))
+            self.assertTrue(any("COALESCE(d.completed_at, di.purchase_at, d.created_at) >= %s" in sql for sql in sql_collector))
 
     # Валидация create_deal: тип сделки должен быть sale/rental.
     def test_create_deal_invalid_type(self):

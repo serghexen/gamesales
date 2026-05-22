@@ -163,6 +163,21 @@ describe('WorkDealEditorForm template', () => {
       .toBeLessThan(source.indexOf('<span class="label">Пароль</span>'))
   })
 
+  it('renders copy actions for sharing login, password and reserve', () => {
+    const source = readTemplateSource()
+
+    expect(source).toContain("copySharingField('edit', 'login')")
+    expect(source).toContain("copySharingField('edit', 'password')")
+    expect(source).toContain("copySharingField('edit', 'reserve')")
+    expect(source).toContain("copySharingField('new', 'login')")
+    expect(source).toContain("copySharingField('new', 'password')")
+    expect(source).toContain("copySharingField('new', 'reserve')")
+    expect(source).toContain('function getSharingFieldCopyLabel(target, field)')
+    expect(source).toContain('function getSharingFieldCopyValue(target, field)')
+    expect(source).toContain('function copySharingField(target, field)')
+    expect(source).toContain('const copiedSharingFieldKey = ref(\'\')')
+  })
+
   it('shows warning when selected sharing account has no free reserve', () => {
     const source = readTemplateSource()
 
@@ -194,9 +209,15 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('<span class="label">Ссылка на товар</span>')
     expect(source).toContain("v-if=\"newDeal.deal_type_code === 'sale'\" class=\"deal-form__double\"")
     expect(source).toContain('input--with-copy')
-    expect(source).toContain("copySaleProductLink('edit')")
-    expect(source).toContain("copySaleProductLink('new')")
-    expect(source).toContain('function copySaleProductLink(target)')
-    expect(source).toContain('function getSaleLinkCopyLabel(target)')
+    expect(source).toContain("v-for=\"(linkValue, linkIndex) in editSaleProductLinks\"")
+    expect(source).toContain("v-for=\"(linkValue, linkIndex) in newSaleProductLinks\"")
+    expect(source).toContain("copySaleProductLink('edit', linkIndex)")
+    expect(source).toContain("copySaleProductLink('new', linkIndex)")
+    expect(source).toContain("+ Добавить ссылку")
+    expect(source).toContain('function setSaleProductLinkValue(target, index, value)')
+    expect(source).toContain('function addSaleProductLink(target)')
+    expect(source).toContain('function removeSaleProductLink(target, index)')
+    expect(source).toContain('function copySaleProductLink(target, index = 0)')
+    expect(source).toContain('function getSaleLinkCopyLabel(target, index = 0)')
   })
 })

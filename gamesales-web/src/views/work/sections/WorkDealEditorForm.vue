@@ -182,7 +182,7 @@
                                   { 'quick-create--plain': isEditRentalSubscriptionMode || !hasAnyProductAssignmentsEdit || !dealProductAssignmentsForSelectedSlotEdit.length }
                                 ]"
                               >
-                                <div v-if="!isEditRentalSubscriptionMode && hasAnyProductAssignmentsEdit && dealGameAssignmentsLoadingEdit" class="loader-wrap loader-wrap--compact">
+                                <div v-if="!dealLoading && !isEditRentalSubscriptionMode && hasAnyProductAssignmentsEdit && dealGameAssignmentsLoadingEdit" class="loader-wrap loader-wrap--compact">
                                   <div class="newtons-cradle" aria-label="Loading" role="img">
                                     <div class="newtons-cradle__dot"></div>
                                     <div class="newtons-cradle__dot"></div>
@@ -494,22 +494,89 @@
                             </label>
                             <div v-if="editDeal.account_id" class="deal-form__account-details">
                               <div class="deal-form__account-details-head">Данные аккаунта</div>
-                              <label class="field">
-                                <span class="label">Логин</span>
-                                <input class="input" :value="getAccountLabelById(editDeal.account_id)" readonly />
-                              </label>
-                              <label class="field">
-                                <span class="label">Пароль</span>
-                                <input class="input" :value="getAccountPasswordById(editDeal.account_id)" readonly />
-                              </label>
-                              <label class="field">
-                                <span class="label">Резерв</span>
-                                <input
-                                  class="input"
-                                  :value="getDealReserveLabel(editDeal.account_id, editDeal.reserve_key, editDeal.deal_id, { allowFallback: dealEditMode === 'edit', emptyLabel: '— не назначен' })"
-                                  readonly
-                                />
-                              </label>
+                              <div v-if="!dealLoading && shouldShowDealAccountDetailsLoader('edit')" class="loader-wrap loader-wrap--compact deal-form__account-details-loader">
+                                <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                                  <div class="wheel"></div>
+                                  <div class="hamster">
+                                    <div class="hamster__body">
+                                      <div class="hamster__head">
+                                        <div class="hamster__ear"></div>
+                                        <div class="hamster__eye"></div>
+                                        <div class="hamster__nose"></div>
+                                      </div>
+                                      <div class="hamster__limb hamster__limb--fr"></div>
+                                      <div class="hamster__limb hamster__limb--fl"></div>
+                                      <div class="hamster__limb hamster__limb--br"></div>
+                                      <div class="hamster__limb hamster__limb--bl"></div>
+                                      <div class="hamster__tail"></div>
+                                    </div>
+                                  </div>
+                                  <div class="spoke"></div>
+                                </div>
+                              </div>
+                              <template v-else>
+                                <label class="field">
+                                  <span class="label">Логин</span>
+                                  <div class="input--select-wrap">
+                                    <input class="input input--with-copy" :value="getAccountLabelById(editDeal.account_id)" readonly />
+                                    <button
+                                      class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                      type="button"
+                                      :aria-label="getSharingFieldCopyLabel('edit', 'login')"
+                                      :title="getSharingFieldCopyLabel('edit', 'login')"
+                                      :disabled="!getSharingFieldCopyValue('edit', 'login')"
+                                      @click="copySharingField('edit', 'login')"
+                                    >
+                                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                        <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </label>
+                                <label class="field">
+                                  <span class="label">Пароль</span>
+                                  <div class="input--select-wrap">
+                                    <input class="input input--with-copy" :value="getAccountPasswordById(editDeal.account_id)" readonly />
+                                    <button
+                                      class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                      type="button"
+                                      :aria-label="getSharingFieldCopyLabel('edit', 'password')"
+                                      :title="getSharingFieldCopyLabel('edit', 'password')"
+                                      :disabled="!getSharingFieldCopyValue('edit', 'password')"
+                                      @click="copySharingField('edit', 'password')"
+                                    >
+                                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                        <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </label>
+                                <label class="field">
+                                  <span class="label">Резерв</span>
+                                  <div class="input--select-wrap">
+                                    <input
+                                      class="input input--with-copy"
+                                      :value="getDealReserveLabel(editDeal.account_id, editDeal.reserve_key, editDeal.deal_id, { allowFallback: dealEditMode === 'edit', emptyLabel: '— не назначен' })"
+                                      readonly
+                                    />
+                                    <button
+                                      class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                      type="button"
+                                      :aria-label="getSharingFieldCopyLabel('edit', 'reserve')"
+                                      :title="getSharingFieldCopyLabel('edit', 'reserve')"
+                                      :disabled="!getSharingFieldCopyValue('edit', 'reserve')"
+                                      @click="copySharingField('edit', 'reserve')"
+                                    >
+                                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                        <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </label>
+                              </template>
                             </div>
                             <div
                               v-if="dealEditMode !== 'view'
@@ -757,25 +824,50 @@
                           </label>
                           <label class="field">
                             <span class="label">Ссылка на товар</span>
-                            <div class="input--select-wrap">
-                              <input
-                                v-model.trim="editDeal.product_link"
-                                class="input input--with-copy"
-                                placeholder="https://..."
-                                :readonly="dealEditMode === 'view'"
-                              />
-                              <button
-                                class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
-                                type="button"
-                                :aria-label="getSaleLinkCopyLabel('edit')"
-                                :title="getSaleLinkCopyLabel('edit')"
-                                :disabled="!String(editDeal.product_link || '').trim()"
-                                @click="copySaleProductLink('edit')"
+                            <div class="deal-form__sale-links">
+                              <div
+                                v-for="(linkValue, linkIndex) in editSaleProductLinks"
+                                :key="`edit-sale-link-${linkIndex}`"
+                                class="deal-form__sale-link-row"
                               >
-                                <svg viewBox="0 0 24 24" aria-hidden="true">
-                                  <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
-                                  <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
-                                </svg>
+                                <div class="input--select-wrap">
+                                  <input
+                                    :value="linkValue"
+                                    class="input input--with-copy"
+                                    placeholder="https://..."
+                                    :readonly="dealEditMode === 'view'"
+                                    @input="setSaleProductLinkValue('edit', linkIndex, $event.target.value)"
+                                  />
+                                  <button
+                                    class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                    type="button"
+                                    :aria-label="getSaleLinkCopyLabel('edit', linkIndex)"
+                                    :title="getSaleLinkCopyLabel('edit', linkIndex)"
+                                    :disabled="!getSaleProductLinkValue('edit', linkIndex)"
+                                    @click="copySaleProductLink('edit', linkIndex)"
+                                  >
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                      <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                      <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                                    </svg>
+                                  </button>
+                                </div>
+                                <button
+                                  v-if="dealEditMode !== 'view' && canRemoveSaleProductLink('edit')"
+                                  class="ghost ghost--small deal-form__sale-link-remove"
+                                  type="button"
+                                  @click="removeSaleProductLink('edit', linkIndex)"
+                                >
+                                  Удалить
+                                </button>
+                              </div>
+                              <button
+                                v-if="dealEditMode !== 'view'"
+                                class="comment-toggle deal-form__sale-link-add"
+                                type="button"
+                                @click="addSaleProductLink('edit')"
+                              >
+                                + Добавить ссылку
                               </button>
                             </div>
                           </label>
@@ -926,7 +1018,7 @@
                               { 'quick-create--plain': isNewRentalSubscriptionMode || !hasAnyProductAssignmentsNew || !dealProductAssignmentsForSelectedSlotNew.length }
                             ]"
                           >
-                            <div v-if="!isNewRentalSubscriptionMode && hasAnyProductAssignmentsNew && dealGameAssignmentsLoadingNew" class="loader-wrap loader-wrap--compact">
+                            <div v-if="!dealLoading && !isNewRentalSubscriptionMode && hasAnyProductAssignmentsNew && dealGameAssignmentsLoadingNew" class="loader-wrap loader-wrap--compact">
                               <div class="newtons-cradle" aria-label="Loading" role="img">
                                 <div class="newtons-cradle__dot"></div>
                                 <div class="newtons-cradle__dot"></div>
@@ -1208,18 +1300,85 @@
                             </label>
                             <div v-if="newDeal.account_id" class="deal-form__account-details">
                               <div class="deal-form__account-details-head">Данные аккаунта</div>
-                              <label class="field">
-                                <span class="label">Логин</span>
-                                <input class="input" :value="getAccountLabelById(newDeal.account_id)" readonly />
-                              </label>
-                              <label class="field">
-                                <span class="label">Пароль</span>
-                                <input class="input" :value="getAccountPasswordById(newDeal.account_id)" readonly />
-                              </label>
-                              <label class="field">
-                                <span class="label">Резерв</span>
-                                <input class="input" :value="getDealReserveLabel(newDeal.account_id, newDeal.reserve_key, null, { allowFallback: true })" readonly />
-                              </label>
+                              <div v-if="!dealLoading && shouldShowDealAccountDetailsLoader('new')" class="loader-wrap loader-wrap--compact deal-form__account-details-loader">
+                                <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                                  <div class="wheel"></div>
+                                  <div class="hamster">
+                                    <div class="hamster__body">
+                                      <div class="hamster__head">
+                                        <div class="hamster__ear"></div>
+                                        <div class="hamster__eye"></div>
+                                        <div class="hamster__nose"></div>
+                                      </div>
+                                      <div class="hamster__limb hamster__limb--fr"></div>
+                                      <div class="hamster__limb hamster__limb--fl"></div>
+                                      <div class="hamster__limb hamster__limb--br"></div>
+                                      <div class="hamster__limb hamster__limb--bl"></div>
+                                      <div class="hamster__tail"></div>
+                                    </div>
+                                  </div>
+                                  <div class="spoke"></div>
+                                </div>
+                              </div>
+                              <template v-else>
+                                <label class="field">
+                                  <span class="label">Логин</span>
+                                  <div class="input--select-wrap">
+                                    <input class="input input--with-copy" :value="getAccountLabelById(newDeal.account_id)" readonly />
+                                    <button
+                                      class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                      type="button"
+                                      :aria-label="getSharingFieldCopyLabel('new', 'login')"
+                                      :title="getSharingFieldCopyLabel('new', 'login')"
+                                      :disabled="!getSharingFieldCopyValue('new', 'login')"
+                                      @click="copySharingField('new', 'login')"
+                                    >
+                                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                        <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </label>
+                                <label class="field">
+                                  <span class="label">Пароль</span>
+                                  <div class="input--select-wrap">
+                                    <input class="input input--with-copy" :value="getAccountPasswordById(newDeal.account_id)" readonly />
+                                    <button
+                                      class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                      type="button"
+                                      :aria-label="getSharingFieldCopyLabel('new', 'password')"
+                                      :title="getSharingFieldCopyLabel('new', 'password')"
+                                      :disabled="!getSharingFieldCopyValue('new', 'password')"
+                                      @click="copySharingField('new', 'password')"
+                                    >
+                                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                        <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </label>
+                                <label class="field">
+                                  <span class="label">Резерв</span>
+                                  <div class="input--select-wrap">
+                                    <input class="input input--with-copy" :value="getDealReserveLabel(newDeal.account_id, newDeal.reserve_key, null, { allowFallback: true })" readonly />
+                                    <button
+                                      class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                      type="button"
+                                      :aria-label="getSharingFieldCopyLabel('new', 'reserve')"
+                                      :title="getSharingFieldCopyLabel('new', 'reserve')"
+                                      :disabled="!getSharingFieldCopyValue('new', 'reserve')"
+                                      @click="copySharingField('new', 'reserve')"
+                                    >
+                                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                        <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </label>
+                              </template>
                             </div>
                             <div
                               v-if="!dealAccountsForProductLoading
@@ -1352,20 +1511,48 @@
                           </label>
                           <label class="field">
                             <span class="label">Ссылка на товар</span>
-                            <div class="input--select-wrap">
-                              <input v-model.trim="newDeal.product_link" class="input input--with-copy" placeholder="https://..." />
-                              <button
-                                class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
-                                type="button"
-                                :aria-label="getSaleLinkCopyLabel('new')"
-                                :title="getSaleLinkCopyLabel('new')"
-                                :disabled="!String(newDeal.product_link || '').trim()"
-                                @click="copySaleProductLink('new')"
+                            <div class="deal-form__sale-links">
+                              <div
+                                v-for="(linkValue, linkIndex) in newSaleProductLinks"
+                                :key="`new-sale-link-${linkIndex}`"
+                                class="deal-form__sale-link-row"
                               >
-                                <svg viewBox="0 0 24 24" aria-hidden="true">
-                                  <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
-                                  <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
-                                </svg>
+                                <div class="input--select-wrap">
+                                  <input
+                                    :value="linkValue"
+                                    class="input input--with-copy"
+                                    placeholder="https://..."
+                                    @input="setSaleProductLinkValue('new', linkIndex, $event.target.value)"
+                                  />
+                                  <button
+                                    class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                    type="button"
+                                    :aria-label="getSaleLinkCopyLabel('new', linkIndex)"
+                                    :title="getSaleLinkCopyLabel('new', linkIndex)"
+                                    :disabled="!getSaleProductLinkValue('new', linkIndex)"
+                                    @click="copySaleProductLink('new', linkIndex)"
+                                  >
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                      <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                      <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                                    </svg>
+                                  </button>
+                                </div>
+                                <button
+                                  v-if="canRemoveSaleProductLink('new')"
+                                  class="ghost ghost--small deal-form__sale-link-remove"
+                                  type="button"
+                                  @click="removeSaleProductLink('new', linkIndex)"
+                                >
+                                  Удалить
+                                </button>
+                              </div>
+                              <button
+                                class="comment-toggle deal-form__sale-link-add"
+                                type="button"
+                                @click="addSaleProductLink('new')"
+                              >
+                                + Добавить ссылку
                               </button>
                             </div>
                           </label>
@@ -1423,6 +1610,10 @@ const {
   getAccountLabelById,
   getAccountSecret,
   getReserveSecretEntries,
+  accountsAll,
+  accountSecrets,
+  ensureAccountSecretsLoaded,
+  loadAccountsAll,
   sortedDeals,
   hasFreeDealSlots,
   hasAnyProductAssignmentsEdit,
@@ -1469,6 +1660,7 @@ const {
   quickEditProductLoading,
   createQuickProduct,
   quickEditProductError,
+  dealLoading,
   dealError,
   dealOk,
   newDeal,
@@ -1510,8 +1702,14 @@ const editQuickSubscriptionTermOpen = ref(false)
 const newQuickProductOpen = ref(false)
 const newQuickAccountOpen = ref(false)
 const newQuickSubscriptionTermOpen = ref(false)
-const copiedSaleLinkTarget = ref('')
+const editSaleProductLinks = ref([''])
+const newSaleProductLinks = ref([''])
+const editDealAccountDetailsLoading = ref(false)
+const newDealAccountDetailsLoading = ref(false)
+const copiedSaleLinkKey = ref('')
+const copiedSharingFieldKey = ref('')
 let copiedSaleLinkTimerId = 0
+let copiedSharingFieldTimerId = 0
 
 const isEditRentalSubscriptionMode = computed(() => {
   return editDeal.value?.deal_type_code === 'rental' && editDealProductTypeFilter.value === 'subscription'
@@ -1833,6 +2031,69 @@ function getDealReserveLabel(accountId, reserveKey, currentDealId = null, option
   return selected.used ? `${selected.value} (использован)` : selected.value
 }
 
+// Сравнивает id как число, чтобы не терять совпадение при строковом account_id из API.
+function isSameAccountId(leftId, rightId) {
+  const leftNum = Number(leftId)
+  const rightNum = Number(rightId)
+  if (Number.isFinite(leftNum) && Number.isFinite(rightNum)) {
+    return leftNum === rightNum
+  }
+  return String(leftId || '').trim() === String(rightId || '').trim()
+}
+
+// Проверяет, есть ли в справочнике подпись для выбранного аккаунта.
+function hasAccountLabelForDetails(accountId) {
+  if (!accountId) return false
+  const list = Array.isArray(accountsAll.value) ? accountsAll.value : []
+  return list.some((item) => isSameAccountId(item?.account_id, accountId))
+}
+
+// Проверяет, догружены ли секреты выбранного аккаунта в локальный кеш.
+function hasAccountSecretsForDetails(accountId) {
+  const targetId = Number(accountId || 0)
+  if (!targetId) return false
+  const cache = accountSecrets.value || {}
+  return Object.prototype.hasOwnProperty.call(cache, targetId)
+}
+
+// Возвращает выбранный account_id для нужной формы сделки.
+function getDealAccountIdByTarget(target) {
+  if (target === 'edit') return Number(editDeal.value?.account_id || 0)
+  return Number(newDeal.value?.account_id || 0)
+}
+
+// Говорит, нужно ли показывать лоадер в блоке "Данные аккаунта".
+function shouldShowDealAccountDetailsLoader(target) {
+  const accountId = getDealAccountIdByTarget(target)
+  if (!accountId) return false
+  const loading = target === 'edit' ? editDealAccountDetailsLoading.value : newDealAccountDetailsLoading.value
+  if (loading) return true
+  return !hasAccountLabelForDetails(accountId) || !hasAccountSecretsForDetails(accountId)
+}
+
+// Догружает справочник и секреты для выбранного аккаунта перед показом блока с деталями.
+async function ensureDealAccountDetailsLoaded(target) {
+  const accountId = getDealAccountIdByTarget(target)
+  if (!accountId) return
+  const loadingRef = target === 'edit' ? editDealAccountDetailsLoading : newDealAccountDetailsLoading
+  const hasLabel = hasAccountLabelForDetails(accountId)
+  const hasSecrets = hasAccountSecretsForDetails(accountId)
+  if (hasLabel && hasSecrets) return
+  loadingRef.value = true
+  try {
+    const tasks = []
+    if (!hasLabel && typeof loadAccountsAll.value === 'function') {
+      tasks.push(loadAccountsAll.value())
+    }
+    if (!hasSecrets && typeof ensureAccountSecretsLoaded.value === 'function') {
+      tasks.push(ensureAccountSecretsLoaded.value(accountId))
+    }
+    if (tasks.length) await Promise.allSettled(tasks)
+  } finally {
+    loadingRef.value = false
+  }
+}
+
 // Форматирует подпись срока подписки для селекта и режима просмотра.
 function formatSubscriptionTermLabel(term) {
   if (!term) return '— не выбрано —'
@@ -1984,6 +2245,24 @@ watch(() => newDealProductTypeFilter.value, (typeCode, prev) => {
   }
 })
 
+watch(() => newDeal.value?.account_id, (accountId) => {
+  if (!accountId) {
+    newDealAccountDetailsLoading.value = false
+    return
+  }
+  // Для блока "Данные аккаунта" заранее догружаем логин и секреты выбранного аккаунта.
+  void ensureDealAccountDetailsLoaded('new')
+}, { immediate: true })
+
+watch(() => editDeal.value?.account_id, (accountId) => {
+  if (!accountId) {
+    editDealAccountDetailsLoading.value = false
+    return
+  }
+  // В редактировании применяем ту же догрузку, чтобы в форме не мелькал сырой account_id.
+  void ensureDealAccountDetailsLoaded('edit')
+}, { immediate: true })
+
 watch(() => editDeal.value?.slot_type_code, (slotTypeCode, prev) => {
   if (!editDeal.value?.open || !isEditRentalSubscriptionMode.value) return
   if (slotTypeCode === prev) return
@@ -2063,6 +2342,20 @@ watch(() => dealEditMode.value, (mode) => {
   editDeal.value.reserve_key = pickFirstFreeReserveKey(editDeal.value.account_id, editDeal.value?.deal_id)
 })
 
+watch(() => editDeal.value?.product_link, (value) => {
+  const nextSerialized = serializeSaleProductLinks(parseSaleProductLinks(value))
+  if (nextSerialized === serializeSaleProductLinks(editSaleProductLinks.value)) return
+  // Синхронизируем список ссылок при открытии/переключении сделки.
+  editSaleProductLinks.value = parseSaleProductLinks(value)
+}, { immediate: true })
+
+watch(() => newDeal.value?.product_link, (value) => {
+  const nextSerialized = serializeSaleProductLinks(parseSaleProductLinks(value))
+  if (nextSerialized === serializeSaleProductLinks(newSaleProductLinks.value)) return
+  // Держим форму создания в актуальном состоянии после сбросов и переключений типа сделки.
+  newSaleProductLinks.value = parseSaleProductLinks(value)
+}, { immediate: true })
+
 const isEditDealPendingFlow = computed(() => {
   // Для pending/draft скрываем возврат в форме: возврат проводится только отдельной кнопкой из таблицы.
   const status = String(editDeal.value?.flow_status_code || '').trim().toLowerCase()
@@ -2093,35 +2386,178 @@ const editFlowStatusOptions = computed(() => {
   return list.filter((item) => String(item?.code || '').trim().toLowerCase() !== 'completed')
 })
 
-// Возвращает подпись для иконки копирования ссылки с учетом короткого статуса после клика.
-function getSaleLinkCopyLabel(target) {
-  return copiedSaleLinkTarget.value === target ? 'Скопировано' : 'Копировать ссылку'
+// Возвращает true, если значение пустое или служебное и его не нужно копировать.
+function isCopyPlaceholderValue(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  return !normalized || normalized === '—' || normalized === '-' || normalized === '— не назначен' || normalized === '— не выбрано —'
 }
 
-// Копирует ссылку товара в буфер обмена; нужен быстрый доступ к ссылке из формы продаж.
-async function copySaleProductLink(target) {
+// Универсально копирует текст в буфер с fallback для старых браузеров.
+async function copyTextToClipboard(value) {
+  const text = String(value || '').trim()
+  if (!text) return false
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return true
+  }
+  const tempInput = document.createElement('textarea')
+  tempInput.value = text
+  tempInput.setAttribute('readonly', '')
+  tempInput.style.position = 'absolute'
+  tempInput.style.left = '-9999px'
+  document.body.appendChild(tempInput)
+  tempInput.select()
+  document.execCommand('copy')
+  document.body.removeChild(tempInput)
+  return true
+}
+
+// Формирует единый ключ поля, чтобы показывать "Скопировано" только на нужной кнопке.
+function getSharingFieldCopyKey(target, field) {
+  return `${target}:${field}`
+}
+
+// Возвращает подпись иконки копирования для полей шеринга.
+function getSharingFieldCopyLabel(target, field) {
+  const copyKey = getSharingFieldCopyKey(target, field)
+  if (copiedSharingFieldKey.value === copyKey) return 'Скопировано'
+  if (field === 'password') return 'Копировать пароль'
+  if (field === 'reserve') return 'Копировать резерв'
+  return 'Копировать логин'
+}
+
+// Возвращает реальное значение поля шеринга для копирования без служебных подплейсхолдеров.
+function getSharingFieldCopyValue(target, field) {
   const isEditTarget = target === 'edit'
-  const rawValue = isEditTarget ? editDeal.value?.product_link : newDeal.value?.product_link
-  const value = String(rawValue || '').trim()
+  const deal = isEditTarget ? editDeal.value : newDeal.value
+  const accountId = Number(deal?.account_id || 0)
+  if (!accountId) return ''
+  if (field === 'password') {
+    const password = String(getAccountSecret.value?.(accountId) || '').trim()
+    return isCopyPlaceholderValue(password) ? '' : password
+  }
+  if (field === 'reserve') {
+    const reserveLabel = isEditTarget
+      ? getDealReserveLabel(accountId, deal?.reserve_key, deal?.deal_id, { allowFallback: dealEditMode.value === 'edit', emptyLabel: '— не назначен' })
+      : getDealReserveLabel(accountId, deal?.reserve_key, null, { allowFallback: true })
+    const reserveValue = String(reserveLabel || '').replace(/\s+\(использован\)\s*$/i, '').trim()
+    return isCopyPlaceholderValue(reserveValue) ? '' : reserveValue
+  }
+  const login = String(getAccountLabelById.value(accountId) || '').trim()
+  return isCopyPlaceholderValue(login) ? '' : login
+}
+
+// Копирует выбранное поле шеринга и кратко показывает успешный статус на кнопке.
+async function copySharingField(target, field) {
+  const value = getSharingFieldCopyValue(target, field)
   if (!value) return
   try {
-    if (navigator?.clipboard?.writeText) {
-      await navigator.clipboard.writeText(value)
-    } else {
-      const tempInput = document.createElement('textarea')
-      tempInput.value = value
-      tempInput.setAttribute('readonly', '')
-      tempInput.style.position = 'absolute'
-      tempInput.style.left = '-9999px'
-      document.body.appendChild(tempInput)
-      tempInput.select()
-      document.execCommand('copy')
-      document.body.removeChild(tempInput)
-    }
-    copiedSaleLinkTarget.value = target
+    await copyTextToClipboard(value)
+    copiedSharingFieldKey.value = getSharingFieldCopyKey(target, field)
+    if (copiedSharingFieldTimerId) window.clearTimeout(copiedSharingFieldTimerId)
+    copiedSharingFieldTimerId = window.setTimeout(() => {
+      copiedSharingFieldKey.value = ''
+      copiedSharingFieldTimerId = 0
+    }, 1400)
+  } catch {
+    showDealWarning.value?.('Не удалось скопировать значение')
+  }
+}
+
+// Преобразует список ссылок в чистый вид: убирает пробелы по краям и пустые строки.
+function serializeSaleProductLinks(list) {
+  const source = Array.isArray(list) ? list : []
+  const normalized = source
+    .map((item) => String(item || '').trim())
+    .filter((item) => !!item)
+  return normalized.join('\n')
+}
+
+// Разбирает строку ссылок из БД/формы в массив для многострочного UI.
+function parseSaleProductLinks(value) {
+  const normalized = String(value || '')
+    .split(/\r?\n/g)
+    .map((item) => String(item || '').trim())
+    .filter((item) => !!item)
+  return normalized.length ? normalized : ['']
+}
+
+// Возвращает ссылочный список нужной формы (создание или редактирование).
+function getSaleProductLinksRef(target) {
+  return target === 'edit' ? editSaleProductLinks : newSaleProductLinks
+}
+
+// Возвращает список ссылок для текущей формы.
+function getSaleProductLinks(target) {
+  return getSaleProductLinksRef(target).value
+}
+
+// Возвращает ссылку по индексу в готовом для копирования виде.
+function getSaleProductLinkValue(target, index) {
+  const links = getSaleProductLinks(target)
+  if (!Array.isArray(links)) return ''
+  return String(links[index] || '').trim()
+}
+
+// Синхронизирует массив ссылок обратно в одно поле product_link для API.
+function syncSaleProductLinksToDeal(target) {
+  const serialized = serializeSaleProductLinks(getSaleProductLinks(target))
+  if (target === 'edit') {
+    editDeal.value.product_link = serialized
+    return
+  }
+  newDeal.value.product_link = serialized
+}
+
+// Обновляет конкретную строку ссылки в форме.
+function setSaleProductLinkValue(target, index, value) {
+  const linksRef = getSaleProductLinksRef(target)
+  if (!Array.isArray(linksRef.value) || index < 0 || index >= linksRef.value.length) return
+  linksRef.value[index] = String(value || '')
+  syncSaleProductLinksToDeal(target)
+}
+
+// Добавляет новую пустую строку ссылки для продажи.
+function addSaleProductLink(target) {
+  const linksRef = getSaleProductLinksRef(target)
+  linksRef.value.push('')
+}
+
+// Проверяет, можно ли удалить строку ссылки (хотя бы одна строка должна остаться).
+function canRemoveSaleProductLink(target) {
+  return getSaleProductLinks(target).length > 1
+}
+
+// Удаляет строку ссылки и синхронизирует результат в поле сделки.
+function removeSaleProductLink(target, index) {
+  const linksRef = getSaleProductLinksRef(target)
+  if (!canRemoveSaleProductLink(target)) return
+  linksRef.value.splice(index, 1)
+  if (!linksRef.value.length) linksRef.value.push('')
+  syncSaleProductLinksToDeal(target)
+}
+
+// Формирует ключ для статуса "Скопировано" у конкретной строки ссылки.
+function getSaleLinkCopyKey(target, index = 0) {
+  return `${target}:${index}`
+}
+
+// Возвращает подпись для иконки копирования ссылки с учетом строки и короткого статуса.
+function getSaleLinkCopyLabel(target, index = 0) {
+  const copyKey = getSaleLinkCopyKey(target, index)
+  return copiedSaleLinkKey.value === copyKey ? 'Скопировано' : 'Копировать ссылку'
+}
+
+// Копирует выбранную строку ссылки товара в буфер обмена.
+async function copySaleProductLink(target, index = 0) {
+  const value = getSaleProductLinkValue(target, index)
+  if (!value) return
+  try {
+    await copyTextToClipboard(value)
+    copiedSaleLinkKey.value = getSaleLinkCopyKey(target, index)
     if (copiedSaleLinkTimerId) window.clearTimeout(copiedSaleLinkTimerId)
     copiedSaleLinkTimerId = window.setTimeout(() => {
-      copiedSaleLinkTarget.value = ''
+      copiedSaleLinkKey.value = ''
       copiedSaleLinkTimerId = 0
     }, 1400)
   } catch {

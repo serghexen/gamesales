@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import Depends, HTTPException
@@ -1408,14 +1408,14 @@ def mount_deals_routes(
                     where_sql = f"{where_sql} AND di.returned_at IS NULL"
                 else:
                     where_sql = "WHERE di.returned_at IS NULL"
-                # Для не-привилегированных ролей старые завершенные сделки скрываем.
-                today = now_utc().date()
-                completed_today_clause = "(d.flow_status_code <> 'completed' OR COALESCE(d.completed_at, di.purchase_at, d.created_at)::date = %s)"
-                if where_sql:
-                    where_sql = f"{where_sql} AND {completed_today_clause}"
-                else:
-                    where_sql = f"WHERE {completed_today_clause}"
-                params.append(today)
+            # Завершенные сделки в рабочем списке ограничиваем последними 24 часами для всех ролей.
+            completed_recent_from = now_utc() - timedelta(days=1)
+            completed_recent_clause = "(d.flow_status_code <> 'completed' OR COALESCE(d.completed_at, di.purchase_at, d.created_at) >= %s)"
+            if where_sql:
+                where_sql = f"{where_sql} AND {completed_recent_clause}"
+            else:
+                where_sql = f"WHERE {completed_recent_clause}"
+            params.append(completed_recent_from)
 
             total_row = q1(conn, f"""
                 SELECT COUNT(*)

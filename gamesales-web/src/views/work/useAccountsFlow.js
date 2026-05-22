@@ -271,7 +271,7 @@ export function useAccountsFlow({
       accountsAll.value = data?.items || []
     } catch {
       if (requestId !== accountsAllRequestSeq) return
-      accountsAll.value = []
+      // На сетевом сбое сохраняем прошлый список, чтобы UI не скатывался к показу account_id.
     }
   }
 
