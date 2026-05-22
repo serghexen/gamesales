@@ -760,6 +760,7 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
             return None
 
     def resolve_source_id(conn, source_val: str):
+        # Для слотов колонка "Откуда" теперь маппится на справочник мессенджеров.
         if not source_val:
             return None
         parts = [p for p in str(source_val).strip().split() if p]
@@ -770,8 +771,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
             row = q1(
                 conn,
                 """
-                SELECT source_id
-                FROM app.sources
+                SELECT messenger_id
+                FROM app.messengers
                 WHERE lower(name) = lower(%s) AND lower(code) = lower(%s)
                   AND is_archived IS NOT TRUE
                 """,
@@ -781,8 +782,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 row = q1(
                     conn,
                     """
-                    SELECT source_id
-                    FROM app.sources
+                    SELECT messenger_id
+                    FROM app.messengers
                     WHERE lower(name) = lower(%s) AND lower(code) = lower(%s)
                       AND is_archived IS NOT TRUE
                     """,
@@ -792,8 +793,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
             row = q1(
                 conn,
                 """
-                SELECT source_id
-                FROM app.sources
+                SELECT messenger_id
+                FROM app.messengers
                 WHERE (lower(code) = lower(%s) OR lower(name) = lower(%s))
                   AND is_archived IS NOT TRUE
                 """,
@@ -965,45 +966,46 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
                 warnings.append({"row": report_row, "field": "Пользователь", "value": customer, "account": account_val, "message": "Пользователь не указан"})
 
             if source_val:
+                # Проверяем "Откуда" через справочник мессенджеров.
                 parts = [p for p in str(source_val).strip().split() if p]
-                row_source = None
+                row_messenger = None
                 if len(parts) >= 2:
                     name_part = parts[0]
                     code_part = parts[-1]
-                    row_source = q1(
+                    row_messenger = q1(
                         conn,
                         """
                         SELECT 1
-                        FROM app.sources
+                        FROM app.messengers
                         WHERE lower(name) = lower(%s) AND lower(code) = lower(%s)
                           AND is_archived IS NOT TRUE
                         """,
                         (name_part, code_part),
                     )
-                    if not row_source:
-                        row_source = q1(
+                    if not row_messenger:
+                        row_messenger = q1(
                             conn,
                             """
                             SELECT 1
-                            FROM app.sources
+                            FROM app.messengers
                             WHERE lower(name) = lower(%s) AND lower(code) = lower(%s)
                               AND is_archived IS NOT TRUE
                             """,
                             (code_part, name_part),
                         )
-                if not row_source:
-                    row_source = q1(
+                if not row_messenger:
+                    row_messenger = q1(
                         conn,
                         """
                         SELECT 1
-                        FROM app.sources
+                        FROM app.messengers
                         WHERE (lower(code) = lower(%s) OR lower(name) = lower(%s))
                           AND is_archived IS NOT TRUE
                         """,
                         (source_val, source_val),
                     )
-                if not row_source:
-                    warnings.append({"row": report_row, "field": "Источник", "value": source_val, "account": account_val, "message": "Источник не найден"})
+                if not row_messenger:
+                    warnings.append({"row": report_row, "field": "Откуда", "value": source_val, "account": account_val, "message": "Мессенджер не найден"})
 
             if date_val not in (None, ""):
                 normalized_date = normalize_slot_date(date_val)

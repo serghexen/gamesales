@@ -814,7 +814,8 @@ def build_import_jobs(
 
                     date_dt = normalize_slot_date_to_dt(date_val)
                     assigned_at = date_dt or default_old_dt
-                    source_id = resolve_source_id(conn, source_val) if source_val else None
+                    # Резолвим колонку "Откуда" в messenger_id для создаваемой сделки.
+                    messenger_id = resolve_source_id(conn, source_val) if source_val else None
 
                     prepared.append({
                         "skip": False,
@@ -826,7 +827,7 @@ def build_import_jobs(
                         "slot_type_code": slot_type_code,
                         "slot_instance": slot_instance,
                         "customer": customer,
-                        "source_id": source_id,
+                        "messenger_id": messenger_id,
                         "assigned_at": assigned_at,
                         "completed_at": date_dt,
                     })
@@ -865,25 +866,26 @@ def build_import_jobs(
                             assigned_at = item["assigned_at"]
                             completed_at = item["completed_at"]
                             customer_nickname = item["customer"]
-                            source_id = item["source_id"]
+                            messenger_id = item["messenger_id"]
 
                             slot_type = ensure_account_allows_slot_type(conn, account_id, slot_type_code)
                             platform_id = get_platform_id(conn, slot_type[1])
 
                             customer_id = None
                             if customer_nickname:
-                                customer_id = ensure_customer(conn, customer_nickname, source_id)
+                                # В слот-импорте "Откуда" теперь относится к мессенджеру, не к источнику клиента.
+                                customer_id = ensure_customer(conn, customer_nickname, None)
 
                             region_row = q1(conn, "SELECT region_id FROM app.accounts WHERE account_id=%s", (account_id,))
                             region_id = int(region_row[0]) if region_row and region_row[0] is not None else None
 
                             deal_row = q1(conn, """
                                 INSERT INTO app.deals(
-                                  deal_type_code, status_code, flow_status_code, region_id, customer_id, currency, total_amount, completed_at
+                                  deal_type_code, status_code, flow_status_code, region_id, customer_id, messenger_id, currency, total_amount, completed_at
                                 )
-                                VALUES ('rental', 'confirmed', 'completed', %s, %s, 'RUB', 0, %s)
+                                VALUES ('rental', 'confirmed', 'completed', %s, %s, %s, 'RUB', 0, %s)
                                 RETURNING deal_id
-                            """, (region_id, customer_id, completed_at))
+                            """, (region_id, customer_id, messenger_id, completed_at))
                             deal_id = int(deal_row[0])
 
                             row_item = q1(conn, """
