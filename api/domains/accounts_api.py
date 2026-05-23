@@ -1026,7 +1026,7 @@ def mount_accounts_routes(
                       AND (
                         CASE
                           -- Для П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
-                          WHEN st_gate.name ILIKE 'П2%'
+                          WHEN st_gate.name ILIKE 'П2%%'
                             AND COALESCE(ss.capacity, 0) >= 2
                             AND COALESCE(apa.active_count, 0) = 1
                             AND COALESCE(apa.first_assigned_at, now()) > (now() - INTERVAL '2 months')
@@ -1144,7 +1144,7 @@ def mount_accounts_routes(
                     (
                       CASE
                         -- Для П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
-                        WHEN st.name ILIKE 'П2%'
+                        WHEN st.name ILIKE 'П2%%'
                           AND COALESCE(ss.capacity, 0) >= 2
                           AND COALESCE(apa.active_count, 0) = 1
                           AND COALESCE(apa.first_assigned_at, now()) > (now() - INTERVAL '2 months')
