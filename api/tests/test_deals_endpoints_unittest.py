@@ -243,6 +243,28 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertTrue(any("di.returned_at IS NULL" in sql for sql in sql_collector))
             self.assertTrue(any("COALESCE(d.completed_at, di.purchase_at, d.created_at) >= %s" in sql for sql in sql_collector))
 
+    # Для карточки аккаунта не режем completed по 24 часам: нужна полная история привязанных сделок.
+    def test_list_deals_by_account_keeps_completed_history(self):
+        script = [
+            {"one": (0,)},  # total
+            {"all": []},  # rows
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/deals?account_id=77&page=1&page_size=20",
+                    headers=self._auth_headers(role="manager", username="manager1"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertTrue(any("di.returned_at IS NULL" in sql for sql in sql_collector))
+            self.assertFalse(any("COALESCE(d.completed_at, di.purchase_at, d.created_at) >= %s" in sql for sql in sql_collector))
+
     # Валидация create_deal: тип сделки должен быть sale/rental.
     def test_create_deal_invalid_type(self):
         with (

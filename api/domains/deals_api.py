@@ -1408,14 +1408,16 @@ def mount_deals_routes(
                     where_sql = f"{where_sql} AND di.returned_at IS NULL"
                 else:
                     where_sql = "WHERE di.returned_at IS NULL"
-            # Завершенные сделки в рабочем списке ограничиваем последними 24 часами для всех ролей.
-            completed_recent_from = now_utc() - timedelta(days=1)
-            completed_recent_clause = "(d.flow_status_code <> 'completed' OR COALESCE(d.completed_at, di.purchase_at, d.created_at) >= %s)"
-            if where_sql:
-                where_sql = f"{where_sql} AND {completed_recent_clause}"
-            else:
-                where_sql = f"WHERE {completed_recent_clause}"
-            params.append(completed_recent_from)
+            # Ограничение completed за 24 часа применяем только к общему рабочему списку.
+            # Для карточки конкретного аккаунта (account_id) показываем полную историю привязанных сделок.
+            if account_id is None:
+                completed_recent_from = now_utc() - timedelta(days=1)
+                completed_recent_clause = "(d.flow_status_code <> 'completed' OR COALESCE(d.completed_at, di.purchase_at, d.created_at) >= %s)"
+                if where_sql:
+                    where_sql = f"{where_sql} AND {completed_recent_clause}"
+                else:
+                    where_sql = f"WHERE {completed_recent_clause}"
+                params.append(completed_recent_from)
 
             total_row = q1(conn, f"""
                 SELECT COUNT(*)
