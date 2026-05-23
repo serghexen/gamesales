@@ -1018,6 +1018,7 @@ def mount_accounts_routes(
                     AND EXISTS (
                     SELECT 1
                     FROM app.v_account_slot_status ss
+                    JOIN app.slot_types st_gate ON st_gate.code = ss.slot_type_code
                     LEFT JOIN active_play_assignments apa
                       ON apa.account_id = ss.account_id
                      AND apa.slot_type_code = ss.slot_type_code
@@ -1025,7 +1026,7 @@ def mount_accounts_routes(
                       AND (
                         CASE
                           -- Для П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
-                          WHEN ss.mode = 'play'
+                          WHEN st_gate.name ILIKE 'П2%'
                             AND COALESCE(ss.capacity, 0) >= 2
                             AND COALESCE(apa.active_count, 0) = 1
                             AND COALESCE(apa.first_assigned_at, now()) > (now() - INTERVAL '2 months')
@@ -1143,7 +1144,7 @@ def mount_accounts_routes(
                     (
                       CASE
                         -- Для П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
-                        WHEN st.mode = 'play'
+                        WHEN st.name ILIKE 'П2%'
                           AND COALESCE(ss.capacity, 0) >= 2
                           AND COALESCE(apa.active_count, 0) = 1
                           AND COALESCE(apa.first_assigned_at, now()) > (now() - INTERVAL '2 months')
