@@ -57,6 +57,7 @@ function buildProps(overrides = {}) {
     formatDateTimeMinutes: (value) => String(value || ''),
     accountSlotReleaseLoading: false,
     releaseSlotAssignment: vi.fn(),
+    restoreSlotAssignment: vi.fn(),
     accountDealsError: '',
     accountDealsLoading: false,
     accountDeals: [],
@@ -272,6 +273,35 @@ describe('WorkAccountEditorModal', () => {
     })
 
     expect(wrapper.text()).toContain('Добавить срок подписки')
+  })
+
+  it('shows restore button for released slot assignment and calls restore handler', async () => {
+    const restoreSlotAssignment = vi.fn()
+    const wrapper = mount(WorkAccountEditorModal, {
+      props: buildProps({
+        accountModalMode: 'edit',
+        accountEditMode: 'view',
+        accountSlotAssignments: [{ assignment_id: 55 }],
+        sortedAccountSlotAssignments: [
+          {
+            assignment_id: 55,
+            slot_type_code: 'play_ps4',
+            released_at: '2026-05-20T10:00:00Z',
+            released_by: 'manager',
+            product_title: 'Game A',
+            customer_nickname: 'buyer',
+            assigned_at: '2026-03-20T10:00:00Z',
+          },
+        ],
+        restoreSlotAssignment,
+      }),
+      global: { stubs: { teleport: true } },
+    })
+
+    const restoreBtn = wrapper.findAll('button').find((btn) => btn.text().trim() === 'Вернуть')
+    expect(restoreBtn).toBeTruthy()
+    await restoreBtn.trigger('click')
+    expect(restoreSlotAssignment).toHaveBeenCalledWith(55)
   })
 
   it('shows quick product create in edit mode and passes edit target', async () => {

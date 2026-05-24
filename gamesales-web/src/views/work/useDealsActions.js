@@ -52,6 +52,14 @@ export function useDealsActions({
     return Number.isFinite(parsed) ? parsed : null
   }
 
+  // Для строковых полей сохраняем пустую строку как явный сигнал "очистить значение" на update.
+  function normalizeOptionalText(value, { keepEmpty = false } = {}) {
+    if (value === null || value === undefined) return null
+    const normalized = String(value).trim()
+    if (normalized) return normalized
+    return keepEmpty ? '' : null
+  }
+
   // Определяет конфликт версий сделки, когда запись уже изменил другой пользователь.
   function isDealVersionConflict(error) {
     const text = String(error?.message || '').toLowerCase()
@@ -81,6 +89,16 @@ export function useDealsActions({
     return parsed.toISOString()
   }
 
+  // Добавляет метку "Дубль" в комментарий новой сделки, если она создана через сценарий дубля.
+  function normalizeDealNotes(notes, { markAsDuplicate = false } = {}) {
+    const base = String(notes || '').trim()
+    if (!markAsDuplicate) return base || null
+    // Не дублируем метку, если она уже есть в комментарии.
+    if (/дубль/i.test(base)) return base || null
+    if (!base) return 'Дубль'
+    return `${base}\nДубль`
+  }
+
   // Проверяет системные даты при ручном редактировании: completed_at не должен быть раньше created_at.
   function validateManualSystemDates(deal) {
     if (!deal?.deal_id || !canEditSystemDates()) return null
@@ -99,13 +117,17 @@ export function useDealsActions({
     const dealTypeCode = deal.deal_type_code
     const draftSave = isDraftSave(saveAsDraft)
     const nextFlowStatus = draftSave ? 'draft' : (deal.flow_status_code || null)
+    // Для новой сделки метку дубля ставим и в черновике, чтобы при дальнейшем завершении она не терялась.
+    const shouldMarkDuplicate = !deal?.deal_id
+      && dealTypeCode === 'rental'
+      && Boolean(deal?.is_duplicate_flow)
     const payload = {
       deal_type_code: dealTypeCode,
       account_id: dealTypeCode === 'rental' ? normalizeOptionalInt(deal.account_id) : null,
       // В сделках используем единый идентификатор товара через product_id.
       product_id: normalizeOptionalInt(deal.product_id),
       customer_nickname: deal.customer_nickname || null,
-      order_number: deal.order_number || null,
+      order_number: normalizeOptionalText(deal.order_number, { keepEmpty: Boolean(deal?.deal_id) }),
       responsible_username: normalizeResponsible(responsible?.value),
       source_id: normalizeOptionalInt(deal.source_id),
       // Мессенджер храним отдельно от источника.
@@ -122,7 +144,7 @@ export function useDealsActions({
       product_link: deal.product_link || null,
       purchase_at: dealTypeCode === 'sale' ? null : toUtcDateTime(deal.purchase_at),
       slots_used: dealTypeCode === 'rental' ? 1 : 0,
-      notes: deal.notes || null,
+      notes: normalizeDealNotes(deal.notes, { markAsDuplicate: shouldMarkDuplicate }),
       flow_status_code: nextFlowStatus,
       // Для create продажи/шеринга принудительно отключаем возврат: его выставляют через статусы.
       is_refund: (dealTypeCode === 'sale' || dealTypeCode === 'rental')
@@ -197,6 +219,7 @@ export function useDealsActions({
       newDeal.product_link = ''
       newDeal.purchase_at = ''
       newDeal.notes = ''
+      newDeal.is_duplicate_flow = false
     } catch (e) {
       const mappedError = mapApiError(e?.message)
       dealError.value = mappedError

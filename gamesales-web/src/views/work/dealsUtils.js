@@ -20,6 +20,8 @@ export function createNewDealState() {
     purchase_at: '',
     slots_used: 1,
     notes: '',
+    // Флаг ставим при выборе дубля из списка занятых слотов.
+    is_duplicate_flow: false,
     is_refund: false,
   }
 }

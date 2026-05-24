@@ -15,12 +15,12 @@ function createHarness() {
   const dealAccountsForProductNew = ref([{ account_id: 10 }])
   const dealAccountsForProductEdit = ref([{ account_id: 20 }])
   const dealGameAssignmentsNew = ref([
-    { assignment_id: 1, slot_type_code: 'full', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
-    { assignment_id: 2, slot_type_code: 'full', released_at: null, assigned_at: '2025-12-15T00:00:00Z' },
-    { slot_type_code: 'full', released_at: '2026-01-01' },
+    { assignment_id: 1, account_id: 10, slot_type_code: 'full', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
+    { assignment_id: 2, account_id: 20, slot_type_code: 'full', released_at: null, assigned_at: '2025-11-15T00:00:00Z' },
+    { account_id: 10, slot_type_code: 'full', released_at: '2026-01-01' },
   ])
   const dealGameAssignmentsEdit = ref([
-    { slot_type_code: 'share', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
+    { account_id: 30, slot_type_code: 'share', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
   ])
 
   const state = useDealsViewState({
@@ -41,6 +41,8 @@ function createHarness() {
     editDeal,
     newDealProductSearch,
     editDealProductSearch,
+    dealGameAssignmentsNew,
+    dealGameAssignmentsEdit,
   }
 }
 
@@ -75,7 +77,7 @@ describe('useDealsViewState', () => {
     expect(h.state.dealAccountsForNew.value).toEqual([{ account_id: 10 }])
   })
 
-  it('filters assignments by slot, released flag and 3-month duplicate rule', () => {
+  it('filters assignments by slot, released flag and 2-month duplicate rule', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-02-25T00:00:00Z'))
     const h = createHarness()
@@ -83,10 +85,11 @@ describe('useDealsViewState', () => {
     h.editDeal.slot_type_code = 'share'
 
     expect(h.state.dealProductAssignmentsForSelectedSlotNew.value).toEqual([
-      { assignment_id: 1, slot_type_code: 'full', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
+      { assignment_id: 1, account_id: 10, slot_type_code: 'full', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
+      { assignment_id: 2, account_id: 20, slot_type_code: 'full', released_at: null, assigned_at: '2025-11-15T00:00:00Z' },
     ])
     expect(h.state.dealProductAssignmentsForSelectedSlotEdit.value).toEqual([
-      { slot_type_code: 'share', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
+      { account_id: 30, slot_type_code: 'share', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
     ])
     expect(h.state.hasAnyProductAssignmentsNew.value).toBe(true)
     expect(h.state.hasAnyProductAssignmentsEdit.value).toBe(true)
@@ -99,9 +102,37 @@ describe('useDealsViewState', () => {
     h.newDeal.slot_type_code = ' FULL '
     h.editDeal.slot_type_code = ' Share '
 
-    expect(h.state.dealProductAssignmentsForSelectedSlotNew.value.map((item) => item.assignment_id)).toEqual([1])
+    expect(h.state.dealProductAssignmentsForSelectedSlotNew.value.map((item) => item.assignment_id)).toEqual([1, 2])
     expect(h.state.dealProductAssignmentsForSelectedSlotEdit.value).toEqual([
-      { slot_type_code: 'share', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
+      { account_id: 30, slot_type_code: 'share', released_at: null, assigned_at: '2025-10-01T00:00:00Z' },
     ])
+  })
+
+  it('hides only locked account duplicates and keeps other accounts in the list', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-25T00:00:00Z'))
+    const h = createHarness()
+    h.newDeal.slot_type_code = 'full'
+    expect(h.state.dealProductAssignmentsForSelectedSlotNew.value.map((item) => item.assignment_id)).toEqual([1, 2])
+
+    // Имитируем свежий дубль на аккаунте 10: его скрываем, но аккаунт 20 должен остаться доступным.
+    h.dealGameAssignmentsNew.value = [
+      ...h.dealGameAssignmentsNew.value,
+      {
+        assignment_id: 4,
+        account_id: 10,
+        slot_type_code: 'full',
+        assigned_at: '2026-01-10T00:00:00Z',
+        released_at: null,
+      },
+      {
+        assignment_id: 3,
+        account_id: 10,
+        slot_type_code: 'full',
+        assigned_at: '2026-02-20T00:00:00Z',
+        released_at: '2026-02-21T00:00:00Z',
+      },
+    ]
+    expect(h.state.dealProductAssignmentsForSelectedSlotNew.value.map((item) => item.assignment_id)).toEqual([2])
   })
 })

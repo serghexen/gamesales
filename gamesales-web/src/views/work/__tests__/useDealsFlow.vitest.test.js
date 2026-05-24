@@ -20,6 +20,7 @@ function createHarness() {
     apiPost: vi.fn(),
     apiPut: vi.fn(),
     mapApiError: (m) => m || 'error',
+    requestDealConfirm: vi.fn().mockResolvedValue(true),
     isSlotTypeSupportedForProduct: () => true,
     slotTypes: ref([]),
     productsAll: ref([{ product_id: 55, type_code: 'game' }]),
@@ -242,6 +243,23 @@ describe('useDealsFlow', () => {
     expect(h.dealGameAssignmentsNew.value).toEqual([])
   })
 
+  it('loadDealProductAssignments preloads account labels for occupied slots list', async () => {
+    const h = createHarness()
+    h.productsAll.value = [{ product_id: 55, type_code: 'game' }]
+    h.newDeal.product_id = 55
+    h.apiGet.mockResolvedValueOnce([
+      { assignment_id: 1, account_id: 1734, slot_type_code: 'play_ps5' },
+      { assignment_id: 2, account_id: 1286, slot_type_code: 'play_ps5' },
+      { assignment_id: 3, account_id: 1734, slot_type_code: 'play_ps5' },
+    ])
+
+    await h.loadDealProductAssignments('new')
+    await Promise.resolve()
+
+    expect(h.dealGameAssignmentsNew.value).toHaveLength(3)
+    expect(h.loadAccountsAll).toHaveBeenCalledWith([1734, 1286])
+  })
+
   it('loadSubscriptionFreeProductIds returns only subscriptions with free selected slot', async () => {
     const h = createHarness()
     h.productsAll.value = [
@@ -368,5 +386,20 @@ describe('useDealsFlow', () => {
     await requestA
 
     expect(h.subscriptionTermsNew.value).toEqual([{ term_id: 200, account_id: 9, valid_until: '2027-01-01' }])
+  })
+
+  it('releaseSlotFromDeal marks new deal as duplicate flow for selected occupied slot', async () => {
+    const h = createHarness()
+    h.apiPost.mockResolvedValueOnce({ ok: true })
+    h.apiGet.mockResolvedValue([])
+
+    await h.releaseSlotFromDeal(
+      { assignment_id: 77, account_id: 1734, slot_type_code: 'play_ps4' },
+      'new',
+    )
+
+    expect(h.newDeal.is_duplicate_flow).toBe(true)
+    expect(h.newDeal.account_id).toBe(1734)
+    expect(h.newDeal.slot_type_code).toBe('play_ps4')
   })
 })

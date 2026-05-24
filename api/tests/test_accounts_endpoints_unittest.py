@@ -653,6 +653,7 @@ class AccountsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 200)
             self.assertTrue(any("active_play_assignments" in sql for sql in sql_collector))
+            self.assertTrue(any("recent_duplicate_locks" in sql for sql in sql_collector))
             self.assertTrue(any("INTERVAL '2 months'" in sql for sql in sql_collector))
             self.assertTrue(any("ILIKE 'П2%%'" in sql for sql in sql_collector))
 
@@ -735,6 +736,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json()[0]["slot_type_code"], "play_ps5")
             self.assertTrue(any("active_play_assignments" in sql for sql in sql_collector))
+            self.assertTrue(any("recent_duplicate_locks" in sql for sql in sql_collector))
             self.assertTrue(any("INTERVAL '2 months'" in sql for sql in sql_collector))
             self.assertTrue(any("ILIKE 'П2%%'" in sql for sql in sql_collector))
 
@@ -1119,6 +1121,55 @@ class AccountsEndpointsTests(unittest.TestCase):
         ):
             with self._client() as client:
                 res = client.post("/slot-assignments/901/release", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 409)
+
+    # Ручное восстановление игрового назначения слота должно возвращать слот в работу.
+    def test_restore_slot_assignment_allows_game_assignment(self):
+        script = [
+            {"one": (910, 7, "ps5_p1", "2026-05-10T10:00:00Z", None, "game")},
+            {"one": (1,)},
+            {"rowcount": 1},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post("/slot-assignments/910/restore", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
+
+    # Восстановление должно отклоняться, если по слоту больше нет свободного места.
+    def test_restore_slot_assignment_blocks_when_no_free_capacity(self):
+        script = [
+            {"one": (911, 7, "ps5_p1", "2026-05-10T10:00:00Z", None, "game")},
+            {"one": (0,)},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post("/slot-assignments/911/restore", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 409)
+
+    # Восстановление подписочного назначения вручную должно быть запрещено.
+    def test_restore_slot_assignment_blocks_subscription_assignment(self):
+        script = [
+            {"one": (912, 7, "ps5_p1", "2026-05-10T10:00:00Z", 777, "subscription")},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post("/slot-assignments/912/restore", headers=self._auth_headers(role="manager"))
             self.assertEqual(res.status_code, 409)
 
 

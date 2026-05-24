@@ -162,6 +162,7 @@
         :format-date-time-minutes="ctx.formatDateTimeMinutes"
         :account-slot-release-loading="ctx.accountSlotReleaseLoading"
         :release-slot-assignment="ctx.releaseSlotAssignment"
+        :restore-slot-assignment="ctx.restoreSlotAssignment"
         :account-deals-error="ctx.accountDealsError"
         :account-deals-loading="ctx.accountDealsLoading"
         :account-deals="ctx.accountDeals"

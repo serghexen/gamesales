@@ -32,6 +32,7 @@ function createDeps(overrides = {}) {
       product_link: '',
       purchase_at: '',
       notes: '',
+      is_duplicate_flow: false,
       is_refund: false,
     },
     editDeal: {
@@ -166,6 +167,55 @@ describe('useDealsActions', () => {
     expect(deps.apiPost.mock.calls[0][1].reserve_key).toBe('reserve1')
   })
 
+  it('createDeal appends "Дубль" to notes for duplicate rental flow', async () => {
+    const deps = createDeps()
+    deps.newDeal.deal_type_code = 'rental'
+    deps.newDeal.account_id = 15
+    deps.newDeal.product_id = 56
+    deps.newDeal.slot_type_code = 'share'
+    deps.newDeal.notes = 'Комментарий менеджеру'
+    deps.newDeal.is_duplicate_flow = true
+    const { createDeal } = useDealsActions(deps)
+
+    await createDeal()
+
+    expect(deps.apiPost).toHaveBeenCalledTimes(1)
+    expect(deps.apiPost.mock.calls[0][1].notes).toBe('Комментарий менеджеру\nДубль')
+  })
+
+  it('createDeal does not duplicate existing "Дубль" marker in notes', async () => {
+    const deps = createDeps()
+    deps.newDeal.deal_type_code = 'rental'
+    deps.newDeal.account_id = 15
+    deps.newDeal.product_id = 56
+    deps.newDeal.slot_type_code = 'share'
+    deps.newDeal.notes = 'Дубль'
+    deps.newDeal.is_duplicate_flow = true
+    const { createDeal } = useDealsActions(deps)
+
+    await createDeal()
+
+    expect(deps.apiPost).toHaveBeenCalledTimes(1)
+    expect(deps.apiPost.mock.calls[0][1].notes).toBe('Дубль')
+  })
+
+  it('createDealDraft keeps "Дубль" marker for duplicate rental flow', async () => {
+    const deps = createDeps()
+    deps.newDeal.deal_type_code = 'rental'
+    deps.newDeal.account_id = 15
+    deps.newDeal.product_id = 56
+    deps.newDeal.slot_type_code = 'share'
+    deps.newDeal.notes = 'Черновик'
+    deps.newDeal.is_duplicate_flow = true
+    const { createDealDraft } = useDealsActions(deps)
+
+    await createDealDraft()
+
+    expect(deps.apiPost).toHaveBeenCalledTimes(1)
+    expect(deps.apiPost.mock.calls[0][1].flow_status_code).toBe('draft')
+    expect(deps.apiPost.mock.calls[0][1].notes).toBe('Черновик\nДубль')
+  })
+
   it('createDealDraft allows empty required sale fields and sends draft status', async () => {
     const deps = createDeps()
     deps.newDeal.customer_nickname = ''
@@ -252,6 +302,17 @@ describe('useDealsActions', () => {
     expect(deps.apiPut.mock.calls[0][1].responsible_username).toBe('alice')
     expect(deps.apiPut.mock.calls[0][1].is_refund).toBe(false)
     expect(deps.apiPut.mock.calls[0][1].lock_version).toBe(7)
+  })
+
+  it('updateDeal sends empty order_number string when field is cleared', async () => {
+    const deps = createDeps()
+    deps.editDeal.order_number = '   '
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.apiPut).toHaveBeenCalledTimes(1)
+    expect(deps.apiPut.mock.calls[0][1].order_number).toBe('')
   })
 
   it('updateDeal sends is_refund for rental too', async () => {

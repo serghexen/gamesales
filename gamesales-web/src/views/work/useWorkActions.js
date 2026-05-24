@@ -191,6 +191,47 @@ export function useWorkActions({
     }
   }
 
+  // Возвращает ранее снятый слот и синхронизирует зависимые блоки интерфейса.
+  async function restoreSlotAssignment(assignmentId) {
+    if (!assignmentId) return
+    const accepted = typeof requestDealConfirm === 'function'
+      ? await requestDealConfirm({
+        title: 'Подтверждение',
+        message: 'Вернуть снятый слот?',
+        confirmText: 'Вернуть',
+        cancelText: 'Отмена',
+      })
+      : window.confirm('Вернуть снятый слот?')
+    if (!accepted) return
+    accountSlotReleaseLoading.value = true
+    try {
+      await apiPost(`/slot-assignments/${assignmentId}/restore`, {}, { token: auth.state.token })
+      if (editAccount.open && editAccount.account_id) {
+        await loadAccountSlotAssignments(editAccount.account_id)
+      }
+      if (editDeal.open && editDeal.account_id) {
+        await loadAccountSlotStatus('edit')
+        await loadDealAccountAssignments('edit')
+        await loadDealAccountsForProduct('edit')
+      }
+      if (showDealForm.value && newDeal.account_id) {
+        await loadAccountSlotStatus('new')
+        await loadDealAccountAssignments('new')
+        await loadDealAccountsForProduct('new')
+      }
+      if (editDeal.open) {
+        await loadDealProductAssignments('edit')
+      }
+      if (showDealForm.value) {
+        await loadDealProductAssignments('new')
+      }
+    } catch (e) {
+      dealError.value = mapApiError(e?.message)
+    } finally {
+      accountSlotReleaseLoading.value = false
+    }
+  }
+
   // Переключает сортировку таблицы аккаунтов внутри модалки товара.
   function sortProductAccounts(key) {
     const current = productAccountsSort.value
@@ -229,5 +270,6 @@ export function useWorkActions({
     onEditDealProductSearch,
     loadAccountSlotAssignments,
     releaseSlotAssignment,
+    restoreSlotAssignment,
   }
 }

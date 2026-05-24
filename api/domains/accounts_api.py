@@ -993,6 +993,25 @@ def mount_accounts_routes(
                     AND st.mode = 'play'
                   GROUP BY asa.account_id, asa.slot_type_code
                 ),
+                recent_duplicate_locks AS (
+                  SELECT
+                    asa.account_id,
+                    asa.slot_type_code,
+                    MAX(COALESCE(asa.assigned_at, now())) AS last_duplicate_assigned_at
+                  FROM app.account_slot_assignments asa
+                  JOIN app.slot_types st_dup ON st_dup.code = asa.slot_type_code
+                  WHERE st_dup.mode = 'play'
+                    AND COALESCE(asa.assigned_at, now()) > (now() - INTERVAL '2 months')
+                    AND EXISTS (
+                      SELECT 1
+                      FROM app.account_slot_assignments prev
+                      WHERE prev.account_id = asa.account_id
+                        AND prev.slot_type_code = asa.slot_type_code
+                        AND COALESCE(prev.assigned_at, now()) < COALESCE(asa.assigned_at, now())
+                        AND COALESCE(prev.released_at, 'infinity'::timestamptz) > COALESCE(asa.assigned_at, now())
+                    )
+                  GROUP BY asa.account_id, asa.slot_type_code
+                ),
                 base AS (
                   SELECT
                     a.account_id,
@@ -1022,9 +1041,16 @@ def mount_accounts_routes(
                     LEFT JOIN active_play_assignments apa
                       ON apa.account_id = ss.account_id
                      AND apa.slot_type_code = ss.slot_type_code
+                    LEFT JOIN recent_duplicate_locks rdl
+                      ON rdl.account_id = ss.account_id
+                     AND rdl.slot_type_code = ss.slot_type_code
                     WHERE ss.account_id = a.account_id
                       AND (
                         CASE
+                          -- Если дубль по этому методу был менее 2 месяцев назад, новый дубль временно блокируем.
+                          WHEN COALESCE(ss.capacity, 0) >= 2
+                            AND rdl.last_duplicate_assigned_at IS NOT NULL
+                          THEN 0
                           -- Для П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
                           WHEN st_gate.name ILIKE 'П2%%'
                             AND COALESCE(ss.capacity, 0) >= 2
@@ -1129,6 +1155,25 @@ def mount_accounts_routes(
                     AND stp.mode = 'play'
                   GROUP BY asa.account_id, asa.slot_type_code
                 ),
+                recent_duplicate_locks AS (
+                  SELECT
+                    asa.account_id,
+                    asa.slot_type_code,
+                    MAX(COALESCE(asa.assigned_at, now())) AS last_duplicate_assigned_at
+                  FROM app.account_slot_assignments asa
+                  JOIN app.slot_types st_dup ON st_dup.code = asa.slot_type_code
+                  WHERE st_dup.mode = 'play'
+                    AND COALESCE(asa.assigned_at, now()) > (now() - INTERVAL '2 months')
+                    AND EXISTS (
+                      SELECT 1
+                      FROM app.account_slot_assignments prev
+                      WHERE prev.account_id = asa.account_id
+                        AND prev.slot_type_code = asa.slot_type_code
+                        AND COALESCE(prev.assigned_at, now()) < COALESCE(asa.assigned_at, now())
+                        AND COALESCE(prev.released_at, 'infinity'::timestamptz) > COALESCE(asa.assigned_at, now())
+                    )
+                  GROUP BY asa.account_id, asa.slot_type_code
+                ),
                 base_accounts AS (
                   SELECT a.account_id
                   FROM app.accounts a
@@ -1143,6 +1188,10 @@ def mount_accounts_routes(
                   BOOL_OR(
                     (
                       CASE
+                        -- Если дубль по этому методу был менее 2 месяцев назад, новый дубль временно блокируем.
+                        WHEN COALESCE(ss.capacity, 0) >= 2
+                          AND rdl.last_duplicate_assigned_at IS NOT NULL
+                        THEN 0
                         -- Для П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
                         WHEN st.name ILIKE 'П2%%'
                           AND COALESCE(ss.capacity, 0) >= 2
@@ -1161,6 +1210,8 @@ def mount_accounts_routes(
                   ON ss.account_id = ba.account_id AND ss.slot_type_code = st.code
                 LEFT JOIN active_play_assignments apa
                   ON apa.account_id = ba.account_id AND apa.slot_type_code = st.code
+                LEFT JOIN recent_duplicate_locks rdl
+                  ON rdl.account_id = ba.account_id AND rdl.slot_type_code = st.code
                 GROUP BY st.code
                 ORDER BY st.code
                 """,
@@ -1433,6 +1484,63 @@ def mount_accounts_routes(
                 conn,
                 "UPDATE app.account_slot_assignments SET released_at=now(), released_by=%s WHERE assignment_id=%s",
                 (user.username, assignment_id),
+            )
+            conn.commit()
+        return {"ok": True}
+
+    @app.post("/slot-assignments/{assignment_id}/restore")
+    def restore_slot_assignment_api(assignment_id: int, user=Depends(get_current_user)):
+        with psycopg.connect(DB_DSN) as conn:
+            row = q1(
+                conn,
+                """
+                SELECT
+                  asa.assignment_id,
+                  asa.account_id,
+                  asa.slot_type_code,
+                  asa.released_at,
+                  asa.subscription_term_id,
+                  p.type_code
+                FROM app.account_slot_assignments asa
+                LEFT JOIN app.products p ON p.product_id = asa.product_id
+                WHERE asa.assignment_id=%s
+                """,
+                (assignment_id,),
+            )
+            if not row:
+                return {"ok": True}
+            # Для подписочных слотов восстановление вручную запрещаем: оно ломает сроковую модель.
+            subscription_term_id = row[4]
+            product_type_code = str(row[5] or "").strip().lower()
+            if subscription_term_id is not None or product_type_code == "subscription":
+                raise HTTPException(409, "subscription slot restore is not allowed")
+            # Если слот уже активен, операция идемпотентна.
+            if row[3] is None:
+                return {"ok": True}
+
+            account_id = int(row[1] or 0)
+            slot_type_code = str(row[2] or "").strip()
+            slot_row = q1(
+                conn,
+                """
+                SELECT free
+                FROM app.v_account_slot_status
+                WHERE account_id=%s AND slot_type_code=%s
+                """,
+                (account_id, slot_type_code),
+            )
+            free_slots = int((slot_row[0] if slot_row else 0) or 0)
+            if free_slots <= 0:
+                raise HTTPException(409, "Not enough free slots for selected slot type")
+
+            exec1(
+                conn,
+                """
+                UPDATE app.account_slot_assignments
+                SET released_at=NULL, released_by=NULL
+                WHERE assignment_id=%s
+                """,
+                (assignment_id,),
             )
             conn.commit()
         return {"ok": True}

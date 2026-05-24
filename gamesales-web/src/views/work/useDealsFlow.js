@@ -116,6 +116,7 @@ export function useDealsFlow({
   const dealAccountsRequestSeq = { new: 0, edit: 0 }
   const subscriptionTermsRequestSeq = { new: 0, edit: 0 }
   const availableSubscriptionItemsRequestSeq = { new: 0, edit: 0 }
+  const accountLabelBatchSize = 200
 
   // Проверяет, что ответ относится к актуально выбранным товару и слоту.
   function isSameDealSelection(target, { productId = null, slotTypeCode = null } = {}) {
@@ -134,6 +135,20 @@ export function useDealsFlow({
     const deal = isEdit ? editDeal : newDeal
     const directProductId = Number(deal?.product_id || 0) || null
     return { productId: directProductId }
+  }
+
+  // Догружает подписи аккаунтов для строк "занятых слотов", чтобы в таблице не показывать сырой account_id.
+  async function preloadAssignmentAccountLabels(assignments) {
+    if (typeof loadAccountsAll !== 'function') return
+    const ids = [...new Set((Array.isArray(assignments) ? assignments : [])
+      .map((item) => Number(item?.account_id || 0))
+      .filter((id) => id > 0))]
+    if (!ids.length) return
+    const tasks = []
+    for (let i = 0; i < ids.length; i += accountLabelBatchSize) {
+      tasks.push(loadAccountsAll(ids.slice(i, i + accountLabelBatchSize)))
+    }
+    await Promise.allSettled(tasks)
   }
 
   // Определяет, относится ли выбранный товар к подпискам.
@@ -484,8 +499,11 @@ export function useDealsFlow({
     try {
       // Загружаем назначения только по product-маршруту.
       const data = await apiGet(`/products/${productId}/slot-assignments`, { token: auth.state.token })
-      if (isEdit) dealGameAssignmentsEdit.value = data || []
-      else dealGameAssignmentsNew.value = data || []
+      const list = data || []
+      if (isEdit) dealGameAssignmentsEdit.value = list
+      else dealGameAssignmentsNew.value = list
+      // Подписи аккаунтов для списка занятых слотов грузим отдельно, без тяжелого /accounts?all=true.
+      void preloadAssignmentAccountLabels(list)
     } catch {
       if (isEdit) dealGameAssignmentsEdit.value = []
       else dealGameAssignmentsNew.value = []
@@ -581,6 +599,8 @@ export function useDealsFlow({
       const slotTypeCode = item.slot_type_code
       dealSlotAutoAssign.value = true
       if (target === 'edit') {
+        // Для редактирования не включаем метку дубля: она нужна только при создании новой сделки.
+        editDeal.is_duplicate_flow = false
         editDeal.account_id = accountId || ''
         editDeal.slot_type_code = slotTypeCode || ''
         await loadAccountSlotStatus('edit')
@@ -589,6 +609,8 @@ export function useDealsFlow({
         await loadDealProductAssignments('edit')
         await loadDealSlotAvailability('edit')
       } else {
+        // Выбор из списка "занятых слотов" означает сценарий дубля для новой сделки.
+        newDeal.is_duplicate_flow = true
         newDeal.account_id = accountId || ''
         newDeal.slot_type_code = slotTypeCode || ''
         await loadAccountSlotStatus('new')
@@ -747,6 +769,8 @@ export function useDealsFlow({
     // Для подписок на крестик сбрасываем связку товар+срок+аккаунт, чтобы выбрать заново.
     const resetSubscriptionChain = isSubscriptionProduct(Number(newDeal.product_id || 0))
     newDeal.product_id = ''
+    // При очистке товара начинаем заново и убираем признак дубля.
+    newDeal.is_duplicate_flow = false
     if (resetSubscriptionChain) {
       newDeal.subscription_term_id = ''
       newDeal.account_id = ''

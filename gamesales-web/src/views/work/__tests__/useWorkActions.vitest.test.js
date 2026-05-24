@@ -12,6 +12,7 @@ function createHarness() {
     auth,
     apiGet,
     apiPost,
+    requestDealConfirm: vi.fn().mockResolvedValue(true),
     mapApiError: (v) => String(v || ''),
     loadDeals: vi.fn(),
     loadAccounts: vi.fn(),
@@ -51,6 +52,7 @@ function createHarness() {
 
   return {
     apiGet,
+    apiPost,
     productSlotAssignments: deps.productSlotAssignments,
     flow: useWorkActions(deps),
   }
@@ -76,5 +78,12 @@ describe('useWorkActions', () => {
     expect(h.apiGet).toHaveBeenCalledTimes(1)
     expect(h.apiGet).toHaveBeenCalledWith('/products/55/slot-assignments', { token: 'token-1' })
     expect(h.productSlotAssignments.value).toEqual([])
+  })
+
+  it('restoreSlotAssignment calls restore endpoint', async () => {
+    const h = createHarness()
+    await h.flow.restoreSlotAssignment(77)
+    expect(h.apiPost).toHaveBeenCalledTimes(1)
+    expect(h.apiPost).toHaveBeenCalledWith('/slot-assignments/77/restore', {}, { token: 'token-1' })
   })
 })

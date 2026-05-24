@@ -131,6 +131,7 @@ export function useDealModalFlow({
       purchase_at: newDeal.purchase_at,
       slots_used: newDeal.slots_used,
       notes: newDeal.notes,
+      is_duplicate_flow: Boolean(newDeal.is_duplicate_flow),
       is_refund: newDeal.is_refund,
       responsible: newDealResponsible.value,
     }
@@ -216,6 +217,7 @@ export function useDealModalFlow({
     newDealCommentOpen.value = false
     if (editDealCommentOpen?.value !== undefined) editDealCommentOpen.value = false
     newDeal.is_refund = false
+    newDeal.is_duplicate_flow = false
     // Для новых сделок сразу подставляем ответственного из текущей сессии.
     newDealResponsible.value = getDefaultResponsibleName()
     newDealProductSearch.value = ''
@@ -275,6 +277,7 @@ export function useDealModalFlow({
       purchase_at: '',
       slots_used: 1,
       notes: '',
+      is_duplicate_flow: false,
       is_refund: false,
       responsible: getDefaultResponsibleName(),
     }
@@ -298,6 +301,7 @@ export function useDealModalFlow({
       purchase_at: newDeal.purchase_at,
       slots_used: newDeal.slots_used,
       notes: newDeal.notes,
+      is_duplicate_flow: Boolean(newDeal.is_duplicate_flow),
       is_refund: newDeal.is_refund,
       responsible: newDealResponsible.value,
     }
@@ -354,6 +358,7 @@ export function useDealModalFlow({
     newDeal.purchase_at = ''
     newDeal.slots_used = 1
     newDeal.notes = ''
+    newDeal.is_duplicate_flow = false
     newDeal.is_refund = false
     // После закрытия возвращаем дефолт для следующего открытия формы.
     newDealResponsible.value = getDefaultResponsibleName()

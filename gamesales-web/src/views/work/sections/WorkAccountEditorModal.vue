@@ -332,6 +332,15 @@
                                 >
                                   Снять
                                 </button>
+                                <button
+                                  v-else
+                                  class="ghost ghost--small"
+                                  type="button"
+                                  :disabled="accountSlotReleaseLoading"
+                                  @click="restoreSlotAssignment(s.assignment_id)"
+                                >
+                                  Вернуть
+                                </button>
                               </td>
                             </tr>
                           </tbody>
@@ -590,6 +599,7 @@ const props = defineProps([
   'formatDateTimeMinutes',
   'accountSlotReleaseLoading',
   'releaseSlotAssignment',
+  'restoreSlotAssignment',
   'accountDealsError',
   'accountDealsLoading',
   'accountDeals',

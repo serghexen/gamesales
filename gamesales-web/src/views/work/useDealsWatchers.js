@@ -54,7 +54,9 @@ export function useDealsWatchers({
 
   watch(
     () => newDeal.account_id,
-    () => {
+    (val, prev) => {
+      // Если аккаунт меняют руками, снимаем признак дубля.
+      if (!dealSlotAutoAssign.value && val !== prev) newDeal.is_duplicate_flow = false
       // При выборе аккаунта догружаем его секреты для блока "Данные аккаунта".
       ensureAccountSecretsLoaded(newDeal.account_id)
       loadAccountSlotStatus('new')
@@ -76,6 +78,8 @@ export function useDealsWatchers({
     () => newDeal.product_id,
     (val, prev) => {
       if (val === prev) return
+      // Смена товара означает новый сценарий, метка дубля больше не актуальна.
+      newDeal.is_duplicate_flow = false
       const productType = getProductTypeCode(val)
       // Если товар пришел из выбора "срок подписки", не сбрасываем уже выбранный срок и аккаунт.
       const keepSubscriptionChain = (
@@ -152,6 +156,8 @@ export function useDealsWatchers({
     () => newDeal.slot_type_code,
     (val, prev) => {
       if (dealSlotAutoAssign.value || val === prev) return
+      // Любая ручная смена слота сбрасывает признак дубля.
+      newDeal.is_duplicate_flow = false
       // При смене слота пересчитываем только подписки с реально свободным слотом.
       loadSubscriptionFreeProductIds('new', val)
       if (typeof loadAvailableSubscriptionItems === 'function') loadAvailableSubscriptionItems('new', val)
