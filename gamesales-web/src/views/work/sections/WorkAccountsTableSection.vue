@@ -139,7 +139,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 import { useResizableTableColumns } from '../useResizableTableColumns'
 
@@ -155,7 +155,7 @@ const { getColumnStyle, startResize } = useResizableTableColumns({
   ],
 })
 
-defineProps({
+const props = defineProps({
   sortedAccounts: { type: Array, required: true },
   accountFilters: { type: Object, required: true },
   activeAccountFilter: { type: String, default: '' },
@@ -173,4 +173,22 @@ defineProps({
   getReserveSecrets: { type: Function, required: true },
   ensureAccountSecretsLoaded: { type: Function, required: true },
 })
+
+// Догружает секреты для видимых аккаунтов сразу после рендера таблицы, чтобы колонка "Резерв" не зависела от hover.
+function preloadVisibleAccountSecrets(list) {
+  const ids = [...new Set((Array.isArray(list) ? list : [])
+    .map((item) => Number(item?.account_id || 0))
+    .filter((id) => id > 0))]
+  for (const accountId of ids) {
+    void Promise.resolve(props.ensureAccountSecretsLoaded(accountId)).catch(() => {})
+  }
+}
+
+watch(
+  () => props.sortedAccounts,
+  (list) => {
+    preloadVisibleAccountSecrets(list)
+  },
+  { immediate: true }
+)
 </script>
