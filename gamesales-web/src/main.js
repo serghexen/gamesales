@@ -5,6 +5,6 @@ import router from './router'
 // Добавляем версию в title вкладки, чтобы после релиза сразу видеть актуальную сборку.
 const rawAppVersion = String(import.meta.env.VITE_APP_VERSION || '').trim()
 const appVersion = rawAppVersion.replace(/^(\d+)\.(\d+)\.0$/, '$1.$2')
-document.title = appVersion ? `GameSales v${appVersion}` : 'GameSales'
+document.title = appVersion ? `AsatWork v${appVersion}` : 'AsatWork'
 
 createApp(App).use(router).mount('#app')
