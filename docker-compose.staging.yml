@@ -1,0 +1,95 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gamesales-postgres-staging
+    restart: unless-stopped
+    env_file: .env.staging
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:5433:5432"
+    mem_limit: 700m
+    cpus: "0.60"
+    volumes:
+      - pgdata_staging:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: ./api
+    container_name: gamesales-api-staging
+    restart: unless-stopped
+    env_file: .env.staging
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      TELEGRAM_API_URL: ${TELEGRAM_API_URL:-http://telegram-service:8082}
+      TELEGRAM_API_KEY: ${TELEGRAM_API_KEY}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
+      IMPORT_MAX_CONCURRENT_JOBS: ${IMPORT_MAX_CONCURRENT_JOBS:-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "18081:8000"
+    mem_limit: 450m
+    cpus: "0.70"
+
+  web:
+    build:
+      context: ./gamesales-web
+      args:
+        VITE_API_BASE: /api
+    container_name: gamesales-web-staging
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "18080:80"
+    mem_limit: 120m
+    cpus: "0.20"
+
+  queue-api:
+    build: ./notify-api
+    container_name: gamesales-queue-api-staging
+    restart: unless-stopped
+    env_file: .env.staging
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      QUEUE_API_KEY: ${QUEUE_API_KEY}
+    depends_on:
+      redis:
+        condition: service_started
+    mem_limit: 100m
+    cpus: "0.20"
+
+  telegram-service:
+    build: ./telegram-service
+    container_name: gamesales-telegram-service-staging
+    restart: unless-stopped
+    env_file: .env.staging
+    environment:
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_API_KEY: ${TELEGRAM_API_KEY}
+    mem_limit: 180m
+    cpus: "0.30"
+
+  redis:
+    image: redis:7-alpine
+    container_name: gamesales-redis-staging
+    restart: unless-stopped
+    command: ["redis-server"]
+    mem_limit: 100m
+    cpus: "0.20"
+
+volumes:
+  pgdata_staging:
