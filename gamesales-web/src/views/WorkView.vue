@@ -1083,19 +1083,42 @@ const editProductState = reactive({
 const dealFilters = reactive(createDealFiltersState())
 const dealShowCompleted = ref(false)
 
+// Приводит Date к строке YYYY-MM-DD для полей фильтра даты.
+function toInputDate(value) {
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+// Для admin/owner по умолчанию выставляет период "последние 24 часа" как диапазон дат.
+function applyPrivilegedDealsDatePreset() {
+  const role = normalizeRole(auth.state.role)
+  if (role !== 'admin' && role !== 'owner') return
+  if (String(dealFilters.purchase_from || '').trim() || String(dealFilters.purchase_to || '').trim()) return
+  const now = new Date()
+  const from = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  dealFilters.purchase_from = toInputDate(from)
+  dealFilters.purchase_to = toInputDate(now)
+}
+
 // Восстанавливает фильтры сделок из sessionStorage для текущего пользователя.
 function restoreDealFiltersFromSession() {
   const saved = readDealFiltersSession(auth.state.user)
-  if (!saved?.filters) return
-  dealFilters.search_q = String(saved.filters.search_q || '')
-  dealFilters.customer_q = String(saved.filters.customer_q || '')
-  dealFilters.responsible_q = String(saved.filters.responsible_q || '')
-  dealFilters.region_q = String(saved.filters.region_q || '')
-  dealFilters.status_q = String(saved.filters.status_q || '')
-  dealFilters.purchase_from = String(saved.filters.purchase_from || '')
-  dealFilters.purchase_to = String(saved.filters.purchase_to || '')
-  dealFilters.type_q = String(saved.filters.type_q || '')
-  dealShowCompleted.value = Boolean(saved.showCompleted)
+  if (saved?.filters) {
+    dealFilters.search_q = String(saved.filters.search_q || '')
+    dealFilters.customer_q = String(saved.filters.customer_q || '')
+    dealFilters.responsible_q = String(saved.filters.responsible_q || '')
+    dealFilters.region_q = String(saved.filters.region_q || '')
+    dealFilters.status_q = String(saved.filters.status_q || '')
+    dealFilters.purchase_from = String(saved.filters.purchase_from || '')
+    dealFilters.purchase_to = String(saved.filters.purchase_to || '')
+    dealFilters.type_q = String(saved.filters.type_q || '')
+    dealShowCompleted.value = Boolean(saved.showCompleted)
+  }
+  applyPrivilegedDealsDatePreset()
 }
 
 // Применяем сохраненные фильтры при открытии экрана и смене пользователя в сессии.

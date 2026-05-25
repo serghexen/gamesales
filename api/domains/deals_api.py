@@ -1408,9 +1408,10 @@ def mount_deals_routes(
                     where_sql = f"{where_sql} AND di.returned_at IS NULL"
                 else:
                     where_sql = "WHERE di.returned_at IS NULL"
-            # Ограничение completed за 24 часа применяем только к общему рабочему списку.
-            # Для карточки конкретного аккаунта (account_id) показываем полную историю привязанных сделок.
-            if account_id is None:
+            # Ограничение completed за 24 часа применяем только к manager/operator в общем списке.
+            # Для admin/owner и карточки конкретного аккаунта (account_id) оставляем полную историю.
+            should_limit_completed_recent = account_id is None and not can_view_refunds
+            if should_limit_completed_recent:
                 completed_recent_from = now_utc() - timedelta(days=1)
                 completed_recent_clause = "(d.flow_status_code <> 'completed' OR COALESCE(d.completed_at, di.purchase_at, d.created_at) >= %s)"
                 if where_sql:

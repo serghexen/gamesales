@@ -265,6 +265,28 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertTrue(any("di.returned_at IS NULL" in sql for sql in sql_collector))
             self.assertFalse(any("COALESCE(d.completed_at, di.purchase_at, d.created_at) >= %s" in sql for sql in sql_collector))
 
+    # Для admin/owner в общем списке не ограничиваем completed последними 24 часами.
+    def test_list_deals_admin_keeps_completed_history_without_recent_limit(self):
+        script = [
+            {"one": (0,)},  # total
+            {"all": []},  # rows
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/deals?page=1&page_size=20",
+                    headers=self._auth_headers(role="admin", username="admin"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertFalse(any("di.returned_at IS NULL" in sql for sql in sql_collector))
+            self.assertFalse(any("COALESCE(d.completed_at, di.purchase_at, d.created_at) >= %s" in sql for sql in sql_collector))
+
     # Валидация create_deal: тип сделки должен быть sale/rental.
     def test_create_deal_invalid_type(self):
         with (
