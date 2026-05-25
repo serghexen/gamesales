@@ -34,6 +34,18 @@ function buildProps(overrides = {}) {
 }
 
 describe('WorkProductsTableSection', () => {
+  it('renders products table inside horizontal scroll wrapper', () => {
+    const wrapper = mount(WorkProductsTableSection, {
+      props: buildProps({
+        sortedProducts: [{ product_id: 1 }],
+        pagedProducts: [{ product_id: 1, title: 'EA FC 26', type_code: 'game', platform_codes: ['ps5'] }],
+      }),
+    })
+
+    expect(wrapper.find('.products-table-wrap').exists()).toBe(true)
+    expect(wrapper.find('table.products-table').exists()).toBe(true)
+  })
+
   it('shows columns in order type, title, platform with expected widths', () => {
     localStorage.clear()
     const wrapper = mount(WorkProductsTableSection, {

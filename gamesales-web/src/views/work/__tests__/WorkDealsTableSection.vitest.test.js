@@ -48,6 +48,17 @@ function buildProps(overrides = {}) {
 }
 
 describe('WorkDealsTableSection', () => {
+  it('renders deals table inside horizontal scroll wrapper', () => {
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        sortedDeals: [{ deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A' }],
+      }),
+    })
+
+    expect(wrapper.find('.deals-table-wrap').exists()).toBe(true)
+    expect(wrapper.find('table.deals-table').exists()).toBe(true)
+  })
+
   it('shows created/completed timestamps in completed list mode', () => {
     const wrapper = mount(WorkDealsTableSection, {
       props: buildProps({

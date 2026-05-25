@@ -26,6 +26,19 @@ function buildProps(overrides = {}) {
 }
 
 describe('WorkAccountsTableSection', () => {
+  it('renders accounts table inside horizontal scroll wrapper', async () => {
+    const wrapper = mount(WorkAccountsTableSection, {
+      props: buildProps({
+        sortedAccounts: [{ account_id: 5, login_full: 'a@mail.com' }],
+      }),
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.accounts-table-wrap').exists()).toBe(true)
+    expect(wrapper.find('table.accounts-table').exists()).toBe(true)
+  })
+
   it('preloads secrets for visible accounts on mount', async () => {
     const ensureAccountSecretsLoaded = vi.fn().mockResolvedValue(undefined)
     const wrapper = mount(WorkAccountsTableSection, {

@@ -1,5 +1,5 @@
 <template>
-  <div class="panel__head">
+  <div class="panel__head panel__head--deals">
     <div class="panel__head-col">
       <div class="deal-head-row">
         <div class="toolbar-actions toolbar-actions--deal-create">

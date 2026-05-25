@@ -1,13 +1,14 @@
 <template>
-  <table v-if="sortedProducts.length" ref="tableEl" class="table table--compact">
-    <colgroup>
-      <col :style="getColumnStyle('type')" />
-      <col :style="getColumnStyle('title')" />
-      <col :style="getColumnStyle('platform')" />
-    </colgroup>
-    <thead>
-      <tr>
-        <th class="product-col-type">
+  <div v-if="sortedProducts.length" class="products-table-wrap">
+    <table ref="tableEl" class="table table--compact products-table">
+      <colgroup>
+        <col :style="getColumnStyle('type')" />
+        <col :style="getColumnStyle('title')" />
+        <col :style="getColumnStyle('platform')" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="product-col-type">
           <span class="th-title th-title--filter">
             Тип
             <span class="th-actions">
@@ -57,8 +58,8 @@
             title="Потяните для изменения ширины"
             @mousedown.stop.prevent="startResize($event, 'type')"
           />
-        </th>
-        <th class="product-col-title">
+          </th>
+          <th class="product-col-title">
           <span class="th-title th-title--filter">
             Товар
             <span class="th-actions">
@@ -104,8 +105,8 @@
             title="Потяните для изменения ширины"
             @mousedown.stop.prevent="startResize($event, 'title')"
           />
-        </th>
-        <th class="product-col-platform">
+          </th>
+          <th class="product-col-platform">
           <span class="th-title th-title--filter">
             Платформа
             <span class="th-actions">
@@ -144,17 +145,18 @@
             <button class="ghost ghost--small" type="button" @click="applyProductFilter('platform')">Применить</button>
             <button class="ghost ghost--small" type="button" @click="resetProductFilter('platform')">Сбросить</button>
           </div>
-        </th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr v-for="g in pagedProducts" :key="g.product_id" class="clickable-row" @click="openProductAccounts(g)">
-        <td class="product-col-type">{{ formatTypeLabel(g.type_code) }}</td>
-        <td class="product-col-title">{{ g.title }}</td>
-        <td class="product-col-platform">{{ formatProductPlatforms(g.platform_codes) }}</td>
-      </tr>
-    </tbody>
-  </table>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="g in pagedProducts" :key="g.product_id" class="clickable-row" @click="openProductAccounts(g)">
+          <td class="product-col-type">{{ formatTypeLabel(g.type_code) }}</td>
+          <td class="product-col-title">{{ g.title }}</td>
+          <td class="product-col-platform">{{ formatProductPlatforms(g.platform_codes) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
   <p v-else class="muted">Пока нет товаров.</p>
 </template>
 

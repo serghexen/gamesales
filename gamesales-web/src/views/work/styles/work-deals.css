@@ -123,3 +123,122 @@
 .work-page .toolbar-actions--deal-create {
   flex: 0 0 auto;
 }
+
+.work-page .deals-table-wrap {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .work-page .panel__head--deals {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .work-page .panel__head--deals > .toolbar-actions {
+    width: 100%;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+
+  .work-page .deal-head-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .work-page .toolbar-actions--deal-create {
+    width: 100%;
+    gap: 10px;
+  }
+
+  .work-page .toolbar-actions--deal-create .deal-create-btn {
+    flex: 1 1 calc(50% - 5px);
+    min-width: 0;
+  }
+
+  .work-page .toolbar-actions--deal-search {
+    flex: 1 1 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .work-page .switch-wrap {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    padding-right: 0;
+  }
+
+  .work-page .switch-label {
+    line-height: 1.2;
+  }
+
+  .work-page .deals-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+
+  .work-page .deals-table {
+    width: max(100%, 1420px);
+    table-layout: auto;
+  }
+
+  .work-page .deals-table col {
+    width: auto !important;
+  }
+
+  .work-page .deals-table .table-col-resizer {
+    display: none;
+  }
+
+  .work-page .deals-table th {
+    word-break: normal;
+    overflow-wrap: normal;
+    white-space: normal;
+  }
+
+  .work-page .deals-table td {
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
+
+  .work-page .deals-table th.deal-col-type,
+  .work-page .deals-table td.deal-col-type {
+    min-width: 96px;
+  }
+
+  .work-page .deals-table th.deal-col-customer,
+  .work-page .deals-table td.deal-col-customer {
+    min-width: 250px;
+  }
+
+  .work-page .deals-table th.deal-col-region,
+  .work-page .deals-table td.deal-col-region {
+    min-width: 240px;
+  }
+
+  .work-page .deals-table th.deal-col-date,
+  .work-page .deals-table td.deal-col-date {
+    min-width: 190px;
+  }
+
+  .work-page .deals-table th.deal-col-status,
+  .work-page .deals-table td.deal-col-status {
+    min-width: 170px;
+  }
+
+  .work-page .deals-table th.deal-col-responsible,
+  .work-page .deals-table td.deal-col-responsible {
+    min-width: 170px;
+  }
+
+  .work-page .deals-table th.deal-col-action,
+  .work-page .deals-table td.deal-col-action {
+    min-width: 150px;
+  }
+
+  .work-page .deals-table .deal-col-action,
+  .work-page .deals-table .mini-btn {
+    white-space: nowrap;
+  }
+}

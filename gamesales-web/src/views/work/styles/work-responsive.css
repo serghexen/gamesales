@@ -44,6 +44,162 @@
   .work-page .catalog-grid {
     grid-template-columns: 1fr;
   }
+
+  .work-page .deals-table-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
+  }
+
+  .work-page .table.deals-table {
+    width: max-content !important;
+    min-width: 1420px !important;
+    table-layout: auto !important;
+  }
+
+  .work-page .table.deals-table col {
+    width: auto !important;
+  }
+
+  .work-page .table.deals-table .table-col-resizer {
+    display: none;
+  }
+
+  .work-page .table.deals-table th,
+  .work-page .table.deals-table td {
+    word-break: normal !important;
+  }
+
+  .work-page .table.deals-table th {
+    white-space: nowrap;
+  }
+
+  .work-page .table.deals-table th.deal-col-type,
+  .work-page .table.deals-table td.deal-col-type {
+    min-width: 120px !important;
+  }
+
+  .work-page .table.deals-table th.deal-col-customer,
+  .work-page .table.deals-table td.deal-col-customer {
+    min-width: 280px !important;
+  }
+
+  .work-page .table.deals-table th.deal-col-region,
+  .work-page .table.deals-table td.deal-col-region {
+    min-width: 260px !important;
+  }
+
+  .work-page .table.deals-table th.deal-col-date,
+  .work-page .table.deals-table td.deal-col-date {
+    min-width: 210px !important;
+  }
+
+  .work-page .table.deals-table th.deal-col-status,
+  .work-page .table.deals-table td.deal-col-status {
+    min-width: 180px !important;
+  }
+
+  .work-page .table.deals-table th.deal-col-responsible,
+  .work-page .table.deals-table td.deal-col-responsible {
+    min-width: 180px !important;
+  }
+
+  .work-page .table.deals-table th.deal-col-action,
+  .work-page .table.deals-table td.deal-col-action {
+    min-width: 160px !important;
+  }
+
+  .work-page .accounts-table-wrap,
+  .work-page .products-table-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
+  }
+
+  .work-page .table.accounts-table {
+    width: max-content !important;
+    min-width: 980px !important;
+    table-layout: auto !important;
+  }
+
+  .work-page .table.products-table {
+    width: max-content !important;
+    min-width: 940px !important;
+    table-layout: auto !important;
+  }
+
+  .work-page .table.accounts-table col,
+  .work-page .table.products-table col {
+    width: auto !important;
+  }
+
+  .work-page .table.accounts-table .table-col-resizer,
+  .work-page .table.products-table .table-col-resizer {
+    display: none;
+  }
+
+  .work-page .table.accounts-table th,
+  .work-page .table.accounts-table td,
+  .work-page .table.products-table th,
+  .work-page .table.products-table td {
+    word-break: normal !important;
+  }
+
+  .work-page .table.accounts-table th,
+  .work-page .table.products-table th {
+    white-space: nowrap;
+  }
+
+  .work-page .table.accounts-table th.cell--account,
+  .work-page .table.accounts-table td.cell--account {
+    min-width: 260px !important;
+  }
+
+  .work-page .table.accounts-table th.account-col-products,
+  .work-page .table.accounts-table td.account-col-products {
+    min-width: 320px !important;
+  }
+
+  .work-page .table.accounts-table th.account-col-slots,
+  .work-page .table.accounts-table td.account-col-slots {
+    min-width: 220px !important;
+  }
+
+  .work-page .table.accounts-table th.account-col-reserve,
+  .work-page .table.accounts-table td.account-col-reserve {
+    min-width: 200px !important;
+  }
+
+  .work-page .table.products-table th.product-col-type,
+  .work-page .table.products-table td.product-col-type {
+    min-width: 180px !important;
+  }
+
+  .work-page .table.products-table th.product-col-title,
+  .work-page .table.products-table td.product-col-title {
+    min-width: 520px !important;
+  }
+
+  .work-page .table.products-table th.product-col-platform,
+  .work-page .table.products-table td.product-col-platform {
+    min-width: 240px !important;
+  }
+
+  .work-page .pager {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    padding-bottom: 4px;
+    white-space: nowrap;
+  }
+
+  .work-page .pager > * {
+    flex: 0 0 auto;
+  }
 }
 
 @media (max-width: 1100px) {

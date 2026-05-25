@@ -1,5 +1,10 @@
 <template>
-  <table ref="tableEl" class="table" :class="{ 'table--completed': dealShowCompleted, 'table--pending': !dealShowCompleted }">
+  <div class="deals-table-wrap">
+    <table
+      ref="tableEl"
+      class="table deals-table"
+      :class="{ 'table--completed': dealShowCompleted, 'table--pending': !dealShowCompleted }"
+    >
     <colgroup>
       <col :style="getColumnStyle('type')" />
       <col :style="getColumnStyle('customer')" />
@@ -381,7 +386,8 @@
         <td :colspan="emptyColspan" class="muted">Пока нет сделок.</td>
       </tr>
     </tbody>
-  </table>
+    </table>
+  </div>
   <teleport to="body">
     <div ref="coinsContainerRef" class="deal-complete-coins-container" aria-hidden="true"></div>
   </teleport>

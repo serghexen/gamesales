@@ -1,6 +1,6 @@
 <template>
-  <div class="panel__head">
-    <div>
+  <div class="panel__head panel__head--accounts">
+    <div class="account-head-primary">
       <div class="account-head-row">
         <div class="toolbar-actions toolbar-actions--account-create">
           <button class="deal-create-btn" type="button" @click="openCreateAccountModal" aria-label="Новый аккаунт" title="Новый аккаунт">
@@ -39,7 +39,7 @@
         </div>
       </div>
     </div>
-    <div class="toolbar-actions">
+    <div class="toolbar-actions toolbar-actions--account-tools">
       <button
         class="account-import-btn account-import-btn--accounts"
         type="button"
@@ -85,8 +85,8 @@
           </svg>
         </span>
       </button>
+      </div>
     </div>
-  </div>
 </template>
 
 <script setup>

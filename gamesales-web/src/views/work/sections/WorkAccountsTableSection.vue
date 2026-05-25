@@ -1,14 +1,15 @@
 <template>
-  <table v-if="sortedAccounts.length" ref="tableEl" class="table table--compact">
-    <colgroup>
-      <col :style="getColumnStyle('login')" />
-      <col :style="getColumnStyle('products')" />
-      <col :style="getColumnStyle('slots')" />
-      <col :style="getColumnStyle('reserve')" />
-    </colgroup>
-    <thead>
-      <tr>
-        <th class="cell--account">
+  <div v-if="sortedAccounts.length" class="accounts-table-wrap">
+    <table ref="tableEl" class="table table--compact accounts-table">
+      <colgroup>
+        <col :style="getColumnStyle('login')" />
+        <col :style="getColumnStyle('products')" />
+        <col :style="getColumnStyle('slots')" />
+        <col :style="getColumnStyle('reserve')" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="cell--account">
           <span class="th-title th-title--filter">
             Почта
             <span class="th-actions">
@@ -54,8 +55,8 @@
             title="Потяните для изменения ширины"
             @mousedown.stop.prevent="startResize($event, 'login')"
           />
-        </th>
-        <th class="account-col-products">
+          </th>
+          <th class="account-col-products">
           <span class="th-title th-title--filter">
             Товары
             <span class="th-actions">
@@ -101,40 +102,41 @@
             title="Потяните для изменения ширины"
             @mousedown.stop.prevent="startResize($event, 'products')"
           />
-        </th>
-        <th class="account-col-slots">
-          Слоты
-          <button
-            class="table-col-resizer"
-            type="button"
-            aria-label="Изменить ширину колонки Слоты"
-            title="Потяните для изменения ширины"
-            @mousedown.stop.prevent="startResize($event, 'slots')"
-          />
-        </th>
-        <th class="account-col-reserve">Резерв</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr v-for="a in sortedAccounts" :key="a.account_id" class="clickable-row" @click="startEditAccount(a)">
-        <td class="cell--account">{{ a.login_full || '—' }}</td>
-        <td>{{ formatAccountProductsLine(a) }}</td>
-        <td class="cell--slots">
-          <span v-if="!getAccountSlotStatusList(a).length" class="slot-line">—</span>
-          <span v-for="s in getAccountSlotStatusList(a)" :key="s.slot_type_code" class="slot-line">
-            {{ formatAccountSlotStatusLine(s) }}
-          </span>
-        </td>
-        <td
-          class="cell--selectable"
-          @click.stop
-          @mouseenter="ensureAccountSecretsLoaded(a.account_id)"
-        >
-          {{ formatSecret(getReserveSecrets(a.account_id)) }}
-        </td>
-      </tr>
-    </tbody>
-  </table>
+          </th>
+          <th class="account-col-slots">
+            Слоты
+            <button
+              class="table-col-resizer"
+              type="button"
+              aria-label="Изменить ширину колонки Слоты"
+              title="Потяните для изменения ширины"
+              @mousedown.stop.prevent="startResize($event, 'slots')"
+            />
+          </th>
+          <th class="account-col-reserve">Резерв</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="a in sortedAccounts" :key="a.account_id" class="clickable-row" @click="startEditAccount(a)">
+          <td class="cell--account">{{ a.login_full || '—' }}</td>
+          <td class="account-col-products">{{ formatAccountProductsLine(a) }}</td>
+          <td class="cell--slots account-col-slots">
+            <span v-if="!getAccountSlotStatusList(a).length" class="slot-line">—</span>
+            <span v-for="s in getAccountSlotStatusList(a)" :key="s.slot_type_code" class="slot-line">
+              {{ formatAccountSlotStatusLine(s) }}
+            </span>
+          </td>
+          <td
+            class="cell--selectable account-col-reserve"
+            @click.stop
+            @mouseenter="ensureAccountSecretsLoaded(a.account_id)"
+          >
+            {{ formatSecret(getReserveSecrets(a.account_id)) }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
   <p v-else class="muted">Пока нет аккаунтов.</p>
 </template>
 

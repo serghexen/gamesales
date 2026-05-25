@@ -9,6 +9,15 @@
   flex: 0 0 auto;
 }
 
+.work-page .toolbar-actions--account-tools {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.work-page .account-head-primary {
+  min-width: 0;
+}
+
 .work-page .toolbar-actions--account-search {
   flex: 0 0 360px;
   max-width: 360px;
@@ -109,6 +118,63 @@
   align-items: center;
   gap: 6px;
   white-space: nowrap;
+}
+
+.work-page .accounts-table-wrap {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .work-page .panel__head--accounts {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 10px;
+    row-gap: 10px;
+    align-items: start;
+  }
+
+  .work-page .account-head-primary {
+    grid-column: 1 / 2;
+  }
+
+  .work-page .toolbar-actions--account-tools {
+    grid-column: 2 / 3;
+    grid-row: 1;
+    margin-left: 0;
+    align-self: center;
+  }
+
+  .work-page .account-head-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .work-page .toolbar-actions--account-create {
+    order: 1;
+  }
+
+  .work-page .toolbar-actions--account-tools {
+    order: 2;
+    margin-left: 0;
+  }
+
+  .work-page .toolbar-actions--account-search {
+    order: 2;
+    flex: 1 1 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .work-page .accounts-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+
+  .work-page .accounts-table {
+    width: max(100%, 840px);
+    table-layout: auto;
+  }
 }
 
 @media (max-width: 720px) {
