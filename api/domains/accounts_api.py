@@ -1432,6 +1432,8 @@ def mount_accounts_routes(
                 LEFT JOIN app.customers c ON c.customer_id = asa.customer_id
                 LEFT JOIN app.products p_id ON p_id.product_id = asa.product_id
                 WHERE asa.product_id=%s
+                  -- В списке дублей не показываем деактивированные аккаунты.
+                  AND COALESCE(a.is_deactivated, FALSE) IS NOT TRUE
                 ORDER BY asa.released_at IS NULL DESC, asa.assigned_at DESC
                 """,
                 (product_id,),

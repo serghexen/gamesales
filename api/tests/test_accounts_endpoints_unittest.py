@@ -802,6 +802,28 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), [])
 
+    # В список дублей не должны попадать деактивированные аккаунты.
+    def test_list_product_slot_assignments_excludes_deactivated_accounts(self):
+        script = [
+            {"one": (1,)},
+            {"all": []},
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/products/55/slot-assignments",
+                    headers=self._auth_headers(role="manager"),
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), [])
+            self.assertTrue(any("is_deactivated" in sql for sql in sql_collector))
+
     # Product endpoint больше не включает legacy сделки без product_id.
     def test_list_product_accounts_ignores_legacy_without_product_id(self):
         script = [
