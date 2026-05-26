@@ -12,6 +12,7 @@ export function createNewDealState() {
     slot_type_code: '',
     subscription_term_id: '',
     reserve_key: '',
+    duplicate_assignment_id: '',
     price: 0,
     purchase_cost: 0,
     login: '',
@@ -45,6 +46,7 @@ export function createEditDealState() {
     slot_type_code: '',
     subscription_term_id: '',
     reserve_key: '',
+    duplicate_assignment_id: '',
     price: 0,
     purchase_cost: 0,
     login: '',
@@ -54,6 +56,8 @@ export function createEditDealState() {
     slots_used: 1,
     notes: '',
     flow_status_code: '',
+    // Флаг дубля нужен и в edit, чтобы при принудительном дубле пометка ушла в комментарий.
+    is_duplicate_flow: false,
     is_refund: false,
   }
 }

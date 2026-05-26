@@ -61,6 +61,7 @@ function buildProps(overrides = {}) {
     accountDealsError: '',
     accountDealsLoading: false,
     accountDeals: [],
+    startEditDeal: vi.fn(),
     getDealProductTitleTooltip: () => '',
     getDealProductTitleDisplay: () => '',
     formatDate: (value) => String(value || ''),
@@ -302,6 +303,35 @@ describe('WorkAccountEditorModal', () => {
     expect(restoreBtn).toBeTruthy()
     await restoreBtn.trigger('click')
     expect(restoreSlotAssignment).toHaveBeenCalledWith(55)
+  })
+
+  it('opens deal editor when user clicks deal row in account modal', async () => {
+    const startEditDeal = vi.fn()
+    const wrapper = mount(WorkAccountEditorModal, {
+      props: buildProps({
+        accountModalMode: 'edit',
+        accountEditMode: 'view',
+        accountDeals: [
+          {
+            deal_id: 123,
+            product_id: 77,
+            customer_nickname: 'buyer',
+            product_title: 'Game',
+            deal_type: 'Шеринг',
+            flow_status: 'Завершен',
+            purchase_at: '2026-05-20T10:00:00Z',
+          },
+        ],
+        startEditDeal,
+      }),
+      global: { stubs: { teleport: true } },
+    })
+
+    const row = wrapper.find('tr.table-row--deal-open')
+    expect(row.exists()).toBe(true)
+    await row.trigger('click')
+    expect(startEditDeal).toHaveBeenCalledTimes(1)
+    expect(startEditDeal).toHaveBeenCalledWith(expect.objectContaining({ deal_id: 123 }))
   })
 
   it('shows quick product create in edit mode and passes edit target', async () => {

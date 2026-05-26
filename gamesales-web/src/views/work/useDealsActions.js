@@ -117,10 +117,8 @@ export function useDealsActions({
     const dealTypeCode = deal.deal_type_code
     const draftSave = isDraftSave(saveAsDraft)
     const nextFlowStatus = draftSave ? 'draft' : (deal.flow_status_code || null)
-    // Для новой сделки метку дубля ставим и в черновике, чтобы при дальнейшем завершении она не терялась.
-    const shouldMarkDuplicate = !deal?.deal_id
-      && dealTypeCode === 'rental'
-      && Boolean(deal?.is_duplicate_flow)
+    // Метку дубля ставим и при создании, и при редактировании, если включен сценарий дубля.
+    const shouldMarkDuplicate = dealTypeCode === 'rental' && Boolean(deal?.is_duplicate_flow)
     const payload = {
       deal_type_code: dealTypeCode,
       account_id: dealTypeCode === 'rental' ? normalizeOptionalInt(deal.account_id) : null,
@@ -137,6 +135,8 @@ export function useDealsActions({
       // Для подписочного шеринга сохраняем выбранный срок подписки как отдельный id.
       subscription_term_id: dealTypeCode === 'rental' ? normalizeOptionalInt(deal.subscription_term_id) : null,
       reserve_key: dealTypeCode === 'rental' ? (deal.reserve_key || null) : null,
+      // Для принудительного дубля передаем id выбранного назначения, которое нужно снять при сохранении.
+      duplicate_assignment_id: dealTypeCode === 'rental' ? normalizeOptionalInt(deal.duplicate_assignment_id) : null,
       price: deal.price || 0,
       purchase_cost: deal.purchase_cost || 0,
       login: deal.login || null,
@@ -220,6 +220,7 @@ export function useDealsActions({
       newDeal.purchase_at = ''
       newDeal.notes = ''
       newDeal.is_duplicate_flow = false
+      newDeal.duplicate_assignment_id = ''
     } catch (e) {
       const mappedError = mapApiError(e?.message)
       dealError.value = mappedError

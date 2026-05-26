@@ -168,15 +168,13 @@
                                   {{ a.login_full || a.account_id }}
                                 </option>
                               </select>
+                              <div v-if="canForceEditDuplicate" class="field field--inline-actions">
+                                <button class="comment-toggle" type="button" @click="forceEditDuplicateMode = !forceEditDuplicateMode">
+                                  {{ forceEditDuplicateMode ? 'Скрыть дубли' : 'Сделать дубль' }}
+                                </button>
+                              </div>
                               <div
-                                v-if="dealEditMode !== 'view'
-                                  && !dealAccountsForProductLoading
-                                  && !isEditRentalSubscriptionMode
-                                  && editDeal.slot_type_code
-                                  && !editDeal.account_id
-                                  && !isDealSlotTypeUnsupported('edit')
-                                  && editDeal.product_id
-                                  && !hasFreeDealSlots('edit')"
+                                v-if="shouldShowEditDuplicateList"
                                 :class="[
                                   'quick-create',
                                   { 'quick-create--plain': isEditRentalSubscriptionMode || !hasAnyProductAssignmentsEdit || !dealProductAssignmentsForSelectedSlotEdit.length }
@@ -1005,14 +1003,13 @@
                               {{ a.login_full || a.account_id }}
                             </option>
                           </select>
+                          <div v-if="canForceNewDuplicate" class="field field--inline-actions">
+                            <button class="comment-toggle" type="button" @click="forceNewDuplicateMode = !forceNewDuplicateMode">
+                              {{ forceNewDuplicateMode ? 'Скрыть дубли' : 'Сделать дубль' }}
+                            </button>
+                          </div>
                           <div
-                            v-if="!dealAccountsForProductLoading
-                              && !isNewRentalSubscriptionMode
-                              && newDeal.slot_type_code
-                              && !newDeal.account_id
-                              && !isDealSlotTypeUnsupported('new')
-                              && newDeal.product_id
-                              && !hasFreeDealSlots('new')"
+                            v-if="shouldShowNewDuplicateList"
                             :class="[
                               'quick-create',
                               { 'quick-create--plain': isNewRentalSubscriptionMode || !hasAnyProductAssignmentsNew || !dealProductAssignmentsForSelectedSlotNew.length }
@@ -1708,6 +1705,8 @@ const editDealAccountDetailsLoading = ref(false)
 const newDealAccountDetailsLoading = ref(false)
 const copiedSaleLinkKey = ref('')
 const copiedSharingFieldKey = ref('')
+const forceNewDuplicateMode = ref(false)
+const forceEditDuplicateMode = ref(false)
 let copiedSaleLinkTimerId = 0
 let copiedSharingFieldTimerId = 0
 
@@ -1739,6 +1738,55 @@ const showNewDealProductSearch = computed(() => {
   return !(newDeal.value?.deal_type_code === 'rental'
     && newDealProductTypeFilter.value === 'game'
     && Boolean(newDeal.value?.product_id))
+})
+
+// Базовые условия для блока дублей в создании шеринга.
+const canShowNewDuplicateArea = computed(() => {
+  return !dealAccountsForProductLoading.value
+    && !isNewRentalSubscriptionMode.value
+    && Boolean(newDeal.value?.slot_type_code)
+    && !newDeal.value?.account_id
+    && !isDealSlotTypeUnsupported.value?.('new')
+    && Boolean(newDeal.value?.product_id)
+})
+
+// Базовые условия для блока дублей в редактировании шеринга.
+const canShowEditDuplicateArea = computed(() => {
+  return dealEditMode.value !== 'view'
+    && !dealAccountsForProductLoading.value
+    && !isEditRentalSubscriptionMode.value
+    && Boolean(editDeal.value?.slot_type_code)
+    && !editDeal.value?.account_id
+    && !isDealSlotTypeUnsupported.value?.('edit')
+    && Boolean(editDeal.value?.product_id)
+})
+
+// Флаг доступности принудительного дубля в создании: показываем кнопку, когда есть свободные слоты и есть кандидаты дубля.
+const canForceNewDuplicate = computed(() => {
+  return canShowNewDuplicateArea.value
+    && hasFreeDealSlots.value('new')
+    && Array.isArray(dealProductAssignmentsForSelectedSlotNew.value)
+    && dealProductAssignmentsForSelectedSlotNew.value.length > 0
+})
+
+// Флаг доступности принудительного дубля в редактировании.
+const canForceEditDuplicate = computed(() => {
+  return canShowEditDuplicateArea.value
+    && hasFreeDealSlots.value('edit')
+    && Array.isArray(dealProductAssignmentsForSelectedSlotEdit.value)
+    && dealProductAssignmentsForSelectedSlotEdit.value.length > 0
+})
+
+// Управляет показом списка дублей в создании: либо свободных слотов нет, либо менеджер включил принудительный режим.
+const shouldShowNewDuplicateList = computed(() => {
+  if (!canShowNewDuplicateArea.value) return false
+  return !hasFreeDealSlots.value('new') || forceNewDuplicateMode.value
+})
+
+// Управляет показом списка дублей в редактировании.
+const shouldShowEditDuplicateList = computed(() => {
+  if (!canShowEditDuplicateArea.value) return false
+  return !hasFreeDealSlots.value('edit') || forceEditDuplicateMode.value
 })
 
 // Определяет тип выбранного товара в редактировании, чтобы в режиме просмотра показать его как текст.
@@ -2207,6 +2255,7 @@ watch(() => editDeal.value?.open, (isOpen) => {
   editQuickProductOpen.value = false
   editQuickAccountOpen.value = false
   editQuickSubscriptionTermOpen.value = false
+  forceEditDuplicateMode.value = false
 })
 
 watch(
@@ -2234,6 +2283,7 @@ watch(() => newDeal.value?.deal_type_code, (dealTypeCode) => {
   newQuickProductOpen.value = false
   newQuickAccountOpen.value = false
   newQuickSubscriptionTermOpen.value = false
+  forceNewDuplicateMode.value = false
 })
 
 watch(() => editDealProductTypeFilter.value, (typeCode, prev) => {
@@ -2280,6 +2330,26 @@ watch(() => editDeal.value?.account_id, (accountId) => {
   // В редактировании применяем ту же догрузку, чтобы в форме не мелькал сырой account_id.
   void ensureDealAccountDetailsLoaded('edit')
 }, { immediate: true })
+
+watch(() => newDeal.value?.product_id, () => {
+  // При смене товара выходим из принудительного режима дубля: это уже другой сценарий.
+  forceNewDuplicateMode.value = false
+})
+
+watch(() => editDeal.value?.product_id, () => {
+  // В редактировании ведем себя так же: режим дубля пересобирается на новый товар.
+  forceEditDuplicateMode.value = false
+})
+
+watch(() => newDeal.value?.slot_type_code, () => {
+  // Смена слота обнуляет принудительный режим дубля.
+  forceNewDuplicateMode.value = false
+})
+
+watch(() => editDeal.value?.slot_type_code, () => {
+  // Для edit принудительный режим сбрасываем при смене метода.
+  forceEditDuplicateMode.value = false
+})
 
 watch(() => editDeal.value?.slot_type_code, (slotTypeCode, prev) => {
   if (!editDeal.value?.open || !isEditRentalSubscriptionMode.value) return

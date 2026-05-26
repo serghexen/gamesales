@@ -56,7 +56,10 @@ export function useDealsWatchers({
     () => newDeal.account_id,
     (val, prev) => {
       // Если аккаунт меняют руками, снимаем признак дубля.
-      if (!dealSlotAutoAssign.value && val !== prev) newDeal.is_duplicate_flow = false
+      if (!dealSlotAutoAssign.value && val !== prev) {
+        newDeal.is_duplicate_flow = false
+        newDeal.duplicate_assignment_id = ''
+      }
       // При выборе аккаунта догружаем его секреты для блока "Данные аккаунта".
       ensureAccountSecretsLoaded(newDeal.account_id)
       loadAccountSlotStatus('new')
@@ -66,7 +69,12 @@ export function useDealsWatchers({
 
   watch(
     () => editDeal.account_id,
-    () => {
+    (val, prev) => {
+      // Для edit при ручной смене аккаунта снимаем метку дубля, чтобы не тащить старый сценарий.
+      if (!dealSlotAutoAssign.value && val !== prev) {
+        editDeal.is_duplicate_flow = false
+        editDeal.duplicate_assignment_id = ''
+      }
       // Для редактирования сделки подтягиваем секреты выбранного аккаунта тем же способом.
       ensureAccountSecretsLoaded(editDeal.account_id)
       if (editDeal.open) loadAccountSlotStatus('edit')
@@ -80,6 +88,7 @@ export function useDealsWatchers({
       if (val === prev) return
       // Смена товара означает новый сценарий, метка дубля больше не актуальна.
       newDeal.is_duplicate_flow = false
+      newDeal.duplicate_assignment_id = ''
       const productType = getProductTypeCode(val)
       // Если товар пришел из выбора "срок подписки", не сбрасываем уже выбранный срок и аккаунт.
       const keepSubscriptionChain = (
@@ -105,6 +114,9 @@ export function useDealsWatchers({
     (val, prev) => {
       if (!editDeal.open || dealInitLock.value) return
       if (val === prev) return
+      // Смена товара в edit сбрасывает маркер дубля.
+      editDeal.is_duplicate_flow = false
+      editDeal.duplicate_assignment_id = ''
       const productType = getProductTypeCode(val)
       // Не трогаем цепочку срока при выборе подписки по term_id в режиме редактирования.
       const keepSubscriptionChain = (
@@ -130,6 +142,7 @@ export function useDealsWatchers({
     (val) => {
       if (!val) {
         newDeal.reserve_key = ''
+        newDeal.duplicate_assignment_id = ''
         accountSlotStatusNew.value = []
         dealAccountAssignmentsNew.value = []
       }
@@ -142,6 +155,7 @@ export function useDealsWatchers({
       if (!editDeal.open || dealInitLock.value) return
       if (!val) {
         editDeal.reserve_key = ''
+        editDeal.duplicate_assignment_id = ''
         accountSlotStatusEdit.value = []
         dealAccountAssignmentsEdit.value = []
         return
@@ -158,6 +172,7 @@ export function useDealsWatchers({
       if (dealSlotAutoAssign.value || val === prev) return
       // Любая ручная смена слота сбрасывает признак дубля.
       newDeal.is_duplicate_flow = false
+      newDeal.duplicate_assignment_id = ''
       // При смене слота пересчитываем только подписки с реально свободным слотом.
       loadSubscriptionFreeProductIds('new', val)
       if (typeof loadAvailableSubscriptionItems === 'function') loadAvailableSubscriptionItems('new', val)
@@ -183,6 +198,9 @@ export function useDealsWatchers({
     (val, prev) => {
       if (!editDeal.open || dealInitLock.value) return
       if (dealSlotAutoAssign.value || val === prev) return
+      // В edit ручная смена типа слота тоже обнуляет сценарий дубля.
+      editDeal.is_duplicate_flow = false
+      editDeal.duplicate_assignment_id = ''
       // Для редактирования обновляем тот же список подписок под выбранный слот.
       loadSubscriptionFreeProductIds('edit', val)
       if (typeof loadAvailableSubscriptionItems === 'function') loadAvailableSubscriptionItems('edit', val)

@@ -25,8 +25,8 @@ function createHarness() {
     slotTypes: ref([]),
     productsAll: ref([{ product_id: 55, type_code: 'game' }]),
     accountsAll: ref([]),
-    editDeal: reactive({ product_id: '', account_id: '', region_code: '' }),
-    newDeal: reactive({ product_id: 55, account_id: '', region_code: 'RU', slot_type_code: 'ps5_p1' }),
+    editDeal: reactive({ product_id: '', account_id: '', region_code: '', is_duplicate_flow: false }),
+    newDeal: reactive({ product_id: 55, account_id: '', region_code: 'RU', slot_type_code: 'ps5_p1', is_duplicate_flow: false }),
     accountSlotStatusNew: ref([]),
     accountSlotStatusEdit: ref([]),
     dealAccountAssignmentsNew: ref([]),
@@ -401,5 +401,26 @@ describe('useDealsFlow', () => {
     expect(h.newDeal.is_duplicate_flow).toBe(true)
     expect(h.newDeal.account_id).toBe(1734)
     expect(h.newDeal.slot_type_code).toBe('play_ps4')
+    expect(h.requestDealConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Подтвердите принудительный дубль',
+        confirmText: 'Снять и продолжить',
+      }),
+    )
+  })
+
+  it('releaseSlotFromDeal marks edit deal as duplicate flow too', async () => {
+    const h = createHarness()
+    h.apiPost.mockResolvedValueOnce({ ok: true })
+    h.apiGet.mockResolvedValue([])
+
+    await h.releaseSlotFromDeal(
+      { assignment_id: 88, account_id: 2288, slot_type_code: 'play_ps5' },
+      'edit',
+    )
+
+    expect(h.editDeal.is_duplicate_flow).toBe(true)
+    expect(h.editDeal.account_id).toBe(2288)
+    expect(h.editDeal.slot_type_code).toBe('play_ps5')
   })
 })

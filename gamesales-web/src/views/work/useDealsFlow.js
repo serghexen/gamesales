@@ -151,6 +151,34 @@ export function useDealsFlow({
     await Promise.allSettled(tasks)
   }
 
+  // Возвращает читаемую подпись аккаунта для окна подтверждения принудительного дубля.
+  function getAssignmentAccountLabel(assignment) {
+    const targetId = Number(assignment?.account_id || 0)
+    if (!targetId) return '—'
+    const account = (Array.isArray(accountsAll.value) ? accountsAll.value : [])
+      .find((item) => Number(item?.account_id || 0) === targetId)
+    const loginFull = String(account?.login_full || '').trim()
+    if (loginFull) return loginFull
+    const loginName = String(account?.login_name || '').trim()
+    const domainCode = String(account?.domain_code || '').trim()
+    if (loginName && domainCode) return `${loginName}@${domainCode}`
+    return String(assignment?.account_login || assignment?.account_id || '—').trim() || '—'
+  }
+
+  // Форматирует дату назначения слота для текста подтверждения.
+  function formatAssignmentDate(assignedAt) {
+    const raw = String(assignedAt || '').trim()
+    if (!raw) return '—'
+    const parsed = new Date(raw)
+    if (Number.isNaN(parsed.getTime())) return '—'
+    const day = String(parsed.getDate()).padStart(2, '0')
+    const month = String(parsed.getMonth() + 1).padStart(2, '0')
+    const year = parsed.getFullYear()
+    const hours = String(parsed.getHours()).padStart(2, '0')
+    const minutes = String(parsed.getMinutes()).padStart(2, '0')
+    return `${day}.${month}.${year} ${hours}:${minutes}`
+  }
+
   // Определяет, относится ли выбранный товар к подпискам.
   function isSubscriptionProduct(productId) {
     if (!productId) return false
@@ -582,44 +610,53 @@ export function useDealsFlow({
 
   async function releaseSlotFromDeal(item, target) {
     if (!item?.assignment_id) return
+    const accountLabel = getAssignmentAccountLabel(item)
+    const slotTypeLabel = (slotTypes.value || []).find((slot) => slot.code === item.slot_type_code)?.name || String(item.slot_type_code || '—')
+    const customerLabel = String(item?.customer_nickname || '').trim() || '—'
+    const assignedDateLabel = formatAssignmentDate(item?.assigned_at)
+    const confirmMessage = [
+      'Будет снят текущий покупатель со слота:',
+      `Аккаунт: ${accountLabel}`,
+      `Слот: ${slotTypeLabel}`,
+      `Покупатель: ${customerLabel}`,
+      `Назначено: ${assignedDateLabel}`,
+      '',
+      'Новая сделка займет этот слот.',
+    ].join('\n')
     // Для снятия слота используем фирменное подтверждение вместо системного confirm.
     const accepted = typeof requestDealConfirm === 'function'
       ? await requestDealConfirm({
-        title: 'Подтверждение',
-        message: 'Снять слот у покупателя?',
-        confirmText: 'Снять',
+        title: 'Подтвердите принудительный дубль',
+        message: confirmMessage,
+        confirmText: 'Снять и продолжить',
         cancelText: 'Отмена',
       })
-      : window.confirm('Снять слот у покупателя?')
+      : window.confirm(confirmMessage)
     if (!accepted) return
     accountSlotReleaseLoading.value = true
+    const accountId = item.account_id
+    const slotTypeCode = item.slot_type_code
+    dealSlotAutoAssign.value = true
     try {
-      await apiPost(`/slot-assignments/${item.assignment_id}/release`, {}, { token: auth.state.token })
-      const accountId = item.account_id
-      const slotTypeCode = item.slot_type_code
-      dealSlotAutoAssign.value = true
       if (target === 'edit') {
-        // Для редактирования не включаем метку дубля: она нужна только при создании новой сделки.
-        editDeal.is_duplicate_flow = false
+        // Для edit сохраняем id назначения и снимем слот только при успешном сохранении сделки.
+        editDeal.is_duplicate_flow = true
+        editDeal.duplicate_assignment_id = Number(item.assignment_id || 0) || ''
         editDeal.account_id = accountId || ''
         editDeal.slot_type_code = slotTypeCode || ''
         await loadAccountSlotStatus('edit')
         await loadDealAccountAssignments('edit')
-        await loadDealAccountsForProduct('edit')
-        await loadDealProductAssignments('edit')
-        await loadDealSlotAvailability('edit')
       } else {
-        // Выбор из списка "занятых слотов" означает сценарий дубля для новой сделки.
+        // Для create сохраняем id назначения и снимаем слот только в транзакции сохранения сделки.
         newDeal.is_duplicate_flow = true
+        newDeal.duplicate_assignment_id = Number(item.assignment_id || 0) || ''
         newDeal.account_id = accountId || ''
         newDeal.slot_type_code = slotTypeCode || ''
         await loadAccountSlotStatus('new')
         await loadDealAccountAssignments('new')
-        await loadDealAccountsForProduct('new')
-        await loadDealProductAssignments('new')
-        await loadDealSlotAvailability('new')
       }
     } catch (e) {
+      // Ошибки догрузки после выбора дубля показываем в форме, не теряя выбранный сценарий.
       dealError.value = mapApiError(e?.message)
     } finally {
       dealSlotAutoAssign.value = false
@@ -771,6 +808,7 @@ export function useDealsFlow({
     newDeal.product_id = ''
     // При очистке товара начинаем заново и убираем признак дубля.
     newDeal.is_duplicate_flow = false
+    newDeal.duplicate_assignment_id = ''
     if (resetSubscriptionChain) {
       newDeal.subscription_term_id = ''
       newDeal.account_id = ''
@@ -783,6 +821,8 @@ export function useDealsFlow({
     // В редактировании подписки крестик также очищает выбранный срок и аккаунт.
     const resetSubscriptionChain = isSubscriptionProduct(Number(editDeal.product_id || 0))
     editDeal.product_id = ''
+    editDeal.is_duplicate_flow = false
+    editDeal.duplicate_assignment_id = ''
     if (resetSubscriptionChain) {
       editDeal.subscription_term_id = ''
       editDeal.account_id = ''

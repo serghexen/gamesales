@@ -123,6 +123,7 @@ export function useDealModalFlow({
       slot_type_code: newDeal.slot_type_code,
       subscription_term_id: newDeal.subscription_term_id,
       reserve_key: newDeal.reserve_key,
+      duplicate_assignment_id: newDeal.duplicate_assignment_id,
       price: newDeal.price,
       purchase_cost: newDeal.purchase_cost,
       login: newDeal.login,
@@ -156,6 +157,7 @@ export function useDealModalFlow({
     editDeal.slot_type_code = deal.slot_type_code || ''
     editDeal.subscription_term_id = deal.subscription_term_id || ''
     editDeal.reserve_key = deal.reserve_key || ''
+    editDeal.duplicate_assignment_id = deal.duplicate_assignment_id || ''
     editDeal.price = Number(deal.price || 0)
     editDeal.purchase_cost = Number(deal.purchase_cost || 0)
     editDeal.login = deal.login || ''
@@ -165,6 +167,8 @@ export function useDealModalFlow({
     editDeal.slots_used = deal.slots_used || (deal.deal_type_code === 'rental' ? 1 : 0)
     editDeal.notes = deal.notes || ''
     editDeal.flow_status_code = deal.flow_status_code || ''
+    // Фиксируем признак дубля для единых правил create/edit.
+    editDeal.is_duplicate_flow = Boolean(deal.is_duplicate_flow)
     editDeal.is_refund = Boolean(deal.is_refund)
     // Для существующей сделки показываем сохраненное значение как есть, без подмены на текущего пользователя.
     editDealResponsible.value = deal.responsible_username || ''
@@ -188,6 +192,7 @@ export function useDealModalFlow({
     editDeal.slot_type_code = ''
     editDeal.subscription_term_id = ''
     editDeal.reserve_key = ''
+    editDeal.duplicate_assignment_id = ''
     editDeal.price = 0
     editDeal.purchase_cost = 0
     editDeal.login = ''
@@ -197,6 +202,7 @@ export function useDealModalFlow({
     editDeal.slots_used = 1
     editDeal.notes = ''
     editDeal.flow_status_code = ''
+    editDeal.is_duplicate_flow = false
     editDeal.is_refund = false
     editDealResponsible.value = ''
     // Закрываем комментарий при сбросе формы редактирования, чтобы не тянуть старое состояние.
@@ -218,6 +224,7 @@ export function useDealModalFlow({
     if (editDealCommentOpen?.value !== undefined) editDealCommentOpen.value = false
     newDeal.is_refund = false
     newDeal.is_duplicate_flow = false
+    newDeal.duplicate_assignment_id = ''
     // Для новых сделок сразу подставляем ответственного из текущей сессии.
     newDealResponsible.value = getDefaultResponsibleName()
     newDealProductSearch.value = ''
@@ -269,6 +276,7 @@ export function useDealModalFlow({
       slot_type_code: '',
       subscription_term_id: '',
       reserve_key: '',
+      duplicate_assignment_id: '',
       price: 0,
       purchase_cost: 0,
       login: '',
@@ -293,6 +301,7 @@ export function useDealModalFlow({
       slot_type_code: newDeal.slot_type_code,
       subscription_term_id: newDeal.subscription_term_id,
       reserve_key: newDeal.reserve_key,
+      duplicate_assignment_id: newDeal.duplicate_assignment_id,
       price: newDeal.price,
       purchase_cost: newDeal.purchase_cost,
       login: newDeal.login,
@@ -318,6 +327,7 @@ export function useDealModalFlow({
       slot_type_code: editDeal.slot_type_code,
       subscription_term_id: editDeal.subscription_term_id,
       reserve_key: editDeal.reserve_key,
+      duplicate_assignment_id: editDeal.duplicate_assignment_id,
       price: editDeal.price,
       purchase_cost: editDeal.purchase_cost,
       login: editDeal.login,
@@ -327,6 +337,7 @@ export function useDealModalFlow({
       slots_used: editDeal.slots_used,
       notes: editDeal.notes,
       flow_status_code: editDeal.flow_status_code,
+      is_duplicate_flow: Boolean(editDeal.is_duplicate_flow),
       is_refund: editDeal.is_refund,
       responsible_username: editDealResponsible.value,
     }
@@ -350,6 +361,7 @@ export function useDealModalFlow({
     newDeal.slot_type_code = ''
     newDeal.subscription_term_id = ''
     newDeal.reserve_key = ''
+    newDeal.duplicate_assignment_id = ''
     newDeal.price = 0
     newDeal.purchase_cost = 0
     newDeal.login = ''
@@ -405,6 +417,8 @@ export function useDealModalFlow({
 
   async function startEditDeal(deal) {
     dealLoading.value = true
+    // Модалка сделки живет во вкладке "Сделки", поэтому при открытии из других разделов сначала переключаем вкладку.
+    setActiveTab('deals')
     closeAllModals()
     resetModalPos()
     showDealForm.value = false
@@ -448,6 +462,7 @@ export function useDealModalFlow({
         slot_type_code: deal.slot_type_code || '',
         subscription_term_id: deal.subscription_term_id || '',
         reserve_key: deal.reserve_key || '',
+        duplicate_assignment_id: deal.duplicate_assignment_id || '',
         price: Number(deal.price || 0),
         purchase_cost: Number(deal.purchase_cost || 0),
         login: deal.login || '',
@@ -457,6 +472,7 @@ export function useDealModalFlow({
         slots_used: deal.slots_used || (deal.deal_type_code === 'rental' ? 1 : 0),
         notes: deal.notes || '',
         flow_status_code: deal.flow_status_code || '',
+        is_duplicate_flow: Boolean(deal.is_duplicate_flow),
         // Для снимка фиксируем и признак возврата, чтобы корректно откатывать изменения формы.
         is_refund: Boolean(deal.is_refund),
         // Снимок редактирования должен хранить фактическое значение сделки, чтобы не было ложной подстановки.

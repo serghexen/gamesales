@@ -2629,6 +2629,7 @@ const accountsSectionCtx = asCtx({
   accountDealsError,
   accountDealsLoading,
   accountDeals,
+  startEditDeal,
   getDealProductTitleTooltip,
   getDealProductTitleDisplay,
   formatDate: formatDateTimeMinutes,

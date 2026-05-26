@@ -428,6 +428,7 @@ class DealsEndpointsTests(unittest.TestCase):
         script = [
             {"one": ("game", False)},  # product lookup
             {"one": (1,)},  # ensure_account_exists
+            {"one": (1,)},  # ensure_messenger_exists
             {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
             {"one": (2,)},  # get_platform_id
             {"one": (7,)},  # region from account
@@ -451,6 +452,7 @@ class DealsEndpointsTests(unittest.TestCase):
                         "account_id": 7,
                         "product_id": 55,
                         "slot_type_code": "ps5_p1",
+                        "messenger_id": 1,
                         "price": 500,
                     },
                 )
@@ -491,11 +493,51 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"deal_id": 33})
 
+    # Для принудительного дубля слот снимаем только в момент сохранения сделки.
+    def test_create_deal_rental_releases_duplicate_assignment_on_save(self):
+        script = [
+            {"one": ("game", False)},  # product lookup
+            {"one": (1,)},  # ensure_account_exists
+            {"one": (1,)},  # ensure_messenger_exists
+            {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
+            {"one": (2,)},  # get_platform_id
+            {"one": (7,)},  # region from account
+            {"one": (9001, 7, "ps5_p1", 55, None, 501, None)},  # duplicate assignment validation
+            {"one": (0,)},  # get_account_slot_free
+            {"one": (33,)},  # deal insert
+            {"one": (44,)},  # deal_item insert
+            {"rowcount": 1},  # assignment insert
+            {"rowcount": 1},  # duplicate assignment release
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/deals",
+                    headers=self._auth_headers(role="manager"),
+                    json={
+                        "deal_type_code": "rental",
+                        "account_id": 7,
+                        "product_id": 55,
+                        "slot_type_code": "ps5_p1",
+                        "messenger_id": 1,
+                        "duplicate_assignment_id": 9001,
+                        "price": 500,
+                    },
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"deal_id": 33})
+
     # Для подписки по сроку 409 возвращаем при отсутствии свободного места в выбранном slot_type.
     def test_create_deal_rental_with_full_subscription_term_slot(self):
         script = [
             {"one": ("subscription", False)},  # product lookup
             {"one": (1,)},  # ensure_account_exists
+            {"one": (1,)},  # ensure_messenger_exists
             {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
             {"one": (2,)},  # get_platform_id
             {"one": (7,)},  # region from account
@@ -518,6 +560,7 @@ class DealsEndpointsTests(unittest.TestCase):
                         "account_id": 7,
                         "product_id": 55,
                         "slot_type_code": "ps5_p1",
+                        "messenger_id": 1,
                         "subscription_term_id": 901,
                         "price": 500,
                     },
@@ -560,6 +603,7 @@ class DealsEndpointsTests(unittest.TestCase):
         script = [
             {"one": ("game", False)},  # product lookup
             {"one": (1,)},  # ensure_account_exists
+            {"one": (1,)},  # ensure_messenger_exists
             {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
             {"one": (2,)},  # get_platform_id
             {"one": (7,)},  # region from account
@@ -581,6 +625,7 @@ class DealsEndpointsTests(unittest.TestCase):
                         "account_id": 7,
                         "product_id": 55,
                         "slot_type_code": "ps5_p1",
+                        "messenger_id": 1,
                         "customer_nickname": "cust",
                         "price": 500,
                     },
@@ -927,6 +972,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
             {"one": (55,)},  # current product_id from deal_item
+            {"one": (1,)},  # ensure_messenger_exists
             {"one": (9, None)},  # ensure_customer -> existing customer_id
             {"rowcount": 1},  # update deals
             {"rowcount": 1},  # update deal_items
@@ -944,7 +990,7 @@ class DealsEndpointsTests(unittest.TestCase):
                 res = client.put(
                     "/deals/77",
                     headers=self._auth_headers(role="manager"),
-                    json={"customer_nickname": "new-customer"},
+                    json={"customer_nickname": "new-customer", "messenger_id": 1},
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
@@ -957,32 +1003,34 @@ class DealsEndpointsTests(unittest.TestCase):
             "rental",
             "confirmed",
             "pending",
-            3,
-            10,
-            5,
-            500.0,
-            "A-100",
-            "admin",
-            77,
-            7,
-            2,
-            500.0,
-            100.0,
-            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
-            None,
-            None,
-            1,
-            "ps5_p1",
-            None,
-            None,
-            "note",
-            None,
-            None,
+            3,  # lock_version
+            10,  # region_id
+            5,  # customer_id
+            500.0,  # total_amount
+            "A-100",  # order_number
+            "admin",  # responsible_username
+            1,  # messenger_id
+            77,  # deal_item_id
+            7,  # account_id
+            2,  # platform_id
+            500.0,  # price
+            100.0,  # purchase_cost
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),  # purchase_at
+            None,  # start_at
+            None,  # end_at
+            1,  # slots_used
+            "ps5_p1",  # slot_type_code
+            None,  # subscription_term_id
+            None,  # reserve_key
+            "note",  # notes
+            None,  # game_link
+            None,  # returned_at
         )
         script = [
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
             {"one": (55,)},  # current product_id from deal_item
+            {"one": (1,)},  # ensure_messenger_exists
             {"one": (55, 7, False)},  # subscription term lookup
             {"rowcount": 1},  # update deals
             {"rowcount": 1},  # update deal_items

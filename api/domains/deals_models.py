@@ -52,6 +52,7 @@ class DealCreate(BaseModel):
     slot_type_code: Optional[str] = None
     subscription_term_id: Optional[int] = None
     reserve_key: Optional[str] = None
+    duplicate_assignment_id: Optional[int] = None
     price: float = 0
     purchase_cost: float = 0
     product_link: Optional[str] = None
@@ -85,6 +86,7 @@ class DealUpdate(BaseModel):
     slot_type_code: Optional[str] = None
     subscription_term_id: Optional[int] = None
     reserve_key: Optional[str] = None
+    duplicate_assignment_id: Optional[int] = None
     price: Optional[float] = None
     purchase_cost: Optional[float] = None
     product_link: Optional[str] = None

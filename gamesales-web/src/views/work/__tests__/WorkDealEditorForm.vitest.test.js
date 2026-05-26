@@ -184,6 +184,21 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('const copiedSharingFieldKey = ref(\'\')')
   })
 
+  it('supports forced duplicate mode in create and edit sharing forms', () => {
+    const source = readTemplateSource()
+
+    expect(source).toContain("const forceNewDuplicateMode = ref(false)")
+    expect(source).toContain("const forceEditDuplicateMode = ref(false)")
+    expect(source).toContain("const canForceNewDuplicate = computed(() => {")
+    expect(source).toContain("const canForceEditDuplicate = computed(() => {")
+    expect(source).toContain("const shouldShowNewDuplicateList = computed(() => {")
+    expect(source).toContain("const shouldShowEditDuplicateList = computed(() => {")
+    expect(source).toContain("{{ forceNewDuplicateMode ? 'Скрыть дубли' : 'Сделать дубль' }}")
+    expect(source).toContain("{{ forceEditDuplicateMode ? 'Скрыть дубли' : 'Сделать дубль' }}")
+    expect(source).toContain('v-if="shouldShowNewDuplicateList"')
+    expect(source).toContain('v-if="shouldShowEditDuplicateList"')
+  })
+
   it('shows warning when selected sharing account has no free reserve', () => {
     const source = readTemplateSource()
 

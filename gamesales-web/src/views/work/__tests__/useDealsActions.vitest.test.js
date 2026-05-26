@@ -25,6 +25,7 @@ function createDeps(overrides = {}) {
       region_code: 'RU',
       slot_type_code: '',
       reserve_key: '',
+      duplicate_assignment_id: '',
       price: 100,
       purchase_cost: 50,
       login: 'deal-login',
@@ -48,6 +49,7 @@ function createDeps(overrides = {}) {
       region_code: 'RU',
       slot_type_code: '',
       reserve_key: '',
+      duplicate_assignment_id: '',
       price: 100,
       purchase_cost: 50,
       login: 'edit-login',
@@ -173,6 +175,7 @@ describe('useDealsActions', () => {
     deps.newDeal.account_id = 15
     deps.newDeal.product_id = 56
     deps.newDeal.slot_type_code = 'share'
+    deps.newDeal.duplicate_assignment_id = 777
     deps.newDeal.notes = 'Комментарий менеджеру'
     deps.newDeal.is_duplicate_flow = true
     const { createDeal } = useDealsActions(deps)
@@ -181,6 +184,7 @@ describe('useDealsActions', () => {
 
     expect(deps.apiPost).toHaveBeenCalledTimes(1)
     expect(deps.apiPost.mock.calls[0][1].notes).toBe('Комментарий менеджеру\nДубль')
+    expect(deps.apiPost.mock.calls[0][1].duplicate_assignment_id).toBe(777)
   })
 
   it('createDeal does not duplicate existing "Дубль" marker in notes', async () => {
@@ -328,6 +332,24 @@ describe('useDealsActions', () => {
 
     expect(deps.apiPut).toHaveBeenCalledTimes(1)
     expect(deps.apiPut.mock.calls[0][1].is_refund).toBe(true)
+  })
+
+  it('updateDeal appends "Дубль" to notes for duplicate rental flow', async () => {
+    const deps = createDeps()
+    deps.editDeal.deal_type_code = 'rental'
+    deps.editDeal.account_id = 15
+    deps.editDeal.product_id = 56
+    deps.editDeal.slot_type_code = 'share'
+    deps.editDeal.duplicate_assignment_id = 778
+    deps.editDeal.notes = 'Правка менеджера'
+    deps.editDeal.is_duplicate_flow = true
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.apiPut).toHaveBeenCalledTimes(1)
+    expect(deps.apiPut.mock.calls[0][1].notes).toBe('Правка менеджера\nДубль')
+    expect(deps.apiPut.mock.calls[0][1].duplicate_assignment_id).toBe(778)
   })
 
   it('updateDeal sends manual created/completed dates for existing deal', async () => {

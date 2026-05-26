@@ -262,6 +262,79 @@ def mount_deals_routes(
         if not row:
             raise HTTPException(400, f"Unknown messenger_id: {messenger_id}")
 
+    # Проверяет, что выбранный слот-дубль можно снять только в момент сохранения сделки.
+    def validate_duplicate_assignment_for_deal(
+        conn,
+        *,
+        duplicate_assignment_id: Optional[int],
+        expected_product_id: Optional[int],
+        expected_account_id: Optional[int],
+        expected_slot_type_code: Optional[str],
+        current_deal_item_id: Optional[int] = None,
+    ) -> Optional[dict]:
+        if duplicate_assignment_id is None:
+            return None
+        row = q1(
+            conn,
+            """
+            SELECT
+              asa.assignment_id,
+              asa.account_id,
+              asa.slot_type_code,
+              asa.product_id,
+              asa.subscription_term_id,
+              asa.deal_item_id,
+              asa.released_at
+            FROM app.account_slot_assignments asa
+            WHERE asa.assignment_id=%s
+            """,
+            (duplicate_assignment_id,),
+        )
+        if not row:
+            raise HTTPException(409, "duplicate assignment not found")
+        assignment_id = int(row[0])
+        account_id = int(row[1] or 0)
+        slot_type_code = str(row[2] or "").strip()
+        product_id = int(row[3] or 0)
+        subscription_term_id = row[4]
+        deal_item_id = int(row[5] or 0) if row[5] is not None else None
+        released_at = row[6]
+        if released_at is not None:
+            raise HTTPException(409, "duplicate assignment is not active")
+        # Для подписочных назначений принудительный дубль запрещаем: там сроковая модель.
+        if subscription_term_id is not None:
+            raise HTTPException(409, "subscription slot release is not allowed")
+        if current_deal_item_id and deal_item_id == int(current_deal_item_id):
+            return None
+        if not expected_product_id or product_id != int(expected_product_id):
+            raise HTTPException(409, "duplicate assignment does not match selected product")
+        if not expected_account_id or account_id != int(expected_account_id):
+            raise HTTPException(409, "duplicate assignment does not match selected account")
+        if not expected_slot_type_code or slot_type_code != str(expected_slot_type_code):
+            raise HTTPException(409, "duplicate assignment does not match selected slot type")
+        return {
+            "assignment_id": assignment_id,
+            "account_id": account_id,
+            "slot_type_code": slot_type_code,
+            "product_id": product_id,
+            "deal_item_id": deal_item_id,
+        }
+
+    # Снимает выбранный дубль в рамках транзакции сохранения сделки.
+    def release_duplicate_assignment(conn, *, assignment_id: int, released_by: str):
+        updated = exec1(
+            conn,
+            """
+            UPDATE app.account_slot_assignments
+            SET released_at=now(), released_by=%s
+            WHERE assignment_id=%s
+              AND released_at IS NULL
+            """,
+            (released_by, assignment_id),
+        )
+        if updated <= 0:
+            raise HTTPException(409, "duplicate assignment is not active")
+
     # Валидирует product_id и тип товара для операций со сделками.
     def validate_deal_product_id(
         conn,
@@ -592,6 +665,15 @@ def mount_deals_routes(
                 validate_market_order_number_unique(conn, customer_source_id, order_number)
     
             selected_subscription_term_id = int(payload.subscription_term_id) if payload.subscription_term_id is not None else None
+            duplicate_assignment_to_release = None
+            if deal_type == "rental" and not rental_is_draft:
+                duplicate_assignment_to_release = validate_duplicate_assignment_for_deal(
+                    conn,
+                    duplicate_assignment_id=payload.duplicate_assignment_id,
+                    expected_product_id=payload.product_id,
+                    expected_account_id=payload.account_id,
+                    expected_slot_type_code=payload.slot_type_code,
+                )
             if deal_type == "rental" and not rental_is_draft:
                 if selected_product_type_code == "subscription" and selected_subscription_term_id is not None:
                     validate_subscription_term_for_rental(
@@ -607,7 +689,9 @@ def mount_deals_routes(
                     )
                 else:
                     free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
-                if free < 1:
+                # Для принудительного дубля учитываем, что один слот будет снят в этой же транзакции сохранения.
+                free_adjusted = free + (1 if duplicate_assignment_to_release else 0)
+                if free_adjusted < 1:
                     raise HTTPException(409, "Not enough free slots for selected slot type")
             should_validate_term_separately = (
                 deal_type == "rental"
@@ -698,6 +782,13 @@ def mount_deals_routes(
                         user.username,
                     ),
                 )
+                # Снимаем выбранный дубль только после успешной вставки нового назначения.
+                if duplicate_assignment_to_release:
+                    release_duplicate_assignment(
+                        conn,
+                        assignment_id=int(duplicate_assignment_to_release["assignment_id"]),
+                        released_by=user.username,
+                    )
             conn.commit()
             # После фиксации публикуем событие, чтобы клиенты могли обновить список сделок в реальном времени.
             if publish_deal_event:
@@ -930,6 +1021,17 @@ def mount_deals_routes(
                 new_slots_used = 0 if rental_is_draft else 1
             validate_date_range(new_start_at, new_end_at, "end_at")
 
+            duplicate_assignment_to_release = None
+            if deal_type == "rental" and not rental_is_draft:
+                duplicate_assignment_to_release = validate_duplicate_assignment_for_deal(
+                    conn,
+                    duplicate_assignment_id=payload.duplicate_assignment_id,
+                    expected_product_id=new_product_id,
+                    expected_account_id=new_account_id,
+                    expected_slot_type_code=new_slot_type_code,
+                    current_deal_item_id=deal_item_id,
+                )
+
             # Проверку доступности слотов запускаем только когда меняются слотные поля rental-сделки.
             should_recheck_rental_slot_capacity = False
             if deal_type == "rental" and not rental_is_draft:
@@ -945,6 +1047,7 @@ def mount_deals_routes(
                     or (payload.slot_type_code is not None and (new_slot_type_code or "") != (slot_type_code or ""))
                     or product_changed
                     or (flow_from_draft and flow_to_non_draft)
+                    or (payload.duplicate_assignment_id is not None and duplicate_assignment_to_release is not None)
                 )
     
             # check slots for rental
@@ -986,6 +1089,9 @@ def mount_deals_routes(
                 else:
                     free = get_account_slot_free(conn, new_account_id, new_slot_type_code)
                     free_adjusted = free + (1 if same_assignment else 0)
+                # Принудительный дубль дает +1 к свободе: выбранный слот снимем в этой же транзакции.
+                if duplicate_assignment_to_release:
+                    free_adjusted += 1
                 if free_adjusted < 1:
                     raise HTTPException(409, "Not enough free slots for selected slot type")
                 # Для rental резерв должен быть уникален в рамках аккаунта: выбираем первый свободный.
@@ -1207,6 +1313,12 @@ def mount_deals_routes(
                                 user.username,
                             ),
                         )
+                        if duplicate_assignment_to_release:
+                            release_duplicate_assignment(
+                                conn,
+                                assignment_id=int(duplicate_assignment_to_release["assignment_id"]),
+                                released_by=user.username,
+                            )
                     elif row_assign and new_customer_id != assigned_customer_id:
                         # При простом переименовании покупателя обновляем клиента в активном назначении без "снятия" слота.
                         exec1(

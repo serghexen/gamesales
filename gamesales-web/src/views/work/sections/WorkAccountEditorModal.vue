@@ -381,7 +381,16 @@
                             </tr>
                           </thead>
                           <tbody>
-                            <tr v-for="d in accountDeals" :key="`${d.deal_id}-${d.product_id}`">
+                            <tr
+                              v-for="d in accountDeals"
+                              :key="`${d.deal_id}-${d.product_id}`"
+                              class="table-row--deal-open"
+                              role="button"
+                              tabindex="0"
+                              @click="openDealFromAccount(d)"
+                              @keydown.enter.prevent="openDealFromAccount(d)"
+                              @keydown.space.prevent="openDealFromAccount(d)"
+                            >
                               <td>{{ d.customer_nickname || '—' }}</td>
                               <td>
                                 <span :title="getDealProductTitleTooltip(d)">{{ getDealProductTitleDisplay(d) }}</span>
@@ -603,6 +612,7 @@ const props = defineProps([
   'accountDealsError',
   'accountDealsLoading',
   'accountDeals',
+  'startEditDeal',
   'getDealProductTitleTooltip',
   'getDealProductTitleDisplay',
   'formatDate',
@@ -759,6 +769,14 @@ const getCompactNotesRows = (value) => {
   const text = String(value || '')
   if (!text) return 2
   return Math.max(2, Math.min(6, Math.ceil(text.length / 110)))
+}
+
+// Открывает выбранную сделку из карточки аккаунта в общем окне сделки.
+const openDealFromAccount = (deal) => {
+  if (typeof props.startEditDeal !== 'function') return
+  const dealId = Number(deal?.deal_id || 0)
+  if (!dealId) return
+  props.startEditDeal(deal)
 }
 
 // Разбивает строку резервов по пробелам и убирает пустые элементы.

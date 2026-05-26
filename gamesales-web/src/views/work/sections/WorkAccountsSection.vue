@@ -166,6 +166,7 @@
         :account-deals-error="ctx.accountDealsError"
         :account-deals-loading="ctx.accountDealsLoading"
         :account-deals="ctx.accountDeals"
+        :start-edit-deal="ctx.startEditDeal"
         :get-deal-product-title-tooltip="ctx.getDealProductTitleTooltip"
         :get-deal-product-title-display="ctx.getDealProductTitleDisplay"
         :format-date="ctx.formatDate"

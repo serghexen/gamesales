@@ -124,6 +124,14 @@
   width: 100%;
 }
 
+.work-page .table-row--deal-open {
+  cursor: pointer;
+}
+
+.work-page .table-row--deal-open:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
 @media (max-width: 900px) {
   .work-page .panel__head--accounts {
     display: grid;
