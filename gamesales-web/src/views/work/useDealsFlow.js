@@ -118,6 +118,9 @@ export function useDealsFlow({
   const availableSubscriptionItemsRequestSeq = { new: 0, edit: 0 }
   const accountLabelBatchSize = 200
 
+  // Сравнивает id аккаунтов как числа, чтобы не терять совпадения при строках из API.
+  const isSameAccountId = (leftId, rightId) => Number(leftId || 0) === Number(rightId || 0)
+
   // Проверяет, что ответ относится к актуально выбранным товару и слоту.
   function isSameDealSelection(target, { productId = null, slotTypeCode = null } = {}) {
     const isEdit = target === 'edit'
@@ -437,17 +440,17 @@ export function useDealsFlow({
       if (!isSameDealSelection(target, { productId, slotTypeCode })) return
       if (isEdit) {
         let list = data || []
-        const currentId = editDeal.account_id
-        if (currentId && !list.find((a) => a.account_id === currentId)) {
-          const fallback = (accountsAll.value || []).find((a) => a.account_id === currentId)
+        const currentId = Number(editDeal.account_id || 0)
+        if (currentId && !list.find((a) => isSameAccountId(a?.account_id, currentId))) {
+          const fallback = (accountsAll.value || []).find((a) => isSameAccountId(a?.account_id, currentId))
           if (fallback) list = [fallback, ...list]
         }
         dealAccountsForProductEdit.value = list
       } else {
         let list = data || []
-        const currentId = newDeal.account_id
-        if (currentId && !list.find((a) => a.account_id === currentId)) {
-          const fallback = (accountsAll.value || []).find((a) => a.account_id === currentId)
+        const currentId = Number(newDeal.account_id || 0)
+        if (currentId && !list.find((a) => isSameAccountId(a?.account_id, currentId))) {
+          const fallback = (accountsAll.value || []).find((a) => isSameAccountId(a?.account_id, currentId))
           if (fallback) list = [fallback, ...list]
         }
         dealAccountsForProductNew.value = list
@@ -634,7 +637,7 @@ export function useDealsFlow({
       : window.confirm(confirmMessage)
     if (!accepted) return
     accountSlotReleaseLoading.value = true
-    const accountId = item.account_id
+    const accountId = Number(item.account_id || 0) || ''
     const slotTypeCode = item.slot_type_code
     dealSlotAutoAssign.value = true
     try {
@@ -644,6 +647,8 @@ export function useDealsFlow({
         editDeal.duplicate_assignment_id = Number(item.assignment_id || 0) || ''
         editDeal.account_id = accountId || ''
         editDeal.slot_type_code = slotTypeCode || ''
+        // После выбора дубля обновляем список аккаунтов, чтобы выбранный аккаунт точно отобразился в селекте.
+        await loadDealAccountsForProduct('edit')
         await loadAccountSlotStatus('edit')
         await loadDealAccountAssignments('edit')
       } else {
@@ -652,6 +657,8 @@ export function useDealsFlow({
         newDeal.duplicate_assignment_id = Number(item.assignment_id || 0) || ''
         newDeal.account_id = accountId || ''
         newDeal.slot_type_code = slotTypeCode || ''
+        // После выбора дубля обновляем список аккаунтов, чтобы выбранный аккаунт точно отобразился в селекте.
+        await loadDealAccountsForProduct('new')
         await loadAccountSlotStatus('new')
         await loadDealAccountAssignments('new')
       }

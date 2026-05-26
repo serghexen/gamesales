@@ -215,6 +215,19 @@ describe('useDealsFlow', () => {
     ])
   })
 
+  it('loadDealAccountsForProduct keeps selected account via fallback even with string account_id', async () => {
+    const h = createHarness()
+    h.newDeal.account_id = '1734'
+    h.accountsAll.value = [{ account_id: 1734, login_full: 'kay@asatmail.com' }]
+    h.apiGet.mockResolvedValueOnce([])
+
+    await h.loadDealAccountsForProduct('new')
+
+    expect(h.dealAccountsForProductNew.value).toEqual([
+      { account_id: 1734, login_full: 'kay@asatmail.com' },
+    ])
+  })
+
   it('loadDealSlotAvailability avoids availability endpoint for subscription', async () => {
     const h = createHarness()
     h.productsAll.value = [{ product_id: 55, type_code: 'subscription' }]
