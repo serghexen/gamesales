@@ -364,8 +364,8 @@ class DealsEndpointsTests(unittest.TestCase):
     # Успешная продажа должна вернуть deal_id.
     def test_create_deal_sale_success(self):
         script = [
+            {"one": (1,)},  # ensure_messenger_exists
             {"one": (10,)},  # region_id by code
-            {"one": None},  # customer lookup
             {"one": (22,)},  # customer insert
             {"one": (33,)},  # deal insert
             {"one": (44,)},  # deal_item insert
@@ -383,6 +383,7 @@ class DealsEndpointsTests(unittest.TestCase):
                     json={
                         "deal_type_code": "sale",
                         "region_code": "RU",
+                        "messenger_id": 1,
                         "customer_nickname": "cust",
                         "price": 1000,
                         "purchase_cost": 400,
@@ -395,8 +396,8 @@ class DealsEndpointsTests(unittest.TestCase):
     def test_create_deal_sale_with_product_only(self):
         script = [
             {"one": ("subscription", False)},  # product lookup
+            {"one": (1,)},  # ensure_messenger_exists
             {"one": (10,)},  # region_id by code
-            {"one": None},  # customer lookup
             {"one": (22,)},  # customer insert
             {"one": (33,)},  # deal insert
             {"one": (44,)},  # deal_item insert
@@ -414,6 +415,7 @@ class DealsEndpointsTests(unittest.TestCase):
                     json={
                         "deal_type_code": "sale",
                         "region_code": "RU",
+                        "messenger_id": 1,
                         "product_id": 88,
                         "customer_nickname": "cust",
                         "price": 1000,
@@ -464,6 +466,7 @@ class DealsEndpointsTests(unittest.TestCase):
         script = [
             {"one": ("subscription", False)},  # product lookup
             {"one": (1,)},  # ensure_account_exists
+            {"one": (1,)},  # ensure_messenger_exists
             {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
             {"one": (2,)},  # get_platform_id
             {"one": (7,)},  # region from account
@@ -487,6 +490,7 @@ class DealsEndpointsTests(unittest.TestCase):
                         "account_id": 7,
                         "product_id": 55,
                         "slot_type_code": "ps5_p1",
+                        "messenger_id": 1,
                         "price": 500,
                     },
                 )
@@ -567,12 +571,12 @@ class DealsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 409)
 
-    # Если клиент уже есть, логин/пароль должны обновляться в app.customers.
+    # При создании сделки логин/пароль клиента должны сохраняться в новой записи покупателя.
     def test_create_deal_updates_customer_credentials_for_existing_customer(self):
         script = [
+            {"one": (1,)},  # ensure_messenger_exists
             {"one": (10,)},  # region_id by code
-            {"one": (22, None)},  # customer lookup
-            {"rowcount": 1},  # customer credentials update
+            {"one": (22,)},  # customer insert
             {"one": (33,)},  # deal insert
             {"one": (44,)},  # deal_item insert
         ]
@@ -589,6 +593,7 @@ class DealsEndpointsTests(unittest.TestCase):
                     json={
                         "deal_type_code": "sale",
                         "region_code": "RU",
+                        "messenger_id": 1,
                         "customer_nickname": "cust",
                         "price": 1000,
                         "login": "cust-login",
@@ -635,9 +640,10 @@ class DealsEndpointsTests(unittest.TestCase):
     # Для market-источника номер заказа должен быть уникален в связке source+order.
     def test_create_deal_market_source_order_number_must_be_unique(self):
         script = [
-            {"one": (10,)},  # region_id by code
             {"one": (1,)},  # ensure_source_exists
-            {"one": (22, 5)},  # customer lookup
+            {"one": (1,)},  # ensure_messenger_exists
+            {"one": (10,)},  # region_id by code
+            {"one": (22,)},  # customer insert
             {"one": (5,)},  # customer source_id
             {"one": ("ym",)},  # source code
             {"one": (99,)},  # conflicting deal
@@ -656,6 +662,7 @@ class DealsEndpointsTests(unittest.TestCase):
                         "deal_type_code": "sale",
                         "region_code": "RU",
                         "customer_nickname": "cust",
+                        "messenger_id": 1,
                         "source_id": 5,
                         "order_number": "A-100",
                         "price": 1000,
@@ -876,7 +883,7 @@ class DealsEndpointsTests(unittest.TestCase):
         script = [
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
-            {"rowcount": 1},  # customer credentials update
+            {"one": (1,)},  # ensure_messenger_exists
             {"rowcount": 1},  # update deals
             {"rowcount": 1},  # update deal_items
         ]
@@ -890,7 +897,7 @@ class DealsEndpointsTests(unittest.TestCase):
                 res = client.put(
                     "/deals/77",
                     headers=self._auth_headers(role="manager"),
-                    json={"login": "new-login", "password": "new-pass"},
+                    json={"messenger_id": 1, "login": "new-login", "password": "new-pass"},
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
@@ -924,6 +931,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
             {"one": (55,)},  # current product_id from deal_item
+            {"one": (1,)},  # ensure_messenger_exists
             {"rowcount": 1},  # update deals
             {"rowcount": 1},  # update deal_items
             {"one": (900, 7, "ps5_p1", 5, 55)},  # assignment details
@@ -938,7 +946,7 @@ class DealsEndpointsTests(unittest.TestCase):
                 res = client.put(
                     "/deals/77",
                     headers=self._auth_headers(role="manager"),
-                    json={"deal_type_code": "rental", "slot_type_code": "ps5_p1", "account_id": 7, "product_id": 55},
+                    json={"deal_type_code": "rental", "slot_type_code": "ps5_p1", "account_id": 7, "product_id": 55, "messenger_id": 1},
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
@@ -1079,6 +1087,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
             {"one": (55,)},  # current product_id from deal_item
+            {"one": (1,)},  # ensure_messenger_exists
             {"rowcount": 1},  # update deals
             {"rowcount": 1},  # update deal_items
             {"one": (900, 7, "ps5_p1", 5, 55)},  # assignment details
@@ -1093,7 +1102,7 @@ class DealsEndpointsTests(unittest.TestCase):
                 res = client.put(
                     "/deals/77",
                     headers=self._auth_headers(role="manager"),
-                    json={"responsible_username": "other_manager"},
+                    json={"responsible_username": "other_manager", "messenger_id": 1},
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
@@ -1126,8 +1135,9 @@ class DealsEndpointsTests(unittest.TestCase):
         script = [
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
+            {"one": (1,)},  # ensure_messenger_exists
             {"one": (5,)},  # customer source_id
-            {"one": ("my_market_source",)},  # source code
+            {"one": ("ym",)},  # source code
             {"one": (88,)},  # conflicting deal
         ]
         with (
@@ -1140,7 +1150,7 @@ class DealsEndpointsTests(unittest.TestCase):
                 res = client.put(
                     "/deals/77",
                     headers=self._auth_headers(role="manager"),
-                    json={"order_number": "a-100"},
+                    json={"order_number": "a-100", "messenger_id": 1},
                 )
             self.assertEqual(res.status_code, 409)
 
@@ -1173,6 +1183,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
             {"one": (1,)},  # flow_status lookup
+            {"one": (1,)},  # ensure_messenger_exists
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
@@ -1184,7 +1195,7 @@ class DealsEndpointsTests(unittest.TestCase):
                 res = client.put(
                     "/deals/77",
                     headers=self._auth_headers(role="manager"),
-                    json={"flow_status_code": "completed"},
+                    json={"flow_status_code": "completed", "messenger_id": 1},
                 )
             self.assertEqual(res.status_code, 403)
             self.assertIn("не достаточно прав для проведения возврата", res.text)
@@ -1260,6 +1271,7 @@ class DealsEndpointsTests(unittest.TestCase):
         script = [
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
+            {"one": (1,)},  # ensure_messenger_exists
             {"one": ("Owner Name", "owner_user")},  # owner name + username
             {"rowcount": 1},  # update deals
             {"rowcount": 1},  # update deal_items
@@ -1274,7 +1286,7 @@ class DealsEndpointsTests(unittest.TestCase):
                 res = client.put(
                     "/deals/77",
                     headers=self._auth_headers(role="admin", username="admin"),
-                    json={"is_refund": True},
+                    json={"is_refund": True, "messenger_id": 1},
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
@@ -1307,6 +1319,7 @@ class DealsEndpointsTests(unittest.TestCase):
         script = [
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
+            {"one": (1,)},  # ensure_messenger_exists
             {"rowcount": 1},  # update deals
             {"rowcount": 1},  # update deal_items
         ]
@@ -1321,6 +1334,7 @@ class DealsEndpointsTests(unittest.TestCase):
                     "/deals/77",
                     headers=self._auth_headers(role="admin", username="admin"),
                     json={
+                        "messenger_id": 1,
                         "created_at": "2026-02-01T10:30:00Z",
                         "completed_at": "2026-02-01T11:30:00Z",
                     },
@@ -1356,6 +1370,7 @@ class DealsEndpointsTests(unittest.TestCase):
         script = [
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
+            {"one": (1,)},  # ensure_messenger_exists
             {"rowcount": 1},  # update deals
             {"rowcount": 1},  # update deal_items
         ]
@@ -1370,6 +1385,7 @@ class DealsEndpointsTests(unittest.TestCase):
                     "/deals/77",
                     headers=self._auth_headers(role="admin", username="admin"),
                     json={
+                        "messenger_id": 1,
                         "created_at": "2026-02-01T10:30:00Z",
                         "completed_at": "2026-02-01T11:30:00Z",
                     },
@@ -1452,6 +1468,7 @@ class DealsEndpointsTests(unittest.TestCase):
         script = [
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
+            {"one": (1,)},  # ensure_messenger_exists
             {"one": ("Owner Name", "owner_user")},  # owner name + username
             {"rowcount": 1},  # update deals
             {"rowcount": 1},  # update deal_items
@@ -1466,7 +1483,7 @@ class DealsEndpointsTests(unittest.TestCase):
                 res = client.put(
                     "/deals/77",
                     headers=self._auth_headers(role="manager", username="manager1"),
-                    json={"is_refund": True},
+                    json={"is_refund": True, "messenger_id": 1},
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})

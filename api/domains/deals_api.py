@@ -39,6 +39,33 @@ def mount_deals_routes(
         normalized = (value or "").strip()
         return normalized or None
 
+    # Создает отдельную запись покупателя для сделки, чтобы не смешивать однофамильцев и повторные обращения.
+    def create_customer_record(
+        conn,
+        nickname: Optional[str],
+        source_id: Optional[int],
+        login: Optional[str] = None,
+        password: Optional[str] = None,
+    ) -> Optional[int]:
+        normalized_nickname = normalize_customer_field(nickname)
+        if not normalized_nickname:
+            return None
+        row = q1(
+            conn,
+            """
+            INSERT INTO app.customers(nickname, source_id, customer_login, customer_password)
+            VALUES (%s, %s, %s, %s)
+            RETURNING customer_id
+            """,
+            (
+                normalized_nickname,
+                source_id,
+                normalize_customer_field(login),
+                normalize_customer_field(password),
+            ),
+        )
+        return int(row[0]) if row and row[0] is not None else None
+
     # Нормализует ключ резерва к формату reserveN; если значение невалидно, возвращает None.
     def normalize_reserve_key(value: Optional[str]) -> Optional[str]:
         raw = (value or "").strip().lower()
@@ -473,23 +500,8 @@ def mount_deals_routes(
             ensure_source_exists(conn, payload.source_id)
             slot_type = ensure_account_allows_slot_type(conn, payload.account_id, payload.slot_type_code)
             platform_id = get_platform_id(conn, slot_type[1])
-            # ensure customer exists
-            row = q1(conn, "SELECT customer_id, source_id FROM app.customers WHERE nickname=%s", (payload.customer_nickname,))
-            if row:
-                customer_id = int(row[0])
-                if payload.source_id and not row[1]:
-                    exec1(
-                        conn,
-                        "UPDATE app.customers SET source_id=%s WHERE customer_id=%s",
-                        (payload.source_id, customer_id),
-                    )
-            else:
-                row = q1(
-                    conn,
-                    "INSERT INTO app.customers(nickname, source_id) VALUES (%s, %s) RETURNING customer_id",
-                    (payload.customer_nickname, payload.source_id),
-                )
-                customer_id = int(row[0])
+            # Для каждой аренды создаем отдельного покупателя, чтобы не перетирать существующие данные.
+            customer_id = create_customer_record(conn, payload.customer_nickname, payload.source_id)
     
             # Проверяем свободные места: для игр старая модель по аккаунту, для подписок — по сроку.
             if product_type_code == "subscription" and payload.subscription_term_id is not None:
@@ -628,36 +640,14 @@ def mount_deals_routes(
                     region_row = q1(conn, "SELECT region_id FROM app.accounts WHERE account_id=%s", (payload.account_id,))
                     region_id = int(region_row[0]) if region_row and region_row[0] is not None else None
 
-            customer_id = None
-            customer_nickname = (payload.customer_nickname or "").strip()
-            if customer_nickname:
-                row = q1(conn, "SELECT customer_id, source_id FROM app.customers WHERE nickname=%s", (customer_nickname,))
-                if row:
-                    customer_id = int(row[0])
-                    if payload.source_id and not row[1]:
-                        exec1(
-                            conn,
-                            "UPDATE app.customers SET source_id=%s WHERE customer_id=%s",
-                            (payload.source_id, customer_id),
-                        )
-                else:
-                    row = q1(
-                        conn,
-                        """
-                        INSERT INTO app.customers(nickname, source_id, customer_login, customer_password)
-                        VALUES (%s, %s, %s, %s)
-                        RETURNING customer_id
-                        """,
-                        (
-                            customer_nickname,
-                            payload.source_id,
-                            normalize_customer_field(payload.login),
-                            normalize_customer_field(payload.password),
-                        ),
-                    )
-                    customer_id = int(row[0])
-                # Для уже существующего клиента обновляем логин/пароль, если они реально переданы.
-                update_customer_credentials(conn, customer_id, payload.login, payload.password)
+            # Для каждой новой сделки создаем новую запись покупателя и не переиспользуем по нику.
+            customer_id = create_customer_record(
+                conn,
+                payload.customer_nickname,
+                payload.source_id,
+                payload.login,
+                payload.password,
+            )
             # Проверяем уникальность только когда номер заказа действительно заполнен.
             if order_number and customer_id is not None:
                 customer_row = q1(conn, "SELECT source_id FROM app.customers WHERE customer_id=%s", (customer_id,))
@@ -948,13 +938,17 @@ def mount_deals_routes(
                         exclude_deal_item_id=deal_item_id,
                     )
     
-            # customer update
+            # В редактировании также создаем новую запись покупателя и перевязываем сделку на нее.
             cust_nickname = payload.customer_nickname
             cust_source = payload.source_id if payload.source_id is not None else None
             if cust_nickname:
-                customer_id = ensure_customer(conn, cust_nickname, cust_source)
-            # Если передали логин/пароль, обновляем их у текущего клиента сделки.
-            update_customer_credentials(conn, customer_id, payload.login, payload.password)
+                customer_id = create_customer_record(
+                    conn,
+                    cust_nickname,
+                    cust_source,
+                    payload.login,
+                    payload.password,
+                )
     
             new_price = payload.price if payload.price is not None else price
             new_purchase_cost = payload.purchase_cost if payload.purchase_cost is not None else purchase_cost

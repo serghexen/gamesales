@@ -78,18 +78,14 @@ def build_db_helpers(
             raise HTTPException(400, f"Unknown account_id: {account_id}")
 
     def ensure_customer(conn, nickname: Optional[str], source_id: Optional[int]) -> Optional[int]:
-        if not nickname:
+        normalized_nickname = (nickname or "").strip()
+        if not normalized_nickname:
             return None
-        row = q1(conn, "SELECT customer_id, source_id FROM app.customers WHERE nickname=%s", (nickname,))
-        if row:
-            customer_id = int(row[0])
-            if source_id and row[1] != source_id:
-                exec1(conn, "UPDATE app.customers SET source_id=%s WHERE customer_id=%s", (source_id, customer_id))
-            return customer_id
+        # Всегда создаем нового клиента, чтобы одинаковые ники не приводили к перезаписи существующих данных.
         row = q1(
             conn,
             "INSERT INTO app.customers(nickname, source_id) VALUES (%s, %s) RETURNING customer_id",
-            (nickname, source_id),
+            (normalized_nickname, source_id),
         )
         return int(row[0])
 

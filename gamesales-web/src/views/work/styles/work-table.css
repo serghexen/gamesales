@@ -216,6 +216,22 @@
   overflow: visible;
 }
 
+.work-page .table thead th:first-child {
+  border-top-left-radius: 12px;
+}
+
+.work-page .table thead th:last-child {
+  border-top-right-radius: 12px;
+}
+
+.work-page .table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 12px;
+}
+
+.work-page .table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 12px;
+}
+
 .work-page .th-title {
   display: inline-flex;
   align-items: center;
