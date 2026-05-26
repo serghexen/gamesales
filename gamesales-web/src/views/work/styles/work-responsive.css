@@ -220,7 +220,7 @@
     grid-template-columns: 1fr;
   }
 
-  .work-page .form--compact .btn {
+  .work-page .form--compact .btn:not(.btn--icon-plain):not(.btn--icon-clear):not(.btn--icon-clear--select) {
     width: 100%;
     justify-self: stretch;
   }

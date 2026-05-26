@@ -62,6 +62,34 @@
   min-width: 100px;
 }
 
+.work-page .table td.deal-col-type {
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.work-page .table td.deal-col-type.deal-type-cell--rental,
+.work-page .table .clickable-row:hover td.deal-col-type.deal-type-cell--rental {
+  background: #3b86e2;
+}
+
+.work-page .table td.deal-col-type.deal-type-cell--sale,
+.work-page .table .clickable-row:hover td.deal-col-type.deal-type-cell--sale {
+  background: #3aa856;
+}
+
+.work-page .table td.deal-col-type.deal-type-cell--other,
+.work-page .table .clickable-row:hover td.deal-col-type.deal-type-cell--other {
+  background: rgba(100, 116, 139, 0.36);
+}
+
+.work-page .table .clickable-row:hover td.deal-col-type.deal-type-cell--rental {
+  background: #2f6fbd;
+}
+
+.work-page .table .clickable-row:hover td.deal-col-type.deal-type-cell--sale {
+  background: #34974d;
+}
+
 .work-page .table th.deal-col-region,
 .work-page .table td.deal-col-region {
   width: 10%;

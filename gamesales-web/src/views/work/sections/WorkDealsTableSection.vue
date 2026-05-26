@@ -336,7 +336,15 @@
         }"
         @click="onDealRowClick(d)"
       >
-        <td class="cell--tight deal-col-type">{{ d.deal_type || '—' }}</td>
+        <td
+          :class="[
+            'cell--tight',
+            'deal-col-type',
+            getDealTypeToneClass(d),
+          ]"
+        >
+          {{ getDealTypeCellLabel(d) }}
+        </td>
         <td class="deal-col-customer">{{ d.customer_nickname || '—' }}</td>
         <td class="cell--tight deal-col-region">{{ getDealProductCellLabel(d) }}</td>
         <td class="deal-col-date">
@@ -661,6 +669,25 @@ function getDealProductCellLabel(deal) {
   const validUntil = formatSubscriptionValidUntil(deal?.subscription_valid_until)
   if (!validUntil) return title
   return `${title} до ${validUntil}`
+}
+
+// Формирует подпись типа сделки: для покупки добавляем регион, для шеринга регион не показываем.
+function getDealTypeCellLabel(deal) {
+  const typeLabel = String(deal?.deal_type || '').trim() || '—'
+  if (typeLabel === '—') return typeLabel
+  const typeCode = String(deal?.deal_type_code || '').trim().toLowerCase()
+  if (typeCode !== 'sale') return typeLabel
+  const regionCode = String(deal?.region_code || '').trim().toUpperCase()
+  if (!regionCode) return typeLabel
+  return `${typeLabel} ${regionCode}`
+}
+
+// Возвращает класс цветовой подсветки типа сделки для колонки "Тип".
+function getDealTypeToneClass(deal) {
+  const typeCode = String(deal?.deal_type_code || '').trim().toLowerCase()
+  if (typeCode === 'rental') return 'deal-type-cell--rental'
+  if (typeCode === 'sale') return 'deal-type-cell--sale'
+  return 'deal-type-cell--other'
 }
 
 function spawnCompletionCoins(originPoint) {

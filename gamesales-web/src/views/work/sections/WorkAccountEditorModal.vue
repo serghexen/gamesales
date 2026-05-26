@@ -5,7 +5,23 @@
                 <div :ref="modalRef" class="modal modal--auto modal--account-editor" :style="modalStyle">
                   <div class="panel__head panel__head--tight modal__head" @mousedown="startModalDrag">
                     <div class="account-modal-head">
-                      <h3 class="account-modal-title">{{ accountModalTitle }}</h3>
+                      <div class="account-modal-title-wrap">
+                        <h3 class="account-modal-title">{{ accountModalTitle }}</h3>
+                        <button
+                          v-if="accountModalMode === 'edit'"
+                          class="btn btn--icon-plain btn--icon-clear"
+                          type="button"
+                          :aria-label="getAccountFieldCopyLabel('email')"
+                          :title="getAccountFieldCopyLabel('email')"
+                          :disabled="!getAccountFieldCopyValue('email')"
+                          @click="copyAccountField('email')"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                            <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                          </svg>
+                        </button>
+                      </div>
                       <label
                         v-if="showDeactivationToggle"
                         class="check-item account-modal-head__toggle"
@@ -170,11 +186,41 @@
                       <div class="deal-form__double field--full">
                         <label class="field">
                           <span class="label">Пароль аккаунт</span>
-                          <input v-model.trim="editAccount.account_password" class="input" autocomplete="new-password" :readonly="accountEditMode === 'view'" />
+                          <div class="input--select-wrap">
+                            <input v-model.trim="editAccount.account_password" class="input input--with-copy" autocomplete="new-password" :readonly="accountEditMode === 'view'" />
+                            <button
+                              class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                              type="button"
+                              :aria-label="getAccountFieldCopyLabel('account_password')"
+                              :title="getAccountFieldCopyLabel('account_password')"
+                              :disabled="!getAccountFieldCopyValue('account_password')"
+                              @click="copyAccountField('account_password')"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                              </svg>
+                            </button>
+                          </div>
                         </label>
                         <label class="field">
                           <span class="label">Пароль почта</span>
-                          <input v-model.trim="editAccount.email_password" class="input" autocomplete="new-password" :readonly="accountEditMode === 'view'" />
+                          <div class="input--select-wrap">
+                            <input v-model.trim="editAccount.email_password" class="input input--with-copy" autocomplete="new-password" :readonly="accountEditMode === 'view'" />
+                            <button
+                              class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                              type="button"
+                              :aria-label="getAccountFieldCopyLabel('email_password')"
+                              :title="getAccountFieldCopyLabel('email_password')"
+                              :disabled="!getAccountFieldCopyValue('email_password')"
+                              @click="copyAccountField('email_password')"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                              </svg>
+                            </button>
+                          </div>
                         </label>
                       </div>
                       <label class="field field--full">
@@ -207,12 +253,27 @@
                                 использован
                               </span>
                             </div>
-                            <input
-                              class="input input--compact"
-                              :value="reserveItem.value"
-                              placeholder="код резерва"
-                              readonly
-                            />
+                            <div class="input--select-wrap">
+                              <input
+                                class="input input--compact input--with-copy"
+                                :value="reserveItem.value"
+                                placeholder="код резерва"
+                                readonly
+                              />
+                              <button
+                                class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                type="button"
+                                :aria-label="getReserveCopyLabel(reserveItem)"
+                                :title="getReserveCopyLabel(reserveItem)"
+                                :disabled="!getReserveCopyValue(reserveItem)"
+                                @click="copyAccountField('reserve', reserveItem)"
+                              >
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                  <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                  <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                                </svg>
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -454,11 +515,41 @@
                       <div class="deal-form__double field--full">
                         <label class="field">
                           <span class="label">Пароль аккаунт</span>
-                          <input v-model.trim="newAccount.account_password" class="input" autocomplete="new-password" />
+                          <div class="input--select-wrap">
+                            <input v-model.trim="newAccount.account_password" class="input input--with-copy" autocomplete="new-password" />
+                            <button
+                              class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                              type="button"
+                              :aria-label="getAccountFieldCopyLabel('account_password_new')"
+                              :title="getAccountFieldCopyLabel('account_password_new')"
+                              :disabled="!getAccountFieldCopyValue('account_password_new')"
+                              @click="copyAccountField('account_password_new')"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                              </svg>
+                            </button>
+                          </div>
                         </label>
                         <label class="field">
                           <span class="label">Пароль почта</span>
-                          <input v-model.trim="newAccount.email_password" class="input" autocomplete="new-password" />
+                          <div class="input--select-wrap">
+                            <input v-model.trim="newAccount.email_password" class="input input--with-copy" autocomplete="new-password" />
+                            <button
+                              class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                              type="button"
+                              :aria-label="getAccountFieldCopyLabel('email_password_new')"
+                              :title="getAccountFieldCopyLabel('email_password_new')"
+                              :disabled="!getAccountFieldCopyValue('email_password_new')"
+                              @click="copyAccountField('email_password_new')"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                              </svg>
+                            </button>
+                          </div>
                         </label>
                       </div>
                       <label class="field field--full">
@@ -570,7 +661,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 const props = defineProps([
   'editAccount',
@@ -753,6 +844,8 @@ const editQuickProductOpen = ref(false)
 const editAccountReserveOpen = ref(false)
 const editAccountCommentOpen = ref(false)
 const editReserveRows = ref([])
+const copiedAccountFieldKey = ref('')
+let copiedAccountFieldTimerId = 0
 
 // Возвращает дату срока подписки по умолчанию: текущая дата плюс один год.
 const getDefaultSubscriptionTermDate = () => {
@@ -769,6 +862,94 @@ const getCompactNotesRows = (value) => {
   const text = String(value || '')
   if (!text) return 2
   return Math.max(2, Math.min(6, Math.ceil(text.length / 110)))
+}
+
+// Возвращает true, если значение пустое или служебное и его не нужно копировать.
+const isCopyPlaceholderValue = (value) => {
+  const normalized = String(value || '').trim().toLowerCase()
+  return !normalized || normalized === '—' || normalized === '-'
+}
+
+// Универсально копирует текст в буфер с fallback для окружений без Clipboard API.
+const copyTextToClipboard = async (value) => {
+  const text = String(value || '').trim()
+  if (!text) return false
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return true
+  }
+  const tempInput = document.createElement('textarea')
+  tempInput.value = text
+  tempInput.setAttribute('readonly', '')
+  tempInput.style.position = 'absolute'
+  tempInput.style.left = '-9999px'
+  document.body.appendChild(tempInput)
+  tempInput.select()
+  if (typeof document.execCommand === 'function') {
+    document.execCommand('copy')
+  }
+  document.body.removeChild(tempInput)
+  return true
+}
+
+// Формирует email аккаунта в формате login@domain для копирования из шапки модалки.
+const getAccountEmailForCopy = () => {
+  const source = props.accountModalMode === 'create' ? props.newAccount : props.editAccount
+  const login = String(source?.login_name || '').trim()
+  const domain = String(source?.domain_code || '').trim()
+  if (!login || !domain) return ''
+  return `${login}@${domain}`
+}
+
+// Возвращает значение поля аккаунта для копирования.
+const getAccountFieldCopyValue = (field, reserveItem = null) => {
+  if (field === 'email') return getAccountEmailForCopy()
+  if (field === 'account_password') return String(props.editAccount?.account_password || '').trim()
+  if (field === 'email_password') return String(props.editAccount?.email_password || '').trim()
+  if (field === 'account_password_new') return String(props.newAccount?.account_password || '').trim()
+  if (field === 'email_password_new') return String(props.newAccount?.email_password || '').trim()
+  if (field === 'reserve') return String(reserveItem?.value || '').trim()
+  return ''
+}
+
+// Собирает ключ копирования, чтобы короткий статус "Скопировано" показывался только для нажатой кнопки.
+const getAccountFieldCopyKey = (field, reserveItem = null) => {
+  if (field !== 'reserve') return field
+  return `reserve:${String(reserveItem?.key || reserveItem?.label || '')}`
+}
+
+// Возвращает подпись кнопки копирования поля аккаунта.
+const getAccountFieldCopyLabel = (field, reserveItem = null) => {
+  const copyKey = getAccountFieldCopyKey(field, reserveItem)
+  if (copiedAccountFieldKey.value === copyKey) return 'Скопировано'
+  if (field === 'email') return 'Копировать почту'
+  if (field === 'account_password' || field === 'account_password_new') return 'Копировать пароль аккаунта'
+  if (field === 'email_password' || field === 'email_password_new') return 'Копировать пароль почты'
+  if (field === 'reserve') return `Копировать ${String(reserveItem?.label || 'резерв')}`
+  return 'Копировать'
+}
+
+// Возвращает подпись копирования для строки резерва.
+const getReserveCopyLabel = (reserveItem) => getAccountFieldCopyLabel('reserve', reserveItem)
+
+// Возвращает значение резерва для копирования без служебных пустых меток.
+const getReserveCopyValue = (reserveItem) => getAccountFieldCopyValue('reserve', reserveItem)
+
+// Копирует выбранное поле аккаунта и показывает короткий статус на кнопке.
+const copyAccountField = async (field, reserveItem = null) => {
+  const value = getAccountFieldCopyValue(field, reserveItem)
+  if (isCopyPlaceholderValue(value)) return
+  try {
+    await copyTextToClipboard(value)
+    copiedAccountFieldKey.value = getAccountFieldCopyKey(field, reserveItem)
+    if (copiedAccountFieldTimerId) window.clearTimeout(copiedAccountFieldTimerId)
+    copiedAccountFieldTimerId = window.setTimeout(() => {
+      copiedAccountFieldKey.value = ''
+      copiedAccountFieldTimerId = 0
+    }, 1400)
+  } catch {
+    // Ошибку копирования игнорируем: форма продолжает работать без блокировки.
+  }
 }
 
 // Открывает выбранную сделку из карточки аккаунта в общем окне сделки.
@@ -947,4 +1128,11 @@ watch(
     }
   },
 )
+
+onBeforeUnmount(() => {
+  if (copiedAccountFieldTimerId) {
+    window.clearTimeout(copiedAccountFieldTimerId)
+    copiedAccountFieldTimerId = 0
+  }
+})
 </script>

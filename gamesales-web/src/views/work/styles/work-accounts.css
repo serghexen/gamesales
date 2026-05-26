@@ -40,6 +40,21 @@
   letter-spacing: normal;
 }
 
+.work-page .account-modal-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.work-modal-root.modal-backdrop .modal__head .account-modal-title-wrap .btn--icon-plain.btn--icon-clear {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 10px;
+}
+
 .work-page .account-modal-head {
   display: flex;
   flex-direction: row;

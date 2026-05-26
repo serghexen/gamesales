@@ -163,6 +163,40 @@ describe('WorkDealsTableSection', () => {
     expect(wrapper.text()).toContain('EA PLAY до 28.10.2026')
   })
 
+  it('renders type cell region suffix only for sale and applies tone class', () => {
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        sortedDeals: [
+          {
+            deal_id: 31,
+            deal_type: 'Шеринг',
+            deal_type_code: 'rental',
+            region_code: 'tr',
+            customer_nickname: 'Покупатель',
+            flow_status: 'В ожидании',
+            responsible_username: 'manager',
+          },
+          {
+            deal_id: 32,
+            deal_type: 'Покупка',
+            deal_type_code: 'sale',
+            region_code: 'ru',
+            customer_nickname: 'Покупатель',
+            flow_status: 'В ожидании',
+            responsible_username: 'manager',
+          },
+        ],
+      }),
+    })
+
+    const typeCells = wrapper.findAll('td.deal-col-type')
+    expect(typeCells[0].text()).toContain('Шеринг')
+    expect(typeCells[0].text()).not.toContain('TR')
+    expect(typeCells[0].classes()).toContain('deal-type-cell--rental')
+    expect(typeCells[1].text()).toContain('Покупка RU')
+    expect(typeCells[1].classes()).toContain('deal-type-cell--sale')
+  })
+
   it('calls completion action from complete button in pending list', async () => {
     const markDealCompleted = vi.fn()
     const wrapper = mount(WorkDealsTableSection, {

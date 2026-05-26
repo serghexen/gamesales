@@ -637,6 +637,11 @@
   max-width: 280px;
 }
 
+.work-page .form--compact .account-reserve-row .input--select-wrap .btn--icon-clear--select {
+  height: 28px !important;
+  right: 2px;
+}
+
 .work-page .form--compact .account-reserve-list__actions {
   grid-column: 1 / -1;
   margin-top: 2px;

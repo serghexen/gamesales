@@ -305,6 +305,48 @@ describe('WorkAccountEditorModal', () => {
     expect(restoreSlotAssignment).toHaveBeenCalledWith(55)
   })
 
+  it('copies account email from modal header', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
+    const wrapper = mount(WorkAccountEditorModal, {
+      props: buildProps({
+        accountModalMode: 'edit',
+        accountEditMode: 'view',
+        editAccount: {
+          ...buildProps().editAccount,
+          login_name: 'user',
+          domain_code: 'mail.com',
+        },
+      }),
+      global: { stubs: { teleport: true } },
+    })
+
+    const copyBtn = wrapper.find('button[aria-label="Копировать почту"]')
+    expect(copyBtn.exists()).toBe(true)
+    await copyBtn.trigger('click')
+    expect(writeText).toHaveBeenCalledWith('user@mail.com')
+  })
+
+  it('renders copy button for reserve row in view mode', () => {
+    const wrapper = mount(WorkAccountEditorModal, {
+      props: buildProps({
+        accountModalMode: 'edit',
+        accountEditMode: 'view',
+        editAccount: {
+          ...buildProps().editAccount,
+          reserve_text: 'AAA111 BBB222',
+          existing_reserve_keys: ['reserve1', 'reserve2'],
+        },
+      }),
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(wrapper.find('button[aria-label="Копировать Резерв 1"]').exists()).toBe(true)
+  })
+
   it('opens deal editor when user clicks deal row in account modal', async () => {
     const startEditDeal = vi.fn()
     const wrapper = mount(WorkAccountEditorModal, {
