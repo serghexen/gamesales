@@ -67,6 +67,8 @@ function createHarness() {
     accountImportDetailsRef: ref(null),
     loadProducts: vi.fn(),
     loadProductsAll: vi.fn(),
+    accounts: ref([]),
+    ensureAccountSecretsLoaded: vi.fn().mockResolvedValue(undefined),
     loadAccounts: vi.fn(),
     loadAccountsAll: vi.fn(),
     suppressUnsavedConfirm: ref(false),
@@ -150,5 +152,27 @@ describe('useImportFlow', () => {
       { token: 'token-1' },
     )
     expect(String(h.deps.accountImportMessage.value || '')).toContain('Обновлено сделок: 1')
+  })
+
+  it('refreshes visible account secrets after account import is applied', async () => {
+    const h = createHarness()
+    h.deps.accountImportFile.value = { name: 'accounts.xlsx' }
+    h.deps.accountImportValidated.value = true
+    h.deps.accounts.value = [{ account_id: 5 }, { account_id: 9 }, { account_id: 9 }]
+    h.apiPostForm.mockResolvedValueOnce({ job_id: 'job-1' })
+    h.apiGet.mockResolvedValueOnce({
+      done: true,
+      result: { ok: true, created: 0, updated: 1, skipped: 0, failed: 0, total: 1, errors: [], warnings: [] },
+    })
+
+    await h.flow.uploadAccountImport()
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(h.deps.loadAccounts).toHaveBeenCalledTimes(1)
+    expect(h.deps.loadAccountsAll).toHaveBeenCalledTimes(1)
+    expect(h.deps.ensureAccountSecretsLoaded).toHaveBeenCalledWith(5, true)
+    expect(h.deps.ensureAccountSecretsLoaded).toHaveBeenCalledWith(9, true)
   })
 })

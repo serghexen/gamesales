@@ -65,6 +65,8 @@ export function useImportFlow({
   loadProductsAll,
   loadAccounts,
   loadAccountsAll,
+  accounts,
+  ensureAccountSecretsLoaded,
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
 }) {
@@ -85,6 +87,15 @@ export function useImportFlow({
   const clearStoredJobId = (primaryKey, fallbackKey = '') => {
     localStorage.removeItem(primaryKey)
     if (fallbackKey) localStorage.removeItem(fallbackKey)
+  }
+
+  // После массового импорта перечитывает секреты видимых аккаунтов, чтобы резервы не оставались старыми в таблице.
+  async function refreshVisibleAccountSecrets() {
+    if (typeof ensureAccountSecretsLoaded !== 'function') return
+    const list = Array.isArray(accounts?.value) ? accounts.value : []
+    const ids = [...new Set(list.map((item) => Number(item?.account_id || 0)).filter((id) => id > 0))]
+    if (!ids.length) return
+    await Promise.allSettled(ids.map((id) => ensureAccountSecretsLoaded(id, true)))
   }
 
   // Открывает окно импорта товаров и сбрасывает прошлое состояние.
@@ -531,6 +542,7 @@ export function useImportFlow({
     stopAccountImportStatusPolling()
     await loadAccounts()
     await loadAccountsAll()
+    await refreshVisibleAccountSecrets()
   }
 
   async function applySlotImportResult(res, action) {

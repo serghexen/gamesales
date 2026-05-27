@@ -311,6 +311,34 @@ describe('useAccountsFlow', () => {
     )
   })
 
+  it('updateAccount refreshes account secrets cache after save', async () => {
+    const h = createHarness()
+    h.editAccount.login_name = 'user'
+    h.editAccount.domain_code = 'mail.com'
+    h.editAccount.region_code = 'RU'
+    h.editAccount.reserve_text = ''
+    h.editAccount.existing_reserve_keys = ['reserve1']
+    h.editAccount.has_account = false
+    h.editAccount.has_email = false
+    h.editAccount.has_auth = false
+    h.accountSecrets.value = {
+      5: [{ secret_key: 'reserve1', secret_value_b64: 'b2xk' }],
+    }
+    h.apiPut.mockResolvedValue({ ok: true })
+    h.apiGet.mockImplementation(async (url) => {
+      if (url === '/accounts/5/secrets') {
+        return [{ secret_key: 'reserve2', secret_value_b64: 'bmV3' }]
+      }
+      return { items: [], total: 0 }
+    })
+    h.suppressUnsavedConfirm.value = true
+
+    await h.updateAccount()
+
+    expect(h.apiGet).toHaveBeenCalledWith('/accounts/5/secrets', { token: 'token-1' })
+    expect(h.accountSecrets.value[5]).toEqual([{ secret_key: 'reserve2', secret_value_b64: 'bmV3' }])
+  })
+
   it('loadAccountProducts ignores stale response after account switch', async () => {
     const h = createHarness()
     const first = createDeferred()

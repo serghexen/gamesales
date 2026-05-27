@@ -2331,6 +2331,8 @@ const {
   loadProductsAll,
   loadAccounts,
   loadAccountsAll,
+  accounts,
+  ensureAccountSecretsLoaded,
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
 })

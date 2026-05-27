@@ -893,6 +893,8 @@ export function useAccountsFlow({
           { token: auth.state.token }
         )
       }
+      // Принудительно обновляем кеш секретов, чтобы сразу показать актуальные резервы без ручного refresh.
+      await ensureAccountSecretsLoaded(editAccount.account_id, true)
 
       await apiPut(
         `/accounts/${editAccount.account_id}/products`,
