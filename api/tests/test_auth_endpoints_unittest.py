@@ -100,6 +100,79 @@ class AuthEndpointsTests(unittest.TestCase):
             self.assertEqual(res.json(), {"ok": True})
             self.assertTrue(exec1_mock.called)
 
+    # Обновление роли пользователя должно писать новый role_code и возвращать профиль.
+    def test_update_user_role_success(self):
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
+            patch.object(app_module, "role_exists", return_value=True),
+            patch.object(app_module, "get_user_by_username", return_value=(12, "manager1", "hash", "manager")),
+            patch.object(app_module, "exec1", return_value=1) as exec1_mock,
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            token = app_module.create_access_token(1, "admin", "admin")
+            with self._client() as client:
+                res = client.put(
+                    "/users/manager1/role",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={"role_code": "operator"},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"username": "manager1", "role": "operator"})
+            self.assertTrue(exec1_mock.called)
+
+    # Создание пользователя должно сохранять заполненное имя.
+    def test_create_user_with_name_success(self):
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
+            patch.object(app_module, "role_exists", return_value=True),
+            patch.object(app_module, "get_user_by_username", return_value=None),
+            patch.object(app_module, "hash_password", return_value="hash"),
+            patch.object(app_module, "exec1", return_value=1) as exec1_mock,
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            token = app_module.create_access_token(1, "admin", "admin")
+            with self._client() as client:
+                res = client.post(
+                    "/users",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={"username": "manager2", "password": "qwerty", "name": "Иван", "role_code": "manager"},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"username": "manager2", "role": "manager"})
+            sql_text, params = exec1_mock.call_args[0][1], exec1_mock.call_args[0][2]
+            self.assertIn("name", sql_text.lower())
+            self.assertEqual(params[2], "Иван")
+
+    # Полное обновление пользователя должно менять имя и роль.
+    def test_update_user_success(self):
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
+            patch.object(app_module, "role_exists", return_value=True),
+            patch.object(app_module, "get_user_by_username", return_value=(12, "manager1", "hash", "manager")),
+            patch.object(app_module, "exec1", return_value=1) as exec1_mock,
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            token = app_module.create_access_token(1, "admin", "admin")
+            with self._client() as client:
+                res = client.put(
+                    "/users/manager1",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={"name": "Новое имя", "role_code": "operator"},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"username": "manager1", "role": "operator"})
+            self.assertTrue(exec1_mock.called)
+            sql_text, params = exec1_mock.call_args[0][1], exec1_mock.call_args[0][2]
+            self.assertIn("set name=%s, role_code=%s", sql_text.lower())
+            self.assertEqual(params[0], "Новое имя")
+            self.assertEqual(params[1], "operator")
+
 
 if __name__ == "__main__":
     unittest.main()

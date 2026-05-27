@@ -1957,6 +1957,24 @@
   gap: 8px;
 }
 
+.work-page .deal-form__sale-layout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: start;
+}
+
+.work-page .deal-form__sale-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.work-page .deal-form__sale-col-bottom {
+  display: grid;
+  gap: 8px;
+}
+
 .work-page .deal-form__sale-links {
   display: grid;
   gap: 6px;
@@ -1994,6 +2012,33 @@
 .work-page .deal-form__triple--sale-auth,
 .work-page .deal-form__triple--sale-costs {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.work-page .deal-form .deal-form__account-details--sale {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--input-border) 80%, #ffffff 20%);
+  background: color-mix(in srgb, var(--panel) 90%, #ffffff 10%);
+  gap: 10px !important;
+}
+
+.work-page .deal-form .deal-form__sale-group {
+  margin-top: 0;
+}
+
+.work-page .deal-form .deal-form__sale-group--account {
+  margin-top: auto;
+}
+
+.work-page .deal-form__sale-comment {
+  margin-top: auto;
+}
+
+.work-page .deal-form .deal-form__input--locked:disabled {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--input-border) 70%, #8d97a8 30%);
+  background: color-mix(in srgb, var(--input-bg) 75%, #a8b0be 25%);
+  color: color-mix(in srgb, var(--ink) 65%, #8d97a8 35%);
+  cursor: not-allowed;
 }
 
 .work-page .field--comment-collapsible {

@@ -911,8 +911,18 @@ function closeAllModals() {
 const newUser = reactive({
   username: '',
   password: '',
+  name: '',
   role_code: 'manager',
 })
+
+const userFormMode = ref('create')
+const editUser = reactive({
+  username: '',
+  name: '',
+  role_code: 'manager',
+  created_at: '',
+})
+const editUserInitial = ref({ username: '', name: '', role_code: 'manager', created_at: '' })
 
 const pwdForm = reactive({
   current: '',
@@ -2089,7 +2099,12 @@ const {
   checkApi,
   loadUsers,
   createUser,
+  updateUser,
+  submitUserForm,
   openUserModal,
+  openUserViewModal,
+  openUserRoleModal,
+  startUserEdit,
   closeUserModal,
   changePassword,
   openPwdModal,
@@ -2102,6 +2117,7 @@ const {
   canViewUsersSection,
   apiGet,
   apiPost,
+  apiPut,
   mapApiError,
   closeAllModals,
   resetModalPos,
@@ -2114,7 +2130,10 @@ const {
   userOk,
   userLoading,
   showUserForm,
+  userFormMode,
   newUser,
+  editUser,
+  editUserInitial,
   pwdError,
   pwdOk,
   pwdLoading,
@@ -3127,16 +3146,23 @@ const analyticsSectionCtx = asCtx({
 // Контекст вкладки пользователей: список и модалка создания.
 const usersSectionCtx = asCtx({
   openUserModal,
+  openUserViewModal,
+  openUserRoleModal,
+  startUserEdit,
   loadUsers,
   userLoading,
   showUserForm,
+  userFormMode,
   closeUserModal,
   modalRef,
   modalStyle,
   startModalDrag,
   newUser,
+  editUser,
   roles,
   createUser,
+  updateUser,
+  submitUserForm,
   userError,
   userOk,
   sortedUsers,

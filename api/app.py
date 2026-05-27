@@ -475,7 +475,15 @@ class LoginOut(BaseModel):
 class UserCreate(BaseModel):
     username: str
     password: str
+    name: Optional[str] = None
     role_code: str = "manager"
+
+class UserRoleUpdateIn(BaseModel):
+    role_code: str
+
+class UserUpdateIn(BaseModel):
+    name: Optional[str] = None
+    role_code: str
 
 class UserListOut(BaseModel):
     username: str
@@ -827,6 +835,8 @@ mount_auth_routes(
     RoleOut=RoleOut,
     UserListOut=UserListOut,
     UserCreate=UserCreate,
+    UserRoleUpdateIn=UserRoleUpdateIn,
+    UserUpdateIn=UserUpdateIn,
     ResetPasswordIn=ResetPasswordIn,
 )
 

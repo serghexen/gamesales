@@ -25,6 +25,8 @@ def mount_auth_routes(
     RoleOut,
     UserListOut,
     UserCreate,
+    UserRoleUpdateIn,
+    UserUpdateIn,
     ResetPasswordIn,
 ):
     @app.post("/auth/login", response_model=LoginOut)
@@ -90,6 +92,8 @@ def mount_auth_routes(
 
     @app.post("/users", response_model=UserOut)
     def create_user(payload: UserCreate, user: UserOut = Depends(require_role("admin", "owner"))):
+        # Создаем пользователя и сразу сохраняем имя, если его заполнили в форме.
+        display_name = str(payload.name or "").strip()
         with psycopg.connect(DB_DSN) as conn:
             if not role_exists(conn, payload.role_code):
                 raise HTTPException(400, "Unknown role")
@@ -99,8 +103,8 @@ def mount_auth_routes(
             password_hash = hash_password(payload.password)
             exec1(
                 conn,
-                "INSERT INTO app.users(username, password_hash, role_code) VALUES (%s, %s, %s)",
-                (payload.username, password_hash, payload.role_code),
+                "INSERT INTO app.users(username, password_hash, name, role_code) VALUES (%s, %s, %s, %s)",
+                (payload.username, password_hash, display_name or None, payload.role_code),
             )
             conn.commit()
         return UserOut(username=payload.username, role=payload.role_code)
@@ -120,3 +124,52 @@ def mount_auth_routes(
             )
             conn.commit()
         return {"ok": True}
+
+    @app.put("/users/{username}/role", response_model=UserOut)
+    def update_user_role(username: str, payload: UserRoleUpdateIn, user: UserOut = Depends(require_role("admin", "owner"))):
+        # Сохраняем старый endpoint для совместимости и быстрой смены роли.
+        target_username = str(username or "").strip()
+        next_role_code = str(payload.role_code or "").strip()
+        if not target_username:
+            raise HTTPException(400, "Username is required")
+        if not next_role_code:
+            raise HTTPException(400, "Role is required")
+        with psycopg.connect(DB_DSN) as conn:
+            if not role_exists(conn, next_role_code):
+                raise HTTPException(400, "Unknown role")
+            row = get_user_by_username(conn, target_username)
+            if not row:
+                raise HTTPException(404, "User not found")
+            user_id = int(row[0])
+            exec1(
+                conn,
+                "UPDATE app.users SET role_code=%s WHERE user_id=%s",
+                (next_role_code, user_id),
+            )
+            conn.commit()
+        return UserOut(username=target_username, role=next_role_code)
+
+    @app.put("/users/{username}", response_model=UserOut)
+    def update_user(username: str, payload: UserUpdateIn, user: UserOut = Depends(require_role("admin", "owner"))):
+        # Обновляет карточку пользователя из модалки: имя и роль.
+        target_username = str(username or "").strip()
+        next_name = str(payload.name or "").strip()
+        next_role_code = str(payload.role_code or "").strip()
+        if not target_username:
+            raise HTTPException(400, "Username is required")
+        if not next_role_code:
+            raise HTTPException(400, "Role is required")
+        with psycopg.connect(DB_DSN) as conn:
+            if not role_exists(conn, next_role_code):
+                raise HTTPException(400, "Unknown role")
+            row = get_user_by_username(conn, target_username)
+            if not row:
+                raise HTTPException(404, "User not found")
+            user_id = int(row[0])
+            exec1(
+                conn,
+                "UPDATE app.users SET name=%s, role_code=%s WHERE user_id=%s",
+                (next_name or None, next_role_code, user_id),
+            )
+            conn.commit()
+        return UserOut(username=target_username, role=next_role_code)

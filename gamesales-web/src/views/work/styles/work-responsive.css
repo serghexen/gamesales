@@ -235,6 +235,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .work-page .deal-form__sale-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .work-page .deal-form__triple--rental-top {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -263,6 +267,10 @@
   }
 
   .work-page .deal-form__quad {
+    grid-template-columns: 1fr;
+  }
+
+  .work-page .deal-form__sale-layout {
     grid-template-columns: 1fr;
   }
 

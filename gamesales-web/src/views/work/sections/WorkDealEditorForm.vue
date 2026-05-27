@@ -709,176 +709,199 @@
                             <span>Произвести возврат</span>
                           </label>
                         </div>
-                        <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-top">
-                          <label class="field">
-                            <span class="label">Источник</span>
-                            <input
-                              v-if="dealEditMode === 'view'"
-                              class="input"
-                              :value="getSourceLabelById(editDeal.source_id)"
-                              readonly
-                            />
-                            <select v-else v-model.number="editDeal.source_id" class="input input--select">
-                              <option value="">— не выбрано —</option>
-                              <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">
-                                {{ s.name }} ({{ s.code }})
-                              </option>
-                            </select>
-                          </label>
-                          <label class="field">
-                            <span class="label">Мессенджер</span>
-                            <input
-                              v-if="dealEditMode === 'view'"
-                              class="input"
-                              :value="getMessengerLabelById(editDeal.messenger_id)"
-                              readonly
-                            />
-                            <select v-else v-model.number="editDeal.messenger_id" class="input input--select">
-                              <option value="">— не выбрано —</option>
-                              <option v-for="m in messengersByCode" :key="m.messenger_id" :value="m.messenger_id">
-                                {{ m.name }} ({{ m.code }})
-                              </option>
-                            </select>
-                          </label>
-                          <label class="field">
-                            <span class="label">Номер заказа</span>
-                            <input v-model.trim="editDeal.order_number" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
-                          </label>
-                        </div>
-                        <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-auth">
-                          <label class="field">
-                            <span class="label">Покупатель</span>
-                            <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
-                          </label>
-                          <label class="field">
-                            <span class="label">Логин</span>
-                            <input v-model.trim="editDeal.login" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
-                          </label>
-                          <label class="field">
-                            <span class="label">Пароль</span>
-                            <input v-model.trim="editDeal.password" class="input" placeholder="-" :readonly="dealEditMode === 'view'"/>
-                          </label>
-                        </div>
-                        <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-costs">
-                          <label class="field">
-                            <span class="label">Регион</span>
-                            <input
-                              v-if="dealEditMode === 'view'"
-                              class="input"
-                              :value="getRegionLabel(editDeal.region_code)"
-                              readonly
-                            />
-                            <select v-else v-model="editDeal.region_code" class="input input--select">
-                              <option value="">— не выбрано —</option>
-                              <option v-for="r in regions" :key="r.code" :value="r.code">
+                        <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__sale-layout">
+                          <div class="deal-form__sale-col">
+                            <label class="field">
+                              <span class="label">Мессенджер</span>
+                              <input
+                                v-if="dealEditMode === 'view'"
+                                class="input"
+                                :value="getMessengerLabelById(editDeal.messenger_id)"
+                                readonly
+                              />
+                              <select v-else v-model.number="editDeal.messenger_id" class="input input--select">
+                                <option value="">— не выбрано —</option>
+                                <option v-for="m in messengersByCode" :key="m.messenger_id" :value="m.messenger_id">
+                                  {{ m.name }} ({{ m.code }})
+                                </option>
+                              </select>
+                            </label>
+                            <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--source">
+                              <label class="field">
+                                <span class="label">Источник</span>
+                                <input
+                                  v-if="dealEditMode === 'view'"
+                                  class="input"
+                                  :value="getSourceLabelById(editDeal.source_id)"
+                                  readonly
+                                />
+                                <select v-else v-model.number="editDeal.source_id" class="input input--select">
+                                  <option value="">— не выбрано —</option>
+                                  <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">
+                                    {{ s.name }} ({{ s.code }})
+                                  </option>
+                                </select>
+                              </label>
+                              <label class="field">
+                                <span class="label">Номер заказа</span>
+                                <input v-model.trim="editDeal.order_number" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
+                              </label>
+                              <label class="field">
+                                <span class="label">Ответственный</span>
+                                <input
+                                  v-if="dealEditMode === 'view'"
+                                  class="input"
+                                  :value="editDealResponsible || '— не выбрано —'"
+                                  readonly
+                                />
+                                <select v-else v-model="editDealResponsible" class="input input--select">
+                                  <option value="">— не выбрано —</option>
+                                  <option
+                                    v-for="responsibleName in responsibleUserOptions"
+                                    :key="`edit-responsible-${responsibleName}`"
+                                    :value="responsibleName"
+                                  >
+                                    {{ responsibleName }}
+                                  </option>
+                                </select>
+                              </label>
+                            </div>
+                            <div class="field field--comment-collapsible deal-form__sale-comment">
+                              <button class="comment-toggle" type="button" @click="editDealCommentOpen = !editDealCommentOpen">
+                                {{ editDealCommentOpen || editDeal.notes ? 'Комментарий' : '+ Комментарий' }}
+                              </button>
+                              <textarea
+                                v-if="editDealCommentOpen || editDeal.notes"
+                                v-model.trim="editDeal.notes"
+                                class="input input--textarea input--textarea--compact"
+                                :rows="getCompactNotesRows(editDeal.notes)"
+                                :readonly="dealEditMode === 'view'"
+                              />
+                            </div>
+                          </div>
+                          <div class="deal-form__sale-col">
+                            <label class="field">
+                              <span class="label">Покупатель</span>
+                              <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
+                            </label>
+                            <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--account">
+                              <label class="field">
+                                <span class="label">Логин</span>
+                                <input v-model.trim="editDeal.login" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
+                              </label>
+                              <label class="field">
+                                <span class="label">Пароль</span>
+                                <input v-model.trim="editDeal.password" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
+                              </label>
+                              <div class="deal-form__sale-links">
+                                <label v-if="getSaleProductLinks('edit').length" class="field">
+                                  <span class="label">Ссылка на товар</span>
+                                  <div
+                                    v-for="(linkValue, linkIndex) in editSaleProductLinks"
+                                    :key="`edit-sale-link-${linkIndex}-${linkValue}`"
+                                    class="deal-form__sale-link-row"
+                                  >
+                                    <div class="input--select-wrap">
+                                      <input
+                                        :value="linkValue"
+                                        class="input input--with-copy"
+                                        placeholder="https://..."
+                                        :readonly="dealEditMode === 'view'"
+                                        @input="setSaleProductLinkValue('edit', linkIndex, $event.target.value)"
+                                      />
+                                      <button
+                                        class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                        type="button"
+                                        :aria-label="getSaleLinkCopyLabel('edit', linkIndex)"
+                                        :title="getSaleLinkCopyLabel('edit', linkIndex)"
+                                        :disabled="!getSaleProductLinkValue('edit', linkIndex)"
+                                        @click="copySaleProductLink('edit', linkIndex)"
+                                      >
+                                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                                          <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                          <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                    <button
+                                      v-if="dealEditMode !== 'view' && canRemoveSaleProductLink('edit')"
+                                      class="ghost ghost--small deal-form__sale-link-remove"
+                                      type="button"
+                                      @click="removeSaleProductLink('edit', linkIndex)"
+                                    >
+                                      Удалить
+                                    </button>
+                                  </div>
+                                </label>
+                                <button
+                                  v-if="dealEditMode !== 'view'"
+                                  class="comment-toggle deal-form__sale-link-add"
+                                  type="button"
+                                  @click="addSaleProductLink('edit')"
+                                >
+                                  + Добавить ссылку
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="deal-form__sale-col">
+                            <label class="field">
+                              <span class="label">Регион</span>
+                              <input
+                                v-if="dealEditMode === 'view'"
+                                class="input"
+                                :value="getRegionLabel(editDeal.region_code)"
+                                readonly
+                              />
+                              <select v-else v-model="editDeal.region_code" class="input input--select">
+                                <option value="">— не выбрано —</option>
+                                <option v-for="r in regions" :key="r.code" :value="r.code">
                                 {{ r.name }} ({{ r.code }})
                               </option>
                             </select>
                           </label>
-                          <label class="field">
-                            <span class="label">Закуп</span>
-                            <input
-                              v-model.number="editDeal.purchase_cost"
-                              class="input"
-                              type="number"
-                              min="0"
-                              :max="maxPrice"
-                              @input="editDeal.purchase_cost = clampPrice(editDeal.purchase_cost)"
-                              :readonly="dealEditMode === 'view'"
-                            />
-                          </label>
-                          <label class="field">
-                            <span class="label">Сумма</span>
-                            <input
-                              v-model.number="editDeal.price"
-                              class="input"
-                              type="number"
-                              min="0"
-                              :max="maxPrice"
-                              @input="editDeal.price = clampPrice(editDeal.price)"
-                              :readonly="dealEditMode === 'view'"
-                            />
-                          </label>
-                        </div>
-                        <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__double">
-                          <label class="field">
-                            <span class="label">Ответственный</span>
-                            <input
-                              v-if="dealEditMode === 'view'"
-                              class="input"
-                              :value="editDealResponsible || '— не выбрано —'"
-                              readonly
-                            />
-                            <select v-else v-model="editDealResponsible" class="input input--select">
-                              <option value="">— не выбрано —</option>
-                              <option
-                                v-for="responsibleName in responsibleUserOptions"
-                                :key="`edit-responsible-${responsibleName}`"
-                                :value="responsibleName"
-                              >
-                                {{ responsibleName }}
-                              </option>
-                            </select>
-                          </label>
-                          <label class="field">
-                            <span class="label">Ссылка на товар</span>
-                            <div class="deal-form__sale-links">
-                              <div
-                                v-for="(linkValue, linkIndex) in editSaleProductLinks"
-                                :key="`edit-sale-link-${linkIndex}`"
-                                class="deal-form__sale-link-row"
-                              >
-                                <div class="input--select-wrap">
-                                  <input
-                                    :value="linkValue"
-                                    class="input input--with-copy"
-                                    placeholder="https://..."
-                                    :readonly="dealEditMode === 'view'"
-                                    @input="setSaleProductLinkValue('edit', linkIndex, $event.target.value)"
-                                  />
-                                  <button
-                                    class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
-                                    type="button"
-                                    :aria-label="getSaleLinkCopyLabel('edit', linkIndex)"
-                                    :title="getSaleLinkCopyLabel('edit', linkIndex)"
-                                    :disabled="!getSaleProductLinkValue('edit', linkIndex)"
-                                    @click="copySaleProductLink('edit', linkIndex)"
-                                  >
-                                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                                      <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
-                                      <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
-                                    </svg>
-                                  </button>
-                                </div>
-                                <button
-                                  v-if="dealEditMode !== 'view' && canRemoveSaleProductLink('edit')"
-                                  class="ghost ghost--small deal-form__sale-link-remove"
-                                  type="button"
-                                  @click="removeSaleProductLink('edit', linkIndex)"
-                                >
-                                  Удалить
-                                </button>
+                            <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--price">
+                              <label class="field">
+                                <span class="label">Закупочная цена</span>
+                                <input
+                                  v-model.number="editDeal.purchase_cost"
+                                  class="input"
+                                  type="number"
+                                  min="0"
+                                  :max="maxPrice"
+                                  @input="editDeal.purchase_cost = clampPrice(editDeal.purchase_cost)"
+                                  :readonly="dealEditMode === 'view'"
+                                />
+                              </label>
+                              <label class="field">
+                                <span class="label">Сумма продажи</span>
+                                <input
+                                  v-model.number="editDeal.price"
+                                  class="input"
+                                  type="number"
+                                  min="0"
+                                  :max="maxPrice"
+                                  @input="editDeal.price = clampPrice(editDeal.price)"
+                                  :readonly="dealEditMode === 'view'"
+                                />
+                              </label>
+                              <div class="deal-form__sale-col-bottom">
+                                <label class="field">
+                                  <span class="label">Метод оплаты</span>
+                                  <select class="input input--select deal-form__input--locked" disabled>
+                                    <option value="">— скоро будет —</option>
+                                  </select>
+                                </label>
+                                <label class="field">
+                                  <span class="label">Скидка</span>
+                                  <select class="input input--select deal-form__input--locked" disabled>
+                                    <option value="">— скоро будет —</option>
+                                  </select>
+                                </label>
                               </div>
-                              <button
-                                v-if="dealEditMode !== 'view'"
-                                class="comment-toggle deal-form__sale-link-add"
-                                type="button"
-                                @click="addSaleProductLink('edit')"
-                              >
-                                + Добавить ссылку
-                              </button>
                             </div>
-                          </label>
+                          </div>
                         </div>
-                        <label v-if="editDeal.deal_type_code === 'sale'" class="field">
-                          <span class="label">Комментарий</span>
-                          <textarea
-                            v-model.trim="editDeal.notes"
-                            class="input input--textarea input--textarea--compact"
-                            :rows="getCompactNotesRows(editDeal.notes)"
-                            :readonly="dealEditMode === 'view'"
-                          />
-                        </label>
                       </div>
                       <div class="deal-form__full">
                         <div v-if="dealError" class="field field--inline-actions">
@@ -898,33 +921,6 @@
                     </div>
                     <div v-else class="form deal-form" :class="{ 'deal-form--sale': newDeal.deal_type_code === 'sale' || newDeal.deal_type_code === 'rental' }">
                       <div class="deal-form__col deal-form__col--left">
-                        <div
-                          v-if="newDeal.deal_type_code === 'sale'"
-                          class="deal-form__triple deal-form__triple--sale-top"
-                        >
-                          <label class="field">
-                            <span class="label">Источник</span>
-                            <select v-model.number="newDeal.source_id" class="input input--select">
-                              <option value="">— не выбрано —</option>
-                              <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">
-                                {{ s.name }} ({{ s.code }})
-                              </option>
-                            </select>
-                          </label>
-                          <label class="field">
-                            <span class="label">Мессенджер</span>
-                            <select v-model.number="newDeal.messenger_id" class="input input--select">
-                              <option value="">— не выбрано —</option>
-                              <option v-for="m in messengersByCode" :key="m.messenger_id" :value="m.messenger_id">
-                                {{ m.name }} ({{ m.code }})
-                              </option>
-                            </select>
-                          </label>
-                          <label class="field">
-                            <span class="label">Номер заказа</span>
-                            <input v-model.trim="newDeal.order_number" class="input" placeholder="-" />
-                          </label>
-                        </div>
                         <div v-if="newDeal.deal_type_code === 'rental'" class="deal-form__rental-layout">
                           <div class="deal-form__rental-main">
                             <div class="deal-form__double">
@@ -1445,125 +1441,169 @@
                             </div>
                           </div>
                         </div>
-                        <div v-if="newDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-auth">
-                          <label class="field">
-                            <span class="label">Покупатель</span>
-                            <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="-" />
-                          </label>
-                          <label class="field">
-                            <span class="label">Логин</span>
-                            <input v-model.trim="newDeal.login" class="input" placeholder="-" />
-                          </label>
-                          <label class="field">
-                            <span class="label">Пароль</span>
-                            <input v-model.trim="newDeal.password" class="input" placeholder="-"/>
-                          </label>
-                        </div>
-                        <div v-if="newDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-costs">
-                          <label class="field">
-                            <span class="label">Регион</span>
-                            <select v-model="newDeal.region_code" class="input input--select">
-                              <option value="">— не выбрано —</option>
-                              <option v-for="r in regions" :key="r.code" :value="r.code">
+                        <div v-if="newDeal.deal_type_code === 'sale'" class="deal-form__sale-layout">
+                          <div class="deal-form__sale-col">
+                            <label class="field">
+                              <span class="label">Мессенджер</span>
+                              <select v-model.number="newDeal.messenger_id" class="input input--select">
+                                <option value="">— не выбрано —</option>
+                                <option v-for="m in messengersByCode" :key="m.messenger_id" :value="m.messenger_id">
+                                  {{ m.name }} ({{ m.code }})
+                                </option>
+                              </select>
+                            </label>
+                            <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--source">
+                              <label class="field">
+                                <span class="label">Источник</span>
+                                <select v-model.number="newDeal.source_id" class="input input--select">
+                                  <option value="">— не выбрано —</option>
+                                  <option v-for="s in sourcesByCode" :key="s.source_id" :value="s.source_id">
+                                    {{ s.name }} ({{ s.code }})
+                                  </option>
+                                </select>
+                              </label>
+                              <label class="field">
+                                <span class="label">Номер заказа</span>
+                                <input v-model.trim="newDeal.order_number" class="input" placeholder="-" />
+                              </label>
+                              <label class="field">
+                                <span class="label">Ответственный</span>
+                                <select v-model="newDealResponsible" class="input input--select">
+                                  <option value="">— не выбрано —</option>
+                                  <option
+                                    v-for="responsibleName in responsibleUserOptions"
+                                    :key="`new-sale-responsible-${responsibleName}`"
+                                    :value="responsibleName"
+                                  >
+                                    {{ responsibleName }}
+                                  </option>
+                                </select>
+                              </label>
+                            </div>
+                            <div class="field field--comment-collapsible deal-form__sale-comment">
+                              <button class="comment-toggle" type="button" @click="newDealCommentOpen = !newDealCommentOpen">
+                                {{ newDealCommentOpen || newDeal.notes ? 'Комментарий' : '+ Комментарий' }}
+                              </button>
+                              <textarea
+                                v-if="newDealCommentOpen || newDeal.notes"
+                                v-model.trim="newDeal.notes"
+                                class="input input--textarea input--textarea--compact"
+                                :rows="getCompactNotesRows(newDeal.notes)"
+                              />
+                            </div>
+                          </div>
+                          <div class="deal-form__sale-col">
+                            <label class="field">
+                              <span class="label">Покупатель</span>
+                              <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="-" />
+                            </label>
+                            <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--account">
+                              <label class="field">
+                                <span class="label">Логин</span>
+                                <input v-model.trim="newDeal.login" class="input" placeholder="-" />
+                              </label>
+                              <label class="field">
+                                <span class="label">Пароль</span>
+                                <input v-model.trim="newDeal.password" class="input" placeholder="-" />
+                              </label>
+                              <div class="deal-form__sale-links">
+                                <label v-if="getSaleProductLinks('new').length" class="field">
+                                  <span class="label">Ссылка на товар</span>
+                                  <div
+                                    v-for="(linkValue, linkIndex) in newSaleProductLinks"
+                                    :key="`new-sale-link-${linkIndex}-${linkValue}`"
+                                    class="deal-form__sale-link-row"
+                                  >
+                                    <div class="input--select-wrap">
+                                      <input
+                                        :value="linkValue"
+                                        class="input input--with-copy"
+                                        placeholder="https://..."
+                                        @input="setSaleProductLinkValue('new', linkIndex, $event.target.value)"
+                                      />
+                                      <button
+                                        class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
+                                        type="button"
+                                        :aria-label="getSaleLinkCopyLabel('new', linkIndex)"
+                                        :title="getSaleLinkCopyLabel('new', linkIndex)"
+                                        :disabled="!getSaleProductLinkValue('new', linkIndex)"
+                                        @click="copySaleProductLink('new', linkIndex)"
+                                      >
+                                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                                          <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
+                                          <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                    <button
+                                      v-if="canRemoveSaleProductLink('new')"
+                                      class="ghost ghost--small deal-form__sale-link-remove"
+                                      type="button"
+                                      @click="removeSaleProductLink('new', linkIndex)"
+                                    >
+                                      Удалить
+                                    </button>
+                                  </div>
+                                </label>
+                                <button
+                                  class="comment-toggle deal-form__sale-link-add"
+                                  type="button"
+                                  @click="addSaleProductLink('new')"
+                                >
+                                  + Добавить ссылку
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="deal-form__sale-col">
+                            <label class="field">
+                              <span class="label">Регион</span>
+                              <select v-model="newDeal.region_code" class="input input--select">
+                                <option value="">— не выбрано —</option>
+                                <option v-for="r in regions" :key="r.code" :value="r.code">
                                 {{ r.name }} ({{ r.code }})
                               </option>
                             </select>
                           </label>
-                          <label class="field">
-                            <span class="label">Закуп</span>
-                            <input
-                              v-model.number="newDeal.purchase_cost"
-                              class="input"
-                              type="number"
-                              min="0"
-                              :max="maxPrice"
-                              @input="newDeal.purchase_cost = clampPrice(newDeal.purchase_cost)"
-                            />
-                          </label>
-                          <label class="field">
-                            <span class="label">Сумма</span>
-                            <input
-                              v-model.number="newDeal.price"
-                              class="input"
-                              type="number"
-                              min="0"
-                              :max="maxPrice"
-                              @input="newDeal.price = clampPrice(newDeal.price)"
-                            />
-                          </label>
-                        </div>
-                        <div v-if="newDeal.deal_type_code === 'sale'" class="deal-form__double">
-                          <label class="field">
-                            <span class="label">Ответственный</span>
-                            <select v-model="newDealResponsible" class="input input--select">
-                              <option value="">— не выбрано —</option>
-                              <option
-                                v-for="responsibleName in responsibleUserOptions"
-                                :key="`new-sale-responsible-${responsibleName}`"
-                                :value="responsibleName"
-                              >
-                                {{ responsibleName }}
-                              </option>
-                            </select>
-                          </label>
-                          <label class="field">
-                            <span class="label">Ссылка на товар</span>
-                            <div class="deal-form__sale-links">
-                              <div
-                                v-for="(linkValue, linkIndex) in newSaleProductLinks"
-                                :key="`new-sale-link-${linkIndex}`"
-                                class="deal-form__sale-link-row"
-                              >
-                                <div class="input--select-wrap">
-                                  <input
-                                    :value="linkValue"
-                                    class="input input--with-copy"
-                                    placeholder="https://..."
-                                    @input="setSaleProductLinkValue('new', linkIndex, $event.target.value)"
-                                  />
-                                  <button
-                                    class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
-                                    type="button"
-                                    :aria-label="getSaleLinkCopyLabel('new', linkIndex)"
-                                    :title="getSaleLinkCopyLabel('new', linkIndex)"
-                                    :disabled="!getSaleProductLinkValue('new', linkIndex)"
-                                    @click="copySaleProductLink('new', linkIndex)"
-                                  >
-                                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                                      <rect x="9" y="9" width="10" height="10" rx="2" ry="2" />
-                                      <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
-                                    </svg>
-                                  </button>
-                                </div>
-                                <button
-                                  v-if="canRemoveSaleProductLink('new')"
-                                  class="ghost ghost--small deal-form__sale-link-remove"
-                                  type="button"
-                                  @click="removeSaleProductLink('new', linkIndex)"
-                                >
-                                  Удалить
-                                </button>
+                            <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--price">
+                              <label class="field">
+                                <span class="label">Закупочная цена</span>
+                                <input
+                                  v-model.number="newDeal.purchase_cost"
+                                  class="input"
+                                  type="number"
+                                  min="0"
+                                  :max="maxPrice"
+                                  @input="newDeal.purchase_cost = clampPrice(newDeal.purchase_cost)"
+                                />
+                              </label>
+                              <label class="field">
+                                <span class="label">Сумма продажи</span>
+                                <input
+                                  v-model.number="newDeal.price"
+                                  class="input"
+                                  type="number"
+                                  min="0"
+                                  :max="maxPrice"
+                                  @input="newDeal.price = clampPrice(newDeal.price)"
+                                />
+                              </label>
+                              <div class="deal-form__sale-col-bottom">
+                                <label class="field">
+                                  <span class="label">Метод оплаты</span>
+                                  <select class="input input--select deal-form__input--locked" disabled>
+                                    <option value="">— скоро будет —</option>
+                                  </select>
+                                </label>
+                                <label class="field">
+                                  <span class="label">Скидка</span>
+                                  <select class="input input--select deal-form__input--locked" disabled>
+                                    <option value="">— скоро будет —</option>
+                                  </select>
+                                </label>
                               </div>
-                              <button
-                                class="comment-toggle deal-form__sale-link-add"
-                                type="button"
-                                @click="addSaleProductLink('new')"
-                              >
-                                + Добавить ссылку
-                              </button>
                             </div>
-                          </label>
-                        </div>
-                        <div v-if="newDeal.deal_type_code === 'sale'" class="field field--comment-collapsible">
-                          <button class="comment-toggle" type="button" @click="newDealCommentOpen = !newDealCommentOpen">
-                            {{ newDealCommentOpen || newDeal.notes ? 'Комментарий' : '+ Комментарий' }}
-                          </button>
-                          <textarea
-                            v-if="newDealCommentOpen || newDeal.notes"
-                            v-model.trim="newDeal.notes"
-                            class="input input--textarea input--textarea--compact"
-                            :rows="getCompactNotesRows(newDeal.notes)"
-                          />
+                          </div>
                         </div>
                       </div>
                       <div class="deal-form__full">
@@ -1699,8 +1739,8 @@ const editQuickSubscriptionTermOpen = ref(false)
 const newQuickProductOpen = ref(false)
 const newQuickAccountOpen = ref(false)
 const newQuickSubscriptionTermOpen = ref(false)
-const editSaleProductLinks = ref([''])
-const newSaleProductLinks = ref([''])
+const editSaleProductLinks = ref([])
+const newSaleProductLinks = ref([])
 const editDealAccountDetailsLoading = ref(false)
 const newDealAccountDetailsLoading = ref(false)
 const copiedSaleLinkKey = ref('')
@@ -2567,7 +2607,7 @@ function parseSaleProductLinks(value) {
     .split(/\r?\n/g)
     .map((item) => String(item || '').trim())
     .filter((item) => !!item)
-  return normalized.length ? normalized : ['']
+  return normalized
 }
 
 // Возвращает ссылочный список нужной формы (создание или редактирование).
@@ -2611,17 +2651,16 @@ function addSaleProductLink(target) {
   linksRef.value.push('')
 }
 
-// Проверяет, можно ли удалить строку ссылки (хотя бы одна строка должна остаться).
+// Проверяет, можно ли удалить строку ссылки.
 function canRemoveSaleProductLink(target) {
-  return getSaleProductLinks(target).length > 1
+  return getSaleProductLinks(target).length > 0
 }
 
 // Удаляет строку ссылки и синхронизирует результат в поле сделки.
 function removeSaleProductLink(target, index) {
   const linksRef = getSaleProductLinksRef(target)
   if (!canRemoveSaleProductLink(target)) return
-  linksRef.value.splice(index, 1)
-  if (!linksRef.value.length) linksRef.value.push('')
+  linksRef.value = linksRef.value.filter((_, rowIndex) => rowIndex !== index)
   syncSaleProductLinksToDeal(target)
 }
 
