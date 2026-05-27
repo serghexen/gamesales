@@ -106,3 +106,31 @@ The script has safety checks:
 - refuses if prod/staging DB names are equal;
 - asks explicit confirmation (`YES`);
 - recreates staging DB and streams dump from prod.
+
+## Daily production DB backup
+Use a separate directory for dumps:
+
+```bash
+mkdir -p /apps/db_backup
+```
+
+Manual backup run from server repo root:
+
+```bash
+./scripts/backup_prod_db.sh
+```
+
+The script:
+- reads DB credentials from `.env.prod` (can be overridden via env vars);
+- creates dump in PostgreSQL custom format;
+- saves file to `/apps/db_backup/backup_YYYY-MM-DD_HH-MM-SS.dump`.
+
+Schedule daily backup at `23:00` (server local time):
+
+```bash
+crontab -e
+```
+
+```cron
+0 23 * * * cd /apps/gamesales && ./scripts/backup_prod_db.sh >> /apps/db_backup/backup.log 2>&1
+```
