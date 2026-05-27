@@ -17,7 +17,7 @@ export const PRODUCT_LOGO_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 export const PRODUCT_TYPE_PRIMARY = 'game'
 
 export const dealTypeOptions = [
-  { code: 'sale', name: 'Продажа' },
+  { code: 'sale', name: 'Услуга' },
   { code: 'rental', name: 'Шеринг' },
   { code: 'expense', name: 'Расходы' },
   { code: 'adjustment', name: 'Корректирование' },
@@ -87,7 +87,7 @@ export const mapApiError = (message) => {
   if (text.includes('slot_type_code is required for rental')) return 'Для шеринга нужно выбрать тип слота'
   if (text.includes('slots_used must be >= 1 for rental')) return 'Для шеринга укажите количество слотов (минимум 1)'
   if (text.includes('slots_used must be >= 1')) return 'Количество слотов должно быть не меньше 1'
-  if (text.includes('deal_type_code must be sale or rental')) return 'Тип сделки должен быть продажа или шеринг'
+  if (text.includes('deal_type_code must be sale or rental')) return 'Тип сделки должен быть услуга или шеринг'
   if (text.includes('order_number must be unique for source ym/ozon/wb')) {
     // Оставляем подробности конфликта в тексте, чтобы менеджер мог быстро найти нужную сделку.
     const conflictDealId = text.match(/deal_id=([0-9]+)/)?.[1]

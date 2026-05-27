@@ -51,7 +51,7 @@ describe('WorkDealsTableSection', () => {
   it('renders deals table inside horizontal scroll wrapper', () => {
     const wrapper = mount(WorkDealsTableSection, {
       props: buildProps({
-        sortedDeals: [{ deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A' }],
+        sortedDeals: [{ deal_id: 1, deal_type: 'Услуга', customer_nickname: 'A' }],
       }),
     })
 
@@ -66,7 +66,7 @@ describe('WorkDealsTableSection', () => {
         sortedDeals: [
           {
             deal_id: 1,
-            deal_type: 'Продажа',
+            deal_type: 'Услуга',
             customer_nickname: 'Покупатель',
             region_code: 'RU',
             purchase_at: '2026-02-11 10:00',
@@ -94,7 +94,7 @@ describe('WorkDealsTableSection', () => {
         sortedDeals: [
           {
             deal_id: 1,
-            deal_type: 'Продажа',
+            deal_type: 'Услуга',
             deal_type_code: 'sale',
             customer_nickname: 'Покупатель',
             region_code: 'RU',
@@ -206,7 +206,7 @@ describe('WorkDealsTableSection', () => {
         sortedDeals: [
           {
             deal_id: 1,
-            deal_type: 'Продажа',
+            deal_type: 'Услуга',
             customer_nickname: 'Покупатель',
             region_code: 'RU',
             purchase_at: '2026-02-11 10:00',
@@ -232,7 +232,7 @@ describe('WorkDealsTableSection', () => {
         sortedDeals: [
           {
             deal_id: 3,
-            deal_type: 'Продажа',
+            deal_type: 'Услуга',
             deal_type_code: 'sale',
             flow_status: 'Черновик',
             flow_status_code: 'draft',
@@ -264,7 +264,7 @@ describe('WorkDealsTableSection', () => {
         dealFilters,
         activeDealFilter: 'type',
         dealTypeOptions: [
-          { code: 'sale', name: 'Продажа' },
+          { code: 'sale', name: 'Услуга' },
           { code: 'share', name: 'Шеринг' },
         ],
       }),
@@ -283,7 +283,7 @@ describe('WorkDealsTableSection', () => {
       props: buildProps({
         loadDeals,
         activeDealFilter: 'type',
-        dealTypeOptions: [{ code: 'sale', name: 'Продажа' }],
+        dealTypeOptions: [{ code: 'sale', name: 'Услуга' }],
       }),
     })
 
@@ -325,15 +325,15 @@ describe('WorkDealsTableSection', () => {
     const wrapper = mount(WorkDealsTableSection, {
       props: buildProps({
         sortedDeals: [
-          { deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+          { deal_id: 1, deal_type: 'Услуга', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
         ],
       }),
     })
 
     await wrapper.setProps({
       sortedDeals: [
-        { deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
-        { deal_id: 2, deal_type: 'Продажа', customer_nickname: 'B', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+        { deal_id: 1, deal_type: 'Услуга', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+        { deal_id: 2, deal_type: 'Услуга', customer_nickname: 'B', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
       ],
       realtimeAnimationTick: 1,
     })
@@ -347,7 +347,7 @@ describe('WorkDealsTableSection', () => {
     const wrapper = mount(WorkDealsTableSection, {
       props: buildProps({
         sortedDeals: [
-          { deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+          { deal_id: 1, deal_type: 'Услуга', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
         ],
         realtimeAnimationTick: 0,
       }),
@@ -355,8 +355,8 @@ describe('WorkDealsTableSection', () => {
 
     await wrapper.setProps({
       sortedDeals: [
-        { deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
-        { deal_id: 2, deal_type: 'Продажа', customer_nickname: 'B', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+        { deal_id: 1, deal_type: 'Услуга', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+        { deal_id: 2, deal_type: 'Услуга', customer_nickname: 'B', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
       ],
       realtimeAnimationTick: 0,
     })
@@ -373,15 +373,15 @@ describe('WorkDealsTableSection', () => {
       props: buildProps({
         startEditDeal,
         sortedDeals: [
-          { deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
-          { deal_id: 2, deal_type: 'Продажа', customer_nickname: 'B', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+          { deal_id: 1, deal_type: 'Услуга', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+          { deal_id: 2, deal_type: 'Услуга', customer_nickname: 'B', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
         ],
       }),
     })
 
     await wrapper.setProps({
       sortedDeals: [
-        { deal_id: 1, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+        { deal_id: 1, deal_type: 'Услуга', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
       ],
       realtimeAnimationTick: 1,
     })
@@ -415,7 +415,7 @@ describe('WorkDealsTableSection', () => {
           'manager-1': 'Иван',
         },
         sortedDeals: [
-          { deal_id: 10, deal_type: 'Продажа', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
+          { deal_id: 10, deal_type: 'Услуга', customer_nickname: 'A', region_code: 'RU', flow_status: 'В ожидании', responsible_username: 'm1' },
         ],
       }),
     })

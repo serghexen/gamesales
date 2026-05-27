@@ -352,7 +352,7 @@ CREATE TABLE IF NOT EXISTS app.deals (
   created_at   timestamptz NOT NULL DEFAULT now(),
   completed_at timestamptz
 );
-COMMENT ON TABLE app.deals IS 'Сделки (продажа/шеринг/расход и т.д.)';
+COMMENT ON TABLE app.deals IS 'Сделки (услуга/шеринг/расход и т.д.)';
 COMMENT ON COLUMN app.deals.deal_id IS 'Идентификатор сделки';
 COMMENT ON COLUMN app.deals.deal_type_code IS 'Тип сделки';
 COMMENT ON COLUMN app.deals.status_code IS 'Статус сделки';
@@ -642,7 +642,7 @@ ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO app.deal_types(code, name)
 VALUES
-  ('sale','Продажа'),
+  ('sale','Услуга'),
   ('rental','Шеринг'),
   ('expense','Расходы'),
   ('adjustment','Корректирование')

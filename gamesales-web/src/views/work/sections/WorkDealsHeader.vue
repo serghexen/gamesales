@@ -3,8 +3,8 @@
     <div class="panel__head-col">
       <div class="deal-head-row">
         <div class="toolbar-actions toolbar-actions--deal-create">
-          <button class="deal-create-btn" type="button" @click="openCreateSaleModal" aria-label="Новая продажа" title="Новая продажа">
-            <span class="deal-create-btn__text">Продажа</span>
+          <button class="deal-create-btn" type="button" @click="openCreateSaleModal" aria-label="Новая услуга" title="Новая услуга">
+            <span class="deal-create-btn__text">Услуга</span>
             <span class="deal-create-btn__icon">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
                 <line y2="19" y1="5" x2="12" x1="12"></line>

@@ -107,7 +107,7 @@ class DealsEndpointsTests(unittest.TestCase):
                 "all": [
                     (
                         15,
-                        "Продажа",
+                        "Услуга",
                         "sale",
                         "Подтверждена",
                         "pending",
@@ -361,7 +361,7 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"deal_id": 33})
 
-    # Успешная продажа должна вернуть deal_id.
+    # Успешная услуга должна вернуть deal_id.
     def test_create_deal_sale_success(self):
         script = [
             {"one": (1,)},  # ensure_messenger_exists
@@ -392,7 +392,7 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"deal_id": 33})
 
-    # Продажа по product_id должна работать для товара без доп. legacy-атрибутов.
+    # Услуга по product_id должна работать для товара без доп. legacy-атрибутов.
     def test_create_deal_sale_with_product_only(self):
         script = [
             {"one": ("subscription", False)},  # product lookup

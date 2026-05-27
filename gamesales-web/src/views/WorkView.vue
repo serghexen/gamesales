@@ -881,11 +881,11 @@ async function ensureRolePermissionsFormDataLoaded() {
 
 const dealModalTitle = computed(() => {
   if (showDealForm.value) {
-    const dealKind = newDeal.deal_type_code === 'sale' ? 'ПРОДАЖА' : 'ШЕРИНГ'
+    const dealKind = newDeal.deal_type_code === 'sale' ? 'УСЛУГА' : 'ШЕРИНГ'
     return `НОВАЯ СДЕЛКА - ${dealKind}`
   }
   if (!editDeal.open) return 'СДЕЛКА'
-  const dealKind = editDeal.deal_type_code === 'sale' ? 'ПРОДАЖА' : 'ШЕРИНГ'
+  const dealKind = editDeal.deal_type_code === 'sale' ? 'УСЛУГА' : 'ШЕРИНГ'
   const dateLabel = formatDateOnly(editDeal.purchase_at || editDeal.created_at)
   return dateLabel === '—' ? `СДЕЛКА - ${dealKind}` : `СДЕЛКА (${dealKind}) - ${dateLabel}`
 })
