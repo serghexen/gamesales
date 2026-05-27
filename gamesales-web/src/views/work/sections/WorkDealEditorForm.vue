@@ -812,7 +812,7 @@
                                   <span class="label">Ссылка на товар</span>
                                   <div
                                     v-for="(linkValue, linkIndex) in editSaleProductLinks"
-                                    :key="`edit-sale-link-${linkIndex}-${linkValue}`"
+                                    :key="`edit-sale-link-${linkIndex}`"
                                     class="deal-form__sale-link-row"
                                   >
                                     <div class="input--select-wrap">
@@ -1539,7 +1539,7 @@
                                   <span class="label">Ссылка на товар</span>
                                   <div
                                     v-for="(linkValue, linkIndex) in newSaleProductLinks"
-                                    :key="`new-sale-link-${linkIndex}-${linkValue}`"
+                                    :key="`new-sale-link-${linkIndex}`"
                                     class="deal-form__sale-link-row"
                                   >
                                     <div class="input--select-wrap">
