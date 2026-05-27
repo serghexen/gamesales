@@ -379,6 +379,23 @@ describe('WorkAccountEditorModal', () => {
     )
   })
 
+  it('triggers account refresh from modal action button in view mode', async () => {
+    const refreshOpenAccountFromDb = vi.fn()
+    const wrapper = mount(WorkAccountEditorModal, {
+      props: buildProps({
+        accountModalMode: 'edit',
+        accountEditMode: 'view',
+        refreshOpenAccountFromDb,
+      }),
+      global: { stubs: { teleport: true } },
+    })
+
+    const refreshBtn = wrapper.find('button[title="Обновить из базы"]')
+    expect(refreshBtn.exists()).toBe(true)
+    await refreshBtn.trigger('click')
+    expect(refreshOpenAccountFromDb).toHaveBeenCalledTimes(1)
+  })
+
   it('shows quick product create in edit mode and passes edit target', async () => {
     const createQuickAccountProduct = vi.fn()
     const wrapper = mount(WorkAccountEditorModal, {

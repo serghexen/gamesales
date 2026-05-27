@@ -96,6 +96,20 @@
                         </svg>
                       </button>
                       <button
+                        v-if="accountModalMode === 'edit'"
+                        class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--refresh"
+                        type="button"
+                        aria-label="Обновить из базы"
+                        title="Обновить из базы"
+                        :disabled="accountBusy || accountEditMode === 'edit'"
+                        @click="refreshOpenAccountFromDb"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+                          <path d="M20 4v6h-6" />
+                        </svg>
+                      </button>
+                      <button
                         class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close"
                         type="button"
                         aria-label="Закрыть"
@@ -110,17 +124,29 @@
                   </div>
                   <div class="modal__body" :class="{ 'modal__body--locked': accountBusy }">
                     <div v-if="accountBusy" class="modal__body-overlay">
-                      <div class="loader-wrap loader-wrap--compact">
-                        <div class="newtons-cradle" aria-label="Loading" role="img">
-                          <div class="newtons-cradle__dot"></div>
-                          <div class="newtons-cradle__dot"></div>
-                          <div class="newtons-cradle__dot"></div>
-                          <div class="newtons-cradle__dot"></div>
+                      <div class="loader-wrap">
+                        <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
+                          <div class="wheel"></div>
+                          <div class="hamster">
+                            <div class="hamster__body">
+                              <div class="hamster__head">
+                                <div class="hamster__ear"></div>
+                                <div class="hamster__eye"></div>
+                                <div class="hamster__nose"></div>
+                              </div>
+                              <div class="hamster__limb hamster__limb--fr"></div>
+                              <div class="hamster__limb hamster__limb--fl"></div>
+                              <div class="hamster__limb hamster__limb--br"></div>
+                              <div class="hamster__limb hamster__limb--bl"></div>
+                              <div class="hamster__tail"></div>
+                            </div>
+                          </div>
+                          <div class="spoke"></div>
                         </div>
                         <p class="muted">Загрузка…</p>
                       </div>
                     </div>
-                    <div v-if="accountModalMode === 'edit' && accountProductsLoading" class="loader-wrap">
+                    <div v-if="accountModalMode === 'edit' && accountProductsLoading && !accountBusy" class="loader-wrap">
                       <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster">
                         <div class="wheel"></div>
                         <div class="hamster">
@@ -674,6 +700,7 @@ const props = defineProps([
   'accountEditMode',
   'setAccountEditMode',
   'toggleAccountEditMode',
+  'refreshOpenAccountFromDb',
   'updateAccount',
   'accountsLoading',
   'accountSaving',
@@ -741,6 +768,12 @@ const editAccountProductSearchModel = computed({
 
 // Блокируем форму при загрузке или сохранении, чтобы пользователь видел единый индикатор.
 const accountBusy = computed(() => Boolean(props.accountsLoading || props.accountSaving))
+
+// Обновляет текущую карточку аккаунта с сервера, чтобы подтянуть изменения из других вкладок.
+const refreshOpenAccountFromDb = () => {
+  if (typeof props.refreshOpenAccountFromDb !== 'function') return
+  props.refreshOpenAccountFromDb()
+}
 
 const editAccountProductTypeModel = computed({
   get: () => props.editAccountProductType,

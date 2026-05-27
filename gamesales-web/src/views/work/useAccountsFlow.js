@@ -164,10 +164,10 @@ export function useAccountsFlow({
   }
 
   // Догружает секреты для одного аккаунта, если их еще нет в локальном кеше.
-  async function ensureAccountSecretsLoaded(accountId) {
+  async function ensureAccountSecretsLoaded(accountId, forceReload = false) {
     const targetId = Number(accountId || 0)
     if (!targetId) return
-    if (Object.prototype.hasOwnProperty.call(accountSecrets.value || {}, targetId)) return
+    if (!forceReload && Object.prototype.hasOwnProperty.call(accountSecrets.value || {}, targetId)) return
     try {
       const secrets = await apiGet(`/accounts/${targetId}/secrets`, { token: auth.state.token })
       accountSecrets.value = {
@@ -180,6 +180,26 @@ export function useAccountsFlow({
         ...(accountSecrets.value || {}),
         [targetId]: [],
       }
+    }
+  }
+
+  // Фиксирует текущее состояние карточки как эталон "без изменений" для режима просмотра.
+  function syncInitialEditAccountSnapshot() {
+    initialEditAccountSnapshot = {
+      login_name: editAccount.login_name,
+      domain_code: editAccount.domain_code,
+      region_code: editAccount.region_code,
+      status_code: editAccount.status_code,
+      is_deactivated: editAccount.is_deactivated,
+      deactivated_at: editAccount.deactivated_at,
+      next_activation_at: editAccount.next_activation_at,
+      notes: editAccount.notes,
+      account_date: editAccount.account_date,
+      email_password: editAccount.email_password,
+      account_password: editAccount.account_password,
+      auth_code: editAccount.auth_code,
+      reserve_text: editAccount.reserve_text,
+      product_ids: [...(editAccount.product_ids || [])],
     }
   }
 
@@ -375,31 +395,56 @@ export function useAccountsFlow({
     quickEditAccountProduct.title = ''
     quickEditAccountProduct.platform_codes = []
     quickEditAccountProductError.value = ''
-    // Фиксируем исходное состояние, чтобы уметь определять несохраненные изменения.
-    const syncInitialAccountSnapshot = () => {
-      initialEditAccountSnapshot = {
-        login_name: editAccount.login_name,
-        domain_code: editAccount.domain_code,
-        region_code: editAccount.region_code,
-        status_code: editAccount.status_code,
-        is_deactivated: editAccount.is_deactivated,
-        deactivated_at: editAccount.deactivated_at,
-        next_activation_at: editAccount.next_activation_at,
-        notes: editAccount.notes,
-        account_date: editAccount.account_date,
-        email_password: editAccount.email_password,
-        account_password: editAccount.account_password,
-        auth_code: editAccount.auth_code,
-        reserve_text: editAccount.reserve_text,
-        product_ids: [...(editAccount.product_ids || [])],
-      }
-    }
-    syncInitialAccountSnapshot()
+    syncInitialEditAccountSnapshot()
     loadAccountProducts(a.account_id).finally(() => {
-      if (editAccount.open && accountEditMode.value === 'view') syncInitialAccountSnapshot()
+      if (editAccount.open && accountEditMode.value === 'view') syncInitialEditAccountSnapshot()
     })
     loadAccountDeals(a.account_id)
     loadAccountSlotAssignments(a.account_id)
+  }
+
+  // Перезагружает текущую карточку аккаунта с сервера, чтобы подтянуть изменения из других вкладок.
+  async function refreshOpenAccountFromDb() {
+    const targetId = Number(editAccount.account_id || 0)
+    if (!targetId || accountModalMode.value !== 'edit') return
+    const isSameOpenedAccount = () => editAccount.open && Number(editAccount.account_id || 0) === targetId
+    accountsError.value = null
+    accountsOk.value = null
+    accountsLoading.value = true
+    try {
+      const [accountsData] = await Promise.all([
+        apiGet('/accounts?all=true&sort_key=login&sort_dir=asc', { token: auth.state.token }),
+        loadAccountsAll([targetId]),
+        ensureAccountSecretsLoaded(targetId, true),
+        loadAccountProducts(targetId),
+        loadAccountDeals(targetId),
+        loadAccountSlotAssignments(targetId),
+      ])
+      if (!isSameOpenedAccount()) return
+      const list = Array.isArray(accountsData?.items) ? accountsData.items : []
+      const freshAccount = list.find((item) => isSameAccountId(item?.account_id, targetId))
+      if (freshAccount) {
+        editAccount.login_name = freshAccount.login_name || ''
+        editAccount.domain_code = freshAccount.domain_code || ''
+        editAccount.region_code = freshAccount.region_code || ''
+        editAccount.status_code = freshAccount.status || 'active'
+        editAccount.is_deactivated = Boolean(freshAccount.is_deactivated)
+        editAccount.deactivated_at = freshAccount.deactivated_at || ''
+        editAccount.next_activation_at = freshAccount.next_activation_at || ''
+        editAccount.notes = freshAccount.notes || ''
+        editAccount.account_date = freshAccount.account_date || ''
+      }
+      applyCachedSecretsToEditAccount(targetId)
+      if (accountEditMode.value === 'view') {
+        syncInitialEditAccountSnapshot()
+      }
+      accountsOk.value = 'Данные аккаунта обновлены'
+    } catch (e) {
+      if (!isSameOpenedAccount()) return
+      accountsError.value = mapApiError(e?.message)
+    } finally {
+      accountsLoading.value = false
+    }
   }
 
   // Открывает модалку создания нового аккаунта.
@@ -916,6 +961,7 @@ export function useAccountsFlow({
     loadAccounts,
     loadAccountsAll,
     loadAccountDeals,
+    refreshOpenAccountFromDb,
     startEditAccount,
     toggleAccountEditMode,
     openCreateAccountModal,

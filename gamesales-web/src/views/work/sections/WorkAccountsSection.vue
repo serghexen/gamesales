@@ -135,6 +135,7 @@
         :account-edit-mode="ctx.accountEditMode"
         :set-account-edit-mode="ctx.setAccountEditMode"
         :toggle-account-edit-mode="ctx.toggleAccountEditMode"
+        :refresh-open-account-from-db="ctx.refreshOpenAccountFromDb"
         :update-account="ctx.updateAccount"
         :accounts-loading="ctx.accountsLoading"
         :account-saving="ctx.accountSaving"
