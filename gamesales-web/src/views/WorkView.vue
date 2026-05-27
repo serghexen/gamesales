@@ -96,16 +96,23 @@
     </teleport>
 
     <teleport to="body">
-      <div v-if="dealConfirm.open" class="work-page work-modal-root modal-backdrop unsaved-confirm" @click.self="answerDealConfirm(false)">
-        <div class="modal modal--auto unsaved-confirm__modal">
+      <div
+        v-if="dealConfirm.open"
+        :class="[
+          'work-page work-modal-root modal-backdrop unsaved-confirm deal-confirm',
+          { 'deal-confirm--force-duplicate': isForceDuplicateDealConfirm },
+        ]"
+        @click.self="answerDealConfirm(false)"
+      >
+        <div class="modal modal--auto unsaved-confirm__modal deal-confirm__modal">
           <div class="panel__head panel__head--tight unsaved-confirm__head">
             <h3 class="unsaved-confirm__title">{{ dealConfirm.title }}</h3>
           </div>
           <div class="modal__body">
-            <p class="muted unsaved-confirm__text">{{ dealConfirm.message }}</p>
-            <div class="toolbar-actions unsaved-confirm__actions">
-              <button class="ghost" type="button" @click="answerDealConfirm(false)">{{ dealConfirm.cancelText }}</button>
-              <button class="btn btn--danger" type="button" @click="answerDealConfirm(true)">{{ dealConfirm.confirmText }}</button>
+            <p class="muted unsaved-confirm__text deal-confirm__text">{{ dealConfirm.message }}</p>
+            <div class="toolbar-actions unsaved-confirm__actions deal-confirm__actions">
+              <button class="ghost deal-confirm__btn" type="button" @click="answerDealConfirm(false)">{{ dealConfirm.cancelText }}</button>
+              <button class="btn btn--danger deal-confirm__btn deal-confirm__btn--confirm" type="button" @click="answerDealConfirm(true)">{{ dealConfirm.confirmText }}</button>
             </div>
           </div>
         </div>
@@ -241,6 +248,13 @@ const dealConfirm = reactive({
   confirmText: 'Ок',
   cancelText: 'Отмена',
   resolver: null,
+})
+
+const isForceDuplicateDealConfirm = computed(() => {
+  // Выделяем confirm принудительного дубля отдельным классом, чтобы оформить его более читаемо.
+  const title = String(dealConfirm.title || '').trim().toLowerCase()
+  const confirmText = String(dealConfirm.confirmText || '').trim().toLowerCase()
+  return title.includes('принудительный дубль') || confirmText.includes('снять и продолжить')
 })
 
 function requestUnsavedConfirm(message) {
@@ -1906,6 +1920,28 @@ const {
 
 loadAccountsAllDeferred.set(loadAccountsAllFromAccountsFlow)
 
+// Восстанавливает карточку аккаунта по id после закрытия сделки, открытой из аккаунтов.
+async function reopenAccountByIdFromDealReturn(accountId) {
+  const targetId = Number(accountId || 0)
+  if (!targetId) return
+  setActiveTab('accounts')
+  await loadAccountsAll([targetId])
+  const fromLabels = (accountsAll.value || []).find((item) => Number(item?.account_id || 0) === targetId)
+  const fallbackAccount = fromLabels || {
+    account_id: targetId,
+    login_name: '',
+    domain_code: '',
+    region_code: '',
+    status: 'active',
+    is_deactivated: false,
+    deactivated_at: '',
+    next_activation_at: '',
+    notes: '',
+    account_date: '',
+  }
+  startEditAccount(fallbackAccount)
+}
+
 // Логика формы сделки: быстрые создания, загрузки связей, слоты.
 const {
   createQuickProduct,
@@ -2050,6 +2086,7 @@ const {
   currentResponsibleName: currentUserResponsibleName,
   canEditCompletedDeal: canEditCompletedDeals,
   showDealWarning,
+  reopenAccountByIdFromDealReturn,
 })
 
 closeDealModalDeferred.set(closeDealModalFromFlow)

@@ -373,7 +373,10 @@ describe('WorkAccountEditorModal', () => {
     expect(row.exists()).toBe(true)
     await row.trigger('click')
     expect(startEditDeal).toHaveBeenCalledTimes(1)
-    expect(startEditDeal).toHaveBeenCalledWith(expect.objectContaining({ deal_id: 123 }))
+    expect(startEditDeal).toHaveBeenCalledWith(
+      expect.objectContaining({ deal_id: 123 }),
+      { returnTab: 'accounts', returnAccountId: 5 },
+    )
   })
 
   it('shows quick product create in edit mode and passes edit target', async () => {

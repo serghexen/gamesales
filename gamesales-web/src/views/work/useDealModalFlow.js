@@ -52,6 +52,7 @@ export function useDealModalFlow({
   currentResponsibleName,
   canEditCompletedDeal,
   showDealWarning,
+  reopenAccountByIdFromDealReturn,
 }) {
   // Возвращает дефолтную дату срока: сегодня плюс один год.
   function getDefaultSubscriptionTermDate() {
@@ -70,6 +71,8 @@ export function useDealModalFlow({
 
   let initialEditDealSnapshot = null
   let initialCreateDealSnapshot = null
+  let pendingReturnTab = ''
+  let pendingReturnAccountId = 0
 
   // Проверяет, есть ли в кеше подпись выбранного аккаунта.
   // Возвращает true, если подпись уже есть и ждать загрузку не нужно.
@@ -217,6 +220,9 @@ export function useDealModalFlow({
     closeAllModals()
     resetModalPos()
     showDealForm.value = true
+    // Для созданий всегда сбрасываем возврат: это отдельный сценарий без "источника открытия".
+    pendingReturnTab = ''
+    pendingReturnAccountId = 0
     cancelEditDeal()
     dealError.value = null
     dealOk.value = null
@@ -412,14 +418,30 @@ export function useDealModalFlow({
     dealSlotAvailabilityNew.value = {}
     dealSlotAvailabilityEdit.value = {}
     initialCreateDealSnapshot = null
+    // Если сделку открывали из другого раздела, после закрытия возвращаем пользователя обратно.
+    const returnTab = String(pendingReturnTab || '').trim()
+    const returnAccountId = Number(pendingReturnAccountId || 0)
+    pendingReturnTab = ''
+    pendingReturnAccountId = 0
+    if (returnTab) setActiveTab(returnTab)
+    // Если сделка открывалась из карточки аккаунта, после закрытия возвращаем и саму карточку.
+    if (returnTab === 'accounts' && returnAccountId > 0 && typeof reopenAccountByIdFromDealReturn === 'function') {
+      await Promise.resolve(reopenAccountByIdFromDealReturn(returnAccountId))
+    }
     return true
   }
 
-  async function startEditDeal(deal) {
+  async function startEditDeal(deal, options = {}) {
     dealLoading.value = true
     // Модалка сделки живет во вкладке "Сделки", поэтому при открытии из других разделов сначала переключаем вкладку.
     setActiveTab('deals')
     closeAllModals()
+    // Запоминаем, куда вернуть пользователя после закрытия модалки сделки.
+    // Делаем это после closeAllModals, потому что тот может вызвать closeDealModal и сбросить флаг.
+    const returnTab = String(options?.returnTab || '').trim()
+    pendingReturnTab = returnTab && returnTab !== 'deals' ? returnTab : ''
+    // Сохраняем account_id карточки-источника, чтобы при возврате восстановить ту же модалку.
+    pendingReturnAccountId = Number(options?.returnAccountId || 0)
     resetModalPos()
     showDealForm.value = false
     dealInitLock.value = true

@@ -106,6 +106,7 @@ function createDeps() {
     currentResponsibleName: 'Тестер',
     canEditCompletedDeal: ref(true),
     showDealWarning: vi.fn(),
+    reopenAccountByIdFromDealReturn: vi.fn(),
   }
 }
 
@@ -290,5 +291,90 @@ describe('useDealModalFlow', () => {
     expect(deps.editDeal.open).toBe(true)
     expect(deps.dealLoading.value).toBe(false)
     resolveAccountsAll?.()
+  })
+
+  it('returns to source tab after closing deal opened from accounts', async () => {
+    const deps = createDeps()
+    const api = useDealModalFlow(deps)
+
+    await api.startEditDeal(
+      {
+        deal_id: 44,
+        created_at: '2026-02-09T10:00:00Z',
+        completed_at: '',
+        deal_type_code: 'sale',
+        account_id: 7,
+        product_id: 55,
+        customer_nickname: 'buyer',
+        order_number: 'A-4',
+        source_id: 1,
+        region_code: 'RU',
+        slot_type_code: '',
+        reserve_key: '',
+        price: 100,
+        purchase_cost: 10,
+        login: '',
+        password: '',
+        product_link: '',
+        purchase_at: '',
+        slots_used: 1,
+        notes: '',
+        flow_status_code: 'pending',
+        is_refund: false,
+        responsible_username: 'admin',
+      },
+      { returnTab: 'accounts', returnAccountId: 7 },
+    )
+
+    const closed = await api.closeDealModal()
+    expect(closed).toBe(true)
+    expect(deps.setActiveTab).toHaveBeenNthCalledWith(1, 'deals')
+    expect(deps.setActiveTab).toHaveBeenNthCalledWith(2, 'accounts')
+    expect(deps.reopenAccountByIdFromDealReturn).toHaveBeenCalledWith(7)
+  })
+
+  it('keeps return tab even when closeAllModals triggers closeDealModal during opening', async () => {
+    let api
+    const deps = createDeps()
+    deps.closeAllModals = vi.fn(() => {
+      if (!api) return
+      // Имитируем глобальное закрытие модалок, которое во WorkView вызывает closeDealModal.
+      void api.closeDealModal()
+    })
+    api = useDealModalFlow(deps)
+
+    await api.startEditDeal(
+      {
+        deal_id: 45,
+        created_at: '2026-02-09T10:00:00Z',
+        completed_at: '',
+        deal_type_code: 'sale',
+        account_id: 7,
+        product_id: 55,
+        customer_nickname: 'buyer',
+        order_number: 'A-5',
+        source_id: 1,
+        region_code: 'RU',
+        slot_type_code: '',
+        reserve_key: '',
+        price: 100,
+        purchase_cost: 10,
+        login: '',
+        password: '',
+        product_link: '',
+        purchase_at: '',
+        slots_used: 1,
+        notes: '',
+        flow_status_code: 'pending',
+        is_refund: false,
+        responsible_username: 'admin',
+      },
+      { returnTab: 'accounts', returnAccountId: 7 },
+    )
+
+    const closed = await api.closeDealModal()
+    expect(closed).toBe(true)
+    expect(deps.setActiveTab).toHaveBeenCalledWith('accounts')
+    expect(deps.reopenAccountByIdFromDealReturn).toHaveBeenCalledWith(7)
   })
 })

@@ -101,11 +101,11 @@
                             </div>
                             <div class="deal-form__double">
                               <label class="field">
-                                <span class="label">Номер заявки</span>
+                                <span class="label">Номер заказа</span>
                                 <input v-model.trim="editDeal.order_number" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
                               </label>
                               <label class="field">
-                                <span class="label">Сумма</span>
+                                <span class="label">Сумма продажи</span>
                                 <input
                                   v-model.number="editDeal.price"
                                   class="input"
@@ -139,6 +139,20 @@
                                   >
                                     {{ responsibleName }}
                                   </option>
+                                </select>
+                              </label>
+                            </div>
+                            <div class="deal-form__double">
+                              <label class="field">
+                                <span class="label">Метод оплаты</span>
+                                <select class="input input--select deal-form__input--locked" disabled>
+                                  <option value="">— скоро будет —</option>
+                                </select>
+                              </label>
+                              <label class="field">
+                                <span class="label">Скидка</span>
+                                <select class="input input--select deal-form__input--locked" disabled>
+                                  <option value="">— скоро будет —</option>
                                 </select>
                               </label>
                             </div>
@@ -945,11 +959,11 @@
                             </div>
                             <div class="deal-form__double">
                               <label class="field">
-                                <span class="label">Номер заявки</span>
+                                <span class="label">Номер заказа</span>
                                 <input v-model.trim="newDeal.order_number" class="input" placeholder="-" />
                               </label>
                               <label class="field">
-                                <span class="label">Сумма</span>
+                                <span class="label">Сумма продажи</span>
                                 <input
                                   v-model.number="newDeal.price"
                                   class="input"
@@ -976,6 +990,20 @@
                                   >
                                     {{ responsibleName }}
                                   </option>
+                                </select>
+                              </label>
+                            </div>
+                            <div class="deal-form__double">
+                              <label class="field">
+                                <span class="label">Метод оплаты</span>
+                                <select class="input input--select deal-form__input--locked" disabled>
+                                  <option value="">— скоро будет —</option>
+                                </select>
+                              </label>
+                              <label class="field">
+                                <span class="label">Скидка</span>
+                                <select class="input input--select deal-form__input--locked" disabled>
+                                  <option value="">— скоро будет —</option>
                                 </select>
                               </label>
                             </div>

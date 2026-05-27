@@ -247,4 +247,24 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('function copySaleProductLink(target, index = 0)')
     expect(source).toContain('function getSaleLinkCopyLabel(target, index = 0)')
   })
+
+  it('renders sharing layout with locked payment and discount fields', () => {
+    const source = readTemplateSource()
+    const newRentalMain = source.match(/<div class="deal-form__rental-main">[\s\S]*?<div class="deal-form__rental-side">/)?.[0] || ''
+    const editRentalMain = source.match(/<div class="deal-form__rental-main">[\s\S]*?<div class="deal-form__rental-side">/)?.[0] || ''
+
+    expect(source).toContain('<span class="label">Номер заказа</span>')
+    expect(source).toContain('<span class="label">Сумма продажи</span>')
+    expect(source).toContain('<span class="label">Метод оплаты</span>')
+    expect(source).toContain('<span class="label">Скидка</span>')
+    expect(source).toContain('deal-form__input--locked')
+    expect(source).toContain('Аккаунт')
+    expect(source).toContain('+ Комментарий')
+    expect(newRentalMain).toContain('<span class="label">Источник</span>')
+    expect(newRentalMain).toContain('<span class="label">Мессенджер</span>')
+    expect(newRentalMain).toContain('<span class="label">Покупатель</span>')
+    expect(newRentalMain).toContain('<span class="label">Ответственный</span>')
+    expect(editRentalMain).toContain('<span class="label">Номер заказа</span>')
+    expect(editRentalMain).toContain('<span class="label">Сумма продажи</span>')
+  })
 })

@@ -957,7 +957,9 @@ const openDealFromAccount = (deal) => {
   if (typeof props.startEditDeal !== 'function') return
   const dealId = Number(deal?.deal_id || 0)
   if (!dealId) return
-  props.startEditDeal(deal)
+  const accountId = Number(deal?.account_id || props.editAccount?.account_id || 0)
+  // Передаем вкладку-источник, чтобы после закрытия сделки вернуть пользователя в аккаунты.
+  props.startEditDeal(deal, { returnTab: 'accounts', returnAccountId: accountId })
 }
 
 // Разбивает строку резервов по пробелам и убирает пустые элементы.
