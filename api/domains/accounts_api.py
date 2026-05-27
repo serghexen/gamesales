@@ -1001,6 +1001,7 @@ def mount_accounts_routes(
                   FROM app.account_slot_assignments asa
                   JOIN app.slot_types st_dup ON st_dup.code = asa.slot_type_code
                   WHERE st_dup.mode = 'play'
+                    AND asa.released_at IS NULL
                     AND COALESCE(asa.assigned_at, now()) > (now() - INTERVAL '2 months')
                     AND EXISTS (
                       SELECT 1
@@ -1163,6 +1164,7 @@ def mount_accounts_routes(
                   FROM app.account_slot_assignments asa
                   JOIN app.slot_types st_dup ON st_dup.code = asa.slot_type_code
                   WHERE st_dup.mode = 'play'
+                    AND asa.released_at IS NULL
                     AND COALESCE(asa.assigned_at, now()) > (now() - INTERVAL '2 months')
                     AND EXISTS (
                       SELECT 1

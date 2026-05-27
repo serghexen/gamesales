@@ -654,6 +654,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertTrue(any("active_play_assignments" in sql for sql in sql_collector))
             self.assertTrue(any("recent_duplicate_locks" in sql for sql in sql_collector))
+            self.assertTrue(any("asa.released_at IS NULL" in sql for sql in sql_collector))
             self.assertTrue(any("INTERVAL '2 months'" in sql for sql in sql_collector))
             self.assertTrue(any("ILIKE 'П2%%'" in sql for sql in sql_collector))
 
@@ -737,6 +738,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.json()[0]["slot_type_code"], "play_ps5")
             self.assertTrue(any("active_play_assignments" in sql for sql in sql_collector))
             self.assertTrue(any("recent_duplicate_locks" in sql for sql in sql_collector))
+            self.assertTrue(any("asa.released_at IS NULL" in sql for sql in sql_collector))
             self.assertTrue(any("INTERVAL '2 months'" in sql for sql in sql_collector))
             self.assertTrue(any("ILIKE 'П2%%'" in sql for sql in sql_collector))
 
