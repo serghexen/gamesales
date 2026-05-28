@@ -637,9 +637,10 @@ class DealsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 409)
 
-    # Для market-источника номер заказа должен быть уникален в связке source+order.
+    # Для market-источника номер заказа должен быть уникален в связке source+order+product.
     def test_create_deal_market_source_order_number_must_be_unique(self):
         script = [
+            {"one": ("game", False)},  # product lookup
             {"one": (1,)},  # ensure_source_exists
             {"one": (1,)},  # ensure_messenger_exists
             {"one": (10,)},  # region_id by code
@@ -664,11 +665,50 @@ class DealsEndpointsTests(unittest.TestCase):
                         "customer_nickname": "cust",
                         "messenger_id": 1,
                         "source_id": 5,
+                        "product_id": 55,
                         "order_number": "A-100",
                         "price": 1000,
                     },
                 )
             self.assertEqual(res.status_code, 409)
+
+    # Для market-источника одинаковый номер заказа допустим, если игра другая.
+    def test_create_deal_market_source_order_number_allows_other_product(self):
+        script = [
+            {"one": ("game", False)},  # product lookup
+            {"one": (1,)},  # ensure_source_exists
+            {"one": (1,)},  # ensure_messenger_exists
+            {"one": (10,)},  # region_id by code
+            {"one": (22,)},  # customer insert
+            {"one": (5,)},  # customer source_id
+            {"one": ("ym",)},  # source code
+            {"one": None},  # no conflict for source+order+other product
+            {"one": (33,)},  # deal insert
+            {"one": (44,)},  # deal_item insert
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/deals",
+                    headers=self._auth_headers(role="manager"),
+                    json={
+                        "deal_type_code": "sale",
+                        "region_code": "RU",
+                        "customer_nickname": "cust",
+                        "messenger_id": 1,
+                        "source_id": 5,
+                        "product_id": 56,
+                        "order_number": "A-100",
+                        "price": 1000,
+                    },
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"deal_id": 33})
 
     # Для rentals обязателен slot_type_code.
     def test_create_rental_requires_slot_type(self):
@@ -1107,7 +1147,7 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
 
-    # В update номер заказа тоже должен быть уникальным для market-источника.
+    # В update номер заказа тоже должен быть уникальным для market-источника в связке source+order+product.
     def test_update_deal_market_source_order_number_must_be_unique(self):
         current_row = (
             "sale",
@@ -1136,6 +1176,8 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # set_config('app.user', ...)
             {"one": current_row},  # current deal row
             {"one": (1,)},  # ensure_messenger_exists
+            {"one": ("game", False)},  # product lookup
+            {"one": (55,)},  # current deal_item product_id
             {"one": (5,)},  # customer source_id
             {"one": ("ym",)},  # source code
             {"one": (88,)},  # conflicting deal
@@ -1150,9 +1192,62 @@ class DealsEndpointsTests(unittest.TestCase):
                 res = client.put(
                     "/deals/77",
                     headers=self._auth_headers(role="manager"),
-                    json={"order_number": "a-100", "messenger_id": 1},
+                    json={"order_number": "a-100", "messenger_id": 1, "product_id": 55},
                 )
             self.assertEqual(res.status_code, 409)
+
+    # В update одинаковый номер market-заказа допустим при смене игры.
+    def test_update_deal_market_source_order_number_allows_other_product(self):
+        current_row = (
+            "sale",
+            "confirmed",
+            "pending",
+            10,
+            5,
+            500.0,
+            "A-100",
+            "admin",
+            77,
+            None,
+            None,
+            500.0,
+            100.0,
+            datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+            None,
+            None,
+            0,
+            None,
+            "note",
+            None,
+            None,
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+            {"one": (1,)},  # ensure_messenger_exists
+            {"one": ("game", False)},  # product lookup
+            {"one": (55,)},  # current deal_item product_id
+            {"one": (5,)},  # customer source_id
+            {"one": ("ym",)},  # source code
+            {"one": None},  # no conflict for source+order+other product
+            {"rowcount": 1},  # update deals
+            {"rowcount": 1},  # update deal_items
+            {"one": None},  # no active assignment for sale
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="manager"),
+                    json={"order_number": "a-100", "messenger_id": 1, "product_id": 56},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
 
     # Завершение возврата должно быть доступно только admin/owner.
     def test_update_deal_refund_completion_forbidden_for_manager(self):

@@ -194,16 +194,18 @@ def mount_deals_routes(
         params.append(customer_id)
         exec1(conn, f"UPDATE app.customers SET {', '.join(updates)} WHERE customer_id=%s", tuple(params))
 
-    # Проверяет уникальность номера заказа для источников ym/ozon/wb в связке (source_id, order_number).
+    # Проверяет уникальность номера заказа для источников ym/ozon/wb в связке (source_id, order_number, product_id).
     def validate_market_order_number_unique(
         conn,
         source_id: Optional[int],
         order_number: Optional[str],
+        product_id: Optional[int],
         exclude_deal_id: Optional[int] = None,
     ):
         normalized_order = (order_number or "").strip()
         if not source_id or not normalized_order:
             return
+        normalized_product_id = int(product_id) if product_id is not None else None
         source_row = q1(
             conn,
             "SELECT code FROM app.sources WHERE source_id=%s AND is_archived IS NOT TRUE",
@@ -214,11 +216,25 @@ def mount_deals_routes(
         normalized_source_code = source_code.lower().strip()
         if normalized_source_code not in {"ym", "ozon", "wb"}:
             return
+        # Если в сделке не указан товар, сохраняем старое правило source+order.
+        # Это защищает от дублей в legacy-сценариях с пустым product_id.
+        product_filter_sql = ""
+        product_params: list = []
+        if normalized_product_id is not None:
+            product_filter_sql = """
+                  AND EXISTS (
+                    SELECT 1
+                    FROM app.deal_items di_match
+                    WHERE di_match.deal_id = d.deal_id
+                      AND di_match.product_id = %s
+                  )
+            """
+            product_params.append(normalized_product_id)
         # Разделяем запросы на две ветки, чтобы Postgres не получал "безтиповый" NULL-параметр.
         if exclude_deal_id is None:
             conflict_row = q1(
                 conn,
-                """
+                f"""
                 SELECT
                   d.deal_id,
                   c.nickname,
@@ -235,14 +251,15 @@ def mount_deals_routes(
                 JOIN app.customers c ON c.customer_id = d.customer_id
                 WHERE c.source_id=%s
                   AND lower(btrim(COALESCE(d.order_number, ''))) = lower(btrim(%s))
+                  {product_filter_sql}
                 LIMIT 1
                 """,
-                (source_id, normalized_order),
+                tuple([source_id, normalized_order, *product_params]),
             )
         else:
             conflict_row = q1(
                 conn,
-                """
+                f"""
                 SELECT
                   d.deal_id,
                   c.nickname,
@@ -259,10 +276,11 @@ def mount_deals_routes(
                 JOIN app.customers c ON c.customer_id = d.customer_id
                 WHERE c.source_id=%s
                   AND lower(btrim(COALESCE(d.order_number, ''))) = lower(btrim(%s))
+                  {product_filter_sql}
                   AND d.deal_id <> %s
                 LIMIT 1
                 """,
-                (source_id, normalized_order, exclude_deal_id),
+                tuple([source_id, normalized_order, *product_params, exclude_deal_id]),
             )
         if conflict_row:
             conflict_deal_id = int(conflict_row[0])
@@ -278,7 +296,7 @@ def mount_deals_routes(
             # Возвращаем подсказку с deal_id, чтобы менеджер мог сразу открыть конфликтующую сделку.
             raise HTTPException(
                 409,
-                f"order_number must be unique for source ym/ozon/wb; deal_id={conflict_deal_id}; customer={conflict_customer}; product={conflict_product}; created_at={conflict_date_text}",
+                f"order_number must be unique for source ym/ozon/wb and product; deal_id={conflict_deal_id}; customer={conflict_customer}; product={conflict_product}; created_at={conflict_date_text}",
             )
 
     # Проверяет, что мессенджер существует и не в архиве.
@@ -652,7 +670,7 @@ def mount_deals_routes(
             if order_number and customer_id is not None:
                 customer_row = q1(conn, "SELECT source_id FROM app.customers WHERE customer_id=%s", (customer_id,))
                 customer_source_id = int(customer_row[0]) if customer_row and customer_row[0] is not None else None
-                validate_market_order_number_unique(conn, customer_source_id, order_number)
+                validate_market_order_number_unique(conn, customer_source_id, order_number, payload.product_id)
     
             selected_subscription_term_id = int(payload.subscription_term_id) if payload.subscription_term_id is not None else None
             duplicate_assignment_to_release = None
@@ -970,11 +988,30 @@ def mount_deals_routes(
                 if normalized_responsible == "current_user":
                     normalized_responsible = user.username
                 new_responsible_username = normalized_responsible or None
-            # Для update проверяем уникальность market-заказа только если реально поменяли order_number.
-            if new_order_number and new_order_number != current_order_number:
+            # Для update проверяем market-уникальность только при изменении номера или товара.
+            should_check_market_order_uniqueness = bool(new_order_number) and (
+                payload.order_number is not None or payload.product_id is not None
+            )
+            if should_check_market_order_uniqueness:
+                current_product_id_for_order_check = None
+                if deal_type == "rental":
+                    current_product_id_for_order_check = current_product_id
+                elif deal_item_id:
+                    current_product_row = q1(conn, "SELECT product_id FROM app.deal_items WHERE deal_item_id=%s", (deal_item_id,))
+                    current_product_id_for_order_check = int(current_product_row[0]) if current_product_row and current_product_row[0] is not None else None
+                product_changed_for_order_check = new_product_id != current_product_id_for_order_check
+            else:
+                product_changed_for_order_check = False
+            if new_order_number and (new_order_number != current_order_number or product_changed_for_order_check):
                 customer_row = q1(conn, "SELECT source_id FROM app.customers WHERE customer_id=%s", (customer_id,))
                 customer_source_id = int(customer_row[0]) if customer_row and customer_row[0] is not None else None
-                validate_market_order_number_unique(conn, customer_source_id, new_order_number, exclude_deal_id=deal_id)
+                validate_market_order_number_unique(
+                    conn,
+                    customer_source_id,
+                    new_order_number,
+                    new_product_id,
+                    exclude_deal_id=deal_id,
+                )
             new_slots_used = payload.slots_used if payload.slots_used is not None else slots_used
             current_is_refund = returned_at is not None
             new_is_refund = current_is_refund if payload.is_refund is None else bool(payload.is_refund)
