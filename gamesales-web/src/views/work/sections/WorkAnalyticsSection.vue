@@ -23,6 +23,9 @@
         <router-link v-if="canViewCatalogsSection" class="tab" :class="{ active: activeTab === 'catalogs' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'catalogs', admin_panel: undefined } }">
           Справочники
         </router-link>
+        <router-link v-if="canViewFinanceSection" class="tab" :class="{ active: activeTab === 'finance' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'finance', admin_panel: undefined } }">
+          Финансы
+        </router-link>
       </div>
     </div>
     <section class="panel admin-content-shell">
@@ -351,10 +354,12 @@ const canViewUsersSection = computed(() => Boolean(unref(props.ctx.canViewUsersS
 const canManageRolePermissions = computed(() => Boolean(unref(props.ctx.canManageRolePermissions)))
 const canViewAnalyticsSection = computed(() => Boolean(unref(props.ctx.canViewAnalyticsSection)))
 const canViewCatalogsSection = computed(() => Boolean(unref(props.ctx.canViewCatalogsSection)))
+const canViewFinanceSection = computed(() => Boolean(unref(props.ctx.canViewFinanceSection)))
 const showAdminTabs = computed(() => (
   canViewUsersSection.value
   || canManageRolePermissions.value
   || canViewAnalyticsSection.value
   || canViewCatalogsSection.value
+  || canViewFinanceSection.value
 ))
 </script>

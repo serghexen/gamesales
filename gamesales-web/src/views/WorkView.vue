@@ -54,6 +54,11 @@
           :ctx="analyticsSectionCtx"
         />
 
+        <WorkFinanceSection
+          v-if="canViewFinanceSection && activeTab === 'finance'"
+          :ctx="financeSectionCtx"
+        />
+
         <WorkUsersSection
           v-if="canViewUsersSection && activeTab === 'users'"
           :ctx="usersSectionCtx"
@@ -151,6 +156,7 @@ import {
   mapApiError,
 } from './work/domainUtils'
 import { useAnalytics } from './work/useAnalytics'
+import { useFinanceReports } from './work/useFinanceReports'
 import {
   createTelegramState,
   formatTelegramSender,
@@ -195,6 +201,7 @@ import { useWorkSectionContexts } from './work/useWorkSectionContexts'
 import WorkDashboardHero from './work/sections/WorkDashboardHero.vue'
 import WorkDashboardPanel from './work/sections/WorkDashboardPanel.vue'
 import WorkAnalyticsSection from './work/sections/WorkAnalyticsSection.vue'
+import WorkFinanceSection from './work/sections/WorkFinanceSection.vue'
 import WorkProfileSection from './work/sections/WorkProfileSection.vue'
 import WorkUsersSection from './work/sections/WorkUsersSection.vue'
 import WorkAccountsSection from './work/sections/WorkAccountsSection.vue'
@@ -678,7 +685,7 @@ const showDashboard = true
 const showRolePermissionsPanel = computed(() => canManageRolePermissions.value)
 
 const roleSectionDefaults = {
-  privileged_only: new Set(['analytics', 'catalogs', 'users', 'dashboard']),
+  privileged_only: new Set(['analytics', 'catalogs', 'finance', 'users', 'dashboard']),
 }
 
 const mySectionPermissionsMap = ref({})
@@ -715,6 +722,7 @@ const canViewNsGiftSection = computed(() => canViewSection('ns-gift'))
 const canViewTelegramSection = computed(() => canViewSection('telegram'))
 const canViewAnalyticsSection = computed(() => canViewSection('analytics'))
 const canViewCatalogsSection = computed(() => canViewSection('catalogs'))
+const canViewFinanceSection = computed(() => canViewSection('finance'))
 const canViewUsersSection = computed(() => canViewSection('users'))
 const canViewUsersTab = computed(() => showUsersTab && canViewUsersSection.value)
 const canViewProfileSection = computed(() => canViewSection('profile'))
@@ -735,6 +743,7 @@ function getAllowedTabs() {
   if (canViewTelegramSection.value) tabs.push('telegram')
   if (canViewAnalyticsSection.value) tabs.push('analytics')
   if (canViewCatalogsSection.value) tabs.push('catalogs')
+  if (canViewFinanceSection.value) tabs.push('finance')
   if (canViewUsersTab.value) tabs.push('users')
   if (canViewProfileSection.value) tabs.push('profile')
   if (canViewDashboardSection.value) tabs.push('dashboard')
@@ -1180,6 +1189,72 @@ const {
   analyticsError,
   loadAnalytics,
 } = useAnalytics({ auth, apiGet, mapApiError })
+const {
+  financeFilters,
+  financeNewEntry,
+  financeEntryFilters,
+  financeNewSection,
+  financeNewType,
+  financeNewOperation,
+  financeNewProject,
+  financeOperations,
+  financeTypes,
+  financeSections,
+  financeProjects,
+  financeRegions,
+  financeSources,
+  financeStatuses,
+  financeEntries,
+  financeEntriesTotal,
+  financeReportTotals,
+  financeReportItems,
+  financeCatalogsLoaded,
+  financeLoaded,
+  financeEntriesLoaded,
+  financeLoading,
+  financeEntriesLoading,
+  financeEntrySaving,
+  financeCatalogSaving,
+  financeError,
+  financeEntriesError,
+  financeEntryError,
+  financeCatalogError,
+  financeCatalogOk,
+  financeEntryOk,
+  loadFinanceBootstrap,
+  loadFinanceEntries,
+  createFinanceEntry,
+  createFinanceSection,
+  createFinanceType,
+  updateFinanceType,
+  archiveFinanceType,
+  archiveFinanceSection,
+  updateFinanceSection,
+  createFinanceOperation,
+  archiveFinanceOperation,
+  updateFinanceOperation,
+  createFinanceProject,
+  archiveFinanceProject,
+  updateFinanceProject,
+  loadFinanceProjectsReport,
+} = useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, mapApiError })
+
+watch(
+  [activeTab, () => auth.state.token],
+  async ([tab, token]) => {
+    // При первом открытии вкладки "Финансы" подгружаем справочники, журнал и отчет.
+    if (tab !== 'finance' || !token) return
+    if (!financeCatalogsLoaded.value) {
+      await loadFinanceBootstrap()
+    }
+    if (!financeEntriesLoaded.value) {
+      await loadFinanceEntries()
+    }
+    if (!financeLoaded.value) {
+      await loadFinanceProjectsReport()
+    }
+  },
+)
 const slotTypes = ref([])
 const accountSlotStatusNew = ref([])
 const accountSlotStatusEdit = ref([])
@@ -2865,6 +2940,7 @@ const {
   canViewUsersSection,
   canViewAnalyticsSection,
   canViewCatalogsSection,
+  canViewFinanceSection,
   canManageRolePermissions,
   dealsRealtimeStatus,
   dealEditingByDealId,
@@ -3161,6 +3237,7 @@ const analyticsSectionCtx = asCtx({
   canViewUsersSection,
   canViewAnalyticsSection,
   canViewCatalogsSection,
+  canViewFinanceSection,
   canManageRolePermissions,
   analyticsLoading,
   analyticsError,
@@ -3181,6 +3258,66 @@ const analyticsSectionCtx = asCtx({
   formatPrice,
   formatDateOnly,
   getDealTypeName,
+  formatPercent,
+})
+
+// Контекст вкладки финансов: фильтры, итоги и таблица по проектам.
+const financeSectionCtx = asCtx({
+  activeTab,
+  routeQuery: computed(() => route.query || {}),
+  canViewProfileSection,
+  canViewUsersSection,
+  canViewAnalyticsSection,
+  canViewCatalogsSection,
+  canViewFinanceSection,
+  canManageRolePermissions,
+  financeNewEntry,
+  financeEntryFilters,
+  financeNewSection,
+  financeNewType,
+  financeNewOperation,
+  financeNewProject,
+  financeOperations,
+  financeTypes,
+  financeSections,
+  financeLoading,
+  financeEntriesLoading,
+  financeEntrySaving,
+  financeCatalogSaving,
+  financeError,
+  financeEntriesError,
+  financeEntryError,
+  financeCatalogError,
+  financeCatalogOk,
+  financeEntryOk,
+  financeLoaded,
+  financeEntriesTotal,
+  financeFilters,
+  financeProjects,
+  financeRegions,
+  financeSources,
+  financeStatuses,
+  financeEntries,
+  financeReportTotals,
+  financeReportItems,
+  loadFinanceEntries,
+  createFinanceEntry,
+  createFinanceSection,
+  createFinanceType,
+  updateFinanceType,
+  archiveFinanceType,
+  archiveFinanceSection,
+  updateFinanceSection,
+  createFinanceOperation,
+  archiveFinanceOperation,
+  updateFinanceOperation,
+  createFinanceProject,
+  archiveFinanceProject,
+  updateFinanceProject,
+  loadFinanceProjectsReport,
+  maxDate,
+  minDate,
+  formatPrice,
   formatPercent,
 })
 
@@ -3216,6 +3353,7 @@ const profileSectionCtx = asCtx({
   canManageRolePermissions,
   canViewAnalyticsSection,
   canViewCatalogsSection,
+  canViewFinanceSection,
   canViewUsersSection,
   routeQuery: computed(() => route.query || {}),
   openPwdModal,

@@ -11,6 +11,7 @@ function buildCtx(overrides = {}) {
     canManageRolePermissions: false,
     canViewAnalyticsSection: false,
     canViewCatalogsSection: false,
+    canViewFinanceSection: false,
     canViewUsersSection: false,
     routeQuery: {},
     usersSectionCtx: {},
@@ -49,6 +50,7 @@ describe('WorkProfileSection', () => {
           canManageRolePermissions: true,
           canViewAnalyticsSection: true,
           canViewCatalogsSection: true,
+          canViewFinanceSection: true,
           canViewUsersSection: true,
           usersSectionCtx: { sortedUsers: [{ username: 'admin' }] },
         }),
@@ -68,10 +70,11 @@ describe('WorkProfileSection', () => {
     })
 
     expect(wrapper.find('.users-stub').exists()).toBe(true)
-    expect(wrapper.findAll('.analytics-link')).toHaveLength(3)
+    expect(wrapper.findAll('.analytics-link')).toHaveLength(4)
     expect(wrapper.text()).toContain('Пользователи')
     expect(wrapper.text()).toContain('Аналитика')
     expect(wrapper.text()).toContain('Справочники')
+    expect(wrapper.text()).toContain('Финансы')
   })
 
   it('hides users section for non-admin', () => {

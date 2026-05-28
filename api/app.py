@@ -328,6 +328,7 @@ from domains.deals_ws import build_deals_events, mount_deals_ws_routes
 from domains.telegram_api import mount_telegram_routes
 from domains.imports_models import ImportReportIn
 from domains.analytics_api import mount_analytics_routes
+from domains.finance_api import mount_finance_routes
 from domains.dashboard_api import mount_dashboard_routes
 from domains.products_api import mount_products_routes
 from domains.products_import_api import mount_products_import_routes
@@ -1044,6 +1045,17 @@ mount_analytics_routes(
   q1=q1,
   qall=qall,
   psycopg=pooled_psycopg,
+)
+
+mount_finance_routes(
+    app,
+    DB_DSN=DB_DSN,
+    psycopg=pooled_psycopg,
+    q1=q1,
+    qall=qall,
+    exec1=exec1,
+    get_current_user=get_current_user,
+    require_role=require_role,
 )
 
 mount_dashboard_routes(

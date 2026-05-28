@@ -37,6 +37,13 @@
         >
           Справочники
         </router-link>
+        <router-link
+          v-if="ctx.canViewFinanceSection"
+          class="tab"
+          :to="{ name: 'work', query: { ...routeQuery, tab: 'finance', admin_panel: undefined } }"
+        >
+          Финансы
+        </router-link>
       </div>
       <section v-if="ctx.canManageRolePermissions && rolePermissionsFormOpen" class="panel admin-content-shell profile-role-permissions">
         <div class="panel__body">
@@ -117,7 +124,8 @@ const showAdminTabs = computed(() => Boolean(
   props.ctx.canViewUsersSection
   || props.ctx.canManageRolePermissions
   || props.ctx.canViewAnalyticsSection
-  || props.ctx.canViewCatalogsSection,
+  || props.ctx.canViewCatalogsSection
+  || props.ctx.canViewFinanceSection,
 ))
 
 // Сохраняем текущие query-параметры при переходе в аналитику из профиля.
