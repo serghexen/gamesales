@@ -20,7 +20,7 @@ class FinanceSectionOut(BaseModel):
 
 class FinanceOperationOut(BaseModel):
     operation_id: int
-    section_id: int
+    type_id: int
     code: str
     name: str
     input_mode: str
@@ -110,7 +110,7 @@ class FinanceSectionUpdateIn(BaseModel):
 
 
 class FinanceOperationCreateIn(BaseModel):
-    section_id: int
+    type_id: int
     code: str
     name: str
     input_mode: str = "manual"
@@ -123,7 +123,7 @@ class FinanceOperationCreateIn(BaseModel):
 
 
 class FinanceOperationUpdateIn(BaseModel):
-    section_id: Optional[int] = None
+    type_id: Optional[int] = None
     code: Optional[str] = None
     name: Optional[str] = None
     input_mode: Optional[str] = None

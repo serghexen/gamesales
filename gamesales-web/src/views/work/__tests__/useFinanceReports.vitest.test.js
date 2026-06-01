@@ -40,7 +40,6 @@ describe('useFinanceReports', () => {
     const h = createHarness()
     h.finance.financeFilters.date_from = '2026-05-01'
     h.finance.financeFilters.date_to = '2026-05-31'
-    h.finance.financeFilters.project_id = 1
     h.finance.financeFilters.split_by_source = true
     h.apiGet.mockResolvedValueOnce({
       totals: {
@@ -57,7 +56,7 @@ describe('useFinanceReports', () => {
     await h.finance.loadFinanceProjectsReport()
 
     expect(h.apiGet).toHaveBeenCalledWith(
-      '/finance/reports/projects?date_from=2026-05-01&date_to=2026-05-31&project_id=1&split_by_source=true',
+      '/finance/reports/projects?date_from=2026-05-01&date_to=2026-05-31&split_by_source=true',
       { token: 'token-1' },
     )
     expect(h.finance.financeLoaded.value).toBe(true)
@@ -71,8 +70,6 @@ describe('useFinanceReports', () => {
     h.finance.financeEntryFilters.date_from = '2026-05-01'
     h.finance.financeEntryFilters.date_to = '2026-05-10'
     h.finance.financeEntryFilters.operation_id = 7
-    h.finance.financeEntryFilters.status_code = 'confirmed'
-    h.finance.financeEntryFilters.limit = 25
     h.apiGet.mockResolvedValueOnce({
       total: 1,
       items: [{ entry_id: 77, biz_date: '2026-05-10', operation_id: 7, amount: '100.00', qty: '1.00' }],
@@ -81,7 +78,7 @@ describe('useFinanceReports', () => {
     await h.finance.loadFinanceEntries()
 
     expect(h.apiGet).toHaveBeenCalledWith(
-      '/finance/entries?date_from=2026-05-01&date_to=2026-05-10&operation_id=7&status_code=confirmed&limit=25',
+      '/finance/entries?date_from=2026-05-01&date_to=2026-05-10&operation_id=7',
       { token: 'token-1' },
     )
     expect(h.finance.financeEntriesLoaded.value).toBe(true)
@@ -93,15 +90,13 @@ describe('useFinanceReports', () => {
     const h = createHarness()
     h.finance.financeNewEntry.biz_date = '2026-05-11'
     h.finance.financeNewEntry.operation_id = 9
-    h.finance.financeNewEntry.project_id = 1
     h.finance.financeNewEntry.region_id = 10
     h.finance.financeNewEntry.source_id = 99
-    h.finance.financeNewEntry.qty = 2
     h.finance.financeNewEntry.amount = '555.70'
     h.finance.financeNewEntry.comment = 'manual add'
     h.apiPost.mockResolvedValueOnce({ entry_id: 700 })
     h.apiGet
-      .mockResolvedValueOnce({ total: 1, items: [{ entry_id: 700, amount: '555.70', qty: '2.00' }] })
+      .mockResolvedValueOnce({ total: 1, items: [{ entry_id: 700, amount: '555.70', qty: '1.00' }] })
       .mockResolvedValueOnce({ totals: { revenue: '555.70' }, items: [] })
 
     const ok = await h.finance.createFinanceEntry()
@@ -112,10 +107,10 @@ describe('useFinanceReports', () => {
       expect.objectContaining({
         biz_date: '2026-05-11',
         operation_id: 9,
-        project_id: 1,
+        project_id: null,
         region_id: 10,
         source_id: 99,
-        qty: 2,
+        qty: 1,
         amount: 555.7,
         currency: 'RUB',
         comment: 'manual add',
@@ -128,7 +123,7 @@ describe('useFinanceReports', () => {
 
   it('creates finance operation catalog record and reloads bootstrap', async () => {
     const h = createHarness()
-    h.finance.financeNewOperation.section_id = 3
+    h.finance.financeNewOperation.type_id = 3
     h.finance.financeNewOperation.code = 'indirect_adv'
     h.finance.financeNewOperation.name = 'Продвижение'
     h.apiPost.mockResolvedValueOnce({ operation_id: 44 })
@@ -139,7 +134,7 @@ describe('useFinanceReports', () => {
     expect(ok).toBe(true)
     expect(h.apiPost).toHaveBeenCalledWith(
       '/finance/catalogs/operations',
-      expect.objectContaining({ section_id: 3, code: 'indirect_adv', name: 'Продвижение' }),
+      expect.objectContaining({ type_id: 3, code: 'indirect_adv', name: 'Продвижение' }),
       { token: 'token-1' },
     )
     expect(h.finance.financeCatalogOk.value).toBe('Операция добавлена')
@@ -150,12 +145,12 @@ describe('useFinanceReports', () => {
     h.apiPost.mockResolvedValueOnce({ type_id: 12 })
     h.apiGet.mockResolvedValueOnce({ types: [{ type_id: 12, code: 'new_type' }] })
 
-    const ok = await h.finance.createFinanceType({ code: 'new_type', name: 'Новый тип', sort_order: 90 })
+    const ok = await h.finance.createFinanceType({ code: 'new_type', name: 'Новый тип' })
 
     expect(ok).toBe(true)
     expect(h.apiPost).toHaveBeenCalledWith(
       '/finance/catalogs/types',
-      expect.objectContaining({ code: 'new_type', name: 'Новый тип', sort_order: 90 }),
+      expect.objectContaining({ code: 'new_type', name: 'Новый тип' }),
       { token: 'token-1' },
     )
     expect(h.finance.financeCatalogOk.value).toBe('Тип добавлен')

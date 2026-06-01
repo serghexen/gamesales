@@ -28,8 +28,6 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     region_id: '',
     source_id: '',
     operation_id: '',
-    status_code: '',
-    limit: 50,
   })
   const financeOperations = ref([])
   const financeTypes = ref([])
@@ -58,19 +56,13 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeNewType = reactive({
     code: '',
     name: '',
-    sort_order: 100,
   })
   const financeNewOperation = reactive({
-    section_id: '',
+    type_id: '',
     code: '',
     name: '',
     input_mode: 'mixed',
-    requires_region: false,
-    requires_source: false,
-    requires_project: true,
-    requires_qty: false,
     allows_negative: false,
-    sort_order: 100,
   })
   const financeNewProject = reactive({
     code: '',
@@ -128,12 +120,9 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       const params = new URLSearchParams()
       if (financeEntryFilters.date_from) params.set('date_from', financeEntryFilters.date_from)
       if (financeEntryFilters.date_to) params.set('date_to', financeEntryFilters.date_to)
-      if (financeEntryFilters.project_id) params.set('project_id', String(financeEntryFilters.project_id))
       if (financeEntryFilters.region_id) params.set('region_id', String(financeEntryFilters.region_id))
       if (financeEntryFilters.source_id) params.set('source_id', String(financeEntryFilters.source_id))
       if (financeEntryFilters.operation_id) params.set('operation_id', String(financeEntryFilters.operation_id))
-      if (financeEntryFilters.status_code) params.set('status_code', String(financeEntryFilters.status_code))
-      params.set('limit', String(financeEntryFilters.limit || 50))
 
       const query = params.toString()
       const data = await apiGet(`/finance/entries${query ? `?${query}` : ''}`, { token: auth.state.token })
@@ -162,11 +151,8 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       financeEntryError.value = 'Выберите операцию'
       return false
     }
-    const qty = Number(financeNewEntry.qty || 1)
-    if (!Number.isFinite(qty) || qty === 0) {
-      financeEntryError.value = 'Укажите корректное количество'
-      return false
-    }
+    // Количество фиксируем как 1, потому что в форме сейчас вводится только сумма операции.
+    const qty = 1
     const amount = Number(financeNewEntry.amount)
     if (!Number.isFinite(amount)) {
       financeEntryError.value = 'Укажите сумму'
@@ -177,7 +163,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       const payload = {
         biz_date: financeNewEntry.biz_date || today,
         operation_id: Number(financeNewEntry.operation_id),
-        project_id: financeNewEntry.project_id ? Number(financeNewEntry.project_id) : null,
+        project_id: null,
         region_id: financeNewEntry.region_id ? Number(financeNewEntry.region_id) : null,
         source_id: financeNewEntry.source_id ? Number(financeNewEntry.source_id) : null,
         qty,
@@ -211,7 +197,6 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       if (financeFilters.date_to) params.set('date_to', financeFilters.date_to)
       if (financeFilters.region_id) params.set('region_id', String(financeFilters.region_id))
       if (financeFilters.source_id) params.set('source_id', String(financeFilters.source_id))
-      if (financeFilters.project_id) params.set('project_id', String(financeFilters.project_id))
       params.set('split_by_source', financeFilters.split_by_source ? 'true' : 'false')
 
       const query = params.toString()
@@ -285,7 +270,6 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       await apiPost('/finance/catalogs/types', {
         code,
         name,
-        sort_order: Number(source.sort_order || 100),
       }, { token: auth.state.token })
       financeCatalogOk.value = 'Тип добавлен'
       if (!draft) {
@@ -317,7 +301,6 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       await apiPut(`/finance/catalogs/types/${Number(typeId)}`, {
         code,
         name,
-        sort_order: Number(draft?.sort_order || 100),
       }, { token: auth.state.token })
       financeCatalogOk.value = 'Тип обновлен'
       await loadFinanceBootstrap()
@@ -399,30 +382,29 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   }
 
   const createFinanceOperation = async (draft = null) => {
-    // Добавляем операцию (статью) в выбранный раздел.
+    // Добавляем операцию (статью) в выбранный тип.
     financeCatalogError.value = null
     financeCatalogOk.value = ''
     const source = draft || financeNewOperation
-    const sectionId = Number(source.section_id || 0)
+    const typeId = Number(source.type_id || 0)
     const code = String(source.code || '').trim().toLowerCase()
     const name = String(source.name || '').trim()
-    if (!sectionId || !code || !name) {
-      financeCatalogError.value = 'Для операции нужны раздел, код и название'
+    if (!typeId || !code || !name) {
+      financeCatalogError.value = 'Для операции нужны тип, код и название'
       return false
     }
     financeCatalogSaving.value = true
     try {
       await apiPost('/finance/catalogs/operations', {
-        section_id: sectionId,
+        type_id: typeId,
         code,
         name,
         input_mode: String(source.input_mode || 'mixed'),
-        requires_region: Boolean(source.requires_region),
-        requires_source: Boolean(source.requires_source),
-        requires_project: Boolean(source.requires_project),
-        requires_qty: Boolean(source.requires_qty),
+        requires_region: false,
+        requires_source: false,
+        requires_project: false,
+        requires_qty: false,
         allows_negative: Boolean(source.allows_negative),
-        sort_order: Number(source.sort_order || 100),
       }, { token: auth.state.token })
       financeCatalogOk.value = 'Операция добавлена'
       if (!draft) {
@@ -462,26 +444,25 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     // Обновляем операцию справочника finance с правилами обязательных полей.
     financeCatalogError.value = null
     financeCatalogOk.value = ''
-    const sectionId = Number(draft?.section_id || 0)
+    const typeId = Number(draft?.type_id || 0)
     const code = String(draft?.code || '').trim().toLowerCase()
     const name = String(draft?.name || '').trim()
-    if (!operationId || !sectionId || !code || !name) {
-      financeCatalogError.value = 'Для операции нужны id, раздел, код и название'
+    if (!operationId || !typeId || !code || !name) {
+      financeCatalogError.value = 'Для операции нужны id, тип, код и название'
       return false
     }
     financeCatalogSaving.value = true
     try {
       await apiPut(`/finance/catalogs/operations/${Number(operationId)}`, {
-        section_id: sectionId,
+        type_id: typeId,
         code,
         name,
         input_mode: String(draft?.input_mode || 'mixed'),
-        requires_region: Boolean(draft?.requires_region),
-        requires_source: Boolean(draft?.requires_source),
-        requires_project: Boolean(draft?.requires_project),
-        requires_qty: Boolean(draft?.requires_qty),
+        requires_region: false,
+        requires_source: false,
+        requires_project: false,
+        requires_qty: false,
         allows_negative: Boolean(draft?.allows_negative),
-        sort_order: Number(draft?.sort_order || 100),
       }, { token: auth.state.token })
       financeCatalogOk.value = 'Операция обновлена'
       await loadFinanceBootstrap()

@@ -39,8 +39,9 @@
 Пример ответа:
 ```json
 {
+  "types": [{"type_id": 1, "code": "revenue", "name": "Выручка"}],
   "sections": [{"section_id": 1, "code": "revenue", "name": "Выручка", "kind": "revenue"}],
-  "operations": [{"operation_id": 10, "section_id": 1, "code": "sale_tr", "name": "Продажа TR", "requires_region": true}],
+  "operations": [{"operation_id": 10, "type_id": 1, "code": "sale_tr", "name": "Продажа TR", "requires_region": true}],
   "projects": [{"project_id": 100, "code": "asat_m", "name": "ASAT-M"}],
   "regions": [{"region_id": 1, "code": "TR", "name": "Turkey"}],
   "sources": [{"source_id": 1, "code": "ym", "name": "Yandex Market"}]

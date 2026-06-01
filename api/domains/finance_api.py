@@ -178,7 +178,7 @@ def mount_finance_routes(
         # Приводим запись операции к response-модели.
         return FinanceOperationOut(
             operation_id=int(row[0]),
-            section_id=int(row[1]),
+            type_id=int(row[1]),
             code=row[2],
             name=row[3],
             input_mode=row[4],
@@ -218,13 +218,13 @@ def mount_finance_routes(
         )
 
     def _load_operation(conn, operation_id: int):
-        # Загружаем операцию с разделом, чтобы валидировать запись и выбрать метрику.
+        # Загружаем операцию с типом, чтобы валидировать запись и выбрать метрику.
         row = q1(
             conn,
             """
             SELECT
               o.operation_id,
-              o.section_id,
+              o.type_id,
               o.code,
               o.name,
               o.input_mode,
@@ -235,9 +235,9 @@ def mount_finance_routes(
               o.allows_negative,
               o.sort_order,
               o.is_active,
-              s.kind
+              t.code AS type_code
             FROM finance.operations o
-            JOIN finance.sections s ON s.section_id = o.section_id
+            JOIN finance.section_types t ON t.type_id = o.type_id
             WHERE o.operation_id=%s
             """,
             (operation_id,),
@@ -248,7 +248,7 @@ def mount_finance_routes(
             raise HTTPException(400, f"Inactive operation_id: {operation_id}")
         return {
             "operation_id": int(row[0]),
-            "section_id": int(row[1]),
+            "type_id": int(row[1]),
             "code": row[2],
             "name": row[3],
             "input_mode": row[4],
@@ -259,7 +259,7 @@ def mount_finance_routes(
             "allows_negative": bool(row[9]),
             "sort_order": int(row[10] or 0),
             "is_active": bool(row[11]),
-            "section_kind": row[12],
+            "type_code": row[12],
         }
 
     def _validate_entry_payload(conn, payload: FinanceEntryCreateIn, operation: dict[str, Any]):
@@ -268,8 +268,7 @@ def mount_finance_routes(
             raise HTTPException(400, "region_id is required for operation")
         if operation["requires_source"] and payload.source_id is None:
             raise HTTPException(400, "source_id is required for operation")
-        if operation["requires_project"] and payload.project_id is None:
-            raise HTTPException(400, "project_id is required for operation")
+        # Поле проекта убрано из UI, поэтому проект больше не блокирует ввод записи.
         if operation["requires_qty"] and payload.qty == 0:
             raise HTTPException(400, "qty must be non-zero for operation")
         if operation["allows_negative"] is not True and payload.amount < 0:
@@ -386,7 +385,7 @@ def mount_finance_routes(
             )
 
         # Сохраняем базовую проводку, чтобы отчет сразу увидел сумму.
-        metric_code = _metric_from_section_kind(operation["section_kind"])
+        metric_code = _metric_from_section_kind(operation["type_code"])
         exec1(
             conn,
             """
@@ -460,7 +459,7 @@ def mount_finance_routes(
                 conn,
                 """
                 SELECT
-                  operation_id, section_id, code, name, input_mode,
+                  operation_id, type_id, code, name, input_mode,
                   requires_region, requires_source, requires_project, requires_qty,
                   allows_negative, sort_order, is_active
                 FROM finance.operations
@@ -506,7 +505,7 @@ def mount_finance_routes(
             operations=[
                 FinanceOperationOut(
                     operation_id=int(r[0]),
-                    section_id=int(r[1]),
+                    type_id=int(r[1]),
                     code=r[2],
                     name=r[3],
                     input_mode=r[4],
@@ -664,32 +663,30 @@ def mount_finance_routes(
                 )
                 sections_seeded += 1
 
-            section_rows = qall(conn, "SELECT section_id, code FROM finance.sections WHERE is_active IS TRUE")
-            section_map = {str(code): int(section_id) for section_id, code in section_rows}
             operation_specs = [
-                {"code": "revenue_sales_manual", "name": "Продажи (ручной ввод)", "section_code": "revenue"},
-                {"code": "revenue_marketplace_api", "name": "Продажи маркетплейсов (API)", "section_code": "revenue"},
-                {"code": "direct_purchase", "name": "Закуп", "section_code": "direct_expense"},
-                {"code": "direct_salary_piece", "name": "Сдельные выплаты", "section_code": "direct_expense"},
-                {"code": "indirect_marketing", "name": "Маркетинг", "section_code": "indirect_expense"},
-                {"code": "indirect_office", "name": "Офис и сервисы", "section_code": "indirect_expense"},
+                {"code": "revenue_sales_manual", "name": "Продажи (ручной ввод)", "type_code": "revenue"},
+                {"code": "revenue_marketplace_api", "name": "Продажи маркетплейсов (API)", "type_code": "revenue"},
+                {"code": "direct_purchase", "name": "Закуп", "type_code": "direct_expense"},
+                {"code": "direct_salary_piece", "name": "Сдельные выплаты", "type_code": "direct_expense"},
+                {"code": "indirect_marketing", "name": "Маркетинг", "type_code": "indirect_expense"},
+                {"code": "indirect_office", "name": "Офис и сервисы", "type_code": "indirect_expense"},
             ]
             for idx, spec in enumerate(operation_specs, start=1):
-                section_id = section_map.get(spec["section_code"])
-                if not section_id:
+                type_id = type_map.get(spec["type_code"])
+                if not type_id:
                     continue
                 exec1(
                     conn,
                     """
                     INSERT INTO finance.operations(
-                      section_id, code, name, input_mode,
+                      type_id, code, name, input_mode,
                       requires_region, requires_source, requires_project, requires_qty, allows_negative,
                       sort_order, is_active
                     )
                     VALUES (%s, %s, %s, 'mixed', false, false, true, false, false, %s, true)
                     ON CONFLICT (code) DO UPDATE
                     SET name=excluded.name,
-                        section_id=excluded.section_id,
+                        type_id=excluded.type_id,
                         input_mode=excluded.input_mode,
                         requires_region=excluded.requires_region,
                         requires_source=excluded.requires_source,
@@ -700,7 +697,7 @@ def mount_finance_routes(
                         is_active=true,
                         updated_at=now()
                     """,
-                    (section_id, spec["code"], spec["name"], idx * 10),
+                    (type_id, spec["code"], spec["name"], idx * 10),
                 )
                 operations_seeded += 1
 
@@ -929,22 +926,22 @@ def mount_finance_routes(
             raise HTTPException(400, "code and name are required")
         input_mode = _normalize_operation_mode(payload.input_mode)
         with psycopg.connect(DB_DSN) as conn:
-            _ensure_lookup_exists(conn, "sections", "section_id", payload.section_id, "section_id")
+            _ensure_lookup_exists(conn, "section_types", "type_id", payload.type_id, "type_id")
             row = q1(
                 conn,
                 """
                 INSERT INTO finance.operations(
-                  section_id, code, name, input_mode,
+                  type_id, code, name, input_mode,
                   requires_region, requires_source, requires_project, requires_qty, allows_negative,
                   sort_order, is_active
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true)
-                RETURNING operation_id, section_id, code, name, input_mode,
+                RETURNING operation_id, type_id, code, name, input_mode,
                           requires_region, requires_source, requires_project, requires_qty,
                           allows_negative, sort_order, is_active
                 """,
                 (
-                    payload.section_id,
+                    payload.type_id,
                     code,
                     name,
                     input_mode,
@@ -968,7 +965,7 @@ def mount_finance_routes(
             current = q1(
                 conn,
                 """
-                SELECT operation_id, section_id, code, name, input_mode,
+                SELECT operation_id, type_id, code, name, input_mode,
                        requires_region, requires_source, requires_project, requires_qty,
                        allows_negative, sort_order, is_active
                 FROM finance.operations
@@ -978,8 +975,8 @@ def mount_finance_routes(
             )
             if not current:
                 raise HTTPException(404, "Operation not found")
-            next_section_id = int(payload.section_id) if payload.section_id is not None else int(current[1])
-            _ensure_lookup_exists(conn, "sections", "section_id", next_section_id, "section_id")
+            next_type_id = int(payload.type_id) if payload.type_id is not None else int(current[1])
+            _ensure_lookup_exists(conn, "section_types", "type_id", next_type_id, "type_id")
             next_code = _normalize_code(payload.code) if payload.code is not None else current[2]
             next_name = (payload.name or "").strip() if payload.name is not None else current[3]
             next_mode = _normalize_operation_mode(payload.input_mode) if payload.input_mode is not None else current[4]
@@ -994,16 +991,16 @@ def mount_finance_routes(
                 conn,
                 """
                 UPDATE finance.operations
-                SET section_id=%s, code=%s, name=%s, input_mode=%s,
+                SET type_id=%s, code=%s, name=%s, input_mode=%s,
                     requires_region=%s, requires_source=%s, requires_project=%s, requires_qty=%s,
                     allows_negative=%s, sort_order=%s, is_active=%s, updated_at=now()
                 WHERE operation_id=%s
-                RETURNING operation_id, section_id, code, name, input_mode,
+                RETURNING operation_id, type_id, code, name, input_mode,
                           requires_region, requires_source, requires_project, requires_qty,
                           allows_negative, sort_order, is_active
                 """,
                 (
-                    next_section_id,
+                    next_type_id,
                     next_code,
                     next_name,
                     next_mode,

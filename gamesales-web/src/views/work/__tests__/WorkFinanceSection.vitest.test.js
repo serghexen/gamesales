@@ -50,8 +50,6 @@ function buildCtx(overrides = {}) {
       region_id: '',
       source_id: '',
       operation_id: '',
-      status_code: '',
-      limit: 50,
     },
     financeNewSection: {
       type_id: 2,
@@ -60,7 +58,7 @@ function buildCtx(overrides = {}) {
       sort_order: 100,
     },
     financeNewOperation: {
-      section_id: '',
+      type_id: '',
       code: '',
       name: '',
       input_mode: 'mixed',
@@ -75,7 +73,7 @@ function buildCtx(overrides = {}) {
       code: '',
       name: '',
     },
-    financeOperations: [{ operation_id: 7, section_id: 20, code: 'rev_sale', name: 'Продажа', requires_project: true, requires_region: true, requires_source: true, requires_qty: false, allows_negative: false }],
+    financeOperations: [{ operation_id: 7, type_id: 2, section_id: 20, code: 'rev_sale', name: 'Продажа', requires_project: true, requires_region: true, requires_source: true, requires_qty: false, allows_negative: false }],
     financeTypes: [{ type_id: 2, code: 'direct_expense', name: 'Прямые расходы' }],
     financeSections: [{ section_id: 20, type_id: 2, type_code: 'direct_expense', kind: 'direct_expense', code: 'direct', name: 'Прямые расходы' }],
     financeProjects: [{ project_id: 1, code: 'core', name: 'Core' }],
@@ -147,7 +145,7 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('Ввод')
     expect(wrapper.text()).toContain('Журнал')
     expect(wrapper.text()).toContain('Отчет')
-    expect(wrapper.text()).toContain('Ввод операции')
+    expect(wrapper.text()).toContain('Комментарий')
     expect(wrapper.text()).toContain('Продажа')
     expect(wrapper.text()).toContain('Тип: Прямые расходы')
   })
@@ -175,20 +173,14 @@ describe('WorkFinanceSection', () => {
     await wrapper.find('[data-test="finance-mode-catalogs"]').trigger('click')
     await wrapper.find('[data-test="finance-open-create-type"]').trigger('click')
     await wrapper.find('[data-test="finance-create-type"]').trigger('click')
-    await wrapper.find('[data-test="finance-open-create-section"]').trigger('click')
-    await wrapper.find('[data-test="finance-create-section"]').trigger('click')
     await wrapper.find('[data-test="finance-open-create-operation"]').trigger('click')
     await wrapper.find('[data-test="finance-create-operation"]').trigger('click')
-    await wrapper.find('[data-test="finance-open-create-project"]').trigger('click')
-    await wrapper.find('[data-test="finance-create-project"]').trigger('click')
 
     expect(ctx.createFinanceEntry).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceEntries).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceProjectsReport).toHaveBeenCalledTimes(1)
     expect(ctx.createFinanceType).toHaveBeenCalledTimes(1)
-    expect(ctx.createFinanceSection).toHaveBeenCalledTimes(1)
     expect(ctx.createFinanceOperation).toHaveBeenCalledTimes(1)
-    expect(ctx.createFinanceProject).toHaveBeenCalledTimes(1)
   })
 
   it('shows source column when split_by_source is enabled', async () => {
@@ -217,5 +209,31 @@ describe('WorkFinanceSection', () => {
 
     await wrapper.find('[data-test="finance-mode-report"]').trigger('click')
     expect(wrapper.text()).toContain('Источник')
+  })
+
+  it('shows type modal with name-only input', async () => {
+    const ctx = buildCtx({
+      financeTypes: [{ type_id: 2, code: 'direct_expense', name: 'Прямые расходы' }],
+    })
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-catalogs"]').trigger('click')
+    expect(wrapper.text()).not.toContain('Архив')
+
+    await wrapper.find('tr.clickable-row').trigger('click')
+    expect(wrapper.text()).toContain('Редактировать тип')
+    expect(wrapper.text()).toContain('Название')
+    expect(wrapper.text()).not.toContain('Код системного типа фиксирован')
   })
 })
