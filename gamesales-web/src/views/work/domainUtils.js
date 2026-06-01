@@ -135,10 +135,16 @@ export const mapApiError = (message) => {
   if (text.includes('User not found')) return 'Покупатель не найден'
   if (text.includes('Account not found')) return 'Аккаунт не найден'
   if (text.includes('Product not found')) return 'Товар не найден'
+  if (text.includes('Entry not found')) return 'Проводка не найдена'
   if (text.includes('Source not found')) return 'Источник не найден'
   if (text.includes('Domain not found')) return 'Домен не найден'
   if (text.includes('Region not found')) return 'Регион не найден'
   if (text.includes('Platform not found')) return 'Платформа не найдена'
+  // Переводим ошибки удаления справочников finance в понятные сообщения для менеджера.
+  if (text.includes('System type cannot be deleted')) return 'Системный тип нельзя удалить'
+  if (text.includes('Type has active sections')) return 'Нельзя удалить тип: к нему привязаны разделы'
+  if (text.includes('Operation has entries and cannot be deleted')) return 'Нельзя удалить вид операции: по нему уже есть записи'
+  if (text.includes('Type has operations and cannot be deleted')) return 'Нельзя удалить тип: к нему привязаны виды операций'
   if (text.includes('query.payload: Field required') || text.includes('body.payload: Field required')) {
     return 'Некорректный формат запроса. Обновите страницу и попробуйте снова'
   }

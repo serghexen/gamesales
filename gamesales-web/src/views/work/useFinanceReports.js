@@ -59,6 +59,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   })
   const financeNewOperation = reactive({
     type_id: '',
+    source_id: '',
     code: '',
     name: '',
     input_mode: 'mixed',
@@ -184,6 +185,23 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       return false
     } finally {
       financeEntrySaving.value = false
+    }
+  }
+
+  const deleteFinanceEntry = async (entryId) => {
+    // Удаляем проводку и перечитываем журнал/отчет, чтобы экран сразу показал актуальные суммы.
+    financeEntriesError.value = null
+    if (!entryId) return false
+    financeEntriesLoading.value = true
+    try {
+      await apiDelete(`/finance/entries/${Number(entryId)}`, { token: auth.state.token })
+      await Promise.all([loadFinanceEntries(), loadFinanceProjectsReport()])
+      return true
+    } catch (e) {
+      financeEntriesError.value = mapApiError(e?.message)
+      return false
+    } finally {
+      financeEntriesLoading.value = false
     }
   }
 
@@ -313,15 +331,17 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     }
   }
 
-  const archiveFinanceType = async (typeId) => {
-    // Архивируем тип, если к нему не привязаны активные разделы.
+  const archiveFinanceType = async (typeId, options = null) => {
+    // Архивируем тип; по флагу можно каскадно удалить проводки по операциям типа.
     financeCatalogError.value = null
     financeCatalogOk.value = ''
     if (!typeId) return false
+    const cascadeEntries = Boolean(options?.cascadeEntries)
+    const suffix = cascadeEntries ? '?cascade_entries=1' : ''
     financeCatalogSaving.value = true
     try {
-      await apiDelete(`/finance/catalogs/types/${Number(typeId)}`, { token: auth.state.token })
-      financeCatalogOk.value = 'Тип архивирован'
+      await apiDelete(`/finance/catalogs/types/${Number(typeId)}${suffix}`, { token: auth.state.token })
+      financeCatalogOk.value = cascadeEntries ? 'Тип удален вместе с проводками' : 'Тип архивирован'
       await loadFinanceBootstrap()
       return true
     } catch (e) {
@@ -397,6 +417,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     try {
       await apiPost('/finance/catalogs/operations', {
         type_id: typeId,
+        source_id: source.source_id ? Number(source.source_id) : null,
         code,
         name,
         input_mode: String(source.input_mode || 'mixed'),
@@ -421,15 +442,17 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     }
   }
 
-  const archiveFinanceOperation = async (operationId) => {
-    // Архивируем операцию, если на нее еще не привязаны записи.
+  const archiveFinanceOperation = async (operationId, options = null) => {
+    // Архивируем операцию; по флагу можно каскадно удалить ее проводки.
     financeCatalogError.value = null
     financeCatalogOk.value = ''
     if (!operationId) return false
+    const cascadeEntries = Boolean(options?.cascadeEntries)
+    const suffix = cascadeEntries ? '?cascade_entries=1' : ''
     financeCatalogSaving.value = true
     try {
-      await apiDelete(`/finance/catalogs/operations/${Number(operationId)}`, { token: auth.state.token })
-      financeCatalogOk.value = 'Операция архивирована'
+      await apiDelete(`/finance/catalogs/operations/${Number(operationId)}${suffix}`, { token: auth.state.token })
+      financeCatalogOk.value = cascadeEntries ? 'Операция удалена вместе с проводками' : 'Операция архивирована'
       await loadFinanceBootstrap()
       return true
     } catch (e) {
@@ -455,6 +478,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     try {
       await apiPut(`/finance/catalogs/operations/${Number(operationId)}`, {
         type_id: typeId,
+        source_id: draft?.source_id ? Number(draft.source_id) : null,
         code,
         name,
         input_mode: String(draft?.input_mode || 'mixed'),
@@ -582,6 +606,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     loadFinanceBootstrap,
     loadFinanceEntries,
     createFinanceEntry,
+    deleteFinanceEntry,
     createFinanceSection,
     createFinanceType,
     updateFinanceType,

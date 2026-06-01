@@ -155,4 +155,39 @@ describe('useFinanceReports', () => {
     )
     expect(h.finance.financeCatalogOk.value).toBe('Тип добавлен')
   })
+
+  it('deletes finance entry and refreshes journal/report', async () => {
+    const h = createHarness()
+    h.apiDelete.mockResolvedValueOnce({ ok: true })
+    h.apiGet
+      .mockResolvedValueOnce({ total: 0, items: [] })
+      .mockResolvedValueOnce({ totals: { revenue: '0.00' }, items: [] })
+
+    const ok = await h.finance.deleteFinanceEntry(77)
+
+    expect(ok).toBe(true)
+    expect(h.apiDelete).toHaveBeenCalledWith('/finance/entries/77', { token: 'token-1' })
+  })
+
+  it('archives operation and type with cascade_entries query when requested', async () => {
+    const h = createHarness()
+    h.apiDelete.mockResolvedValue({ ok: true })
+    h.apiGet.mockResolvedValue({ operations: [], types: [] })
+
+    const opOk = await h.finance.archiveFinanceOperation(44, { cascadeEntries: true })
+    const typeOk = await h.finance.archiveFinanceType(12, { cascadeEntries: true })
+
+    expect(opOk).toBe(true)
+    expect(typeOk).toBe(true)
+    expect(h.apiDelete).toHaveBeenNthCalledWith(
+      1,
+      '/finance/catalogs/operations/44?cascade_entries=1',
+      { token: 'token-1' },
+    )
+    expect(h.apiDelete).toHaveBeenNthCalledWith(
+      2,
+      '/finance/catalogs/types/12?cascade_entries=1',
+      { token: 'token-1' },
+    )
+  })
 })

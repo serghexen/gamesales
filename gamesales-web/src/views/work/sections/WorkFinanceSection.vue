@@ -101,7 +101,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="type in ctx.financeTypes" :key="type.type_id" class="clickable-row" @click="openTypeEditModal(type)">
+                    <tr v-for="type in ctx.financeTypes" :key="type.type_id" :data-test="`finance-type-row-${type.type_id}`" class="clickable-row" @click="openTypeEditModal(type)">
                       <td>{{ type.name }}</td>
                     </tr>
                   </tbody>
@@ -138,12 +138,14 @@
                     <tr>
                       <th>Название</th>
                       <th>Тип</th>
+                      <th>Источник</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="operation in ctx.financeOperations" :key="operation.operation_id" class="clickable-row" @click="openOperationEditModal(operation)">
+                    <tr v-for="operation in ctx.financeOperations" :key="operation.operation_id" :data-test="`finance-operation-row-${operation.operation_id}`" class="clickable-row" @click="openOperationEditModal(operation)">
                       <td>{{ operation.name }}</td>
                       <td>{{ resolveOperationTypeName(operation) }}</td>
+                      <td>{{ resolveSourceName(operation.source_id) }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -187,31 +189,10 @@
                 <input v-model="ctx.financeNewEntry.biz_date" class="input" type="date" :max="ctx.maxDate" />
               </label>
               <label class="field">
-                <span class="label">Тип</span>
-                <select v-model="entrySectionKind" class="input input--select">
-                  <option value="">Все типы</option>
-                  <option v-for="type in entryKinds" :key="`entry-type-${type.type_id}`" :value="String(type.type_id)">{{ type.name }}</option>
-                </select>
-              </label>
-              <label class="field">
                 <span class="label">Операция</span>
                 <select v-model="ctx.financeNewEntry.operation_id" class="input input--select">
                   <option value="">Выберите</option>
                   <option v-for="op in filteredNewEntryOperations" :key="op.operation_id" :value="op.operation_id">{{ op.name }}</option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Регион</span>
-                <select v-model="ctx.financeNewEntry.region_id" class="input input--select">
-                  <option value="">Не выбран</option>
-                  <option v-for="r in ctx.financeRegions" :key="r.region_id" :value="r.region_id">{{ r.name }}</option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="label">Источник</span>
-                <select v-model="ctx.financeNewEntry.source_id" class="input input--select">
-                  <option value="">Не выбран</option>
-                  <option v-for="s in ctx.financeSources" :key="s.source_id" :value="s.source_id">{{ s.name }}</option>
                 </select>
               </label>
               <label class="field">
@@ -224,7 +205,6 @@
               </label>
             </div>
 
-            <p v-if="selectedOperation" class="muted">Тип: {{ selectedKindLabel }}.</p>
             <div class="analytics-head__actions finance-actions-row">
               <button data-test="finance-save-entry" class="ghost" type="button" :disabled="ctx.financeEntrySaving" @click="submitFinanceEntry">
                 {{ ctx.financeEntrySaving ? 'Сохраняем...' : 'Добавить запись' }}
@@ -276,6 +256,7 @@
                   <th>Источник</th>
                   <th>Сумма</th>
                   <th>Статус</th>
+                  <th>Действия</th>
                 </tr>
               </thead>
               <tbody>
@@ -286,6 +267,17 @@
                   <td>{{ resolveSourceName(entry.source_id) }}</td>
                   <td>{{ ctx.formatPrice(entry.amount) }}</td>
                   <td>{{ resolveStatusName(entry.status_code) }}</td>
+                  <td>
+                    <button
+                      :data-test="`finance-delete-entry-${entry.entry_id}`"
+                      class="ghost"
+                      type="button"
+                      :disabled="ctx.financeEntriesLoading"
+                      @click="deleteFinanceEntryRow(entry)"
+                    >
+                      Удалить
+                    </button>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -315,7 +307,7 @@
               <span class="label">Источник</span>
               <select v-model.number="ctx.financeFilters.source_id" class="input input--select">
                 <option value="">Все</option>
-                <option v-for="s in ctx.financeSources" :key="`rep-src-${s.source_id}`" :value="s.source_id">{{ s.name }}</option>
+                <option v-for="s in ctx.financeSources" :key="`rep-src-${s.source_id}`" :value="s.source_id">{{ formatSourceLabel(s) }}</option>
               </select>
             </label>
             <label class="field">
@@ -436,6 +428,16 @@
               </label>
             </div>
             <div class="toolbar-actions">
+              <button
+                v-if="typeModal.mode === 'edit'"
+                data-test="finance-delete-type"
+                class="ghost"
+                type="button"
+                :disabled="ctx.financeCatalogSaving"
+                @click="deleteTypeFromModal"
+              >
+                Удалить
+              </button>
               <button class="ghost" type="button" @click="closeTypeModal">Отмена</button>
               <button data-test="finance-create-type" class="ghost" type="button" :disabled="ctx.financeCatalogSaving" @click="submitTypeModal">Сохранить</button>
             </div>
@@ -486,8 +488,25 @@
                   <option v-for="type in ctx.financeTypes" :key="`modal-op-type-${type.type_id}`" :value="type.type_id">{{ type.name }}</option>
                 </select>
               </label>
+              <label class="field">
+                <span class="label">Источник</span>
+                <select v-model="operationDraft.source_id" class="input input--select">
+                  <option value="">Не выбран</option>
+                  <option v-for="source in ctx.financeSources" :key="`modal-op-source-${source.source_id}`" :value="source.source_id">{{ formatSourceLabel(source) }}</option>
+                </select>
+              </label>
             </div>
             <div class="toolbar-actions">
+              <button
+                v-if="operationModal.mode === 'edit'"
+                data-test="finance-delete-operation"
+                class="ghost"
+                type="button"
+                :disabled="ctx.financeCatalogSaving"
+                @click="deleteOperationFromModal"
+              >
+                Удалить
+              </button>
               <button class="ghost" type="button" @click="closeOperationModal">Отмена</button>
               <button data-test="finance-create-operation" class="ghost" type="button" :disabled="ctx.financeCatalogSaving" @click="submitOperationModal">Сохранить</button>
             </div>
@@ -523,14 +542,13 @@ const showAdminTabs = computed(() => (
 ))
 
 const financeMode = ref('entry')
-const entrySectionKind = ref('')
 const journalSectionKind = ref('')
 
 const typeModal = reactive({ open: false, mode: 'create', type_id: null })
 const operationModal = reactive({ open: false, mode: 'create', operation_id: null })
 
 const typeDraft = reactive({ code: '', name: '' })
-const operationDraft = reactive({ type_id: '', code: '', name: '', input_mode: 'mixed' })
+const operationDraft = reactive({ type_id: '', source_id: '', code: '', name: '', input_mode: 'mixed' })
 
 // Переключаем вид, чтобы на экране был только один смысловой блок.
 function setFinanceMode(mode) {
@@ -562,11 +580,8 @@ const entryKinds = computed(() => {
 })
 
 const filteredNewEntryOperations = computed(() => {
-  // Фильтруем список статей по выбранному типу расхода/выручки.
-  const selectedTypeId = Number(entrySectionKind.value || 0)
-  const rows = unref(props.ctx.financeOperations) || []
-  if (!selectedTypeId) return rows
-  return rows.filter((op) => resolveOperationTypeId(op) === selectedTypeId)
+  // В форме ввода показываем полный список операций.
+  return unref(props.ctx.financeOperations) || []
 })
 
 const filteredJournalOperations = computed(() => {
@@ -580,26 +595,13 @@ const filteredJournalOperations = computed(() => {
 watch(
   selectedOperation,
   (nextOp) => {
-    // Синхронизируем выбранный тип по операции, чтобы форма не расходилась по смыслу.
+    // Если операция привязана к источнику, подставляем его в форму ввода.
     if (!nextOp) return
-    const typeId = resolveOperationTypeId(nextOp)
-    if (typeId) entrySectionKind.value = String(typeId)
+    const sourceId = Number(nextOp?.source_id || 0)
+    if (sourceId) props.ctx.financeNewEntry.source_id = sourceId
   },
   { immediate: true },
 )
-
-watch(entrySectionKind, (nextKind) => {
-  // Если пользователь сменил тип, сбрасываем статью из другого типа.
-  const selectedTypeId = Number(nextKind || 0)
-  if (!selectedTypeId) return
-  const opId = Number(unref(props.ctx.financeNewEntry?.operation_id) || 0)
-  if (!opId) return
-  const current = operationsMap.value.get(opId)
-  if (!current) return
-  if (resolveOperationTypeId(current) !== selectedTypeId) {
-    props.ctx.financeNewEntry.operation_id = ''
-  }
-})
 
 watch(journalSectionKind, (nextKind) => {
   // Если тип журнала сменился, очищаем операцию из другого типа.
@@ -629,12 +631,6 @@ watch(
   },
   { immediate: true },
 )
-
-const selectedKindLabel = computed(() => {
-  const typeId = Number(entrySectionKind.value || 0)
-  if (!typeId) return 'Не выбран'
-  return resolveTypeName(typeId)
-})
 
 // Определяем type_id операции: в новом контракте берем напрямую, в старом fallback через section.
 function resolveOperationTypeId(operation) {
@@ -666,7 +662,21 @@ function resolveRegionName(regionId) {
 
 // Преобразуем id источника в название для журнала.
 function resolveSourceName(sourceId) {
-  return resolveOptionName(sourcesMap, sourceId)
+  if (sourceId === null || sourceId === undefined || sourceId === '') return '—'
+  const normalizedId = Number(sourceId)
+  const source = sourcesMap.value.get(normalizedId)
+  if (!source) return `#${sourceId}`
+  return formatSourceLabel(source)
+}
+
+// Формируем подпись источника в едином формате "Название - Код".
+function formatSourceLabel(source) {
+  const sourceName = String(source?.name || '').trim()
+  const sourceCode = String(source?.code || '').trim()
+  if (sourceName && sourceCode) return `${sourceName} - ${sourceCode}`
+  if (sourceName) return sourceName
+  if (sourceCode) return sourceCode
+  return '—'
 }
 
 // Возвращаем название типа для раздела по type_id или fallback из строки.
@@ -763,6 +773,25 @@ function closeTypeModal() {
   typeModal.open = false
 }
 
+// Удаляем тип из модалки редактирования после подтверждения пользователя.
+async function deleteTypeFromModal() {
+  const typeId = Number(typeModal.type_id || 0)
+  if (!typeId) return
+  if (!window.confirm('Удалить тип операции?')) return
+  let ok = await props.ctx.archiveFinanceType?.(typeId)
+  const typeDeleteError = String(unref(props.ctx.financeCatalogError) || '')
+  if (!ok && (
+    typeDeleteError.includes('Нельзя удалить тип: к нему привязаны виды операций')
+    || typeDeleteError.includes('Нельзя удалить тип: к нему привязаны разделы')
+    || typeDeleteError.includes('Type has operations and cannot be deleted')
+    || typeDeleteError.includes('Type has active sections')
+  )) {
+    if (!window.confirm('У типа есть связанные виды/разделы и, возможно, проводки. Удалить тип вместе с ними?')) return
+    ok = await props.ctx.archiveFinanceType?.(typeId, { cascadeEntries: true })
+  }
+  if (ok) closeTypeModal()
+}
+
 // Сохраняем тип: создаем новый или обновляем существующий.
 async function submitTypeModal() {
   // Для нового типа автоматически генерируем code из названия и делаем его уникальным.
@@ -787,6 +816,7 @@ function openOperationCreateModal() {
   operationModal.mode = 'create'
   operationModal.operation_id = null
   operationDraft.type_id = Number((unref(props.ctx.financeTypes) || [])[0]?.type_id || '') || ''
+  operationDraft.source_id = ''
   operationDraft.code = ''
   operationDraft.name = ''
   operationDraft.input_mode = 'mixed'
@@ -802,6 +832,7 @@ function openOperationEditModal(operation) {
     const section = sectionsMap.value.get(Number(operation?.section_id || 0))
     operationDraft.type_id = Number(section?.type_id || '') || ''
   }
+  operationDraft.source_id = Number(operation?.source_id || '') || ''
   operationDraft.code = String(operation?.code || '')
   operationDraft.name = String(operation?.name || '')
   operationDraft.input_mode = String(operation?.input_mode || 'mixed')
@@ -810,6 +841,19 @@ function openOperationEditModal(operation) {
 // Закрываем модалку операции без сохранения.
 function closeOperationModal() {
   operationModal.open = false
+}
+
+// Удаляем вид операции из модалки редактирования после подтверждения пользователя.
+async function deleteOperationFromModal() {
+  const operationId = Number(operationModal.operation_id || 0)
+  if (!operationId) return
+  if (!window.confirm('Удалить вид операции?')) return
+  let ok = await props.ctx.archiveFinanceOperation?.(operationId)
+  if (!ok && String(unref(props.ctx.financeCatalogError) || '').includes('Нельзя удалить вид операции: по нему уже есть записи')) {
+    if (!window.confirm('По операции есть проводки. Удалить вид операции вместе с проводками?')) return
+    ok = await props.ctx.archiveFinanceOperation?.(operationId, { cascadeEntries: true })
+  }
+  if (ok) closeOperationModal()
 }
 
 // Сохраняем операцию: создаем новую или обновляем существующую.
@@ -827,6 +871,7 @@ async function submitOperationModal() {
     : String(operationDraft.code || '').trim().toLowerCase()
   const payload = {
     type_id: resolvedTypeId,
+    source_id: operationDraft.source_id ? Number(operationDraft.source_id) : null,
     code: nextCode,
     name: operationName,
     input_mode: operationDraft.input_mode,
@@ -844,12 +889,24 @@ async function submitOperationModal() {
 
 // Запускаем сохранение новой записи через composable.
 async function submitFinanceEntry() {
+  // Регион в упрощенной форме не используется; источник берем из операции, если он задан.
+  props.ctx.financeNewEntry.region_id = ''
+  const currentOperation = operationsMap.value.get(Number(props.ctx.financeNewEntry.operation_id || 0))
+  props.ctx.financeNewEntry.source_id = Number(currentOperation?.source_id || 0) || ''
   await props.ctx.createFinanceEntry?.()
 }
 
 // Перезагружаем журнал для выбранных фильтров.
 async function reloadFinanceEntries() {
   await props.ctx.loadFinanceEntries?.()
+}
+
+// Удаляем проводку из журнала после подтверждения пользователя.
+async function deleteFinanceEntryRow(entry) {
+  const entryId = Number(entry?.entry_id || 0)
+  if (!entryId) return
+  if (!window.confirm(`Удалить проводку #${entryId}?`)) return
+  await props.ctx.deleteFinanceEntry?.(entryId)
 }
 
 // Строим отчет по текущим фильтрам.

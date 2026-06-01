@@ -104,6 +104,7 @@ function buildCtx(overrides = {}) {
     loadFinanceProjectsReport: vi.fn(),
     loadFinanceEntries: vi.fn(),
     createFinanceEntry: vi.fn(),
+    deleteFinanceEntry: vi.fn(),
     createFinanceSection: vi.fn(),
     archiveFinanceSection: vi.fn(),
     updateFinanceSection: vi.fn(),
@@ -147,7 +148,6 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('Отчет')
     expect(wrapper.text()).toContain('Комментарий')
     expect(wrapper.text()).toContain('Продажа')
-    expect(wrapper.text()).toContain('Тип: Прямые расходы')
   })
 
   it('calls actions for save, journal refresh and report build', async () => {
@@ -231,9 +231,64 @@ describe('WorkFinanceSection', () => {
     await wrapper.find('[data-test="finance-mode-catalogs"]').trigger('click')
     expect(wrapper.text()).not.toContain('Архив')
 
-    await wrapper.find('tr.clickable-row').trigger('click')
+    await wrapper.find('[data-test="finance-type-row-2"]').trigger('click')
     expect(wrapper.text()).toContain('Редактировать тип')
     expect(wrapper.text()).toContain('Название')
     expect(wrapper.text()).not.toContain('Код системного типа фиксирован')
+  })
+
+  it('archives type and operation from edit modals', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const ctx = buildCtx()
+    ctx.archiveFinanceType.mockResolvedValue(true)
+    ctx.archiveFinanceOperation.mockResolvedValue(true)
+
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-catalogs"]').trigger('click')
+    await wrapper.find('[data-test="finance-type-row-2"]').trigger('click')
+    await wrapper.find('[data-test="finance-delete-type"]').trigger('click')
+
+    await wrapper.find('[data-test="finance-operation-row-7"]').trigger('click')
+    await wrapper.find('[data-test="finance-delete-operation"]').trigger('click')
+
+    expect(ctx.archiveFinanceType).toHaveBeenCalledWith(2)
+    expect(ctx.archiveFinanceOperation).toHaveBeenCalledWith(7)
+    expect(confirmSpy).toHaveBeenCalledTimes(2)
+    confirmSpy.mockRestore()
+  })
+
+  it('deletes entry from journal after confirm', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const ctx = buildCtx()
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-journal"]').trigger('click')
+    await wrapper.find('[data-test="finance-delete-entry-1"]').trigger('click')
+
+    expect(ctx.deleteFinanceEntry).toHaveBeenCalledWith(1)
+    confirmSpy.mockRestore()
   })
 })

@@ -179,16 +179,17 @@ def mount_finance_routes(
         return FinanceOperationOut(
             operation_id=int(row[0]),
             type_id=int(row[1]),
-            code=row[2],
-            name=row[3],
-            input_mode=row[4],
-            requires_region=bool(row[5]),
-            requires_source=bool(row[6]),
-            requires_project=bool(row[7]),
-            requires_qty=bool(row[8]),
-            allows_negative=bool(row[9]),
-            sort_order=int(row[10] or 0),
-            is_active=bool(row[11]),
+            source_id=int(row[2]) if row[2] is not None else None,
+            code=row[3],
+            name=row[4],
+            input_mode=row[5],
+            requires_region=bool(row[6]),
+            requires_source=bool(row[7]),
+            requires_project=bool(row[8]),
+            requires_qty=bool(row[9]),
+            allows_negative=bool(row[10]),
+            sort_order=int(row[11] or 0),
+            is_active=bool(row[12]),
         )
 
     def _to_project_out(row) -> FinanceProjectOut:
@@ -459,7 +460,7 @@ def mount_finance_routes(
                 conn,
                 """
                 SELECT
-                  operation_id, type_id, code, name, input_mode,
+                  operation_id, type_id, source_id, code, name, input_mode,
                   requires_region, requires_source, requires_project, requires_qty,
                   allows_negative, sort_order, is_active
                 FROM finance.operations
@@ -506,16 +507,17 @@ def mount_finance_routes(
                 FinanceOperationOut(
                     operation_id=int(r[0]),
                     type_id=int(r[1]),
-                    code=r[2],
-                    name=r[3],
-                    input_mode=r[4],
-                    requires_region=bool(r[5]),
-                    requires_source=bool(r[6]),
-                    requires_project=bool(r[7]),
-                    requires_qty=bool(r[8]),
-                    allows_negative=bool(r[9]),
-                    sort_order=int(r[10] or 0),
-                    is_active=bool(r[11]),
+                    source_id=int(r[2]) if r[2] is not None else None,
+                    code=r[3],
+                    name=r[4],
+                    input_mode=r[5],
+                    requires_region=bool(r[6]),
+                    requires_source=bool(r[7]),
+                    requires_project=bool(r[8]),
+                    requires_qty=bool(r[9]),
+                    allows_negative=bool(r[10]),
+                    sort_order=int(r[11] or 0),
+                    is_active=bool(r[12]),
                 )
                 for r in operation_rows
             ],
@@ -783,21 +785,54 @@ def mount_finance_routes(
         return _to_type_out(row)
 
     @app.delete("/finance/catalogs/types/{type_id}")
-    def finance_delete_type(type_id: int, user=Depends(require_role("admin", "owner"))):
-        # Архивируем тип, если к нему не привязаны активные разделы.
+    def finance_delete_type(
+        type_id: int,
+        cascade_entries: bool = False,
+        user=Depends(require_role("admin", "owner")),
+    ):
+        # Архивируем тип; при cascade_entries=true удаляем проводки и деактивируем связанные сущности.
         with psycopg.connect(DB_DSN) as conn:
             current = q1(conn, "SELECT code FROM finance.section_types WHERE type_id=%s", (type_id,))
             if not current:
                 raise HTTPException(404, "Type not found")
             if current[0] in {"revenue", "direct_expense", "indirect_expense"}:
                 raise HTTPException(400, "System type cannot be deleted")
-            has_sections = q1(
-                conn,
-                "SELECT 1 FROM finance.sections WHERE type_id=%s AND is_active IS TRUE LIMIT 1",
-                (type_id,),
-            )
-            if has_sections:
-                raise HTTPException(409, "Type has active sections")
+            if cascade_entries:
+                exec1(
+                    conn,
+                    """
+                    DELETE FROM finance.entries e
+                    USING finance.operations o
+                    WHERE e.operation_id = o.operation_id
+                      AND o.type_id = %s
+                    """,
+                    (type_id,),
+                )
+                exec1(
+                    conn,
+                    "UPDATE finance.operations SET is_active=false, updated_at=now() WHERE type_id=%s",
+                    (type_id,),
+                )
+                exec1(
+                    conn,
+                    "UPDATE finance.sections SET is_active=false, updated_at=now() WHERE type_id=%s",
+                    (type_id,),
+                )
+            else:
+                has_sections = q1(
+                    conn,
+                    "SELECT 1 FROM finance.sections WHERE type_id=%s AND is_active IS TRUE LIMIT 1",
+                    (type_id,),
+                )
+                if has_sections:
+                    raise HTTPException(409, "Type has active sections")
+                has_operations = q1(
+                    conn,
+                    "SELECT 1 FROM finance.operations WHERE type_id=%s AND is_active IS TRUE LIMIT 1",
+                    (type_id,),
+                )
+                if has_operations:
+                    raise HTTPException(409, "Type has operations and cannot be deleted")
             exec1(conn, "UPDATE finance.section_types SET is_active=false, updated_at=now() WHERE type_id=%s", (type_id,))
             conn.commit()
         return {"ok": True}
@@ -927,21 +962,23 @@ def mount_finance_routes(
         input_mode = _normalize_operation_mode(payload.input_mode)
         with psycopg.connect(DB_DSN) as conn:
             _ensure_lookup_exists(conn, "section_types", "type_id", payload.type_id, "type_id")
+            _ensure_lookup_exists(conn, "dim_sources", "source_id", payload.source_id, "source_id")
             row = q1(
                 conn,
                 """
                 INSERT INTO finance.operations(
-                  type_id, code, name, input_mode,
+                  type_id, source_id, code, name, input_mode,
                   requires_region, requires_source, requires_project, requires_qty, allows_negative,
                   sort_order, is_active
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true)
-                RETURNING operation_id, type_id, code, name, input_mode,
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true)
+                RETURNING operation_id, type_id, source_id, code, name, input_mode,
                           requires_region, requires_source, requires_project, requires_qty,
                           allows_negative, sort_order, is_active
                 """,
                 (
                     payload.type_id,
+                    payload.source_id,
                     code,
                     name,
                     input_mode,
@@ -965,7 +1002,7 @@ def mount_finance_routes(
             current = q1(
                 conn,
                 """
-                SELECT operation_id, type_id, code, name, input_mode,
+                SELECT operation_id, type_id, source_id, code, name, input_mode,
                        requires_region, requires_source, requires_project, requires_qty,
                        allows_negative, sort_order, is_active
                 FROM finance.operations
@@ -977,30 +1014,33 @@ def mount_finance_routes(
                 raise HTTPException(404, "Operation not found")
             next_type_id = int(payload.type_id) if payload.type_id is not None else int(current[1])
             _ensure_lookup_exists(conn, "section_types", "type_id", next_type_id, "type_id")
-            next_code = _normalize_code(payload.code) if payload.code is not None else current[2]
-            next_name = (payload.name or "").strip() if payload.name is not None else current[3]
-            next_mode = _normalize_operation_mode(payload.input_mode) if payload.input_mode is not None else current[4]
-            next_requires_region = bool(payload.requires_region) if payload.requires_region is not None else bool(current[5])
-            next_requires_source = bool(payload.requires_source) if payload.requires_source is not None else bool(current[6])
-            next_requires_project = bool(payload.requires_project) if payload.requires_project is not None else bool(current[7])
-            next_requires_qty = bool(payload.requires_qty) if payload.requires_qty is not None else bool(current[8])
-            next_allows_negative = bool(payload.allows_negative) if payload.allows_negative is not None else bool(current[9])
-            next_sort = int(payload.sort_order) if payload.sort_order is not None else int(current[10] or 0)
-            next_active = bool(payload.is_active) if payload.is_active is not None else bool(current[11])
+            next_source_id = int(payload.source_id) if payload.source_id is not None else (int(current[2]) if current[2] is not None else None)
+            _ensure_lookup_exists(conn, "dim_sources", "source_id", next_source_id, "source_id")
+            next_code = _normalize_code(payload.code) if payload.code is not None else current[3]
+            next_name = (payload.name or "").strip() if payload.name is not None else current[4]
+            next_mode = _normalize_operation_mode(payload.input_mode) if payload.input_mode is not None else current[5]
+            next_requires_region = bool(payload.requires_region) if payload.requires_region is not None else bool(current[6])
+            next_requires_source = bool(payload.requires_source) if payload.requires_source is not None else bool(current[7])
+            next_requires_project = bool(payload.requires_project) if payload.requires_project is not None else bool(current[8])
+            next_requires_qty = bool(payload.requires_qty) if payload.requires_qty is not None else bool(current[9])
+            next_allows_negative = bool(payload.allows_negative) if payload.allows_negative is not None else bool(current[10])
+            next_sort = int(payload.sort_order) if payload.sort_order is not None else int(current[11] or 0)
+            next_active = bool(payload.is_active) if payload.is_active is not None else bool(current[12])
             row = q1(
                 conn,
                 """
                 UPDATE finance.operations
-                SET type_id=%s, code=%s, name=%s, input_mode=%s,
+                SET type_id=%s, source_id=%s, code=%s, name=%s, input_mode=%s,
                     requires_region=%s, requires_source=%s, requires_project=%s, requires_qty=%s,
                     allows_negative=%s, sort_order=%s, is_active=%s, updated_at=now()
                 WHERE operation_id=%s
-                RETURNING operation_id, type_id, code, name, input_mode,
+                RETURNING operation_id, type_id, source_id, code, name, input_mode,
                           requires_region, requires_source, requires_project, requires_qty,
                           allows_negative, sort_order, is_active
                 """,
                 (
                     next_type_id,
+                    next_source_id,
                     next_code,
                     next_name,
                     next_mode,
@@ -1020,15 +1060,22 @@ def mount_finance_routes(
         return _to_operation_out(row)
 
     @app.delete("/finance/catalogs/operations/{operation_id}")
-    def finance_delete_operation(operation_id: int, user=Depends(require_role("admin", "owner"))):
-        # Архивируем операцию только если на нее нет записей в учете.
+    def finance_delete_operation(
+        operation_id: int,
+        cascade_entries: bool = False,
+        user=Depends(require_role("admin", "owner")),
+    ):
+        # Архивируем операцию; при cascade_entries=true удаляем ее проводки.
         with psycopg.connect(DB_DSN) as conn:
             current = q1(conn, "SELECT 1 FROM finance.operations WHERE operation_id=%s", (operation_id,))
             if not current:
                 raise HTTPException(404, "Operation not found")
-            has_entries = q1(conn, "SELECT 1 FROM finance.entries WHERE operation_id=%s LIMIT 1", (operation_id,))
-            if has_entries:
-                raise HTTPException(409, "Operation has entries and cannot be deleted")
+            if cascade_entries:
+                exec1(conn, "DELETE FROM finance.entries WHERE operation_id=%s", (operation_id,))
+            else:
+                has_entries = q1(conn, "SELECT 1 FROM finance.entries WHERE operation_id=%s LIMIT 1", (operation_id,))
+                if has_entries:
+                    raise HTTPException(409, "Operation has entries and cannot be deleted")
             exec1(conn, "UPDATE finance.operations SET is_active=false, updated_at=now() WHERE operation_id=%s", (operation_id,))
             conn.commit()
         return {"ok": True}
@@ -1246,6 +1293,17 @@ def mount_finance_routes(
             status=status,
             errors=errors,
         )
+
+    @app.delete("/finance/entries/{entry_id}")
+    def finance_delete_entry(entry_id: int, user=Depends(require_role("admin", "owner"))):
+        # Удаляем проводку по id; связанные posting/dedupe записи удаляются каскадно по FK.
+        with psycopg.connect(DB_DSN) as conn:
+            current = q1(conn, "SELECT 1 FROM finance.entries WHERE entry_id=%s", (entry_id,))
+            if not current:
+                raise HTTPException(404, "Entry not found")
+            exec1(conn, "DELETE FROM finance.entries WHERE entry_id=%s", (entry_id,))
+            conn.commit()
+        return {"ok": True}
 
     @app.get("/finance/entries", response_model=FinanceEntryListOut)
     def finance_list_entries(

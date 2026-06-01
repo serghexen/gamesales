@@ -21,6 +21,7 @@ class FinanceSectionOut(BaseModel):
 class FinanceOperationOut(BaseModel):
     operation_id: int
     type_id: int
+    source_id: Optional[int] = None
     code: str
     name: str
     input_mode: str
@@ -111,6 +112,7 @@ class FinanceSectionUpdateIn(BaseModel):
 
 class FinanceOperationCreateIn(BaseModel):
     type_id: int
+    source_id: Optional[int] = None
     code: str
     name: str
     input_mode: str = "manual"
@@ -124,6 +126,7 @@ class FinanceOperationCreateIn(BaseModel):
 
 class FinanceOperationUpdateIn(BaseModel):
     type_id: Optional[int] = None
+    source_id: Optional[int] = None
     code: Optional[str] = None
     name: Optional[str] = None
     input_mode: Optional[str] = None
