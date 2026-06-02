@@ -8,7 +8,7 @@ import uuid
 
 from fastapi import Depends, HTTPException
 
-from .yandex_market_service import fetch_yandex_market_order_economics
+from .yandex_market_service import fetch_yandex_market_order_economics, normalize_yandex_market_store_code
 from .finance_models import (
     FinanceBootstrapOut,
     FinanceCashFlowLineOut,
@@ -330,17 +330,40 @@ def mount_finance_routes(
         except ValueError:
             raise HTTPException(500, f"{name} must be integer")
 
-    def _resolve_yandex_source_id(conn) -> int:
-        # Находим finance-источник ASAT YM для привязки импортированных строк Яндекса.
-        source_id = _env_int("YANDEX_MARKET_FINANCE_SOURCE_ID")
+    def _yandex_store_env(name: str, store_code: str, default: str = "") -> str:
+        # Читаем настройку конкретного магазина; общий env используем только для старого ASAT.
+        normalized_store_code = normalize_yandex_market_store_code(store_code)
+        scoped = str(os.getenv(f"YANDEX_MARKET_{normalized_store_code.upper()}_{name}", "") or "").strip()
+        if scoped:
+            return scoped
+        if normalized_store_code in {"asat", "default"}:
+            return str(os.getenv(f"YANDEX_MARKET_{name}", default) or "").strip()
+        return default
+
+    def _yandex_store_env_int(name: str, store_code: str) -> Optional[int]:
+        # Читает числовую настройку магазина, например source_id, без подмены SPS значением ASAT.
+        raw = _yandex_store_env(name, store_code)
+        if not raw:
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            normalized_store_code = normalize_yandex_market_store_code(store_code)
+            raise HTTPException(500, f"YANDEX_MARKET_{normalized_store_code.upper()}_{name} must be integer")
+
+    def _resolve_yandex_source_id(conn, store_code: str) -> int:
+        # Находим finance-источник выбранного магазина для привязки импортированных строк Яндекса.
+        normalized_store_code = normalize_yandex_market_store_code(store_code)
+        source_id = _yandex_store_env_int("FINANCE_SOURCE_ID", normalized_store_code)
         if source_id is not None:
             row = q1(conn, "SELECT source_id FROM finance.dim_sources WHERE source_id=%s AND is_active IS TRUE", (source_id,))
             if not row:
-                raise HTTPException(400, f"Unknown YANDEX_MARKET_FINANCE_SOURCE_ID: {source_id}")
+                raise HTTPException(400, f"Unknown YANDEX_MARKET_{normalized_store_code.upper()}_FINANCE_SOURCE_ID: {source_id}")
             return int(row[0])
 
-        source_code = _normalize_code(os.getenv("YANDEX_MARKET_SOURCE_CODE", "ym"))
-        source_name = str(os.getenv("YANDEX_MARKET_SOURCE_NAME", "ASAT") or "").strip().lower()
+        default_source_name = "ASAT" if normalized_store_code in {"asat", "default"} else normalized_store_code.upper()
+        source_code = _normalize_code(_yandex_store_env("SOURCE_CODE", normalized_store_code, "ym"))
+        source_name = _yandex_store_env("SOURCE_NAME", normalized_store_code, default_source_name).strip().lower()
         row = q1(
             conn,
             """
@@ -371,7 +394,7 @@ def mount_finance_routes(
         )
         if len(rows) == 1:
             return int(rows[0][0])
-        raise HTTPException(400, "Yandex finance source is not configured; set YANDEX_MARKET_FINANCE_SOURCE_ID")
+        raise HTTPException(400, f"Yandex finance source is not configured for {normalized_store_code}; set YANDEX_MARKET_{normalized_store_code.upper()}_FINANCE_SOURCE_ID")
 
     def _resolve_yandex_project_id(conn) -> Optional[int]:
         # Подставляем проект marketplace, если он есть; это сохраняет совместимость с текущими справочниками.
@@ -460,6 +483,77 @@ def mount_finance_routes(
             return int(op_row[0])
         return int(row[0])
 
+    def _resolve_yandex_commission_operation_id(conn) -> int:
+        # Выбираем операцию расходов маркетплейса для комиссий и услуг Яндекса.
+        operation_id = _env_int("YANDEX_MARKET_COMMISSION_OPERATION_ID")
+        if operation_id is not None:
+            row = q1(conn, "SELECT operation_id FROM finance.operations WHERE operation_id=%s AND is_active IS TRUE", (operation_id,))
+            if not row:
+                raise HTTPException(400, f"Unknown YANDEX_MARKET_COMMISSION_OPERATION_ID: {operation_id}")
+            return int(row[0])
+
+        operation_code = _normalize_code(os.getenv("YANDEX_MARKET_COMMISSION_OPERATION_CODE", "direct_marketplace_commission_api"))
+        row = q1(
+            conn,
+            "SELECT operation_id FROM finance.operations WHERE lower(code)=%s AND is_active IS TRUE ORDER BY operation_id LIMIT 1",
+            (operation_code,),
+        )
+        if row:
+            return int(row[0])
+
+        type_row = q1(
+            conn,
+            """
+            INSERT INTO finance.section_types(code, name, sort_order, is_active)
+            VALUES ('direct_expense', 'Прямые расходы', 20, true)
+            ON CONFLICT (code) DO UPDATE
+            SET name=excluded.name,
+                sort_order=excluded.sort_order,
+                is_active=true,
+                updated_at=now()
+            RETURNING type_id
+            """,
+        )
+        type_id = int(type_row[0])
+        # Создаем раздел прямых расходов, чтобы комиссии Яндекса попадали в расходы отчета.
+        exec1(
+            conn,
+            """
+            INSERT INTO finance.sections(parent_section_id, type_id, code, name, kind, sort_order, is_active)
+            VALUES (NULL, %s, 'direct_expense', 'Прямые расходы', 'direct_expense', 20, true)
+            ON CONFLICT (code) DO UPDATE
+            SET type_id=excluded.type_id,
+                name=excluded.name,
+                kind=excluded.kind,
+                sort_order=excluded.sort_order,
+                is_active=true,
+                updated_at=now()
+            """,
+            (type_id,),
+        )
+        op_row = q1(
+            conn,
+            """
+            INSERT INTO finance.operations(
+              type_id, code, name, input_mode,
+              requires_region, requires_source, requires_project, requires_qty, allows_negative,
+              sort_order, is_active
+            )
+            VALUES (%s, %s, 'Комиссии маркетплейсов (API)', 'api', false, false, false, false, false, 25, true)
+            ON CONFLICT (code) DO UPDATE
+            SET type_id=excluded.type_id,
+                name=excluded.name,
+                input_mode=excluded.input_mode,
+                is_active=true,
+                updated_at=now()
+            RETURNING operation_id
+            """,
+            (type_id, operation_code),
+        )
+        if not op_row:
+            raise HTTPException(500, "Failed to create Yandex commission operation")
+        return int(op_row[0])
+
     def _money_from_yandex_raw(raw: dict[str, Any], keys: tuple[str, ...]) -> Decimal:
         # Достаем контрольные суммы из сырой строки Яндекса для дневного payload_json.
         for key in keys:
@@ -519,11 +613,20 @@ def mount_finance_routes(
             campaign_id = group.get("campaign_id") or fallback_campaign_id or "unknown"
             unique_order_ids = sorted(set(group["order_ids"]))
             unique_shop_skus = sorted(set(group["shop_skus"]))
+            net_amount = _round_money(group["amount"])
+            gross_amount = _round_money(group["gross_amount"])
+            commission_amount = _round_money(group["commission_amount"])
+            if gross_amount == 0:
+                gross_amount = _round_money(net_amount + commission_amount)
+            if commission_amount == 0 and gross_amount > net_amount:
+                commission_amount = _round_money(gross_amount - net_amount)
             aggregates.append(
                 {
                     "biz_date": biz_date,
-                    "amount": _round_money(group["amount"]),
-                    "external_key": f"yandex-market:united-orders:{campaign_id}:daily:{biz_date.isoformat()}",
+                    "amount": net_amount,
+                    "gross_amount": gross_amount,
+                    "commission_amount": commission_amount,
+                    "external_key_base": f"yandex-market:united-orders:{campaign_id}:daily:{biz_date.isoformat()}",
                     "comment": f"Yandex Market; доставленные за {biz_date.isoformat()}; строк {group['rows_count']}",
                     "payload_json": {
                         "provider": "yandex_market",
@@ -537,9 +640,9 @@ def mount_finance_routes(
                         "order_ids": unique_order_ids,
                         "shop_skus": unique_shop_skus,
                         "source_files": sorted(group["source_files"]),
-                        "gross_amount": str(_round_money(group["gross_amount"])),
-                        "commission_amount": str(_round_money(group["commission_amount"])),
-                        "income_without_services": str(_round_money(group["amount"])),
+                        "gross_amount": str(gross_amount),
+                        "commission_amount": str(commission_amount),
+                        "income_without_services": str(net_amount),
                     },
                 }
             )
@@ -1563,7 +1666,8 @@ def mount_finance_routes(
         if payload.date_to < payload.date_from:
             raise HTTPException(400, "date_to must be >= date_from")
 
-        rows = fetch_yandex_market_order_economics(payload.date_from, payload.date_to, progress=progress)
+        store_code = normalize_yandex_market_store_code(payload.store_code)
+        rows = fetch_yandex_market_order_economics(payload.date_from, payload.date_to, store_code=store_code, progress=progress)
         daily_rows = _aggregate_yandex_market_rows(rows)
         created_rows = 0
         skipped_rows = 0
@@ -1573,49 +1677,73 @@ def mount_finance_routes(
         with psycopg.connect(DB_DSN) as conn:
             if progress:
                 progress("Проверяем finance-справочники для Yandex Market")
-            source_id = _resolve_yandex_source_id(conn)
+            source_id = _resolve_yandex_source_id(conn, store_code)
             project_id = _resolve_yandex_project_id(conn)
-            operation_id = _resolve_yandex_operation_id(conn)
+            revenue_operation_id = _resolve_yandex_operation_id(conn)
+            commission_operation_id: Optional[int] = None
 
             for idx, row in enumerate(daily_rows, start=1):
                 if progress:
                     progress(f"Сохраняем дневной итог Yandex Market: {idx}/{len(daily_rows)}")
-                amount = row.get("amount")
-                external_key = str(row.get("external_key") or "")
+                amount = row.get("gross_amount")
+                external_key_base = str(row.get("external_key_base") or "")
                 try:
                     if amount is None:
                         skipped_rows += 1
                         continue
-                    amount_decimal = _round_money(Decimal(amount))
-                    if amount_decimal == 0:
+                    gross_amount = _round_money(Decimal(amount))
+                    commission_amount = _round_money(Decimal(row.get("commission_amount") or 0))
+                    if gross_amount == 0:
                         skipped_rows += 1
                         continue
-                    entry_payload = FinanceEntryCreateIn(
+                    payload_json = {**(row.get("payload_json") or {}), "store_code": store_code}
+                    revenue_payload = FinanceEntryCreateIn(
                         biz_date=row["biz_date"],
-                        operation_id=operation_id,
+                        operation_id=revenue_operation_id,
                         region_id=None,
                         source_id=source_id,
                         project_id=project_id,
                         qty=Decimal("1"),
-                        amount=amount_decimal,
+                        amount=gross_amount,
                         currency="RUB",
                         input_channel="api",
-                        external_key=external_key,
+                        external_key=f"{external_key_base}:gross",
                         status_code="confirmed",
-                        comment=row.get("comment") or "Yandex Market",
-                        payload_json=row.get("payload_json") or {},
+                        comment=f"{row.get('comment') or 'Yandex Market'}; поступления gross",
+                        payload_json={**payload_json, "amount_kind": "gross_revenue"},
                     )
-                    _, created_new = _create_entry_in_tx(conn, entry_payload, created_by)
-                    if created_new:
+                    _, revenue_created = _create_entry_in_tx(conn, revenue_payload, created_by)
+                    commission_created = False
+                    if commission_amount > 0:
+                        if commission_operation_id is None:
+                            commission_operation_id = _resolve_yandex_commission_operation_id(conn)
+                        commission_payload = FinanceEntryCreateIn(
+                            biz_date=row["biz_date"],
+                            operation_id=commission_operation_id,
+                            region_id=None,
+                            source_id=source_id,
+                            project_id=project_id,
+                            qty=Decimal("1"),
+                            amount=commission_amount,
+                            currency="RUB",
+                            input_channel="api",
+                            external_key=f"{external_key_base}:commission",
+                            status_code="confirmed",
+                            comment=f"{row.get('comment') or 'Yandex Market'}; комиссии и услуги",
+                            payload_json={**payload_json, "amount_kind": "commission_expense"},
+                        )
+                        _, commission_created = _create_entry_in_tx(conn, commission_payload, created_by)
+                    if revenue_created or commission_created:
                         created_rows += 1
                     else:
                         skipped_rows += 1
                 except Exception as exc:
                     failed_rows += 1
-                    errors.append(FinanceEntryBulkErrorOut(row_no=idx, error=str(exc), external_key=external_key or None))
+                    errors.append(FinanceEntryBulkErrorOut(row_no=idx, error=str(exc), external_key=external_key_base or None))
             conn.commit()
 
         return FinanceYandexSyncOut(
+            store_code=store_code,
             date_from=payload.date_from,
             date_to=payload.date_to,
             total_rows=len(rows),
@@ -1720,11 +1848,12 @@ def mount_finance_routes(
         source_id: Optional[int] = None,
         project_id: Optional[int] = None,
         status_code: Optional[str] = None,
+        input_channel: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
         user=Depends(get_current_user),
     ):
-        # Собираем фильтры списка, чтобы журнал работал с теми же разрезами, что и отчеты.
+        # Собираем фильтры списка, чтобы журнал мог отделять ручной ввод от интеграций.
         params: list[Any] = []
         filters = ["1=1"]
         if date_from is not None:
@@ -1748,6 +1877,9 @@ def mount_finance_routes(
         if status_code:
             filters.append("e.status_code = %s")
             params.append(_normalize_code(status_code))
+        if input_channel:
+            filters.append("e.input_channel = %s")
+            params.append(_normalize_input_channel(input_channel))
 
         where_sql = " AND ".join(filters)
         safe_limit = max(1, min(limit, 500))
@@ -1939,13 +2071,15 @@ def mount_finance_routes(
                       fds.source_id,
                       COALESCE(fds.code, src.code) AS source_code,
                       COALESCE(fds.name, src.name, 'Без источника') AS source_name,
-                      fdr.region_id,
-                      COALESCE(fdr.code, rd.code) AS region_code,
-                      COALESCE(fdr.name, rd.name, 'Без региона') AS region_name,
+                      CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id,
+                      CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.code, rd.code) END AS region_code,
+                      CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.name, rd.name, 'Без региона') END AS region_name,
                       (di.price * di.qty) AS revenue,
                       CASE
                         WHEN d.deal_type_code = 'sale'
                         THEN di.purchase_cost * di.qty * COALESCE(rd.purchase_cost_rate, 1.0)
+                        WHEN d.deal_type_code = 'rental'
+                        THEN di.purchase_cost * di.qty
                         ELSE 0
                       END AS direct_expense,
                       ('deal-' || d.deal_id::text) AS row_ref_key
@@ -2095,12 +2229,12 @@ def mount_finance_routes(
             SELECT
               d.completed_at::date AS activity_date,
               fds.source_id,
-              fdr.region_id,
+              CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id,
               'revenue' AS line_type,
-              CONCAT(
-                CASE WHEN d.deal_type_code = 'rental' THEN 'Шеринг ' ELSE 'Продажа ' END,
-                COALESCE(fdr.code, rd.code, 'Без региона')
-              ) AS line_name,
+              CASE
+                WHEN d.deal_type_code = 'rental' THEN 'Продажа Шеринг'
+                ELSE CONCAT('Продажа ', COALESCE(fdr.code, rd.code, 'Без региона'))
+              END AS line_name,
               (di.price * di.qty) AS amount
             FROM app.deal_items di
             JOIN app.deals d ON d.deal_id = di.deal_id
@@ -2118,6 +2252,28 @@ def mount_finance_routes(
               AND d.completed_at IS NOT NULL
               AND di.returned_at IS NULL
               AND COALESCE(di.price, 0) > 0
+
+            UNION ALL
+
+            SELECT
+              d.completed_at::date AS activity_date,
+              fds.source_id,
+              NULL AS region_id,
+              'expense' AS line_type,
+              'Закуп Шеринг' AS line_name,
+              (di.purchase_cost * di.qty) AS amount
+            FROM app.deal_items di
+            JOIN app.deals d ON d.deal_id = di.deal_id
+            LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+            LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+            LEFT JOIN app.sources src ON src.source_id = c.source_id
+            LEFT JOIN finance.dim_sources fds ON fds.app_source_id = src.source_id
+            WHERE d.deal_type_code = 'rental'
+              AND d.flow_status_code = 'completed'
+              AND d.status_code = 'confirmed'
+              AND d.completed_at IS NOT NULL
+              AND di.returned_at IS NULL
+              AND COALESCE(di.purchase_cost, 0) <> 0
 
             UNION ALL
 

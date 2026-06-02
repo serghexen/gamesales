@@ -109,7 +109,10 @@ describe('WorkProfileSection', () => {
           ensureRolePermissionsFormDataLoaded,
           rolePermissionsRoles: [{ code: 'manager', name: 'Manager' }],
           rolePermissionsRoleCode: 'manager',
-          rolePermissionsItems: [{ section_code: 'deals', section_name: 'Сделки', can_view: true }],
+          rolePermissionsItems: [
+            { section_code: 'deals', section_name: 'Сделки', can_view: true },
+            { section_code: 'finance', section_name: 'Финансы', can_view: false },
+          ],
         }),
       },
       global: {
@@ -132,5 +135,6 @@ describe('WorkProfileSection', () => {
     expect(ensureRolePermissionsFormDataLoaded).toHaveBeenCalledTimes(1)
     expect(wrapper.find('button[aria-label="Сохранить права"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('Сделки')
+    expect(wrapper.text()).toContain('Финансы')
   })
 })

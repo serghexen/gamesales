@@ -143,7 +143,7 @@ describe('useFinanceReports', () => {
     await h.finance.loadFinanceEntries()
 
     expect(h.apiGet).toHaveBeenCalledWith(
-      '/finance/entries?date_from=2026-05-01&date_to=2026-05-10&operation_id=7',
+      '/finance/entries?input_channel=manual&date_from=2026-05-01&date_to=2026-05-10&operation_id=7',
       { token: 'token-1' },
     )
     expect(h.finance.financeEntriesLoaded.value).toBe(true)
@@ -216,7 +216,7 @@ describe('useFinanceReports', () => {
     expect(ok).toBe(true)
     expect(h.apiPost).toHaveBeenCalledWith(
       '/finance/integrations/yandex/sync',
-      { date_from: '2026-06-01', date_to: '2026-06-02' },
+      { store_code: 'asat', date_from: '2026-06-01', date_to: '2026-06-02' },
       { token: 'token-1' },
     )
     expect(h.finance.financeYandexSyncOk.value).toBe('Yandex: дней добавлено 2, дней пропущено 1, ошибок 0')

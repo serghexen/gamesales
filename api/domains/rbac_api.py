@@ -34,9 +34,10 @@ def mount_rbac_routes(
         ("ns-gift", "Магазин", 40),
         ("analytics", "Аналитика", 50),
         ("catalogs", "Справочники", 60),
-        ("users", "Пользователи", 70),
-        ("dashboard", "Дашборд", 80),
-        ("telegram", "Чаты", 90)
+        ("finance", "Финансы", 70),
+        ("users", "Пользователи", 80),
+        ("dashboard", "Дашборд", 90),
+        ("telegram", "Чаты", 100)
     ]
 
     # Возвращает дефолтную видимость раздела для роли, если явная настройка еще не задана.
@@ -45,7 +46,7 @@ def mount_rbac_routes(
         section = str(section_code or "").strip().lower()
         if role in {"admin", "owner"}:
             return True
-        if section in {"analytics", "catalogs", "users", "dashboard"}:
+        if section in {"analytics", "catalogs", "finance", "users", "dashboard"}:
             return False
         return True
 

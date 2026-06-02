@@ -31,6 +31,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     operation_id: '',
   })
   const financeYandexSync = reactive({
+    store_code: 'asat',
     date_from: today,
     date_to: today,
   })
@@ -150,11 +151,12 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   }
 
   const loadFinanceEntries = async () => {
-    // Загружаем журнал первичных записей finance для оперативного контроля ввода.
+    // Загружаем только ручной журнал, чтобы интеграции не смешивались с вводом оператора.
     financeEntriesError.value = null
     financeEntriesLoading.value = true
     try {
       const params = new URLSearchParams()
+      params.set('input_channel', 'manual')
       if (financeEntryFilters.date_from) params.set('date_from', financeEntryFilters.date_from)
       if (financeEntryFilters.date_to) params.set('date_to', financeEntryFilters.date_to)
       if (financeEntryFilters.region_id) params.set('region_id', String(financeEntryFilters.region_id))
@@ -342,6 +344,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeYandexSyncStatus.value = ''
     const dateFrom = String(financeYandexSync.date_from || '').trim()
     const dateTo = String(financeYandexSync.date_to || '').trim()
+    const storeCode = String(financeYandexSync.store_code || 'asat').trim().toLowerCase()
     if (!dateFrom || !dateTo) {
       financeYandexSyncError.value = 'Выберите период синхронизации'
       return false
@@ -353,6 +356,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeYandexSyncLoading.value = true
     try {
       const started = await apiPost('/finance/integrations/yandex/sync', {
+        store_code: storeCode,
         date_from: dateFrom,
         date_to: dateTo,
       }, { token: auth.state.token })

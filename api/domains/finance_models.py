@@ -243,10 +243,12 @@ class FinanceEntryBulkOut(BaseModel):
 class FinanceYandexSyncIn(BaseModel):
     date_from: date
     date_to: date
+    store_code: str = "asat"
 
 
 class FinanceYandexSyncOut(BaseModel):
     provider: str = "yandex_market"
+    store_code: str = "asat"
     date_from: date
     date_to: date
     total_rows: int = 0

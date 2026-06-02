@@ -20,6 +20,33 @@ from fastapi import HTTPException
 YANDEX_MARKET_BASE_URL = "https://api.partner.market.yandex.ru"
 
 
+def normalize_yandex_market_store_code(value: str | None) -> str:
+    # Приводим код магазина к формату env-префикса и защищаем от неожиданных символов.
+    normalized = str(value or "asat").strip().lower().replace("-", "_")
+    if not normalized:
+        return "asat"
+    if not normalized.replace("_", "").isalnum():
+        raise HTTPException(400, "Yandex store_code must contain only letters, digits, underscore or dash")
+    return normalized
+
+
+def _store_env_name(store_code: str | None, key: str) -> str:
+    # Собираем имя настройки конкретного магазина, например YANDEX_MARKET_SPS_TOKEN.
+    normalized = normalize_yandex_market_store_code(store_code)
+    return f"YANDEX_MARKET_{normalized.upper()}_{key}"
+
+
+def _env_value(key: str, *, store_code: str | None = None, default: str = "") -> str:
+    # Читаем настройку магазина, а для старого ASAT оставляем fallback на общий env.
+    normalized_store_code = normalize_yandex_market_store_code(store_code)
+    scoped = str(os.getenv(_store_env_name(normalized_store_code, key), "") or "").strip()
+    if scoped:
+        return scoped
+    if normalized_store_code not in {"asat", "default"}:
+        return default
+    return str(os.getenv(f"YANDEX_MARKET_{key}", default) or "").strip()
+
+
 def _env_bool(name: str, default: bool = True) -> bool:
     # Читаем булевую настройку из env, чтобы локально можно было диагностировать SSL.
     raw = str(os.getenv(name, "") or "").strip().lower()
@@ -45,6 +72,26 @@ def _required_env(name: str) -> str:
     if not value:
         raise HTTPException(500, f"{name} is not configured")
     return value
+
+
+def _required_store_env(key: str, *, store_code: str | None = None) -> str:
+    # Проверяем секрет конкретного магазина и показываем понятное имя отсутствующей настройки.
+    value = _env_value(key, store_code=store_code)
+    if value:
+        return value
+    scoped_name = _store_env_name(store_code, key)
+    raise HTTPException(500, f"{scoped_name} is not configured")
+
+
+def _env_store_int(key: str, *, store_code: str | None = None, default: int = 0) -> int:
+    # Читаем числовую настройку магазина с fallback на старый общий env.
+    raw = _env_value(key, store_code=store_code)
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        raise HTTPException(500, f"{_store_env_name(store_code, key)} must be integer")
 
 
 def _ssl_context() -> ssl.SSLContext:
@@ -225,14 +272,16 @@ def _normalize_order_row(source_file: str, row: dict[str, Any], *, fallback_date
 def fetch_yandex_market_order_economics(
     date_from: date,
     date_to: date,
+    store_code: str | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> list[dict[str, Any]]:
     # Загружает отчет "Экономика заказов" и возвращает строки с incomeWithoutServices.
-    token = _required_env("YANDEX_MARKET_TOKEN")
-    business_id = _env_int("YANDEX_MARKET_BUSINESS_ID")
-    campaign_id = _env_int("YANDEX_MARKET_CAMPAIGN_ID")
+    normalized_store_code = normalize_yandex_market_store_code(store_code)
+    token = _required_store_env("TOKEN", store_code=normalized_store_code)
+    business_id = _env_store_int("BUSINESS_ID", store_code=normalized_store_code)
+    campaign_id = _env_store_int("CAMPAIGN_ID", store_code=normalized_store_code)
     if not business_id or not campaign_id:
-        raise HTTPException(500, "YANDEX_MARKET_BUSINESS_ID and YANDEX_MARKET_CAMPAIGN_ID are required")
+        raise HTTPException(500, f"{_store_env_name(normalized_store_code, 'BUSINESS_ID')} and {_store_env_name(normalized_store_code, 'CAMPAIGN_ID')} are required")
 
     base_url = str(os.getenv("YANDEX_MARKET_BASE_URL", YANDEX_MARKET_BASE_URL) or YANDEX_MARKET_BASE_URL).rstrip("/")
     timeout = max(5, _env_int("YANDEX_MARKET_TIMEOUT_SEC", 30))
@@ -247,7 +296,7 @@ def fetch_yandex_market_order_economics(
     }
     generate_url = f"{base_url}/v2/reports/united-orders/generate?format=JSON&language=RU"
     if progress:
-        progress("Создаем отчет Yandex Market")
+        progress(f"Создаем отчет Yandex Market: {normalized_store_code.upper()}")
     report_data = _request_json("POST", generate_url, token=token, payload=payload, timeout=timeout)
     report_id = (report_data.get("result") or {}).get("reportId")
     if not report_id:
@@ -285,5 +334,5 @@ def fetch_yandex_market_order_economics(
         and str(_first(row, ("orderStatus", "status")) or "").strip() == "Доставлен"
     ]
     if progress:
-        progress(f"Найдено доставленных строк экономики Yandex Market: {len(economics_rows)}")
+        progress(f"Найдено доставленных строк экономики Yandex Market {normalized_store_code.upper()}: {len(economics_rows)}")
     return economics_rows

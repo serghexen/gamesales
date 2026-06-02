@@ -22,9 +22,10 @@ VALUES
   ('telegram', 'Чаты', 50),
   ('analytics', 'Аналитика', 60),
   ('catalogs', 'Справочники', 70),
-  ('users', 'Пользователи', 80),
-  ('profile', 'Профиль', 90),
-  ('dashboard', 'Дашборд', 100)
+  ('finance', 'Финансы', 80),
+  ('users', 'Пользователи', 90),
+  ('profile', 'Профиль', 100),
+  ('dashboard', 'Дашборд', 110)
 ON CONFLICT (section_code) DO UPDATE
 SET section_name = EXCLUDED.section_name,
     sort_order = EXCLUDED.sort_order;
@@ -35,7 +36,7 @@ SELECT
   s.section_code,
   CASE
     WHEN lower(r.code) IN ('admin', 'owner') THEN true
-    WHEN s.section_code IN ('analytics', 'catalogs', 'users', 'dashboard') THEN false
+    WHEN s.section_code IN ('analytics', 'catalogs', 'finance', 'users', 'dashboard') THEN false
     ELSE true
   END AS can_view,
   'system'

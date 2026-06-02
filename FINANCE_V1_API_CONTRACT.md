@@ -99,10 +99,12 @@
 
 `POST /finance/integrations/yandex/sync`
 - Старт ручной синхронизации Yandex Market за период `date_from/date_to`, возвращает `job_id`.
+- В теле можно передать `store_code`: `asat`, `sps` или `mds`; по нему backend выбирает env-настройки магазина и finance-источник.
 - Загружает отчет `united-orders`, берет доставленные строки с `incomeWithoutServices`.
-- Создает одну дневную `finance.entries` с `input_channel=api` и суммой `incomeWithoutServices` за день.
+- Создает дневную gross-запись поступления и, если комиссия больше нуля, дневную запись расхода по комиссиям.
+- В отчете это дает `Поступления = gross_amount`, `Расходы = commission_amount`, `Итог = income_without_services`.
 - В `payload_json` дневной записи сохраняет контрольные суммы: `rows_count`, `orders_count`, `gross_amount`, `commission_amount`, `income_without_services`.
-- Идемпотентность: `external_key` вида `yandex-market:united-orders:{campaignId}:daily:{biz_date}`.
+- Идемпотентность: `external_key` вида `yandex-market:united-orders:{campaignId}:daily:{biz_date}:gross|commission`.
 
 `GET /finance/integrations/yandex/sync/{job_id}`
 - Возвращает статус ручной синхронизации: `queued/running/done/failed`, сообщение, ошибку или итоговую статистику.

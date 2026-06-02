@@ -100,6 +100,8 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(body["items"][0]["cash_flow"], "3000.00")
         self.assertTrue(any("d.deal_type_code = 'sale'" in sql for sql in sql_collector))
         self.assertTrue(any("d.deal_type_code = 'rental' AND COALESCE(di.price, 0) > 0" in sql for sql in sql_collector))
+        self.assertTrue(any("CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id" in sql for sql in sql_collector))
+        self.assertTrue(any("WHEN d.deal_type_code = 'rental'" in sql and "THEN di.purchase_cost * di.qty" in sql for sql in sql_collector))
         self.assertTrue(any("WHEN d.deal_type_code = 'sale'" in sql for sql in sql_collector))
         self.assertTrue(any("d.flow_status_code = 'completed'" in sql for sql in sql_collector))
         self.assertTrue(any("di.returned_at IS NULL" in sql for sql in sql_collector))
@@ -113,7 +115,7 @@ class FinanceReportsTests(unittest.TestCase):
             {
                 "all": [
                     ("revenue", "Продажа TR", 15000.0),
-                    ("revenue", "Шеринг TR", 5000.0),
+                    ("revenue", "Продажа Шеринг", 5000.0),
                     ("expense", "Закуп TR", 6000.0),
                     ("expense", "Маркетинг", 1000.0),
                 ],
@@ -145,6 +147,8 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(body["revenues"][0]["name"], "Продажа TR")
         self.assertEqual(body["expenses"][0]["name"], "Закуп TR")
         self.assertTrue(any("d.deal_type_code = 'rental' AND COALESCE(di.price, 0) > 0" in sql for sql in sql_collector))
+        self.assertTrue(any("WHEN d.deal_type_code = 'rental' THEN 'Продажа Шеринг'" in sql for sql in sql_collector))
+        self.assertTrue(any("'Закуп Шеринг' AS line_name" in sql for sql in sql_collector))
         self.assertTrue(any("CONCAT('Закуп '" in sql for sql in sql_collector))
         self.assertTrue(any("e.input_channel IN ('manual', 'api', 'import')" in sql for sql in sql_collector))
 
@@ -199,8 +203,8 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(body["amount"], "12345.67")
         self.assertTrue(any("finance.cash_flow_opening_balances" in sql for sql in sql_collector))
 
-    # Ручная синхронизация Яндекса должна сворачивать строки заказов в дневную api-проводку.
-    def test_finance_yandex_sync_creates_daily_api_entry(self):
+    # Ручная синхронизация Яндекса должна сворачивать строки заказов в дневные gross/commission проводки.
+    def test_finance_yandex_sync_creates_daily_gross_and_commission_entries(self):
         yandex_rows = [
             {
                 "biz_date": date(2026, 6, 1),
@@ -238,7 +242,7 @@ class FinanceReportsTests(unittest.TestCase):
         script = [
             {"one": (99,)},  # source
             {"one": (1,)},  # project
-            {"one": (7,)},  # operation
+            {"one": (7,)},  # revenue operation
             {"one": (7, 2, "revenue_marketplace_api", "Продажи маркетплейсов", "api", False, False, False, False, False, 10, True, "revenue")},
             {"one": (1,)},  # source lookup
             {"one": (1,)},  # project lookup
@@ -253,12 +257,41 @@ class FinanceReportsTests(unittest.TestCase):
                     99,
                     1,
                     "1",
-                    "200.00",
+                    "300.00",
                     "RUB",
                     "api",
-                    "yandex-market:united-orders:70940298:daily:2026-06-01",
+                    "yandex-market:united-orders:70940298:daily:2026-06-01:gross",
                     "confirmed",
-                    "Yandex Market; доставленные за 2026-06-01; строк 2",
+                    "Yandex Market; доставленные за 2026-06-01; строк 2; поступления gross",
+                    "admin",
+                    datetime(2026, 6, 2, 10, 0, 0),
+                    datetime(2026, 6, 2, 10, 0, 0),
+                ),
+            },
+            {},
+            {},
+            {},
+            {"one": (8,)},  # commission operation
+            {"one": (8, 3, "direct_marketplace_commission_api", "Комиссии маркетплейсов", "api", False, False, False, False, False, 20, True, "direct_expense")},
+            {"one": (1,)},  # source lookup
+            {"one": (1,)},  # project lookup
+            {"one": (1,)},  # status lookup
+            {"one": None},  # no dedupe
+            {
+                "one": (
+                    702,
+                    date(2026, 6, 1),
+                    8,
+                    None,
+                    99,
+                    1,
+                    "1",
+                    "100.00",
+                    "RUB",
+                    "api",
+                    "yandex-market:united-orders:70940298:daily:2026-06-01:commission",
+                    "confirmed",
+                    "Yandex Market; доставленные за 2026-06-01; строк 2; комиссии и услуги",
                     "admin",
                     datetime(2026, 6, 2, 10, 0, 0),
                     datetime(2026, 6, 2, 10, 0, 0),
@@ -328,9 +361,9 @@ class FinanceReportsTests(unittest.TestCase):
                     "77.00",
                     "RUB",
                     "api",
-                    "yandex-market:united-orders:70940298:daily:2026-06-01",
+                    "yandex-market:united-orders:70940298:daily:2026-06-01:gross",
                     "confirmed",
-                    "Yandex Market; доставленные за 2026-06-01; строк 1",
+                    "Yandex Market; доставленные за 2026-06-01; строк 1; поступления gross",
                     "admin",
                     datetime(2026, 6, 2, 10, 0, 0),
                     datetime(2026, 6, 2, 10, 0, 0),

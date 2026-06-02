@@ -303,6 +303,14 @@
 
             <div class="analytics-filters">
               <label class="field">
+                <span class="label">Магазин</span>
+                <select v-model="ctx.financeYandexSync.store_code" class="input input--select">
+                  <option value="asat">ASAT - ym</option>
+                  <option value="sps">SPS - ym</option>
+                  <option value="mds">MDS - ym</option>
+                </select>
+              </label>
+              <label class="field">
                 <span class="label">Период с</span>
                 <input v-model="ctx.financeYandexSync.date_from" class="input" type="date" :max="ctx.financeYandexSync.date_to || ctx.maxDate" />
               </label>
@@ -412,7 +420,7 @@
                 <div class="mini__value">{{ ctx.formatPrice(ctx.financeReportTotals.direct_expense) }}</div>
               </div>
               <div class="mini">
-                <div class="mini__label">Cash Flow</div>
+                <div class="mini__label">Итог</div>
                 <div class="mini__value">{{ ctx.formatPrice(ctx.financeReportTotals.operating_profit) }}</div>
               </div>
               <div class="mini">
@@ -424,22 +432,20 @@
             <table v-if="ctx.financeReportItems.length" class="table table--compact table--dense">
               <thead>
                 <tr>
-                  <th>Источник</th>
+                  <th>Название</th>
                   <th>Регион</th>
                   <th>Поступления</th>
                   <th>Расходы</th>
-                  <th>Cash Flow</th>
-                  <th>Маржа</th>
+                  <th>Итог</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in ctx.financeReportItems" :key="`${row.source_id || 'no-source'}-${row.region_id || 'no-region'}`">
+                <tr v-for="(row, index) in ctx.financeReportItems" :key="`${row.source_id || 'no-source'}-${row.region_id || 'no-region'}-${row.source_name || 'no-name'}-${index}`">
                   <td>{{ formatSourceReportLabel(row) }}</td>
                   <td>{{ formatRegionReportLabel(row) }}</td>
                   <td>{{ ctx.formatPrice(row.revenue) }}</td>
                   <td>{{ ctx.formatPrice(row.direct_expense) }}</td>
                   <td>{{ ctx.formatPrice(resolveReportCashFlow(row)) }}</td>
-                  <td>{{ ctx.formatPercent(resolveReportMargin(row)) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -849,8 +855,14 @@ function formatSourceLabel(source) {
   return '—'
 }
 
-// Показываем источник отчета с кодом, чтобы строки было проще сверять со справочником.
+// Показываем бизнес-название строки: источник для маркетов, тип сделки для строк без источника.
 function formatSourceReportLabel(row) {
+  const sourceName = String(row?.source_name || '').trim()
+  const sourceCode = String(row?.source_code || '').trim()
+  const hasRealSource = Boolean(row?.source_id || sourceCode || (sourceName && sourceName !== 'Без источника'))
+  if (!hasRealSource) {
+    return row?.region_code ? 'Услуга' : 'Шеринг'
+  }
   return formatSourceLabel({ name: row?.source_name, code: row?.source_code })
 }
 
@@ -866,13 +878,6 @@ function resolveReportCashFlow(row) {
   const explicit = Number(row?.cash_flow)
   if (Number.isFinite(explicit)) return explicit
   return Number(row?.operating_profit || 0)
-}
-
-// Маржу строки считаем от cash flow, чтобы не зависеть от дополнительного поля API.
-function resolveReportMargin(row) {
-  const revenue = Number(row?.revenue || 0)
-  if (!Number.isFinite(revenue) || revenue === 0) return 0
-  return resolveReportCashFlow(row) / revenue
 }
 
 // Объясняем, откуда взялся начальный остаток месяца.

@@ -57,6 +57,7 @@ function buildCtx(overrides = {}) {
       operation_id: '',
     },
     financeYandexSync: {
+      store_code: 'asat',
       date_from: '2026-05-30',
       date_to: '2026-05-31',
     },
@@ -109,6 +110,30 @@ function buildCtx(overrides = {}) {
         direct_expense: 500,
         cash_flow: 500,
         deals_count: 2,
+      },
+      {
+        source_id: null,
+        source_code: null,
+        source_name: 'Без источника',
+        region_id: 10,
+        region_code: 'TR',
+        region_name: 'Turkey',
+        revenue: 300,
+        direct_expense: 100,
+        cash_flow: 200,
+        deals_count: 1,
+      },
+      {
+        source_id: null,
+        source_code: null,
+        source_name: 'Без источника',
+        region_id: null,
+        region_code: null,
+        region_name: null,
+        revenue: 150,
+        direct_expense: 0,
+        cash_flow: 150,
+        deals_count: 1,
       },
     ],
     financeCashFlowLoaded: true,
@@ -254,6 +279,9 @@ describe('WorkFinanceSection', () => {
 
     await wrapper.find('[data-test="finance-mode-integrations"]').trigger('click')
 
+    expect(wrapper.text()).toContain('Магазин')
+    expect(wrapper.text()).toContain('SPS - ym')
+    expect(wrapper.text()).toContain('MDS - ym')
     expect(wrapper.text()).toContain('Строк Яндекса')
     expect(wrapper.text()).toContain('Дней добавлено')
     expect(wrapper.text()).toContain('Дней пропущено')
@@ -285,12 +313,17 @@ describe('WorkFinanceSection', () => {
     })
 
     await wrapper.find('[data-test="finance-mode-report"]').trigger('click')
-    expect(wrapper.text()).toContain('Источник')
+    expect(wrapper.text()).toContain('Название')
     expect(wrapper.text()).toContain('Поступления')
     expect(wrapper.text()).toContain('Расходы')
-    expect(wrapper.text()).toContain('Cash Flow')
+    expect(wrapper.text()).toContain('Итог')
+    expect(wrapper.find('table thead').text()).toContain('Итог')
+    expect(wrapper.find('table thead').text()).not.toContain('Маржа')
     expect(wrapper.text()).toContain('ASAT - ym')
+    expect(wrapper.text()).toContain('Услуга')
+    expect(wrapper.text()).toContain('Шеринг')
     expect(wrapper.text()).toContain('TR')
+    expect(wrapper.text()).not.toContain('Без источника')
     expect(wrapper.text()).not.toContain('Turkey - TR')
   })
 
