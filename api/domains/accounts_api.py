@@ -174,13 +174,13 @@ def mount_accounts_routes(
                     JOIN app.deals d_q ON d_q.deal_id = di_q.deal_id
                     JOIN app.customers c_q ON c_q.customer_id = d_q.customer_id
                     WHERE di_q.account_id = a.account_id
-                      AND c_q.nickname ILIKE %s
+                      AND (c_q.nickname ILIKE %s OR d_q.order_number ILIKE %s)
                       AND d_q.status_code <> 'cancelled'
                   )
                 )
                 """
             )
-            params.extend([f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"])
+            params.extend([f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"])
         if product_q:
             filters.append("apa.product_titles_text ILIKE %s")
             params.append(f"%{product_q}%")

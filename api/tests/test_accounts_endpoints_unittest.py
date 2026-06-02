@@ -137,6 +137,21 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(body["items"][0]["login_full"], "login1@gmail.com")
             self.assertEqual(len(body["items"][0]["slot_status"]), 1)
 
+    # Общий поиск аккаунтов должен учитывать номер заказа в связанных сделках.
+    def test_list_accounts_search_includes_deal_order_number(self):
+        script = [{"all": []}]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get("/accounts?q=ORD-777", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 200)
+            self.assertTrue(any("d_q.order_number ILIKE" in sql for sql in sql_collector))
+
     # В списке аккаунтов поле товаров должно заполняться и для подписок.
     def test_list_accounts_includes_subscription_products(self):
         script = [
