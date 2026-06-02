@@ -97,6 +97,16 @@
   - `items[]` + `stop_on_error` + `file_name`
   - результат: `batch_id`, `success_rows`, `failed_rows`, список ошибок.
 
+`POST /finance/integrations/yandex/sync`
+- Старт ручной синхронизации Yandex Market за период `date_from/date_to`, возвращает `job_id`.
+- Загружает отчет `united-orders`, берет доставленные строки с `incomeWithoutServices`.
+- Создает одну дневную `finance.entries` с `input_channel=api` и суммой `incomeWithoutServices` за день.
+- В `payload_json` дневной записи сохраняет контрольные суммы: `rows_count`, `orders_count`, `gross_amount`, `commission_amount`, `income_without_services`.
+- Идемпотентность: `external_key` вида `yandex-market:united-orders:{campaignId}:daily:{biz_date}`.
+
+`GET /finance/integrations/yandex/sync/{job_id}`
+- Возвращает статус ручной синхронизации: `queued/running/done/failed`, сообщение, ошибку или итоговую статистику.
+
 `GET /finance/entries`
 - Журнал записей с фильтрами: `date_from`, `date_to`, `project_id`, `region_id`, `source_id`, `operation_id`, `status_code`, `limit`, `offset`.
 

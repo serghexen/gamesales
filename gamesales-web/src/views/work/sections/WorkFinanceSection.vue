@@ -59,6 +59,9 @@
           <button data-test="finance-mode-journal" class="tab" :class="{ active: financeMode === 'journal' }" type="button" @click="setFinanceMode('journal')">
             Журнал
           </button>
+          <button data-test="finance-mode-integrations" class="tab" :class="{ active: financeMode === 'integrations' }" type="button" @click="setFinanceMode('integrations')">
+            Интеграции
+          </button>
           <button data-test="finance-mode-report" class="tab" :class="{ active: financeMode === 'report' }" type="button" @click="setFinanceMode('report')">
             Отчет по источникам
           </button>
@@ -287,6 +290,62 @@
             <p v-else class="muted">Журнал пуст.</p>
           </template>
           <p class="muted">Всего записей по фильтру: {{ ctx.financeEntriesTotal }}</p>
+        </template>
+
+        <template v-if="financeMode === 'integrations'">
+          <section class="finance-integration-panel">
+            <div class="finance-integration-panel__head">
+              <div>
+                <h4 class="section-title">Yandex Market</h4>
+              </div>
+              <span class="finance-integration-badge">API</span>
+            </div>
+
+            <div class="analytics-filters">
+              <label class="field">
+                <span class="label">Период с</span>
+                <input v-model="ctx.financeYandexSync.date_from" class="input" type="date" :max="ctx.financeYandexSync.date_to || ctx.maxDate" />
+              </label>
+              <label class="field">
+                <span class="label">Период по</span>
+                <input v-model="ctx.financeYandexSync.date_to" class="input" type="date" :min="ctx.financeYandexSync.date_from || ctx.minDate" :max="ctx.maxDate" />
+              </label>
+              <label class="field">
+                <button
+                  data-test="finance-sync-yandex"
+                  class="ghost"
+                  type="button"
+                  :disabled="ctx.financeYandexSyncLoading"
+                  @click="syncYandexMarket"
+                >
+                  {{ ctx.financeYandexSyncLoading ? 'Синхронизируем...' : 'Синхронизировать Yandex' }}
+                </button>
+              </label>
+            </div>
+
+            <p v-if="ctx.financeYandexSyncStatus" class="muted">{{ ctx.financeYandexSyncStatus }}</p>
+            <p v-if="ctx.financeYandexSyncError" class="bad">{{ ctx.financeYandexSyncError }}</p>
+            <p v-if="ctx.financeYandexSyncOk" class="good">{{ ctx.financeYandexSyncOk }}</p>
+
+            <div v-if="ctx.financeYandexSyncResult" class="analytics-cards finance-sync-cards">
+              <div class="mini">
+                <div class="mini__label">Строк Яндекса</div>
+                <div class="mini__value">{{ Number(ctx.financeYandexSyncResult.total_rows || 0) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Дней добавлено</div>
+                <div class="mini__value">{{ Number(ctx.financeYandexSyncResult.created_rows || 0) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Дней пропущено</div>
+                <div class="mini__value">{{ Number(ctx.financeYandexSyncResult.skipped_rows || 0) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Ошибки</div>
+                <div class="mini__value">{{ Number(ctx.financeYandexSyncResult.failed_rows || 0) }}</div>
+              </div>
+            </div>
+          </section>
         </template>
 
         <template v-if="financeMode === 'report'">
@@ -1069,6 +1128,11 @@ async function saveFinanceCashFlowOpening() {
   await props.ctx.saveFinanceCashFlowOpeningBalance?.()
 }
 
+// Запускаем ручной импорт Яндекс Маркета через backend endpoint.
+async function syncYandexMarket() {
+  await props.ctx.syncFinanceYandexMarket?.()
+}
+
 // Перечитываем каталоги типов и видов операций по кнопке "Обновить".
 async function reloadFinanceCatalogs() {
   await props.ctx.loadFinanceBootstrap?.()
@@ -1097,6 +1161,33 @@ async function reloadFinanceCatalogs() {
 
 .finance-cash-flow-panel {
   min-width: 0;
+}
+
+.finance-integration-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.finance-integration-panel__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.finance-integration-badge {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.finance-sync-cards {
+  margin-top: 2px;
 }
 
 .finance-catalog-panel__head {

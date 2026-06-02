@@ -1,10 +1,14 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 import json
+import os
+import threading
+import uuid
 
 from fastapi import Depends, HTTPException
 
+from .yandex_market_service import fetch_yandex_market_order_economics
 from .finance_models import (
     FinanceBootstrapOut,
     FinanceCashFlowLineOut,
@@ -44,6 +48,9 @@ from .finance_models import (
     FinanceTypeOut,
     FinanceTypeCreateIn,
     FinanceTypeUpdateIn,
+    FinanceYandexSyncIn,
+    FinanceYandexSyncJobOut,
+    FinanceYandexSyncOut,
 )
 
 
@@ -58,6 +65,8 @@ def mount_finance_routes(
     get_current_user,
     require_role,
 ):
+    yandex_sync_jobs: dict[str, dict[str, Any]] = {}
+
     def _normalize_code(value: Optional[str], *, upper: bool = False) -> str:
         # Нормализуем кодовые поля, чтобы избежать лишних дублей из-за регистра и пробелов.
         text = (value or "").strip()
@@ -310,6 +319,231 @@ def mount_finance_routes(
         status_row = q1(conn, "SELECT 1 FROM finance.entry_statuses WHERE code=%s", (status_code,))
         if not status_row:
             raise HTTPException(400, f"Unknown status_code: {payload.status_code}")
+
+    def _env_int(name: str) -> Optional[int]:
+        # Читаем id из env; пустое значение значит, что будет поиск по коду.
+        raw = str(os.getenv(name, "") or "").strip()
+        if not raw:
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            raise HTTPException(500, f"{name} must be integer")
+
+    def _resolve_yandex_source_id(conn) -> int:
+        # Находим finance-источник ASAT YM для привязки импортированных строк Яндекса.
+        source_id = _env_int("YANDEX_MARKET_FINANCE_SOURCE_ID")
+        if source_id is not None:
+            row = q1(conn, "SELECT source_id FROM finance.dim_sources WHERE source_id=%s AND is_active IS TRUE", (source_id,))
+            if not row:
+                raise HTTPException(400, f"Unknown YANDEX_MARKET_FINANCE_SOURCE_ID: {source_id}")
+            return int(row[0])
+
+        source_code = _normalize_code(os.getenv("YANDEX_MARKET_SOURCE_CODE", "ym"))
+        source_name = str(os.getenv("YANDEX_MARKET_SOURCE_NAME", "ASAT") or "").strip().lower()
+        row = q1(
+            conn,
+            """
+            SELECT source_id
+            FROM finance.dim_sources
+            WHERE lower(code)=%s
+              AND lower(name)=%s
+              AND is_active IS TRUE
+            ORDER BY source_id
+            LIMIT 1
+            """,
+            (source_code, source_name),
+        )
+        if row:
+            return int(row[0])
+
+        rows = qall(
+            conn,
+            """
+            SELECT source_id
+            FROM finance.dim_sources
+            WHERE lower(code)=%s
+              AND is_active IS TRUE
+            ORDER BY source_id
+            LIMIT 2
+            """,
+            (source_code,),
+        )
+        if len(rows) == 1:
+            return int(rows[0][0])
+        raise HTTPException(400, "Yandex finance source is not configured; set YANDEX_MARKET_FINANCE_SOURCE_ID")
+
+    def _resolve_yandex_project_id(conn) -> Optional[int]:
+        # Подставляем проект marketplace, если он есть; это сохраняет совместимость с текущими справочниками.
+        project_id = _env_int("YANDEX_MARKET_PROJECT_ID")
+        if project_id is not None:
+            row = q1(conn, "SELECT project_id FROM finance.projects WHERE project_id=%s AND is_active IS TRUE", (project_id,))
+            if not row:
+                raise HTTPException(400, f"Unknown YANDEX_MARKET_PROJECT_ID: {project_id}")
+            return int(row[0])
+
+        project_code = _normalize_code(os.getenv("YANDEX_MARKET_PROJECT_CODE", "marketplace"))
+        row = q1(
+            conn,
+            "SELECT project_id FROM finance.projects WHERE lower(code)=%s AND is_active IS TRUE ORDER BY project_id LIMIT 1",
+            (project_code,),
+        )
+        return int(row[0]) if row else None
+
+    def _resolve_yandex_operation_id(conn) -> int:
+        # Выбираем операцию выручки маркетплейса, которую будут использовать finance.entries.
+        operation_id = _env_int("YANDEX_MARKET_REVENUE_OPERATION_ID")
+        if operation_id is not None:
+            row = q1(conn, "SELECT operation_id FROM finance.operations WHERE operation_id=%s AND is_active IS TRUE", (operation_id,))
+            if not row:
+                raise HTTPException(400, f"Unknown YANDEX_MARKET_REVENUE_OPERATION_ID: {operation_id}")
+            return int(row[0])
+
+        operation_code = _normalize_code(os.getenv("YANDEX_MARKET_REVENUE_OPERATION_CODE", "revenue_marketplace_api"))
+        row = q1(
+            conn,
+            "SELECT operation_id FROM finance.operations WHERE lower(code)=%s AND is_active IS TRUE ORDER BY operation_id LIMIT 1",
+            (operation_code,),
+        )
+        if not row:
+            type_row = q1(
+                conn,
+                """
+                INSERT INTO finance.section_types(code, name, sort_order, is_active)
+                VALUES ('revenue', 'Выручка', 10, true)
+                ON CONFLICT (code) DO UPDATE
+                SET name=excluded.name,
+                    sort_order=excluded.sort_order,
+                    is_active=true,
+                    updated_at=now()
+                RETURNING type_id
+                """,
+            )
+            type_id = int(type_row[0])
+            # Создаем базовый раздел выручки, чтобы новая операция попала в P&L без ручной подготовки.
+            exec1(
+                conn,
+                """
+                INSERT INTO finance.sections(parent_section_id, type_id, code, name, kind, sort_order, is_active)
+                VALUES (NULL, %s, 'revenue', 'Выручка', 'revenue', 10, true)
+                ON CONFLICT (code) DO UPDATE
+                SET type_id=excluded.type_id,
+                    name=excluded.name,
+                    kind=excluded.kind,
+                    sort_order=excluded.sort_order,
+                    is_active=true,
+                    updated_at=now()
+                """,
+                (type_id,),
+            )
+            op_row = q1(
+                conn,
+                """
+                INSERT INTO finance.operations(
+                  type_id, code, name, input_mode,
+                  requires_region, requires_source, requires_project, requires_qty, allows_negative,
+                  sort_order, is_active
+                )
+                VALUES (%s, %s, 'Продажи маркетплейсов (API)', 'api', false, false, false, false, false, 20, true)
+                ON CONFLICT (code) DO UPDATE
+                SET type_id=excluded.type_id,
+                    name=excluded.name,
+                    input_mode=excluded.input_mode,
+                    is_active=true,
+                    updated_at=now()
+                RETURNING operation_id
+                """,
+                (type_id, operation_code),
+            )
+            if not op_row:
+                raise HTTPException(500, "Failed to create Yandex revenue operation")
+            return int(op_row[0])
+        return int(row[0])
+
+    def _money_from_yandex_raw(raw: dict[str, Any], keys: tuple[str, ...]) -> Decimal:
+        # Достаем контрольные суммы из сырой строки Яндекса для дневного payload_json.
+        for key in keys:
+            value = raw.get(key)
+            if value in (None, ""):
+                continue
+            try:
+                return Decimal(str(value).replace(" ", "").replace(",", "."))
+            except Exception:
+                continue
+        return Decimal("0")
+
+    def _aggregate_yandex_market_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        # Сворачиваем строки заказов в один дневной итог, чтобы finance.entries не разрастался построчно.
+        grouped: dict[date, dict[str, Any]] = {}
+        for row in rows:
+            biz_date = row.get("biz_date")
+            if not isinstance(biz_date, date):
+                continue
+            payload_json = row.get("payload_json") if isinstance(row.get("payload_json"), dict) else {}
+            raw = payload_json.get("raw") if isinstance(payload_json.get("raw"), dict) else {}
+            amount_decimal = _round_money(Decimal(row.get("amount") or 0))
+            if amount_decimal == 0:
+                continue
+            group = grouped.setdefault(
+                biz_date,
+                {
+                    "biz_date": biz_date,
+                    "amount": Decimal("0"),
+                    "gross_amount": Decimal("0"),
+                    "commission_amount": Decimal("0"),
+                    "rows_count": 0,
+                    "order_ids": [],
+                    "shop_skus": [],
+                    "source_files": set(),
+                    "campaign_id": payload_json.get("campaign_id"),
+                },
+            )
+            group["amount"] = _round_money(group["amount"] + amount_decimal)
+            group["gross_amount"] = _round_money(
+                group["gross_amount"] + _money_from_yandex_raw(raw, ("sumBillingPriceOfItems", "sum_billing_price_of_items"))
+            )
+            group["commission_amount"] = _round_money(
+                group["commission_amount"] + _money_from_yandex_raw(raw, ("summaryCommission", "summary_commission"))
+            )
+            group["rows_count"] += 1
+            if row.get("order_id"):
+                group["order_ids"].append(str(row.get("order_id")))
+            if row.get("shop_sku"):
+                group["shop_skus"].append(str(row.get("shop_sku")))
+            if payload_json.get("source_file"):
+                group["source_files"].add(str(payload_json.get("source_file")))
+
+        aggregates: list[dict[str, Any]] = []
+        fallback_campaign_id = str(os.getenv("YANDEX_MARKET_CAMPAIGN_ID", "") or "").strip()
+        for biz_date, group in sorted(grouped.items(), key=lambda item: item[0]):
+            campaign_id = group.get("campaign_id") or fallback_campaign_id or "unknown"
+            unique_order_ids = sorted(set(group["order_ids"]))
+            unique_shop_skus = sorted(set(group["shop_skus"]))
+            aggregates.append(
+                {
+                    "biz_date": biz_date,
+                    "amount": _round_money(group["amount"]),
+                    "external_key": f"yandex-market:united-orders:{campaign_id}:daily:{biz_date.isoformat()}",
+                    "comment": f"Yandex Market; доставленные за {biz_date.isoformat()}; строк {group['rows_count']}",
+                    "payload_json": {
+                        "provider": "yandex_market",
+                        "report_type": "united_orders",
+                        "aggregation": "daily",
+                        "campaign_id": campaign_id,
+                        "biz_date": biz_date.isoformat(),
+                        "status_filter": "Доставлен",
+                        "rows_count": group["rows_count"],
+                        "orders_count": len(unique_order_ids),
+                        "order_ids": unique_order_ids,
+                        "shop_skus": unique_shop_skus,
+                        "source_files": sorted(group["source_files"]),
+                        "gross_amount": str(_round_money(group["gross_amount"])),
+                        "commission_amount": str(_round_money(group["commission_amount"])),
+                        "income_without_services": str(_round_money(group["amount"])),
+                    },
+                }
+            )
+        return aggregates
 
     def _to_entry_out(row) -> FinanceEntryOut:
         # Преобразуем строку SQL в модель ответа API.
@@ -1320,6 +1554,152 @@ def mount_finance_routes(
             errors=errors,
         )
 
+    def _sync_yandex_market_now(
+        payload: FinanceYandexSyncIn,
+        created_by: str,
+        progress: Optional[Any] = None,
+    ) -> FinanceYandexSyncOut:
+        # Выполняем фактический импорт Яндекса; helper используют фоновые ручные задачи.
+        if payload.date_to < payload.date_from:
+            raise HTTPException(400, "date_to must be >= date_from")
+
+        rows = fetch_yandex_market_order_economics(payload.date_from, payload.date_to, progress=progress)
+        daily_rows = _aggregate_yandex_market_rows(rows)
+        created_rows = 0
+        skipped_rows = 0
+        failed_rows = 0
+        errors: list[FinanceEntryBulkErrorOut] = []
+
+        with psycopg.connect(DB_DSN) as conn:
+            if progress:
+                progress("Проверяем finance-справочники для Yandex Market")
+            source_id = _resolve_yandex_source_id(conn)
+            project_id = _resolve_yandex_project_id(conn)
+            operation_id = _resolve_yandex_operation_id(conn)
+
+            for idx, row in enumerate(daily_rows, start=1):
+                if progress:
+                    progress(f"Сохраняем дневной итог Yandex Market: {idx}/{len(daily_rows)}")
+                amount = row.get("amount")
+                external_key = str(row.get("external_key") or "")
+                try:
+                    if amount is None:
+                        skipped_rows += 1
+                        continue
+                    amount_decimal = _round_money(Decimal(amount))
+                    if amount_decimal == 0:
+                        skipped_rows += 1
+                        continue
+                    entry_payload = FinanceEntryCreateIn(
+                        biz_date=row["biz_date"],
+                        operation_id=operation_id,
+                        region_id=None,
+                        source_id=source_id,
+                        project_id=project_id,
+                        qty=Decimal("1"),
+                        amount=amount_decimal,
+                        currency="RUB",
+                        input_channel="api",
+                        external_key=external_key,
+                        status_code="confirmed",
+                        comment=row.get("comment") or "Yandex Market",
+                        payload_json=row.get("payload_json") or {},
+                    )
+                    _, created_new = _create_entry_in_tx(conn, entry_payload, created_by)
+                    if created_new:
+                        created_rows += 1
+                    else:
+                        skipped_rows += 1
+                except Exception as exc:
+                    failed_rows += 1
+                    errors.append(FinanceEntryBulkErrorOut(row_no=idx, error=str(exc), external_key=external_key or None))
+            conn.commit()
+
+        return FinanceYandexSyncOut(
+            date_from=payload.date_from,
+            date_to=payload.date_to,
+            total_rows=len(rows),
+            created_rows=created_rows,
+            skipped_rows=skipped_rows,
+            failed_rows=failed_rows,
+            errors=errors,
+        )
+
+    def _to_yandex_job_out(job_id: str, job: dict[str, Any]) -> FinanceYandexSyncJobOut:
+        # Приводим внутреннее состояние фоновой синхронизации к API-ответу.
+        return FinanceYandexSyncJobOut(
+            job_id=job_id,
+            status=str(job.get("status") or "unknown"),
+            message=job.get("message"),
+            result=job.get("result"),
+            error=job.get("error"),
+            created_at=job["created_at"],
+            updated_at=job["updated_at"],
+        )
+
+    def _run_yandex_sync_job(job_id: str, payload: FinanceYandexSyncIn, created_by: str):
+        # Фоновая задача не блокирует HTTP-запрос и обновляет статус для polling-а UI.
+        now = datetime.now(timezone.utc)
+        yandex_sync_jobs[job_id].update(status="running", message="Запрашиваем отчет Yandex Market", updated_at=now)
+        def update_progress(message: str):
+            # Обновляем человекочитаемый статус, чтобы UI показывал реальный этап синхронизации.
+            yandex_sync_jobs[job_id].update(message=message, updated_at=datetime.now(timezone.utc))
+
+        try:
+            result = _sync_yandex_market_now(payload, created_by, progress=update_progress)
+            yandex_sync_jobs[job_id].update(
+                status="done",
+                message="Синхронизация завершена",
+                result=result,
+                error=None,
+                updated_at=datetime.now(timezone.utc),
+            )
+        except HTTPException as exc:
+            yandex_sync_jobs[job_id].update(
+                status="failed",
+                message="Синхронизация завершилась ошибкой",
+                error=str(exc.detail),
+                updated_at=datetime.now(timezone.utc),
+            )
+        except Exception as exc:
+            yandex_sync_jobs[job_id].update(
+                status="failed",
+                message="Синхронизация завершилась ошибкой",
+                error=str(exc),
+                updated_at=datetime.now(timezone.utc),
+            )
+
+    @app.post("/finance/integrations/yandex/sync", response_model=FinanceYandexSyncJobOut)
+    def finance_sync_yandex_market(payload: FinanceYandexSyncIn, user=Depends(require_role("admin", "owner"))):
+        # Стартуем ручную синхронизацию в фоне, чтобы кнопка не держала HTTP-запрос до готовности отчета.
+        if payload.date_to < payload.date_from:
+            raise HTTPException(400, "date_to must be >= date_from")
+        job_id = uuid.uuid4().hex
+        now = datetime.now(timezone.utc)
+        yandex_sync_jobs[job_id] = {
+            "status": "queued",
+            "message": "Синхронизация поставлена в очередь",
+            "result": None,
+            "error": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+        created_by = str(getattr(user, "username", "") or "")
+        if str(os.getenv("FINANCE_YANDEX_SYNC_INLINE", "") or "").strip() == "1":
+            _run_yandex_sync_job(job_id, payload, created_by)
+        else:
+            thread = threading.Thread(target=_run_yandex_sync_job, args=(job_id, payload, created_by), daemon=True)
+            thread.start()
+        return _to_yandex_job_out(job_id, yandex_sync_jobs[job_id])
+
+    @app.get("/finance/integrations/yandex/sync/{job_id}", response_model=FinanceYandexSyncJobOut)
+    def finance_get_yandex_sync_job(job_id: str, user=Depends(require_role("admin", "owner"))):
+        # Отдаем текущий статус ручной синхронизации для polling-а UI.
+        job = yandex_sync_jobs.get(job_id)
+        if not job:
+            raise HTTPException(404, "Yandex sync job not found")
+        return _to_yandex_job_out(job_id, job)
+
     @app.delete("/finance/entries/{entry_id}")
     def finance_delete_entry(entry_id: int, user=Depends(require_role("admin", "owner"))):
         # Удаляем проводку по id; связанные posting/dedupe записи удаляются каскадно по FK.
@@ -1605,7 +1985,7 @@ def mount_finance_routes(
                     LEFT JOIN finance.dim_sources src ON src.source_id = e.source_id
                     LEFT JOIN finance.dim_regions r ON r.region_id = e.region_id
                     WHERE e.status_code = 'confirmed'
-                      AND e.input_channel = 'manual'
+                      AND e.input_channel IN ('manual', 'api', 'import')
                       AND p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')
                 )
                 SELECT
@@ -1777,7 +2157,7 @@ def mount_finance_routes(
              AND e.biz_date = p.entry_biz_date
             LEFT JOIN finance.operations op ON op.operation_id = e.operation_id
             WHERE e.status_code = 'confirmed'
-              AND e.input_channel = 'manual'
+              AND e.input_channel IN ('manual', 'api', 'import')
               AND p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')
               AND COALESCE(p.amount, 0) <> 0
         """

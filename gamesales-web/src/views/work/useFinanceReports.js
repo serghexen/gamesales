@@ -30,6 +30,10 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     source_id: '',
     operation_id: '',
   })
+  const financeYandexSync = reactive({
+    date_from: today,
+    date_to: today,
+  })
   const financeOperations = ref([])
   const financeTypes = ref([])
   const financeSections = ref([])
@@ -59,6 +63,8 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeCashFlowOpeningDraft = ref('')
   const financeCashFlowRevenues = ref([])
   const financeCashFlowExpenses = ref([])
+  const financeYandexSyncResult = ref(null)
+  const financeYandexSyncStatus = ref('')
   const financeNewSection = reactive({
     type_id: '',
     code: '',
@@ -91,6 +97,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeEntriesLoading = ref(false)
   const financeEntrySaving = ref(false)
   const financeCatalogSaving = ref(false)
+  const financeYandexSyncLoading = ref(false)
   const financeError = ref(null)
   const financeEntriesError = ref(null)
   const financeEntryError = ref(null)
@@ -98,6 +105,8 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeCatalogOk = ref('')
   const financeEntryOk = ref('')
   const financeCashFlowOpeningOk = ref('')
+  const financeYandexSyncError = ref(null)
+  const financeYandexSyncOk = ref('')
 
   const clearFinanceReport = () => {
     // Сбрасываем отчет, чтобы не показывать устаревшие агрегаты при ошибке запроса.
@@ -322,6 +331,60 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       return false
     } finally {
       financeCashFlowOpeningSaving.value = false
+    }
+  }
+
+  const syncFinanceYandexMarket = async () => {
+    // Запускаем ручную загрузку экономики заказов Яндекса за выбранный период.
+    financeYandexSyncError.value = null
+    financeYandexSyncOk.value = ''
+    financeYandexSyncResult.value = null
+    financeYandexSyncStatus.value = ''
+    const dateFrom = String(financeYandexSync.date_from || '').trim()
+    const dateTo = String(financeYandexSync.date_to || '').trim()
+    if (!dateFrom || !dateTo) {
+      financeYandexSyncError.value = 'Выберите период синхронизации'
+      return false
+    }
+    if (dateTo < dateFrom) {
+      financeYandexSyncError.value = 'Дата окончания должна быть не раньше даты начала'
+      return false
+    }
+    financeYandexSyncLoading.value = true
+    try {
+      const started = await apiPost('/finance/integrations/yandex/sync', {
+        date_from: dateFrom,
+        date_to: dateTo,
+      }, { token: auth.state.token })
+      const jobId = String(started?.job_id || '')
+      if (!jobId) throw new Error('Yandex sync job_id is missing')
+      financeYandexSyncStatus.value = started?.message || 'Синхронизация запущена'
+      let job = started
+      for (let attempt = 0; attempt < 180; attempt += 1) {
+        if (job?.status === 'done' || job?.status === 'failed') break
+        job = await apiGet(`/finance/integrations/yandex/sync/${encodeURIComponent(jobId)}`, { token: auth.state.token })
+        financeYandexSyncStatus.value = job?.message || String(job?.status || '')
+        if (job?.status === 'done' || job?.status === 'failed') break
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+      }
+      if (job?.status !== 'done') {
+        throw new Error(job?.error || 'Yandex sync job was not completed')
+      }
+      const result = job?.result || {}
+      financeYandexSyncResult.value = result || null
+      const created = Number(result?.created_rows || 0)
+      const skipped = Number(result?.skipped_rows || 0)
+      const failed = Number(result?.failed_rows || 0)
+      financeYandexSyncOk.value = `Yandex: дней добавлено ${created}, дней пропущено ${skipped}, ошибок ${failed}`
+      const refreshTasks = [loadFinanceEntries(), loadFinanceProjectsReport()]
+      if (financeCashFlowLoaded.value) refreshTasks.push(loadFinanceCashFlowReport())
+      await Promise.all(refreshTasks)
+      return failed === 0
+    } catch (e) {
+      financeYandexSyncError.value = mapApiError(e?.message)
+      return false
+    } finally {
+      financeYandexSyncLoading.value = false
     }
   }
 
@@ -664,6 +727,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeFilters,
     financeNewEntry,
     financeEntryFilters,
+    financeYandexSync,
     financeNewSection,
     financeNewType,
     financeNewOperation,
@@ -684,6 +748,8 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeCashFlowOpeningDraft,
     financeCashFlowRevenues,
     financeCashFlowExpenses,
+    financeYandexSyncResult,
+    financeYandexSyncStatus,
     financeCatalogsLoaded,
     financeLoaded,
     financeCashFlowLoaded,
@@ -694,6 +760,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeEntriesLoading,
     financeEntrySaving,
     financeCatalogSaving,
+    financeYandexSyncLoading,
     financeError,
     financeEntriesError,
     financeEntryError,
@@ -701,6 +768,8 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeCatalogOk,
     financeEntryOk,
     financeCashFlowOpeningOk,
+    financeYandexSyncError,
+    financeYandexSyncOk,
     loadFinanceBootstrap,
     loadFinanceEntries,
     createFinanceEntry,
@@ -720,5 +789,6 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     loadFinanceProjectsReport,
     loadFinanceCashFlowReport,
     saveFinanceCashFlowOpeningBalance,
+    syncFinanceYandexMarket,
   }
 }

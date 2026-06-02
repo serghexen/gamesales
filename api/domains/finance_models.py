@@ -240,6 +240,32 @@ class FinanceEntryBulkOut(BaseModel):
     errors: list[FinanceEntryBulkErrorOut] = Field(default_factory=list)
 
 
+class FinanceYandexSyncIn(BaseModel):
+    date_from: date
+    date_to: date
+
+
+class FinanceYandexSyncOut(BaseModel):
+    provider: str = "yandex_market"
+    date_from: date
+    date_to: date
+    total_rows: int = 0
+    created_rows: int = 0
+    skipped_rows: int = 0
+    failed_rows: int = 0
+    errors: list[FinanceEntryBulkErrorOut] = Field(default_factory=list)
+
+
+class FinanceYandexSyncJobOut(BaseModel):
+    job_id: str
+    status: str
+    message: Optional[str] = None
+    result: Optional[FinanceYandexSyncOut] = None
+    error: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class FinanceCatalogSyncOut(BaseModel):
     regions_synced: int = 0
     sources_synced: int = 0

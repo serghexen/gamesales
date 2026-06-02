@@ -186,6 +186,45 @@ describe('useFinanceReports', () => {
     expect(h.finance.financeNewEntry.amount).toBe('')
   })
 
+  it('syncs Yandex Market entries and refreshes finance data', async () => {
+    const h = createHarness()
+    h.finance.financeYandexSync.date_from = '2026-06-01'
+    h.finance.financeYandexSync.date_to = '2026-06-02'
+    h.apiPost.mockResolvedValueOnce({
+      job_id: 'job-1',
+      status: 'queued',
+      message: 'Синхронизация поставлена в очередь',
+    })
+    h.apiGet
+      .mockResolvedValueOnce({
+        job_id: 'job-1',
+        status: 'done',
+        message: 'Синхронизация завершена',
+        result: {
+          total_rows: 3,
+          created_rows: 2,
+          skipped_rows: 1,
+          failed_rows: 0,
+          errors: [],
+        },
+      })
+      .mockResolvedValueOnce({ total: 2, items: [{ entry_id: 701, amount: '100.00', qty: '1.00' }] })
+      .mockResolvedValueOnce({ totals: { revenue: '100.00' }, items: [] })
+
+    const ok = await h.finance.syncFinanceYandexMarket()
+
+    expect(ok).toBe(true)
+    expect(h.apiPost).toHaveBeenCalledWith(
+      '/finance/integrations/yandex/sync',
+      { date_from: '2026-06-01', date_to: '2026-06-02' },
+      { token: 'token-1' },
+    )
+    expect(h.finance.financeYandexSyncOk.value).toBe('Yandex: дней добавлено 2, дней пропущено 1, ошибок 0')
+    expect(h.finance.financeYandexSyncResult.value.created_rows).toBe(2)
+    expect(h.finance.financeYandexSyncStatus.value).toBe('Синхронизация завершена')
+    expect(h.apiGet).toHaveBeenCalledTimes(3)
+  })
+
   it('creates finance operation catalog record and reloads bootstrap', async () => {
     const h = createHarness()
     h.finance.financeNewOperation.type_id = 3

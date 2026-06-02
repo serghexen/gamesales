@@ -17,12 +17,16 @@ function buildCtx(overrides = {}) {
     financeEntriesLoading: false,
     financeEntrySaving: false,
     financeCatalogSaving: false,
+    financeYandexSyncLoading: false,
     financeError: '',
     financeEntriesError: '',
     financeEntryError: '',
     financeCatalogError: '',
     financeCatalogOk: '',
     financeEntryOk: '',
+    financeYandexSyncError: '',
+    financeYandexSyncOk: '',
+    financeYandexSyncStatus: '',
     financeLoaded: true,
     financeEntriesTotal: 1,
     financeFilters: {
@@ -51,6 +55,10 @@ function buildCtx(overrides = {}) {
       region_id: '',
       source_id: '',
       operation_id: '',
+    },
+    financeYandexSync: {
+      date_from: '2026-05-30',
+      date_to: '2026-05-31',
     },
     financeNewSection: {
       type_id: 2,
@@ -125,9 +133,11 @@ function buildCtx(overrides = {}) {
       { name: 'Закуп TR', amount: 6000 },
       { name: 'Маркетинг', amount: 1000 },
     ],
+    financeYandexSyncResult: null,
     loadFinanceProjectsReport: vi.fn(),
     loadFinanceCashFlowReport: vi.fn(),
     saveFinanceCashFlowOpeningBalance: vi.fn(),
+    syncFinanceYandexMarket: vi.fn(),
     loadFinanceEntries: vi.fn(),
     createFinanceEntry: vi.fn(),
     deleteFinanceEntry: vi.fn(),
@@ -171,6 +181,7 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('Справочники')
     expect(wrapper.text()).toContain('Ввод')
     expect(wrapper.text()).toContain('Журнал')
+    expect(wrapper.text()).toContain('Интеграции')
     expect(wrapper.text()).toContain('Отчет по источникам')
     expect(wrapper.text()).toContain('Cash Flow')
     expect(wrapper.text()).toContain('Комментарий')
@@ -195,6 +206,8 @@ describe('WorkFinanceSection', () => {
     await wrapper.find('[data-test="finance-save-entry"]').trigger('click')
     await wrapper.find('[data-test="finance-mode-journal"]').trigger('click')
     await wrapper.find('[data-test="finance-apply-entries-filters"]').trigger('click')
+    await wrapper.find('[data-test="finance-mode-integrations"]').trigger('click')
+    await wrapper.find('[data-test="finance-sync-yandex"]').trigger('click')
     await wrapper.find('[data-test="finance-mode-report"]').trigger('click')
     await wrapper.find('[data-test="finance-apply-report"]').trigger('click')
     await wrapper.find('[data-test="finance-mode-cash-flow"]').trigger('click')
@@ -208,11 +221,43 @@ describe('WorkFinanceSection', () => {
 
     expect(ctx.createFinanceEntry).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceEntries).toHaveBeenCalledTimes(1)
+    expect(ctx.syncFinanceYandexMarket).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceProjectsReport).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceCashFlowReport).toHaveBeenCalledTimes(1)
     expect(ctx.saveFinanceCashFlowOpeningBalance).toHaveBeenCalledTimes(1)
     expect(ctx.createFinanceType).toHaveBeenCalledTimes(1)
     expect(ctx.createFinanceOperation).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows Yandex sync result as daily aggregates', async () => {
+    const ctx = buildCtx({
+      financeYandexSyncResult: {
+        total_rows: 30,
+        created_rows: 1,
+        skipped_rows: 0,
+        failed_rows: 0,
+      },
+      financeYandexSyncOk: 'Yandex: дней добавлено 1, дней пропущено 0, ошибок 0',
+    })
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-integrations"]').trigger('click')
+
+    expect(wrapper.text()).toContain('Строк Яндекса')
+    expect(wrapper.text()).toContain('Дней добавлено')
+    expect(wrapper.text()).toContain('Дней пропущено')
+    expect(wrapper.text()).toContain('Yandex: дней добавлено 1, дней пропущено 0, ошибок 0')
   })
 
   it('shows source report rows', async () => {
