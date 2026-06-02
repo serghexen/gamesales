@@ -5,7 +5,7 @@ ARG VITE_API_BASE=/api
 ENV VITE_API_BASE=$VITE_API_BASE
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --include=optional
 
 COPY . .
 RUN npm run build
