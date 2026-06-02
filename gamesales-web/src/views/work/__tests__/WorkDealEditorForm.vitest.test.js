@@ -248,6 +248,16 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('function getSaleLinkCopyLabel(target, index = 0)')
   })
 
+  it('allows decimal purchase cost in sale create and edit forms', () => {
+    const source = readTemplateSource()
+    const purchaseInputs = source.match(/v-model\.number="(?:editDeal|newDeal)\.purchase_cost"[\s\S]*?@input="(?:editDeal|newDeal)\.purchase_cost = clampPrice\((?:editDeal|newDeal)\.purchase_cost\)"/g) || []
+
+    expect(purchaseInputs).toHaveLength(2)
+    for (const input of purchaseInputs) {
+      expect(input).toContain('step="0.01"')
+    }
+  })
+
   it('renders sharing layout with locked payment and discount fields', () => {
     const source = readTemplateSource()
     const newRentalMain = source.match(/<div class="deal-form__rental-main">[\s\S]*?<div class="deal-form__rental-side">/)?.[0] || ''

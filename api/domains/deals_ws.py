@@ -106,8 +106,13 @@ def mount_deals_ws_routes(
         async def open_pubsub():
             local_client = redis_async.Redis.from_url(redis_url, decode_responses=True)
             local_pubsub = local_client.pubsub()
-            await local_pubsub.subscribe(DEALS_EVENTS_CHANNEL)
-            return local_client, local_pubsub
+            try:
+                await local_pubsub.subscribe(DEALS_EVENTS_CHANNEL)
+                return local_client, local_pubsub
+            except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError):
+                # Если Redis закрыл соединение на подписке, закрываем ресурсы и отдаем ошибку выше.
+                await close_pubsub(local_client, local_pubsub)
+                raise
 
         # Аккуратно закрывает текущие объекты redis даже при ошибках.
         async def close_pubsub(local_client, local_pubsub):
@@ -123,7 +128,12 @@ def mount_deals_ws_routes(
                 except Exception:
                     pass
         try:
-            client, pubsub = await open_pubsub()
+            try:
+                client, pubsub = await open_pubsub()
+            except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError):
+                # Realtime без Redis не работает; закрываем WS штатно без ASGI traceback.
+                await websocket.close(code=1011, reason="Redis unavailable")
+                return
             # Отправляем служебное событие, чтобы клиент понимал, что подписка установлена.
             await websocket.send_text(
                 json.dumps(
@@ -199,7 +209,12 @@ def mount_deals_ws_routes(
                     client = None
                     pubsub = None
                     await asyncio.sleep(0.5)
-                    client, pubsub = await open_pubsub()
+                    try:
+                        client, pubsub = await open_pubsub()
+                    except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError):
+                        # Если переподписка тоже не удалась, завершаем WS без падения приложения.
+                        await websocket.close(code=1011, reason="Redis unavailable")
+                        return
         except WebSocketDisconnect:
             return
         except RuntimeError:

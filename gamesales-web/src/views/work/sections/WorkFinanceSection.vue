@@ -60,7 +60,10 @@
             Журнал
           </button>
           <button data-test="finance-mode-report" class="tab" :class="{ active: financeMode === 'report' }" type="button" @click="setFinanceMode('report')">
-            Отчет
+            Отчет по источникам
+          </button>
+          <button data-test="finance-mode-cash-flow" class="tab" :class="{ active: financeMode === 'cash-flow' }" type="button" @click="setFinanceMode('cash-flow')">
+            Cash Flow
           </button>
         </div>
 
@@ -342,19 +345,15 @@
           <template v-else>
             <div class="analytics-cards">
               <div class="mini">
-                <div class="mini__label">Выручка</div>
+                <div class="mini__label">Поступления</div>
                 <div class="mini__value">{{ ctx.formatPrice(ctx.financeReportTotals.revenue) }}</div>
               </div>
               <div class="mini">
-                <div class="mini__label">Прямые</div>
+                <div class="mini__label">Расходы</div>
                 <div class="mini__value">{{ ctx.formatPrice(ctx.financeReportTotals.direct_expense) }}</div>
               </div>
               <div class="mini">
-                <div class="mini__label">Косвенные</div>
-                <div class="mini__value">{{ ctx.formatPrice(ctx.financeReportTotals.indirect_expense) }}</div>
-              </div>
-              <div class="mini">
-                <div class="mini__label">Опер. прибыль</div>
+                <div class="mini__label">Cash Flow</div>
                 <div class="mini__value">{{ ctx.formatPrice(ctx.financeReportTotals.operating_profit) }}</div>
               </div>
               <div class="mini">
@@ -366,26 +365,138 @@
             <table v-if="ctx.financeReportItems.length" class="table table--compact table--dense">
               <thead>
                 <tr>
-                  <th v-if="ctx.financeFilters.split_by_source">Источник</th>
-                  <th>Выручка</th>
-                  <th>Прямые</th>
-                  <th>Косвенные</th>
-                  <th>Опер. прибыль</th>
+                  <th>Источник</th>
+                  <th>Регион</th>
+                  <th>Поступления</th>
+                  <th>Расходы</th>
+                  <th>Cash Flow</th>
                   <th>Маржа</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in ctx.financeReportItems" :key="`${row.project_code}-${row.source_id || 'all'}`">
-                  <td v-if="ctx.financeFilters.split_by_source">{{ row.source_name || '—' }}</td>
+                <tr v-for="row in ctx.financeReportItems" :key="`${row.source_id || 'no-source'}-${row.region_id || 'no-region'}`">
+                  <td>{{ formatSourceReportLabel(row) }}</td>
+                  <td>{{ formatRegionReportLabel(row) }}</td>
                   <td>{{ ctx.formatPrice(row.revenue) }}</td>
                   <td>{{ ctx.formatPrice(row.direct_expense) }}</td>
-                  <td>{{ ctx.formatPrice(row.indirect_expense) }}</td>
-                  <td>{{ ctx.formatPrice(row.operating_profit) }}</td>
-                  <td>{{ ctx.formatPercent(row.margin) }}</td>
+                  <td>{{ ctx.formatPrice(resolveReportCashFlow(row)) }}</td>
+                  <td>{{ ctx.formatPercent(resolveReportMargin(row)) }}</td>
                 </tr>
               </tbody>
             </table>
             <p v-else class="muted">Нет данных по выбранным фильтрам.</p>
+          </template>
+        </template>
+
+        <template v-if="financeMode === 'cash-flow'">
+          <div class="analytics-filters">
+            <label class="field">
+              <span class="label">Месяц</span>
+              <input v-model="ctx.financeCashFlowMonth" class="input" type="month" />
+            </label>
+            <label class="field">
+              <span class="label">Начальный остаток</span>
+              <input v-model="ctx.financeCashFlowOpeningDraft" class="input" type="number" step="0.01" />
+            </label>
+            <label class="field">
+              <button data-test="finance-save-cash-flow-opening" class="ghost" type="button" :disabled="ctx.financeCashFlowOpeningSaving" @click="saveFinanceCashFlowOpening">
+                {{ ctx.financeCashFlowOpeningSaving ? 'Сохраняем...' : 'Сохранить остаток' }}
+              </button>
+            </label>
+            <label class="field">
+              <button data-test="finance-apply-cash-flow" class="ghost" type="button" :disabled="ctx.financeCashFlowLoading" @click="applyFinanceCashFlowReport">Применить</button>
+            </label>
+          </div>
+
+          <p v-if="ctx.financeError" class="bad">{{ ctx.financeError }}</p>
+          <p v-if="ctx.financeCashFlowOpeningOk" class="good">{{ ctx.financeCashFlowOpeningOk }}</p>
+          <p v-if="!ctx.financeCashFlowLoaded && !ctx.financeCashFlowLoading" class="muted">Нажмите «Применить», чтобы построить Cash Flow.</p>
+
+          <div v-else-if="ctx.financeCashFlowLoading" class="loader-wrap loader-wrap--compact">
+            <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+              <div class="wheel"></div>
+              <div class="hamster">
+                <div class="hamster__body">
+                  <div class="hamster__head">
+                    <div class="hamster__ear"></div>
+                    <div class="hamster__eye"></div>
+                    <div class="hamster__nose"></div>
+                  </div>
+                  <div class="hamster__limb hamster__limb--fr"></div>
+                  <div class="hamster__limb hamster__limb--fl"></div>
+                  <div class="hamster__limb hamster__limb--br"></div>
+                  <div class="hamster__limb hamster__limb--bl"></div>
+                  <div class="hamster__tail"></div>
+                </div>
+              </div>
+              <div class="spoke"></div>
+            </div>
+          </div>
+
+          <template v-else>
+            <div class="analytics-cards">
+              <div class="mini">
+                <div class="mini__label">Поступления</div>
+                <div class="mini__value">{{ ctx.formatPrice(ctx.financeCashFlowTotals.revenue) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Расходы</div>
+                <div class="mini__value">{{ ctx.formatPrice(ctx.financeCashFlowTotals.expense) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Cash Flow</div>
+                <div class="mini__value">{{ ctx.formatPrice(ctx.financeCashFlowTotals.cash_flow) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Остаток прошлый</div>
+                <div class="mini__value">{{ ctx.formatPrice(ctx.financeCashFlowTotals.opening_balance) }}</div>
+                <div class="muted">{{ formatOpeningBalanceHint() }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Остаток текущий</div>
+                <div class="mini__value">{{ ctx.formatPrice(ctx.financeCashFlowTotals.current_balance) }}</div>
+              </div>
+            </div>
+
+            <div class="finance-cash-flow-grid">
+              <section class="finance-cash-flow-panel">
+                <h4 class="section-title">Поступления</h4>
+                <table v-if="ctx.financeCashFlowRevenues.length" class="table table--compact table--dense">
+                  <thead>
+                    <tr>
+                      <th>Строка</th>
+                      <th>Сумма</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="line in ctx.financeCashFlowRevenues" :key="`cf-rev-${line.name}`">
+                      <td>{{ line.name }}</td>
+                      <td>{{ ctx.formatPrice(line.amount) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p v-else class="muted">Поступлений нет.</p>
+              </section>
+
+              <section class="finance-cash-flow-panel">
+                <h4 class="section-title">Расходы</h4>
+                <table v-if="ctx.financeCashFlowExpenses.length" class="table table--compact table--dense">
+                  <thead>
+                    <tr>
+                      <th>Строка</th>
+                      <th>Сумма</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="line in ctx.financeCashFlowExpenses" :key="`cf-exp-${line.name}`">
+                      <td>{{ line.name }}</td>
+                      <td>{{ ctx.formatPrice(line.amount) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p v-else class="muted">Расходов нет.</p>
+              </section>
+            </div>
           </template>
         </template>
       </div>
@@ -679,6 +790,40 @@ function formatSourceLabel(source) {
   return '—'
 }
 
+// Показываем источник отчета с кодом, чтобы строки было проще сверять со справочником.
+function formatSourceReportLabel(row) {
+  return formatSourceLabel({ name: row?.source_name, code: row?.source_code })
+}
+
+// Показываем в отчете только код региона, чтобы строка была компактной.
+function formatRegionReportLabel(row) {
+  const regionCode = String(row?.region_code || '').trim()
+  if (regionCode) return regionCode
+  return '—'
+}
+
+// Cash Flow в новом отчете равен поступлениям минус расходы.
+function resolveReportCashFlow(row) {
+  const explicit = Number(row?.cash_flow)
+  if (Number.isFinite(explicit)) return explicit
+  return Number(row?.operating_profit || 0)
+}
+
+// Маржу строки считаем от cash flow, чтобы не зависеть от дополнительного поля API.
+function resolveReportMargin(row) {
+  const revenue = Number(row?.revenue || 0)
+  if (!Number.isFinite(revenue) || revenue === 0) return 0
+  return resolveReportCashFlow(row) / revenue
+}
+
+// Объясняем, откуда взялся начальный остаток месяца.
+function formatOpeningBalanceHint() {
+  const totals = props.ctx.financeCashFlowTotals || {}
+  if (totals.opening_balance_manual) return 'ручной остаток месяца'
+  if (totals.opening_balance_month) return `расчет от ${String(totals.opening_balance_month).slice(0, 7)}`
+  return 'ручной остаток не задан'
+}
+
 // Возвращаем название типа для раздела по type_id или fallback из строки.
 function resolveTypeName(typeId, fallbackName = '') {
   const normalizedId = Number(typeId || 0)
@@ -914,6 +1059,16 @@ async function applyFinanceReport() {
   await props.ctx.loadFinanceProjectsReport?.()
 }
 
+// Строим общий Cash Flow по текущим фильтрам.
+async function applyFinanceCashFlowReport() {
+  await props.ctx.loadFinanceCashFlowReport?.()
+}
+
+// Сохраняем начальный остаток выбранного месяца.
+async function saveFinanceCashFlowOpening() {
+  await props.ctx.saveFinanceCashFlowOpeningBalance?.()
+}
+
 // Перечитываем каталоги типов и видов операций по кнопке "Обновить".
 async function reloadFinanceCatalogs() {
   await props.ctx.loadFinanceBootstrap?.()
@@ -929,6 +1084,18 @@ async function reloadFinanceCatalogs() {
 }
 
 .finance-catalog-panel {
+  min-width: 0;
+}
+
+.finance-cash-flow-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+  margin-top: 18px;
+}
+
+.finance-cash-flow-panel {
   min-width: 0;
 }
 
@@ -1002,7 +1169,8 @@ async function reloadFinanceCatalogs() {
 }
 
 @media (max-width: 1100px) {
-  .finance-catalog-grid {
+  .finance-catalog-grid,
+  .finance-cash-flow-grid {
     grid-template-columns: 1fr;
   }
 

@@ -21,6 +21,7 @@ describe('domainUtils', () => {
     expect(clampPrice(-12)).toBe(0)
     expect(clampPrice(maxPrice + 1)).toBe(maxPrice)
     expect(clampPrice(150)).toBe(150)
+    expect(clampPrice('123.45')).toBe(123.45)
   })
 
   it('clampPriceFilter returns empty for empty/invalid and string for valid', () => {

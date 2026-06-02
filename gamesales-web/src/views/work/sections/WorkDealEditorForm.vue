@@ -882,6 +882,7 @@
                                   class="input"
                                   type="number"
                                   min="0"
+                                  step="0.01"
                                   :max="maxPrice"
                                   @input="editDeal.purchase_cost = clampPrice(editDeal.purchase_cost)"
                                   :readonly="dealEditMode === 'view'"
@@ -1601,6 +1602,7 @@
                                   class="input"
                                   type="number"
                                   min="0"
+                                  step="0.01"
                                   :max="maxPrice"
                                   @input="newDeal.purchase_cost = clampPrice(newDeal.purchase_cost)"
                                 />

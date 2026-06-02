@@ -83,6 +83,20 @@ def ensure_analytics_schema():
                 "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS messenger_id bigint REFERENCES app.messengers(messenger_id)",
             )
             exec1(conn, "CREATE INDEX IF NOT EXISTS ix_deals_messenger_id ON app.deals (messenger_id)")
+            exec1(conn, "CREATE SCHEMA IF NOT EXISTS finance")
+            exec1(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS finance.cash_flow_opening_balances (
+                  balance_month date PRIMARY KEY,
+                  amount numeric(14,2) NOT NULL DEFAULT 0,
+                  comment text,
+                  created_by text NOT NULL DEFAULT '',
+                  created_at timestamptz NOT NULL DEFAULT now(),
+                  updated_at timestamptz NOT NULL DEFAULT now()
+                )
+                """,
+            )
             # Новая логика подписок считает занятость по типу слота/емкости, поэтому
             # глобальный unique по subscription_term_id больше не нужен.
             exec1(conn, "DROP INDEX IF EXISTS app.uq_slot_assignments_active_subscription_term")

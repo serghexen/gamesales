@@ -293,3 +293,55 @@ class FinanceProjectsReportRowOut(BaseModel):
 class FinanceProjectsReportOut(BaseModel):
     totals: FinancePnlTotalsOut
     items: list[FinanceProjectsReportRowOut] = Field(default_factory=list)
+
+
+class FinanceSourcesReportRowOut(BaseModel):
+    source_id: Optional[int] = None
+    source_code: Optional[str] = None
+    source_name: Optional[str] = None
+    region_id: Optional[int] = None
+    region_code: Optional[str] = None
+    region_name: Optional[str] = None
+    revenue: Decimal = Decimal("0")
+    direct_expense: Decimal = Decimal("0")
+    cash_flow: Decimal = Decimal("0")
+    deals_count: int = 0
+
+
+class FinanceSourcesReportOut(BaseModel):
+    totals: FinancePnlTotalsOut
+    items: list[FinanceSourcesReportRowOut] = Field(default_factory=list)
+
+
+class FinanceCashFlowLineOut(BaseModel):
+    name: str
+    amount: Decimal = Decimal("0")
+
+
+class FinanceCashFlowTotalsOut(BaseModel):
+    revenue: Decimal = Decimal("0")
+    expense: Decimal = Decimal("0")
+    cash_flow: Decimal = Decimal("0")
+    opening_balance: Decimal = Decimal("0")
+    current_balance: Decimal = Decimal("0")
+    opening_balance_month: Optional[date] = None
+    opening_balance_manual: bool = False
+
+
+class FinanceCashFlowReportOut(BaseModel):
+    totals: FinanceCashFlowTotalsOut
+    revenues: list[FinanceCashFlowLineOut] = Field(default_factory=list)
+    expenses: list[FinanceCashFlowLineOut] = Field(default_factory=list)
+
+
+class FinanceCashFlowOpeningBalanceIn(BaseModel):
+    month: str
+    amount: Decimal
+    comment: Optional[str] = None
+
+
+class FinanceCashFlowOpeningBalanceOut(BaseModel):
+    month: date
+    amount: Decimal
+    comment: Optional[str] = None
+    updated_at: datetime

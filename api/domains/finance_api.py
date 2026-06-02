@@ -7,6 +7,11 @@ from fastapi import Depends, HTTPException
 
 from .finance_models import (
     FinanceBootstrapOut,
+    FinanceCashFlowLineOut,
+    FinanceCashFlowOpeningBalanceIn,
+    FinanceCashFlowOpeningBalanceOut,
+    FinanceCashFlowReportOut,
+    FinanceCashFlowTotalsOut,
     FinanceCatalogSyncOut,
     FinanceEntryBulkErrorOut,
     FinanceEntryBulkIn,
@@ -33,6 +38,8 @@ from .finance_models import (
     FinanceSectionUpdateIn,
     FinanceSeedDefaultsOut,
     FinanceSourceOut,
+    FinanceSourcesReportOut,
+    FinanceSourcesReportRowOut,
     FinanceStatusOut,
     FinanceTypeOut,
     FinanceTypeCreateIn,
@@ -80,6 +87,25 @@ def mount_finance_routes(
     def _round_ratio(value: Decimal) -> Decimal:
         # Округляем долю/маржу до четырех знаков для отчетов.
         return value.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
+    def _parse_month(value: Optional[str]) -> date:
+        # Превращаем строку YYYY-MM в первое число месяца для месячных отчетов.
+        raw = (value or date.today().strftime("%Y-%m")).strip()
+        try:
+            year_text, month_text = raw.split("-", 1)
+            year = int(year_text)
+            month_num = int(month_text)
+            if month_num < 1 or month_num > 12:
+                raise ValueError("month out of range")
+            return date(year, month_num, 1)
+        except Exception:
+            raise HTTPException(400, "month must be in YYYY-MM format")
+
+    def _next_month_start(month_start: date) -> date:
+        # Возвращает первое число следующего месяца для полуоткрытых date-фильтров.
+        if month_start.month == 12:
+            return date(month_start.year + 1, 1, 1)
+        return date(month_start.year, month_start.month + 1, 1)
 
     def _normalize_section_kind(value: Optional[str]) -> str:
         # Нормализуем тип раздела и проверяем, что он поддерживается в v1.
@@ -1496,6 +1522,348 @@ def mount_finance_routes(
                 margin=margin,
             ),
             series=series,
+        )
+
+    @app.get("/finance/reports/sources", response_model=FinanceSourcesReportOut)
+    def finance_report_sources(
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None,
+        region_id: Optional[int] = None,
+        source_id: Optional[int] = None,
+        user=Depends(get_current_user),
+    ):
+        # Строим cash flow по источникам из сделок app и ручных finance-проводок.
+        params: list[Any] = []
+        filters = ["activity_date IS NOT NULL"]
+        if date_from is not None:
+            filters.append("activity_date >= %s")
+            params.append(date_from)
+        if date_to is not None:
+            filters.append("activity_date <= %s")
+            params.append(date_to)
+        if region_id is not None:
+            filters.append("region_id = %s")
+            params.append(region_id)
+        if source_id is not None:
+            filters.append("source_id = %s")
+            params.append(source_id)
+        where_sql = " AND ".join(filters)
+
+        with psycopg.connect(DB_DSN) as conn:
+            rows = qall(
+                conn,
+                f"""
+                WITH report_rows AS (
+                    SELECT
+                      d.completed_at::date AS activity_date,
+                      fds.source_id,
+                      COALESCE(fds.code, src.code) AS source_code,
+                      COALESCE(fds.name, src.name, 'Без источника') AS source_name,
+                      fdr.region_id,
+                      COALESCE(fdr.code, rd.code) AS region_code,
+                      COALESCE(fdr.name, rd.name, 'Без региона') AS region_name,
+                      (di.price * di.qty) AS revenue,
+                      CASE
+                        WHEN d.deal_type_code = 'sale'
+                        THEN di.purchase_cost * di.qty * COALESCE(rd.purchase_cost_rate, 1.0)
+                        ELSE 0
+                      END AS direct_expense,
+                      ('deal-' || d.deal_id::text) AS row_ref_key
+                    FROM app.deal_items di
+                    JOIN app.deals d ON d.deal_id = di.deal_id
+                    LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+                    LEFT JOIN finance.dim_regions fdr ON fdr.app_region_id = rd.region_id
+                    LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+                    LEFT JOIN app.sources src ON src.source_id = c.source_id
+                    LEFT JOIN finance.dim_sources fds ON fds.app_source_id = src.source_id
+                    WHERE (
+                        d.deal_type_code = 'sale'
+                        OR (d.deal_type_code = 'rental' AND COALESCE(di.price, 0) > 0)
+                      )
+                      AND d.flow_status_code = 'completed'
+                      AND d.status_code = 'confirmed'
+                      AND d.completed_at IS NOT NULL
+                      AND di.returned_at IS NULL
+
+                    UNION ALL
+
+                    SELECT
+                      e.biz_date AS activity_date,
+                      src.source_id,
+                      src.code AS source_code,
+                      COALESCE(src.name, 'Без источника') AS source_name,
+                      r.region_id,
+                      r.code AS region_code,
+                      COALESCE(r.name, 'Без региона') AS region_name,
+                      CASE WHEN p.metric_code = 'revenue' THEN p.amount ELSE 0 END AS revenue,
+                      CASE WHEN p.metric_code IN ('direct_expense', 'indirect_expense') THEN p.amount ELSE 0 END AS direct_expense,
+                      ('entry-' || e.entry_id::text) AS row_ref_key
+                    FROM finance.entry_postings p
+                    JOIN finance.entries e
+                      ON e.entry_id = p.entry_id
+                     AND e.biz_date = p.entry_biz_date
+                    LEFT JOIN finance.dim_sources src ON src.source_id = e.source_id
+                    LEFT JOIN finance.dim_regions r ON r.region_id = e.region_id
+                    WHERE e.status_code = 'confirmed'
+                      AND e.input_channel = 'manual'
+                      AND p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')
+                )
+                SELECT
+                  source_id,
+                  source_code,
+                  source_name,
+                  region_id,
+                  region_code,
+                  region_name,
+                  COALESCE(SUM(revenue), 0) AS revenue,
+                  COALESCE(SUM(direct_expense), 0) AS direct_expense,
+                  COUNT(DISTINCT row_ref_key) AS deals_count
+                FROM report_rows
+                WHERE {where_sql}
+                GROUP BY source_id, source_code, source_name, region_id, region_code, region_name
+                HAVING COALESCE(SUM(revenue), 0) <> 0
+                    OR COALESCE(SUM(direct_expense), 0) <> 0
+                ORDER BY source_name, region_code NULLS LAST
+                """,
+                tuple(params),
+            )
+
+        items: list[FinanceSourcesReportRowOut] = []
+        revenue_total = Decimal("0")
+        direct_total = Decimal("0")
+        for row in rows:
+            row_revenue = _round_money(Decimal(row[6] or 0))
+            row_direct = _round_money(Decimal(row[7] or 0))
+            row_cash_flow = _round_money(row_revenue - row_direct)
+            revenue_total += row_revenue
+            direct_total += row_direct
+            items.append(
+                FinanceSourcesReportRowOut(
+                    source_id=int(row[0]) if row[0] is not None else None,
+                    source_code=str(row[1]) if row[1] is not None else None,
+                    source_name=str(row[2]) if row[2] is not None else None,
+                    region_id=int(row[3]) if row[3] is not None else None,
+                    region_code=str(row[4]) if row[4] is not None else None,
+                    region_name=str(row[5]) if row[5] is not None else None,
+                    revenue=row_revenue,
+                    direct_expense=row_direct,
+                    cash_flow=row_cash_flow,
+                    deals_count=int(row[8] or 0),
+                )
+            )
+
+        revenue_total = _round_money(revenue_total)
+        direct_total = _round_money(direct_total)
+        cash_flow_total = _round_money(revenue_total - direct_total)
+        margin_total = _round_ratio((cash_flow_total / revenue_total) if revenue_total != 0 else Decimal("0"))
+        return FinanceSourcesReportOut(
+            totals=FinancePnlTotalsOut(
+                revenue=revenue_total,
+                direct_expense=direct_total,
+                indirect_expense=Decimal("0"),
+                gross_profit=cash_flow_total,
+                operating_profit=cash_flow_total,
+                margin=margin_total,
+            ),
+            items=items,
+        )
+
+    @app.put("/finance/cash-flow/opening-balance", response_model=FinanceCashFlowOpeningBalanceOut)
+    def finance_upsert_cash_flow_opening_balance(
+        payload: FinanceCashFlowOpeningBalanceIn,
+        user=Depends(require_role("admin", "owner")),
+    ):
+        # Сохраняем ручной начальный остаток на первое число выбранного месяца.
+        month_start = _parse_month(payload.month)
+        amount = _round_money(Decimal(payload.amount or 0))
+        comment = (payload.comment or "").strip() or None
+        actor = getattr(user, "username", "") or ""
+        with psycopg.connect(DB_DSN) as conn:
+            row = q1(
+                conn,
+                """
+                INSERT INTO finance.cash_flow_opening_balances(balance_month, amount, comment, created_by, updated_at)
+                VALUES (%s, %s, %s, %s, now())
+                ON CONFLICT (balance_month) DO UPDATE
+                SET amount=EXCLUDED.amount,
+                    comment=EXCLUDED.comment,
+                    updated_at=now()
+                RETURNING balance_month, amount, comment, updated_at
+                """,
+                (month_start, amount, comment, actor),
+            )
+            conn.commit()
+        if not row:
+            raise HTTPException(500, "Failed to save opening balance")
+        return FinanceCashFlowOpeningBalanceOut(
+            month=row[0],
+            amount=_round_money(Decimal(row[1] or 0)),
+            comment=row[2],
+            updated_at=row[3],
+        )
+
+    @app.get("/finance/reports/cash-flow", response_model=FinanceCashFlowReportOut)
+    def finance_report_cash_flow(
+        month: Optional[str] = None,
+        user=Depends(get_current_user),
+    ):
+        # Строим месячный Cash Flow и остатки от ближайшего ручного начального баланса.
+        month_start = _parse_month(month)
+        next_month_start = _next_month_start(month_start)
+
+        cash_flow_rows_sql = """
+            SELECT
+              d.completed_at::date AS activity_date,
+              fds.source_id,
+              fdr.region_id,
+              'revenue' AS line_type,
+              CONCAT(
+                CASE WHEN d.deal_type_code = 'rental' THEN 'Шеринг ' ELSE 'Продажа ' END,
+                COALESCE(fdr.code, rd.code, 'Без региона')
+              ) AS line_name,
+              (di.price * di.qty) AS amount
+            FROM app.deal_items di
+            JOIN app.deals d ON d.deal_id = di.deal_id
+            LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+            LEFT JOIN finance.dim_regions fdr ON fdr.app_region_id = rd.region_id
+            LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+            LEFT JOIN app.sources src ON src.source_id = c.source_id
+            LEFT JOIN finance.dim_sources fds ON fds.app_source_id = src.source_id
+            WHERE (
+                d.deal_type_code = 'sale'
+                OR (d.deal_type_code = 'rental' AND COALESCE(di.price, 0) > 0)
+              )
+              AND d.flow_status_code = 'completed'
+              AND d.status_code = 'confirmed'
+              AND d.completed_at IS NOT NULL
+              AND di.returned_at IS NULL
+              AND COALESCE(di.price, 0) > 0
+
+            UNION ALL
+
+            SELECT
+              d.completed_at::date AS activity_date,
+              fds.source_id,
+              fdr.region_id,
+              'expense' AS line_type,
+              CONCAT('Закуп ', COALESCE(fdr.code, rd.code, 'Без региона')) AS line_name,
+              (di.purchase_cost * di.qty * COALESCE(rd.purchase_cost_rate, 1.0)) AS amount
+            FROM app.deal_items di
+            JOIN app.deals d ON d.deal_id = di.deal_id
+            LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+            LEFT JOIN finance.dim_regions fdr ON fdr.app_region_id = rd.region_id
+            LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+            LEFT JOIN app.sources src ON src.source_id = c.source_id
+            LEFT JOIN finance.dim_sources fds ON fds.app_source_id = src.source_id
+            WHERE d.deal_type_code = 'sale'
+              AND d.flow_status_code = 'completed'
+              AND d.status_code = 'confirmed'
+              AND d.completed_at IS NOT NULL
+              AND di.returned_at IS NULL
+              AND COALESCE(di.purchase_cost, 0) <> 0
+
+            UNION ALL
+
+            SELECT
+              e.biz_date AS activity_date,
+              e.source_id,
+              e.region_id,
+              CASE WHEN p.metric_code = 'revenue' THEN 'revenue' ELSE 'expense' END AS line_type,
+              COALESCE(op.name, 'Ручная операция') AS line_name,
+              p.amount AS amount
+            FROM finance.entry_postings p
+            JOIN finance.entries e
+              ON e.entry_id = p.entry_id
+             AND e.biz_date = p.entry_biz_date
+            LEFT JOIN finance.operations op ON op.operation_id = e.operation_id
+            WHERE e.status_code = 'confirmed'
+              AND e.input_channel = 'manual'
+              AND p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')
+              AND COALESCE(p.amount, 0) <> 0
+        """
+
+        with psycopg.connect(DB_DSN) as conn:
+            rows = qall(
+                conn,
+                f"""
+                WITH cash_flow_rows AS (
+                    {cash_flow_rows_sql}
+                )
+                SELECT
+                  line_type,
+                  line_name,
+                  COALESCE(SUM(amount), 0) AS amount
+                FROM cash_flow_rows
+                WHERE activity_date >= %s
+                  AND activity_date < %s
+                GROUP BY line_type, line_name
+                HAVING COALESCE(SUM(amount), 0) <> 0
+                ORDER BY line_type DESC, line_name
+                """,
+                (month_start, next_month_start),
+            )
+            manual_opening_row = q1(
+                conn,
+                """
+                SELECT balance_month, amount
+                FROM finance.cash_flow_opening_balances
+                WHERE balance_month <= %s
+                ORDER BY balance_month DESC
+                LIMIT 1
+                """,
+                (month_start,),
+            )
+            opening_balance_month = manual_opening_row[0] if manual_opening_row else None
+            opening_balance = _round_money(Decimal((manual_opening_row or [None, 0])[1] or 0))
+            if opening_balance_month is not None and opening_balance_month < month_start:
+                accumulated_row = q1(
+                    conn,
+                    f"""
+                    WITH cash_flow_rows AS (
+                        {cash_flow_rows_sql}
+                    )
+                    SELECT COALESCE(SUM(
+                      CASE WHEN line_type = 'revenue' THEN amount ELSE -amount END
+                    ), 0) AS accumulated_cash_flow
+                    FROM cash_flow_rows
+                    WHERE activity_date >= %s
+                      AND activity_date < %s
+                    """,
+                    (opening_balance_month, month_start),
+                ) or (Decimal("0"),)
+                opening_balance = _round_money(opening_balance + Decimal(accumulated_row[0] or 0))
+
+        revenues: list[FinanceCashFlowLineOut] = []
+        expenses: list[FinanceCashFlowLineOut] = []
+        revenue_total = Decimal("0")
+        expense_total = Decimal("0")
+        for row in rows:
+            line_amount = _round_money(Decimal(row[2] or 0))
+            line = FinanceCashFlowLineOut(name=str(row[1] or "Без названия"), amount=line_amount)
+            if row[0] == "revenue":
+                revenues.append(line)
+                revenue_total += line_amount
+            else:
+                expenses.append(line)
+                expense_total += line_amount
+
+        revenue_total = _round_money(revenue_total)
+        expense_total = _round_money(expense_total)
+        cash_flow_total = _round_money(revenue_total - expense_total)
+        current_balance = _round_money(opening_balance + cash_flow_total)
+
+        return FinanceCashFlowReportOut(
+            totals=FinanceCashFlowTotalsOut(
+                revenue=revenue_total,
+                expense=expense_total,
+                cash_flow=cash_flow_total,
+                opening_balance=opening_balance,
+                current_balance=current_balance,
+                opening_balance_month=opening_balance_month,
+                opening_balance_manual=bool(opening_balance_month == month_start),
+            ),
+            revenues=revenues,
+            expenses=expenses,
         )
 
     @app.get("/finance/reports/projects", response_model=FinanceProjectsReportOut)

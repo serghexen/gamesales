@@ -13,6 +13,7 @@ function buildCtx(overrides = {}) {
     canViewCatalogsSection: true,
     canViewFinanceSection: true,
     financeLoading: false,
+    financeCashFlowLoading: false,
     financeEntriesLoading: false,
     financeEntrySaving: false,
     financeCatalogSaving: false,
@@ -90,18 +91,43 @@ function buildCtx(overrides = {}) {
     },
     financeReportItems: [
       {
-        project_code: 'core',
-        project_name: 'Core',
         source_id: 99,
+        source_code: 'ym',
         source_name: 'ASAT',
+        region_id: 10,
+        region_code: 'TR',
+        region_name: 'Turkey',
         revenue: 1000,
         direct_expense: 500,
-        indirect_expense: 100,
-        operating_profit: 400,
-        margin: 0.4,
+        cash_flow: 500,
+        deals_count: 2,
       },
     ],
+    financeCashFlowLoaded: true,
+    financeCashFlowTotals: {
+      revenue: 20000,
+      expense: 7000,
+      cash_flow: 13000,
+      opening_balance: 3000,
+      current_balance: 16000,
+      opening_balance_month: '2026-05-01',
+      opening_balance_manual: true,
+    },
+    financeCashFlowMonth: '2026-05',
+    financeCashFlowOpeningDraft: '3000',
+    financeCashFlowOpeningSaving: false,
+    financeCashFlowOpeningOk: '',
+    financeCashFlowRevenues: [
+      { name: 'Продажа TR', amount: 15000 },
+      { name: 'Шеринг TR', amount: 5000 },
+    ],
+    financeCashFlowExpenses: [
+      { name: 'Закуп TR', amount: 6000 },
+      { name: 'Маркетинг', amount: 1000 },
+    ],
     loadFinanceProjectsReport: vi.fn(),
+    loadFinanceCashFlowReport: vi.fn(),
+    saveFinanceCashFlowOpeningBalance: vi.fn(),
     loadFinanceEntries: vi.fn(),
     createFinanceEntry: vi.fn(),
     deleteFinanceEntry: vi.fn(),
@@ -145,7 +171,8 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('Справочники')
     expect(wrapper.text()).toContain('Ввод')
     expect(wrapper.text()).toContain('Журнал')
-    expect(wrapper.text()).toContain('Отчет')
+    expect(wrapper.text()).toContain('Отчет по источникам')
+    expect(wrapper.text()).toContain('Cash Flow')
     expect(wrapper.text()).toContain('Комментарий')
     expect(wrapper.text()).toContain('Продажа')
   })
@@ -170,6 +197,9 @@ describe('WorkFinanceSection', () => {
     await wrapper.find('[data-test="finance-apply-entries-filters"]').trigger('click')
     await wrapper.find('[data-test="finance-mode-report"]').trigger('click')
     await wrapper.find('[data-test="finance-apply-report"]').trigger('click')
+    await wrapper.find('[data-test="finance-mode-cash-flow"]').trigger('click')
+    await wrapper.find('[data-test="finance-apply-cash-flow"]').trigger('click')
+    await wrapper.find('[data-test="finance-save-cash-flow-opening"]').trigger('click')
     await wrapper.find('[data-test="finance-mode-catalogs"]').trigger('click')
     await wrapper.find('[data-test="finance-open-create-type"]').trigger('click')
     await wrapper.find('[data-test="finance-create-type"]').trigger('click')
@@ -179,11 +209,13 @@ describe('WorkFinanceSection', () => {
     expect(ctx.createFinanceEntry).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceEntries).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceProjectsReport).toHaveBeenCalledTimes(1)
+    expect(ctx.loadFinanceCashFlowReport).toHaveBeenCalledTimes(1)
+    expect(ctx.saveFinanceCashFlowOpeningBalance).toHaveBeenCalledTimes(1)
     expect(ctx.createFinanceType).toHaveBeenCalledTimes(1)
     expect(ctx.createFinanceOperation).toHaveBeenCalledTimes(1)
   })
 
-  it('shows source column when split_by_source is enabled', async () => {
+  it('shows source report rows', async () => {
     const ctx = buildCtx({
       financeFilters: {
         date_from: '2026-05-01',
@@ -209,6 +241,60 @@ describe('WorkFinanceSection', () => {
 
     await wrapper.find('[data-test="finance-mode-report"]').trigger('click')
     expect(wrapper.text()).toContain('Источник')
+    expect(wrapper.text()).toContain('Поступления')
+    expect(wrapper.text()).toContain('Расходы')
+    expect(wrapper.text()).toContain('Cash Flow')
+    expect(wrapper.text()).toContain('ASAT - ym')
+    expect(wrapper.text()).toContain('TR')
+    expect(wrapper.text()).not.toContain('Turkey - TR')
+  })
+
+  it('shows cash flow report rows and balances', async () => {
+    const ctx = buildCtx()
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-cash-flow"]').trigger('click')
+
+    expect(wrapper.text()).toContain('Поступления')
+    expect(wrapper.text()).toContain('Расходы')
+    expect(wrapper.text()).toContain('Остаток прошлый')
+    expect(wrapper.text()).toContain('Остаток текущий')
+    expect(wrapper.text()).toContain('ручной остаток месяца')
+    expect(wrapper.text()).toContain('Продажа TR')
+    expect(wrapper.text()).toContain('Шеринг TR')
+    expect(wrapper.text()).toContain('Закуп TR')
+    expect(wrapper.text()).toContain('Маркетинг')
+  })
+
+  it('keeps cash flow apply button enabled when only source report is loading', async () => {
+    const ctx = buildCtx({ financeLoading: true, financeCashFlowLoading: false })
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-cash-flow"]').trigger('click')
+
+    expect(wrapper.find('[data-test="finance-apply-cash-flow"]').attributes('disabled')).toBeUndefined()
   })
 
   it('shows type modal with name-only input', async () => {

@@ -2,6 +2,7 @@ import { reactive, ref } from 'vue'
 
 export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, mapApiError }) {
   const today = new Date().toISOString().slice(0, 10)
+  const currentMonth = today.slice(0, 7)
   const financeFilters = reactive({
     date_from: '',
     date_to: '',
@@ -47,6 +48,17 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     margin: 0,
   })
   const financeReportItems = ref([])
+  const financeCashFlowTotals = reactive({
+    revenue: 0,
+    expense: 0,
+    cash_flow: 0,
+    opening_balance: 0,
+    current_balance: 0,
+  })
+  const financeCashFlowMonth = ref(currentMonth)
+  const financeCashFlowOpeningDraft = ref('')
+  const financeCashFlowRevenues = ref([])
+  const financeCashFlowExpenses = ref([])
   const financeNewSection = reactive({
     type_id: '',
     code: '',
@@ -71,8 +83,11 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   })
   const financeCatalogsLoaded = ref(false)
   const financeLoaded = ref(false)
+  const financeCashFlowLoaded = ref(false)
   const financeEntriesLoaded = ref(false)
   const financeLoading = ref(false)
+  const financeCashFlowLoading = ref(false)
+  const financeCashFlowOpeningSaving = ref(false)
   const financeEntriesLoading = ref(false)
   const financeEntrySaving = ref(false)
   const financeCatalogSaving = ref(false)
@@ -82,6 +97,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeCatalogError = ref(null)
   const financeCatalogOk = ref('')
   const financeEntryOk = ref('')
+  const financeCashFlowOpeningOk = ref('')
 
   const clearFinanceReport = () => {
     // Сбрасываем отчет, чтобы не показывать устаревшие агрегаты при ошибке запроса.
@@ -92,6 +108,17 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeReportTotals.operating_profit = 0
     financeReportTotals.margin = 0
     financeReportItems.value = []
+  }
+
+  const clearFinanceCashFlowReport = () => {
+    // Сбрасываем Cash Flow отдельно, чтобы вкладки отчетов не перетирали друг друга.
+    financeCashFlowTotals.revenue = 0
+    financeCashFlowTotals.expense = 0
+    financeCashFlowTotals.cash_flow = 0
+    financeCashFlowTotals.opening_balance = 0
+    financeCashFlowTotals.current_balance = 0
+    financeCashFlowRevenues.value = []
+    financeCashFlowExpenses.value = []
   }
 
   const loadFinanceBootstrap = async () => {
@@ -178,7 +205,9 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       financeEntryOk.value = 'Запись добавлена'
       financeNewEntry.amount = ''
       financeNewEntry.comment = ''
-      await Promise.all([loadFinanceEntries(), loadFinanceProjectsReport()])
+      const refreshTasks = [loadFinanceEntries(), loadFinanceProjectsReport()]
+      if (financeCashFlowLoaded.value) refreshTasks.push(loadFinanceCashFlowReport())
+      await Promise.all(refreshTasks)
       return true
     } catch (e) {
       financeEntryError.value = mapApiError(e?.message)
@@ -195,7 +224,9 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeEntriesLoading.value = true
     try {
       await apiDelete(`/finance/entries/${Number(entryId)}`, { token: auth.state.token })
-      await Promise.all([loadFinanceEntries(), loadFinanceProjectsReport()])
+      const refreshTasks = [loadFinanceEntries(), loadFinanceProjectsReport()]
+      if (financeCashFlowLoaded.value) refreshTasks.push(loadFinanceCashFlowReport())
+      await Promise.all(refreshTasks)
       return true
     } catch (e) {
       financeEntriesError.value = mapApiError(e?.message)
@@ -206,7 +237,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   }
 
   const loadFinanceProjectsReport = async () => {
-    // Загружаем отчет по проектам с фильтрами и режимом разреза по источнику.
+    // Загружаем отчет по источникам из завершенных сделок основной схемы app.
     financeError.value = null
     financeLoading.value = true
     try {
@@ -215,10 +246,9 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       if (financeFilters.date_to) params.set('date_to', financeFilters.date_to)
       if (financeFilters.region_id) params.set('region_id', String(financeFilters.region_id))
       if (financeFilters.source_id) params.set('source_id', String(financeFilters.source_id))
-      params.set('split_by_source', financeFilters.split_by_source ? 'true' : 'false')
 
       const query = params.toString()
-      const data = await apiGet(`/finance/reports/projects${query ? `?${query}` : ''}`, { token: auth.state.token })
+      const data = await apiGet(`/finance/reports/sources${query ? `?${query}` : ''}`, { token: auth.state.token })
       financeReportTotals.revenue = Number(data?.totals?.revenue || 0)
       financeReportTotals.direct_expense = Number(data?.totals?.direct_expense || 0)
       financeReportTotals.indirect_expense = Number(data?.totals?.indirect_expense || 0)
@@ -233,6 +263,65 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       financeError.value = mapApiError(e?.message)
     } finally {
       financeLoading.value = false
+    }
+  }
+
+  const loadFinanceCashFlowReport = async () => {
+    // Загружаем общий Cash Flow: поступления, расходы и остатки по выбранному периоду.
+    financeError.value = null
+    financeCashFlowLoading.value = true
+    try {
+      const params = new URLSearchParams()
+      if (financeCashFlowMonth.value) params.set('month', String(financeCashFlowMonth.value))
+
+      const query = params.toString()
+      const data = await apiGet(`/finance/reports/cash-flow${query ? `?${query}` : ''}`, { token: auth.state.token })
+      financeCashFlowTotals.revenue = Number(data?.totals?.revenue || 0)
+      financeCashFlowTotals.expense = Number(data?.totals?.expense || 0)
+      financeCashFlowTotals.cash_flow = Number(data?.totals?.cash_flow || 0)
+      financeCashFlowTotals.opening_balance = Number(data?.totals?.opening_balance || 0)
+      financeCashFlowTotals.current_balance = Number(data?.totals?.current_balance || 0)
+      financeCashFlowOpeningDraft.value = String(data?.totals?.opening_balance || '')
+      financeCashFlowRevenues.value = Array.isArray(data?.revenues) ? data.revenues : []
+      financeCashFlowExpenses.value = Array.isArray(data?.expenses) ? data.expenses : []
+      financeCashFlowLoaded.value = true
+    } catch (e) {
+      clearFinanceCashFlowReport()
+      financeCashFlowLoaded.value = false
+      financeError.value = mapApiError(e?.message)
+    } finally {
+      financeCashFlowLoading.value = false
+    }
+  }
+
+  const saveFinanceCashFlowOpeningBalance = async () => {
+    // Сохраняем ручной начальный остаток для выбранного месяца и сразу перестраиваем отчет.
+    financeError.value = null
+    financeCashFlowOpeningOk.value = ''
+    const month = String(financeCashFlowMonth.value || '').trim()
+    const amount = Number(financeCashFlowOpeningDraft.value)
+    if (!month) {
+      financeError.value = 'Выберите месяц'
+      return false
+    }
+    if (!Number.isFinite(amount)) {
+      financeError.value = 'Укажите начальный остаток'
+      return false
+    }
+    financeCashFlowOpeningSaving.value = true
+    try {
+      await apiPut('/finance/cash-flow/opening-balance', {
+        month,
+        amount,
+      }, { token: auth.state.token })
+      financeCashFlowOpeningOk.value = 'Начальный остаток сохранен'
+      await loadFinanceCashFlowReport()
+      return true
+    } catch (e) {
+      financeError.value = mapApiError(e?.message)
+      return false
+    } finally {
+      financeCashFlowOpeningSaving.value = false
     }
   }
 
@@ -590,10 +679,18 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeEntriesTotal,
     financeReportTotals,
     financeReportItems,
+    financeCashFlowTotals,
+    financeCashFlowMonth,
+    financeCashFlowOpeningDraft,
+    financeCashFlowRevenues,
+    financeCashFlowExpenses,
     financeCatalogsLoaded,
     financeLoaded,
+    financeCashFlowLoaded,
     financeEntriesLoaded,
     financeLoading,
+    financeCashFlowLoading,
+    financeCashFlowOpeningSaving,
     financeEntriesLoading,
     financeEntrySaving,
     financeCatalogSaving,
@@ -603,6 +700,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeCatalogError,
     financeCatalogOk,
     financeEntryOk,
+    financeCashFlowOpeningOk,
     loadFinanceBootstrap,
     loadFinanceEntries,
     createFinanceEntry,
@@ -620,5 +718,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     archiveFinanceProject,
     updateFinanceProject,
     loadFinanceProjectsReport,
+    loadFinanceCashFlowReport,
+    saveFinanceCashFlowOpeningBalance,
   }
 }
