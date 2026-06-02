@@ -1295,6 +1295,62 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 403)
             self.assertIn("не достаточно прав для проведения возврата", res.text)
 
+    # Повторное сохранение возвратного шеринга не должно занимать слот обратно.
+    def test_update_refunded_rental_completion_does_not_recreate_slot_assignment(self):
+        current_row = (
+            "rental",
+            "confirmed",
+            "pending",
+            3,  # lock_version
+            10,  # region_id
+            5,  # customer_id
+            500.0,  # total_amount
+            "A-100",  # order_number
+            "manager-name",  # responsible_username
+            1,  # messenger_id
+            77,  # deal_item_id
+            2793,  # account_id
+            2,  # platform_id
+            500.0,  # price
+            100.0,  # purchase_cost
+            datetime(2026, 6, 1, 13, 51, tzinfo=timezone.utc),  # purchase_at
+            None,  # start_at
+            None,  # end_at
+            1,  # slots_used
+            "play_ps5",  # slot_type_code
+            None,  # subscription_term_id
+            "reserve4",  # reserve_key
+            "note",  # notes
+            None,  # game_link
+            datetime(2026, 6, 1, 16, 54, tzinfo=timezone.utc),  # returned_at
+        )
+        script = [
+            {"rowcount": 1},  # set_config('app.user', ...)
+            {"one": current_row},  # current deal row
+            {"one": (41,)},  # current product_id from deal_item
+            {"one": (1,)},  # flow_status lookup
+            {"one": (1,)},  # ensure_messenger_exists
+            {"one": ("Owner Name", "owner_user")},  # owner name + username
+            {"rowcount": 1},  # update deals
+            {"rowcount": 1},  # update deal_items
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/deals/77",
+                    headers=self._auth_headers(role="admin", username="admin"),
+                    json={"flow_status_code": "completed", "messenger_id": 1, "lock_version": 3},
+                )
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
+            self.assertFalse(any("INSERT INTO app.account_slot_assignments" in sql for sql in sql_collector))
+
     # Для completed сделки менеджеру запрещаем любое редактирование.
     def test_update_deal_refund_flag_can_be_changed_only_for_pending(self):
         current_row = (

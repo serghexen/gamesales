@@ -1269,7 +1269,7 @@ def mount_deals_routes(
                         deal_item_id,
                     ),
                 )
-            if deal_type == "rental":
+            if deal_type == "rental" and not new_returned_at:
                 if rental_is_draft:
                     # Подписочные назначения нельзя снимать через перевод сделки в draft.
                     # Лишний запрос не делаем, если в текущей сделке срока подписки нет.
