@@ -368,9 +368,21 @@
             </label>
             <div class="field">
               <span class="label">Регион</span>
-              <details class="finance-multi-filter" data-test="finance-report-regions">
-                <summary class="input finance-multi-filter__summary">{{ formatFinanceFilterSummary('region_id', ctx.financeRegions, 'name') }}</summary>
-                <div class="check-list check-list--finance-report">
+              <div
+                class="finance-multi-filter"
+                data-test="finance-report-regions"
+                @click.stop
+                @focusout="closeFinanceFilterOnFocusOut"
+              >
+                <button
+                  class="input finance-multi-filter__summary"
+                  type="button"
+                  :aria-expanded="openFinanceReportFilter === 'region_id'"
+                  @click="toggleFinanceReportFilter('region_id')"
+                >
+                  {{ formatFinanceFilterSummary('region_id', ctx.financeRegions, 'name') }}
+                </button>
+                <div v-if="openFinanceReportFilter === 'region_id'" class="check-list check-list--finance-report">
                   <label class="check-item">
                     <input
                       type="checkbox"
@@ -388,13 +400,25 @@
                     <span>{{ r.name }}</span>
                   </label>
                 </div>
-              </details>
+              </div>
             </div>
             <div class="field">
               <span class="label">Источник</span>
-              <details class="finance-multi-filter" data-test="finance-report-sources">
-                <summary class="input finance-multi-filter__summary">{{ formatFinanceFilterSummary('source_id', ctx.financeSources, 'source') }}</summary>
-                <div class="check-list check-list--finance-report">
+              <div
+                class="finance-multi-filter"
+                data-test="finance-report-sources"
+                @click.stop
+                @focusout="closeFinanceFilterOnFocusOut"
+              >
+                <button
+                  class="input finance-multi-filter__summary"
+                  type="button"
+                  :aria-expanded="openFinanceReportFilter === 'source_id'"
+                  @click="toggleFinanceReportFilter('source_id')"
+                >
+                  {{ formatFinanceFilterSummary('source_id', ctx.financeSources, 'source') }}
+                </button>
+                <div v-if="openFinanceReportFilter === 'source_id'" class="check-list check-list--finance-report">
                   <label class="check-item">
                     <input
                       type="checkbox"
@@ -412,7 +436,7 @@
                     <span>{{ formatSourceLabel(s) }}</span>
                   </label>
                 </div>
-              </details>
+              </div>
             </div>
             <label class="field">
               <button data-test="finance-apply-report" class="ghost" type="button" :disabled="ctx.financeLoading" @click="applyFinanceReport">Применить</button>
@@ -729,7 +753,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, unref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, unref, watch } from 'vue'
 
 const props = defineProps({
   ctx: { type: Object, required: true },
@@ -753,6 +777,7 @@ const showAdminTabs = computed(() => (
 
 const financeMode = ref('entry')
 const journalSectionKind = ref('')
+const openFinanceReportFilter = ref('')
 
 const typeModal = reactive({ open: false, mode: 'create', type_id: null })
 const operationModal = reactive({ open: false, mode: 'create', operation_id: null })
@@ -938,6 +963,34 @@ function formatFinanceFilterSummary(key, options, labelMode = 'name') {
   }
   return `${ids.length} выбрано`
 }
+
+// Открывает один dropdown фильтра и закрывает второй, чтобы панели не накладывались.
+function toggleFinanceReportFilter(key) {
+  openFinanceReportFilter.value = openFinanceReportFilter.value === key ? '' : key
+}
+
+// Закрывает dropdown, когда фокус уходит за пределы текущей панели.
+function closeFinanceFilterOnFocusOut(event) {
+  const root = event.currentTarget
+  nextTick(() => {
+    if (!root?.contains(document.activeElement)) {
+      openFinanceReportFilter.value = ''
+    }
+  })
+}
+
+// Клик вне фильтров закрывает раскрытую панель.
+function closeFinanceFilterOnDocumentClick() {
+  openFinanceReportFilter.value = ''
+}
+
+onMounted(() => {
+  document.addEventListener('click', closeFinanceFilterOnDocumentClick)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', closeFinanceFilterOnDocumentClick)
+})
 
 // Показываем бизнес-название строки: источник для маркетов, тип сделки для строк без источника.
 function formatSourceReportLabel(row) {
@@ -1261,6 +1314,7 @@ async function reloadFinanceCatalogs() {
   align-items: center;
   cursor: pointer;
   list-style: none;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1281,7 +1335,7 @@ async function reloadFinanceCatalogs() {
   opacity: 0.75;
 }
 
-.finance-multi-filter[open] .finance-multi-filter__summary::after {
+.finance-multi-filter__summary[aria-expanded='true']::after {
   transform: rotate(225deg);
 }
 
@@ -1293,7 +1347,9 @@ async function reloadFinanceCatalogs() {
   z-index: 30;
   max-height: 220px;
   border-color: var(--input-border);
-  background: #101827;
+  background: #101827 !important;
+  background-color: #101827 !important;
+  opacity: 1;
   box-shadow: 0 18px 36px rgba(0, 0, 0, 0.35);
 }
 
