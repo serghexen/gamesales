@@ -213,6 +213,7 @@ describe('useFinanceReports', () => {
         result: {
           total_rows: 3,
           created_rows: 2,
+          updated_rows: 1,
           skipped_rows: 1,
           failed_rows: 0,
           errors: [],
@@ -229,7 +230,7 @@ describe('useFinanceReports', () => {
       { store_code: 'asat', date_from: '2026-06-01', date_to: '2026-06-02' },
       { token: 'token-1' },
     )
-    expect(h.finance.financeYandexSyncOk.value).toBe('Yandex: дней добавлено 2, дней пропущено 1, ошибок 0')
+    expect(h.finance.financeYandexSyncOk.value).toBe('Yandex: дней добавлено 2, дней обновлено 1, дней пропущено 1, ошибок 0')
     expect(h.finance.financeYandexSyncResult.value.created_rows).toBe(2)
     expect(h.finance.financeYandexSyncStatus.value).toBe('Синхронизация завершена')
     expect(h.apiGet).toHaveBeenCalledTimes(3)

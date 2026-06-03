@@ -259,10 +259,11 @@ describe('WorkFinanceSection', () => {
       financeYandexSyncResult: {
         total_rows: 30,
         created_rows: 1,
+        updated_rows: 2,
         skipped_rows: 0,
         failed_rows: 0,
       },
-      financeYandexSyncOk: 'Yandex: дней добавлено 1, дней пропущено 0, ошибок 0',
+      financeYandexSyncOk: 'Yandex: дней добавлено 1, дней обновлено 2, дней пропущено 0, ошибок 0',
     })
     const wrapper = mount(WorkFinanceSection, {
       props: { ctx },
@@ -284,8 +285,9 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('MDS - ym')
     expect(wrapper.text()).toContain('Строк Яндекса')
     expect(wrapper.text()).toContain('Дней добавлено')
+    expect(wrapper.text()).toContain('Дней обновлено')
     expect(wrapper.text()).toContain('Дней пропущено')
-    expect(wrapper.text()).toContain('Yandex: дней добавлено 1, дней пропущено 0, ошибок 0')
+    expect(wrapper.text()).toContain('Yandex: дней добавлено 1, дней обновлено 2, дней пропущено 0, ошибок 0')
   })
 
   it('shows source report rows', async () => {

@@ -385,9 +385,10 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       const result = job?.result || {}
       financeYandexSyncResult.value = result || null
       const created = Number(result?.created_rows || 0)
+      const updated = Number(result?.updated_rows || 0)
       const skipped = Number(result?.skipped_rows || 0)
       const failed = Number(result?.failed_rows || 0)
-      financeYandexSyncOk.value = `Yandex: дней добавлено ${created}, дней пропущено ${skipped}, ошибок ${failed}`
+      financeYandexSyncOk.value = `Yandex: дней добавлено ${created}, дней обновлено ${updated}, дней пропущено ${skipped}, ошибок ${failed}`
       const refreshTasks = [loadFinanceEntries(), loadFinanceProjectsReport()]
       if (financeCashFlowLoaded.value) refreshTasks.push(loadFinanceCashFlowReport())
       await Promise.all(refreshTasks)

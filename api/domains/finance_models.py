@@ -253,6 +253,7 @@ class FinanceYandexSyncOut(BaseModel):
     date_to: date
     total_rows: int = 0
     created_rows: int = 0
+    updated_rows: int = 0
     skipped_rows: int = 0
     failed_rows: int = 0
     errors: list[FinanceEntryBulkErrorOut] = Field(default_factory=list)

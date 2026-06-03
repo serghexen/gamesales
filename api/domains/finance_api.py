@@ -794,6 +794,102 @@ def mount_finance_routes(
         )
         return _to_entry_out(entry_row), True
 
+    def _upsert_entry_in_tx(conn, payload: FinanceEntryCreateIn, created_by: str) -> tuple[FinanceEntryOut, str]:
+        # Обновляет API-запись с тем же external_key, чтобы повторная синхронизация брала свежие суммы.
+        item, created = _create_entry_in_tx(conn, payload, created_by)
+        if created:
+            return item, "created"
+        if not (payload.external_key or "").strip():
+            return item, "skipped"
+        if item.biz_date != payload.biz_date:
+            raise HTTPException(409, "Existing finance entry date does not match external_key date")
+
+        operation = _load_operation(conn, payload.operation_id)
+        metric_code = _metric_from_section_kind(operation["type_code"])
+        status_code = _normalize_code(payload.status_code)
+        rounded_amount = _round_money(payload.amount)
+        entry_row = q1(
+            conn,
+            """
+            UPDATE finance.entries
+            SET operation_id=%s,
+                region_id=%s,
+                source_id=%s,
+                project_id=%s,
+                qty=%s,
+                amount=%s,
+                currency=%s,
+                status_code=%s,
+                comment=%s,
+                payload_json=%s::jsonb,
+                app_deal_id=%s,
+                app_deal_item_id=%s,
+                updated_at=now()
+            WHERE entry_id=%s AND biz_date=%s
+            RETURNING entry_id, biz_date, operation_id, region_id, source_id, project_id,
+                      qty, amount, currency, input_channel, external_key, status_code,
+                      comment, created_by, created_at, updated_at
+            """,
+            (
+                payload.operation_id,
+                payload.region_id,
+                payload.source_id,
+                payload.project_id,
+                payload.qty,
+                rounded_amount,
+                _normalize_code(payload.currency, upper=True),
+                status_code,
+                (payload.comment or "").strip() or None,
+                json.dumps(payload.payload_json or {}),
+                payload.app_deal_id,
+                payload.app_deal_item_id,
+                item.entry_id,
+                item.biz_date,
+            ),
+        )
+        if not entry_row:
+            raise HTTPException(500, "Failed to update finance entry")
+
+        # Пересобираем проводку, потому что у существующей API-записи могла измениться сумма или операция.
+        exec1(conn, "DELETE FROM finance.entry_postings WHERE entry_id=%s AND entry_biz_date=%s", (item.entry_id, item.biz_date))
+        exec1(
+            conn,
+            """
+            INSERT INTO finance.entry_postings(entry_id, entry_biz_date, metric_code, amount)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (item.entry_id, item.biz_date, metric_code, rounded_amount),
+        )
+        exec1(
+            conn,
+            """
+            INSERT INTO finance.entry_audit(entry_id, entry_biz_date, action, changed_by, old_data, new_data)
+            VALUES (%s, %s, 'update', %s, %s::jsonb, %s::jsonb)
+            """,
+            (
+                item.entry_id,
+                item.biz_date,
+                created_by,
+                json.dumps(
+                    {
+                        "amount": str(_round_money(item.amount)),
+                        "operation_id": item.operation_id,
+                        "status_code": item.status_code,
+                        "comment": item.comment,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "amount": str(rounded_amount),
+                        "operation_id": payload.operation_id,
+                        "status_code": status_code,
+                        "comment": (payload.comment or "").strip() or None,
+                    }
+                ),
+            ),
+        )
+        return _to_entry_out(entry_row), "updated"
+
     @app.get("/finance/catalogs/bootstrap", response_model=FinanceBootstrapOut)
     def finance_catalogs_bootstrap(user=Depends(get_current_user)):
         # Отдаем набор справочников одним запросом, чтобы фронт быстро строил формы.
@@ -1678,6 +1774,7 @@ def mount_finance_routes(
         rows = fetch_yandex_market_order_economics(payload.date_from, payload.date_to, store_code=store_code, progress=progress)
         daily_rows = _aggregate_yandex_market_rows(rows)
         created_rows = 0
+        updated_rows = 0
         skipped_rows = 0
         failed_rows = 0
         errors: list[FinanceEntryBulkErrorOut] = []
@@ -1720,8 +1817,9 @@ def mount_finance_routes(
                         comment=f"{row.get('comment') or 'Yandex Market'}; поступления gross",
                         payload_json={**payload_json, "amount_kind": "gross_revenue"},
                     )
-                    _, revenue_created = _create_entry_in_tx(conn, revenue_payload, created_by)
-                    commission_created = False
+                    _, revenue_state = _upsert_entry_in_tx(conn, revenue_payload, created_by)
+                    day_created = revenue_state == "created"
+                    day_updated = revenue_state == "updated"
                     if commission_amount > 0:
                         if commission_operation_id is None:
                             commission_operation_id = _resolve_yandex_commission_operation_id(conn)
@@ -1740,9 +1838,13 @@ def mount_finance_routes(
                             comment=f"{row.get('comment') or 'Yandex Market'}; комиссии и услуги",
                             payload_json={**payload_json, "amount_kind": "commission_expense"},
                         )
-                        _, commission_created = _create_entry_in_tx(conn, commission_payload, created_by)
-                    if revenue_created or commission_created:
+                        _, commission_state = _upsert_entry_in_tx(conn, commission_payload, created_by)
+                        day_created = day_created or commission_state == "created"
+                        day_updated = day_updated or commission_state == "updated"
+                    if day_created:
                         created_rows += 1
+                    elif day_updated:
+                        updated_rows += 1
                     else:
                         skipped_rows += 1
                 except Exception as exc:
@@ -1756,6 +1858,7 @@ def mount_finance_routes(
             date_to=payload.date_to,
             total_rows=len(rows),
             created_rows=created_rows,
+            updated_rows=updated_rows,
             skipped_rows=skipped_rows,
             failed_rows=failed_rows,
             errors=errors,

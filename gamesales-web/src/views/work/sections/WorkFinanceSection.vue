@@ -345,6 +345,10 @@
                 <div class="mini__value">{{ Number(ctx.financeYandexSyncResult.created_rows || 0) }}</div>
               </div>
               <div class="mini">
+                <div class="mini__label">Дней обновлено</div>
+                <div class="mini__value">{{ Number(ctx.financeYandexSyncResult.updated_rows || 0) }}</div>
+              </div>
+              <div class="mini">
                 <div class="mini__label">Дней пропущено</div>
                 <div class="mini__value">{{ Number(ctx.financeYandexSyncResult.skipped_rows || 0) }}</div>
               </div>

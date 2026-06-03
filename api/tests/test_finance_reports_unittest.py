@@ -328,6 +328,106 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertTrue(any("finance.entries" in sql and "input_channel" in sql for sql in sql_collector))
         self.assertTrue(any("finance.entry_dedupe_keys" in sql for sql in sql_collector))
 
+    # Повторная синхронизация Яндекса должна обновлять дневной итог, если отчет пересчитался.
+    def test_finance_yandex_sync_updates_existing_daily_entry(self):
+        yandex_rows = [
+            {
+                "biz_date": date(2026, 6, 1),
+                "amount": "300.00",
+                "order_id": "577",
+                "shop_sku": "SKU-1",
+                "external_key": "yandex-market:united-orders:70940298:577:SKU-1:2026-06-01",
+                "payload_json": {
+                    "provider": "yandex_market",
+                    "campaign_id": 70940298,
+                    "raw": {
+                        "incomeWithoutServices": 300,
+                        "sumBillingPriceOfItems": 300,
+                        "summaryCommission": 0,
+                    },
+                },
+            },
+        ]
+        existing_created_at = datetime(2026, 6, 2, 10, 0, 0)
+        existing_updated_at = datetime(2026, 6, 2, 10, 0, 0)
+        refreshed_updated_at = datetime(2026, 6, 3, 10, 0, 0)
+        script = [
+            {"one": (99,)},  # source
+            {"one": (1,)},  # project
+            {"one": (7,)},  # revenue operation
+            {"one": (7, 2, "revenue_marketplace_api", "Продажи маркетплейсов", "api", False, False, False, False, False, 10, True, "revenue")},
+            {"one": (1,)},  # source lookup
+            {"one": (1,)},  # project lookup
+            {"one": (1,)},  # status lookup
+            {
+                "one": (
+                    701,
+                    date(2026, 6, 1),
+                    7,
+                    None,
+                    99,
+                    1,
+                    "1",
+                    "250.00",
+                    "RUB",
+                    "api",
+                    "yandex-market:united-orders:70940298:daily:2026-06-01:gross",
+                    "confirmed",
+                    "old yandex gross",
+                    "admin",
+                    existing_created_at,
+                    existing_updated_at,
+                ),
+            },
+            {"one": (7, 2, "revenue_marketplace_api", "Продажи маркетплейсов", "api", False, False, False, False, False, 10, True, "revenue")},
+            {
+                "one": (
+                    701,
+                    date(2026, 6, 1),
+                    7,
+                    None,
+                    99,
+                    1,
+                    "1",
+                    "300.00",
+                    "RUB",
+                    "api",
+                    "yandex-market:united-orders:70940298:daily:2026-06-01:gross",
+                    "confirmed",
+                    "Yandex Market; доставленные за 2026-06-01; строк 1; поступления gross",
+                    "admin",
+                    existing_created_at,
+                    refreshed_updated_at,
+                ),
+            },
+            {},
+            {},
+            {},
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(finance_api_module, "fetch_yandex_market_order_economics", return_value=yandex_rows),
+            patch.dict(os.environ, {"FINANCE_YANDEX_SYNC_INLINE": "1"}),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/finance/integrations/yandex/sync",
+                    json={"date_from": "2026-06-01", "date_to": "2026-06-01"},
+                    headers=self._auth_headers(role="admin"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["result"]["created_rows"], 0)
+        self.assertEqual(body["result"]["updated_rows"], 1)
+        self.assertEqual(body["result"]["skipped_rows"], 0)
+        self.assertTrue(any("UPDATE finance.entries" in sql for sql in sql_collector))
+        self.assertTrue(any("DELETE FROM finance.entry_postings" in sql for sql in sql_collector))
+
     # Если стандартной операции Яндекса нет, backend должен создать ее сам.
     def test_finance_yandex_sync_creates_missing_revenue_operation(self):
         yandex_rows = [
