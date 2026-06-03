@@ -33,8 +33,8 @@ function buildCtx(overrides = {}) {
       date_from: '2026-05-01',
       date_to: '2026-05-31',
       project_id: '',
-      region_id: '',
-      source_id: '',
+      region_id: [],
+      source_id: [],
       split_by_source: false,
     },
     financeNewEntry: {
@@ -294,8 +294,8 @@ describe('WorkFinanceSection', () => {
         date_from: '2026-05-01',
         date_to: '2026-05-31',
         project_id: '',
-        region_id: '',
-        source_id: '',
+        region_id: [10],
+        source_id: [99],
         split_by_source: true,
       },
     })
@@ -313,6 +313,12 @@ describe('WorkFinanceSection', () => {
     })
 
     await wrapper.find('[data-test="finance-mode-report"]').trigger('click')
+    expect(wrapper.find('[data-test="finance-report-regions"]').text()).toContain('Все')
+    expect(wrapper.find('[data-test="finance-report-sources"]').text()).toContain('Все')
+    const regionCheckboxes = wrapper.findAll('[data-test="finance-report-regions"] input[type="checkbox"]')
+    expect(regionCheckboxes).toHaveLength(2)
+    await regionCheckboxes[1].setValue(false)
+    expect(ctx.financeFilters.region_id).toEqual([])
     expect(wrapper.text()).toContain('Название')
     expect(wrapper.text()).toContain('Поступления')
     expect(wrapper.text()).toContain('Расходы')

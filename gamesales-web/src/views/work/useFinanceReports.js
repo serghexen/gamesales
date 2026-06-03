@@ -4,10 +4,10 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const today = new Date().toISOString().slice(0, 10)
   const currentMonth = today.slice(0, 7)
   const financeFilters = reactive({
-    date_from: '',
-    date_to: '',
-    region_id: '',
-    source_id: '',
+    date_from: today,
+    date_to: today,
+    region_id: [],
+    source_id: [],
     project_id: '',
     split_by_source: false,
   })
@@ -253,10 +253,18 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeLoading.value = true
     try {
       const params = new URLSearchParams()
+      const appendFilterIds = (key, value) => {
+        // Передаем мультивыбор повторяющимися query-параметрами, чтобы backend получил список id.
+        const values = Array.isArray(value) ? value : (value ? [value] : [])
+        values
+          .map((item) => Number(item))
+          .filter((item) => Number.isFinite(item) && item > 0)
+          .forEach((item) => params.append(key, String(item)))
+      }
       if (financeFilters.date_from) params.set('date_from', financeFilters.date_from)
       if (financeFilters.date_to) params.set('date_to', financeFilters.date_to)
-      if (financeFilters.region_id) params.set('region_id', String(financeFilters.region_id))
-      if (financeFilters.source_id) params.set('source_id', String(financeFilters.source_id))
+      appendFilterIds('region_id', financeFilters.region_id)
+      appendFilterIds('source_id', financeFilters.source_id)
 
       const query = params.toString()
       const data = await apiGet(`/finance/reports/sources${query ? `?${query}` : ''}`, { token: auth.state.token })

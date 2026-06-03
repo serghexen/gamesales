@@ -366,20 +366,54 @@
               <span class="label">Период по</span>
               <input v-model="ctx.financeFilters.date_to" class="input" type="date" :min="ctx.financeFilters.date_from || ctx.minDate" :max="ctx.maxDate" />
             </label>
-            <label class="field">
+            <div class="field">
               <span class="label">Регион</span>
-              <select v-model.number="ctx.financeFilters.region_id" class="input input--select">
-                <option value="">Все</option>
-                <option v-for="r in ctx.financeRegions" :key="`rep-rg-${r.region_id}`" :value="r.region_id">{{ r.name }}</option>
-              </select>
-            </label>
-            <label class="field">
+              <details class="finance-multi-filter" data-test="finance-report-regions">
+                <summary class="input finance-multi-filter__summary">{{ formatFinanceFilterSummary('region_id', ctx.financeRegions, 'name') }}</summary>
+                <div class="check-list check-list--finance-report">
+                  <label class="check-item">
+                    <input
+                      type="checkbox"
+                      :checked="isFinanceFilterAll('region_id')"
+                      @change="setFinanceFilterAll('region_id')"
+                    />
+                    <span>Все</span>
+                  </label>
+                  <label v-for="r in ctx.financeRegions" :key="`rep-rg-${r.region_id}`" class="check-item">
+                    <input
+                      type="checkbox"
+                      :checked="isFinanceFilterSelected('region_id', r.region_id)"
+                      @change="toggleFinanceFilterId('region_id', r.region_id, $event.target.checked)"
+                    />
+                    <span>{{ r.name }}</span>
+                  </label>
+                </div>
+              </details>
+            </div>
+            <div class="field">
               <span class="label">Источник</span>
-              <select v-model.number="ctx.financeFilters.source_id" class="input input--select">
-                <option value="">Все</option>
-                <option v-for="s in ctx.financeSources" :key="`rep-src-${s.source_id}`" :value="s.source_id">{{ formatSourceLabel(s) }}</option>
-              </select>
-            </label>
+              <details class="finance-multi-filter" data-test="finance-report-sources">
+                <summary class="input finance-multi-filter__summary">{{ formatFinanceFilterSummary('source_id', ctx.financeSources, 'source') }}</summary>
+                <div class="check-list check-list--finance-report">
+                  <label class="check-item">
+                    <input
+                      type="checkbox"
+                      :checked="isFinanceFilterAll('source_id')"
+                      @change="setFinanceFilterAll('source_id')"
+                    />
+                    <span>Все</span>
+                  </label>
+                  <label v-for="s in ctx.financeSources" :key="`rep-src-${s.source_id}`" class="check-item">
+                    <input
+                      type="checkbox"
+                      :checked="isFinanceFilterSelected('source_id', s.source_id)"
+                      @change="toggleFinanceFilterId('source_id', s.source_id, $event.target.checked)"
+                    />
+                    <span>{{ formatSourceLabel(s) }}</span>
+                  </label>
+                </div>
+              </details>
+            </div>
             <label class="field">
               <button data-test="finance-apply-report" class="ghost" type="button" :disabled="ctx.financeLoading" @click="applyFinanceReport">Применить</button>
             </label>
@@ -855,6 +889,56 @@ function formatSourceLabel(source) {
   return '—'
 }
 
+// Получаем выбранные id фильтра отчета в виде числового списка.
+function getFinanceFilterIds(key) {
+  const value = props.ctx.financeFilters?.[key]
+  return (Array.isArray(value) ? value : (value ? [value] : []))
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item) && item > 0)
+}
+
+// Пустой список означает режим "Все", чтобы запрос не ограничивался фильтром.
+function isFinanceFilterAll(key) {
+  return getFinanceFilterIds(key).length === 0
+}
+
+// Проверяем отдельный чекбокс в мультифильтре отчета.
+function isFinanceFilterSelected(key, id) {
+  return getFinanceFilterIds(key).includes(Number(id))
+}
+
+// Включает "Все" через очистку выбранных значений.
+function setFinanceFilterAll(key) {
+  if (!props.ctx.financeFilters) return
+  props.ctx.financeFilters[key] = []
+}
+
+// Добавляет или убирает отдельный id из фильтра отчета.
+function toggleFinanceFilterId(key, id, checked) {
+  if (!props.ctx.financeFilters) return
+  const numericId = Number(id)
+  if (!Number.isFinite(numericId) || numericId <= 0) return
+  const current = new Set(getFinanceFilterIds(key))
+  if (checked) {
+    current.add(numericId)
+  } else {
+    current.delete(numericId)
+  }
+  props.ctx.financeFilters[key] = Array.from(current)
+}
+
+// Формирует короткую подпись закрытого dropdown-фильтра.
+function formatFinanceFilterSummary(key, options, labelMode = 'name') {
+  const ids = getFinanceFilterIds(key)
+  if (!ids.length) return 'Все'
+  if (ids.length === 1) {
+    const selected = (options || []).find((item) => Number(item?.region_id || item?.source_id || 0) === ids[0])
+    if (selected && labelMode === 'source') return formatSourceLabel(selected)
+    if (selected) return String(selected?.name || selected?.code || `#${ids[0]}`)
+  }
+  return `${ids.length} выбрано`
+}
+
 // Показываем бизнес-название строки: источник для маркетов, тип сделки для строк без источника.
 function formatSourceReportLabel(row) {
   const sourceName = String(row?.source_name || '').trim()
@@ -1166,6 +1250,51 @@ async function reloadFinanceCatalogs() {
 
 .finance-cash-flow-panel {
   min-width: 0;
+}
+
+.finance-multi-filter {
+  position: relative;
+}
+
+.finance-multi-filter__summary {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.finance-multi-filter__summary::-webkit-details-marker {
+  display: none;
+}
+
+.finance-multi-filter__summary::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  opacity: 0.75;
+}
+
+.finance-multi-filter[open] .finance-multi-filter__summary::after {
+  transform: rotate(225deg);
+}
+
+.check-list--finance-report {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  max-height: 220px;
+  border-color: var(--input-border);
+  background: #101827;
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.35);
 }
 
 .finance-integration-panel {

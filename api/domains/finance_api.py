@@ -6,7 +6,7 @@ import os
 import threading
 import uuid
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Query
 
 from .yandex_market_service import fetch_yandex_market_order_economics, normalize_yandex_market_store_code
 from .finance_models import (
@@ -78,6 +78,14 @@ def mount_finance_routes(
         if normalized in {"manual", "api", "bot", "import", "formula"}:
             return normalized
         return "manual"
+
+    def _append_multi_id_filter(filters: list[str], params: list[Any], column_name: str, values: Optional[list[int]]) -> None:
+        # Добавляет фильтр по нескольким id без сборки динамического списка плейсхолдеров.
+        ids = [int(value) for value in (values or []) if value is not None]
+        if not ids:
+            return
+        filters.append(f"{column_name} = ANY(%s)")
+        params.append(ids)
 
     def _metric_from_section_kind(kind: str) -> str:
         # Преобразуем тип раздела в базовую метрику для P&L.
@@ -1879,7 +1887,7 @@ def mount_finance_routes(
             params.append(_normalize_code(status_code))
         if input_channel:
             filters.append("e.input_channel = %s")
-            params.append(_normalize_input_channel(input_channel))
+            params.append(_normalize_channel(input_channel))
 
         where_sql = " AND ".join(filters)
         safe_limit = max(1, min(limit, 500))
@@ -2040,8 +2048,8 @@ def mount_finance_routes(
     def finance_report_sources(
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
-        region_id: Optional[int] = None,
-        source_id: Optional[int] = None,
+        region_id: Optional[list[int]] = Query(None),
+        source_id: Optional[list[int]] = Query(None),
         user=Depends(get_current_user),
     ):
         # Строим cash flow по источникам из сделок app и ручных finance-проводок.
@@ -2053,12 +2061,8 @@ def mount_finance_routes(
         if date_to is not None:
             filters.append("activity_date <= %s")
             params.append(date_to)
-        if region_id is not None:
-            filters.append("region_id = %s")
-            params.append(region_id)
-        if source_id is not None:
-            filters.append("source_id = %s")
-            params.append(source_id)
+        _append_multi_id_filter(filters, params, "region_id", region_id)
+        _append_multi_id_filter(filters, params, "source_id", source_id)
         where_sql = " AND ".join(filters)
 
         with psycopg.connect(DB_DSN) as conn:

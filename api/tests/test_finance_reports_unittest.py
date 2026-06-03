@@ -88,7 +88,7 @@ class FinanceReportsTests(unittest.TestCase):
         ):
             with self._client() as client:
                 res = client.get(
-                    "/finance/reports/sources?date_from=2026-06-01&date_to=2026-06-30",
+                    "/finance/reports/sources?date_from=2026-06-01&date_to=2026-06-30&region_id=10&region_id=11&source_id=99&source_id=100",
                     headers=self._auth_headers(role="manager"),
                 )
 
@@ -107,6 +107,8 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertTrue(any("di.returned_at IS NULL" in sql for sql in sql_collector))
         self.assertTrue(any("FROM finance.entry_postings p" in sql for sql in sql_collector))
         self.assertTrue(any("e.input_channel IN ('manual', 'api', 'import')" in sql for sql in sql_collector))
+        self.assertTrue(any("region_id = ANY(%s)" in sql for sql in sql_collector))
+        self.assertTrue(any("source_id = ANY(%s)" in sql for sql in sql_collector))
         self.assertTrue(any("HAVING COALESCE(SUM(revenue), 0) <> 0" in sql for sql in sql_collector))
 
     # Cash Flow должен отдавать поступления/расходы отдельными строками и считать остатки.
@@ -392,6 +394,53 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json()["result"]["created_rows"], 1)
         self.assertTrue(any("INSERT INTO finance.operations" in sql for sql in sql_collector))
+
+    # Журнал должен уметь фильтровать ручной ввод по input_channel без падения endpoint.
+    def test_finance_entries_journal_filters_manual_channel(self):
+        created_at = datetime(2026, 6, 2, 10, 0, 0)
+        script = [
+            {"one": (1,)},
+            {
+                "all": [
+                    (
+                        77,
+                        date(2026, 6, 2),
+                        7,
+                        None,
+                        None,
+                        None,
+                        "1.00",
+                        "100.00",
+                        "RUB",
+                        "manual",
+                        "ui-test",
+                        "confirmed",
+                        "manual add",
+                        "admin",
+                        created_at,
+                        created_at,
+                    ),
+                ],
+            },
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/finance/entries?input_channel=manual",
+                    headers=self._auth_headers(role="admin"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["total"], 1)
+        self.assertEqual(body["items"][0]["input_channel"], "manual")
+        self.assertTrue(any("e.input_channel = %s" in sql for sql in sql_collector))
 
 
 if __name__ == "__main__":

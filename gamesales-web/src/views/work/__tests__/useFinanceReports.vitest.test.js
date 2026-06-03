@@ -15,6 +15,14 @@ function createHarness() {
 }
 
 describe('useFinanceReports', () => {
+  it('sets current day as default sources report period', () => {
+    const h = createHarness()
+    const today = new Date().toISOString().slice(0, 10)
+
+    expect(h.finance.financeFilters.date_from).toBe(today)
+    expect(h.finance.financeFilters.date_to).toBe(today)
+  })
+
   it('loads bootstrap catalogs for filters', async () => {
     const h = createHarness()
     h.apiGet.mockResolvedValueOnce({
@@ -40,6 +48,8 @@ describe('useFinanceReports', () => {
     const h = createHarness()
     h.finance.financeFilters.date_from = '2026-05-01'
     h.finance.financeFilters.date_to = '2026-05-31'
+    h.finance.financeFilters.region_id = [10, 11]
+    h.finance.financeFilters.source_id = [99, 100]
     h.apiGet.mockResolvedValueOnce({
       totals: {
         revenue: '100.00',
@@ -55,7 +65,7 @@ describe('useFinanceReports', () => {
     await h.finance.loadFinanceProjectsReport()
 
     expect(h.apiGet).toHaveBeenCalledWith(
-      '/finance/reports/sources?date_from=2026-05-01&date_to=2026-05-31',
+      '/finance/reports/sources?date_from=2026-05-01&date_to=2026-05-31&region_id=10&region_id=11&source_id=99&source_id=100',
       { token: 'token-1' },
     )
     expect(h.finance.financeLoaded.value).toBe(true)
