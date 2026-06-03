@@ -375,8 +375,6 @@
               <div
                 class="finance-multi-filter"
                 data-test="finance-report-regions"
-                @click.stop
-                @focusout="closeFinanceFilterOnFocusOut"
               >
                 <button
                   class="input finance-multi-filter__summary"
@@ -411,8 +409,6 @@
               <div
                 class="finance-multi-filter"
                 data-test="finance-report-sources"
-                @click.stop
-                @focusout="closeFinanceFilterOnFocusOut"
               >
                 <button
                   class="input finance-multi-filter__summary"
@@ -499,6 +495,7 @@
                   <th>Поступления</th>
                   <th>Расходы</th>
                   <th>Итог</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -508,6 +505,17 @@
                   <td>{{ ctx.formatPrice(row.revenue) }}</td>
                   <td>{{ ctx.formatPrice(row.direct_expense) }}</td>
                   <td>{{ ctx.formatPrice(resolveReportCashFlow(row)) }}</td>
+                  <td class="table__actions">
+                    <button
+                      class="ghost ghost--compact"
+                      type="button"
+                      :data-test="`finance-source-details-${index}`"
+                      :disabled="ctx.financeSourceDetailsLoading"
+                      @click="openSourceDetails(row)"
+                    >
+                      Расшифровать
+                    </button>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -628,6 +636,98 @@
         </template>
       </div>
     </section>
+
+    <teleport to="body">
+      <div v-if="ctx.financeSourceDetailsOpen" class="work-page work-modal-root modal-backdrop" @click.self="closeSourceDetails">
+        <div class="modal modal--auto finance-details-modal">
+          <div class="panel__head panel__head--tight">
+            <div>
+              <h3>{{ ctx.financeSourceDetailsTitle || 'Расшифровка строки' }}</h3>
+              <p class="muted">Период {{ ctx.financeFilters.date_from || '—' }} — {{ ctx.financeFilters.date_to || '—' }}</p>
+            </div>
+            <button class="ghost ghost--compact" type="button" @click="closeSourceDetails">Закрыть</button>
+          </div>
+          <div class="modal__body finance-details-modal__body">
+            <div v-if="ctx.financeSourceDetailsLoading" class="loader-wrap loader-wrap--compact">
+              <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                <div class="wheel"></div>
+                <div class="hamster">
+                  <div class="hamster__body">
+                    <div class="hamster__head">
+                      <div class="hamster__ear"></div>
+                      <div class="hamster__eye"></div>
+                      <div class="hamster__nose"></div>
+                    </div>
+                    <div class="hamster__limb hamster__limb--fr"></div>
+                    <div class="hamster__limb hamster__limb--fl"></div>
+                    <div class="hamster__limb hamster__limb--br"></div>
+                    <div class="hamster__limb hamster__limb--bl"></div>
+                    <div class="hamster__tail"></div>
+                  </div>
+                </div>
+                <div class="spoke"></div>
+              </div>
+            </div>
+            <template v-else>
+              <div class="analytics-cards finance-details-cards">
+                <div class="mini">
+                  <div class="mini__label">Поступления</div>
+                  <div class="mini__value">{{ ctx.formatPrice(ctx.financeSourceDetailsTotals.revenue) }}</div>
+                </div>
+                <div class="mini">
+                  <div class="mini__label">Расходы</div>
+                  <div class="mini__value">{{ ctx.formatPrice(ctx.financeSourceDetailsTotals.direct_expense) }}</div>
+                </div>
+                <div class="mini">
+                  <div class="mini__label">Итог</div>
+                  <div class="mini__value">{{ ctx.formatPrice(ctx.financeSourceDetailsTotals.operating_profit) }}</div>
+                </div>
+                <div class="mini">
+                  <div class="mini__label">Строк</div>
+                  <div class="mini__value">{{ Number((ctx.financeSourceDetails || []).length) }}</div>
+                </div>
+              </div>
+
+              <table v-if="ctx.financeSourceDetails.length" class="table table--compact table--dense finance-details-table">
+                <thead>
+                  <tr>
+                    <th>Основание</th>
+                    <th>Клиент / операция</th>
+                    <th>Поступления</th>
+                    <th>Себестоимость</th>
+                    <th>Коэф.</th>
+                    <th>Расходы</th>
+                    <th>Итог</th>
+                    <th>Заказы</th>
+                    <th>Почему</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in ctx.financeSourceDetails" :key="`${item.row_type}-${item.deal_id || item.entry_id}`">
+                    <td>
+                      <div class="finance-detail-main">{{ formatDetailRef(item) }}</div>
+                      <div class="muted">{{ item.activity_date }}</div>
+                    </td>
+                    <td>
+                      <div class="finance-detail-main">{{ formatDetailActor(item) }}</div>
+                      <div class="muted">{{ item.item_title || '—' }}</div>
+                    </td>
+                    <td>{{ ctx.formatPrice(item.revenue) }}</td>
+                    <td>{{ ctx.formatPrice(item.purchase_cost) }}</td>
+                    <td>{{ formatDetailRate(item) }}</td>
+                    <td>{{ ctx.formatPrice(item.direct_expense) }}</td>
+                    <td>{{ ctx.formatPrice(item.cash_flow) }}</td>
+                    <td class="finance-detail-orders">{{ formatDetailOrders(item) }}</td>
+                    <td class="finance-detail-reason">{{ item.reason || '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p v-else class="muted">Нет строк для расшифровки.</p>
+            </template>
+          </div>
+        </div>
+      </div>
+    </teleport>
 
     <teleport to="body">
       <div v-if="typeModal.open" class="work-page work-modal-root modal-backdrop" @click.self="closeTypeModal">
@@ -757,7 +857,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, unref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, unref, watch } from 'vue'
 
 const props = defineProps({
   ctx: { type: Object, required: true },
@@ -973,27 +1073,20 @@ function toggleFinanceReportFilter(key) {
   openFinanceReportFilter.value = openFinanceReportFilter.value === key ? '' : key
 }
 
-// Закрывает dropdown, когда фокус уходит за пределы текущей панели.
-function closeFinanceFilterOnFocusOut(event) {
-  const root = event.currentTarget
-  nextTick(() => {
-    if (!root?.contains(document.activeElement)) {
-      openFinanceReportFilter.value = ''
-    }
-  })
-}
-
-// Клик вне фильтров закрывает раскрытую панель.
-function closeFinanceFilterOnDocumentClick() {
+// Закрывает dropdown только при клике снаружи, чтобы checkbox внутри не сбрасывал фокус в Windows-браузерах.
+function closeFinanceFilterOnOutsidePointer(event) {
+  const target = event.target
+  const element = target instanceof Element ? target : target?.parentElement
+  if (element?.closest?.('.finance-multi-filter')) return
   openFinanceReportFilter.value = ''
 }
 
 onMounted(() => {
-  document.addEventListener('click', closeFinanceFilterOnDocumentClick)
+  document.addEventListener('pointerdown', closeFinanceFilterOnOutsidePointer, true)
 })
 
 onBeforeUnmount(() => {
-  document.removeEventListener('click', closeFinanceFilterOnDocumentClick)
+  document.removeEventListener('pointerdown', closeFinanceFilterOnOutsidePointer, true)
 })
 
 // Показываем бизнес-название строки: источник для маркетов, тип сделки для строк без источника.
@@ -1019,6 +1112,53 @@ function resolveReportCashFlow(row) {
   const explicit = Number(row?.cash_flow)
   if (Number.isFinite(explicit)) return explicit
   return Number(row?.operating_profit || 0)
+}
+
+// Открываем расшифровку строки отчета с теми же датами и точными измерениями.
+async function openSourceDetails(row) {
+  const title = `${formatSourceReportLabel(row)} / ${formatRegionReportLabel(row)}`
+  await props.ctx.loadFinanceSourceDetails?.(row, title)
+}
+
+// Закрываем модалку деталей и очищаем выбранную строку отчета.
+function closeSourceDetails() {
+  props.ctx.clearFinanceSourceDetails?.()
+}
+
+// Формируем короткую ссылку-основание для строки расшифровки.
+function formatDetailRef(item) {
+  const dealId = Number(item?.deal_id || 0)
+  if (dealId) return `Сделка #${dealId}`
+  const entryId = Number(item?.entry_id || 0)
+  if (entryId) return `Проводка #${entryId}`
+  return '—'
+}
+
+// Показываем клиента для сделки или операцию для finance-проводки.
+function formatDetailActor(item) {
+  const customer = String(item?.customer_name || '').trim()
+  if (customer) return customer
+  const operation = String(item?.operation_name || '').trim()
+  if (operation) return operation
+  return '—'
+}
+
+// Коэффициент есть только у продаж по региону; для остальных строк оставляем прочерк.
+function formatDetailRate(item) {
+  const rate = Number(item?.purchase_cost_rate)
+  if (!Number.isFinite(rate) || rate <= 0) return '—'
+  return String(rate).replace('.', ',')
+}
+
+// Для Yandex API-проводок показываем, из каких заказов собран дневной итог.
+function formatDetailOrders(item) {
+  const ids = Array.isArray(item?.order_ids) ? item.order_ids.filter(Boolean).map((value) => String(value)) : []
+  if (!ids.length) return '—'
+  const visible = ids.slice(0, 6).join(', ')
+  const rest = ids.length - 6
+  const count = Number(item?.orders_count || ids.length)
+  const suffix = rest > 0 ? `, еще ${rest}` : ''
+  return `${visible}${suffix} · заказов ${count}`
 }
 
 // Объясняем, откуда взялся начальный остаток месяца.
@@ -1382,6 +1522,57 @@ async function reloadFinanceCatalogs() {
 
 .finance-sync-cards {
   margin-top: 2px;
+}
+
+.ghost--compact {
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.table__actions {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.finance-details-modal.modal {
+  width: min(1180px, calc(100vw - 32px)) !important;
+  max-width: min(1180px, calc(100vw - 32px)) !important;
+}
+
+.finance-details-modal .panel__head {
+  align-items: flex-start;
+}
+
+.finance-details-modal__body {
+  display: grid;
+  gap: 14px;
+  align-items: stretch;
+  overflow-x: auto;
+}
+
+.finance-details-cards {
+  min-width: 760px;
+}
+
+.finance-details-table {
+  min-width: 1040px;
+}
+
+.finance-detail-main {
+  font-weight: 800;
+  color: var(--text);
+}
+
+.finance-detail-reason {
+  max-width: 220px;
+  color: var(--muted);
+}
+
+.finance-detail-orders {
+  max-width: 260px;
+  color: var(--text);
 }
 
 .finance-catalog-panel__head {

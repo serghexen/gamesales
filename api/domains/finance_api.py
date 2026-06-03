@@ -43,6 +43,8 @@ from .finance_models import (
     FinanceSeedDefaultsOut,
     FinanceSourceOut,
     FinanceSourcesReportOut,
+    FinanceSourcesReportDetailRowOut,
+    FinanceSourcesReportDetailsOut,
     FinanceSourcesReportRowOut,
     FinanceStatusOut,
     FinanceTypeOut,
@@ -87,6 +89,15 @@ def mount_finance_routes(
         filters.append(f"{column_name} = ANY(%s)")
         params.append(ids)
 
+    def _append_nullable_id_filter(filters: list[str], params: list[Any], column_name: str, value: Optional[int], empty: bool) -> None:
+        # Фильтруем точную строку отчета: конкретный id или явное отсутствие значения.
+        if empty:
+            filters.append(f"{column_name} IS NULL")
+            return
+        if value is not None:
+            filters.append(f"{column_name} = %s")
+            params.append(int(value))
+
     def _metric_from_section_kind(kind: str) -> str:
         # Преобразуем тип раздела в базовую метрику для P&L.
         mapping = {
@@ -104,6 +115,12 @@ def mount_finance_routes(
     def _round_ratio(value: Decimal) -> Decimal:
         # Округляем долю/маржу до четырех знаков для отчетов.
         return value.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
+    def _json_list_as_strings(value: Any) -> list[str]:
+        # Приводим jsonb-массив из payload к списку строк для безопасной отдачи в API.
+        if not isinstance(value, list):
+            return []
+        return [str(item) for item in value if item not in (None, "")]
 
     def _parse_month(value: Optional[str]) -> date:
         # Превращаем строку YYYY-MM в первое число месяца для месячных отчетов.
@@ -2285,6 +2302,213 @@ def mount_finance_routes(
         cash_flow_total = _round_money(revenue_total - direct_total)
         margin_total = _round_ratio((cash_flow_total / revenue_total) if revenue_total != 0 else Decimal("0"))
         return FinanceSourcesReportOut(
+            totals=FinancePnlTotalsOut(
+                revenue=revenue_total,
+                direct_expense=direct_total,
+                indirect_expense=Decimal("0"),
+                gross_profit=cash_flow_total,
+                operating_profit=cash_flow_total,
+                margin=margin_total,
+            ),
+            items=items,
+        )
+
+    @app.get("/finance/reports/sources/details", response_model=FinanceSourcesReportDetailsOut)
+    def finance_report_sources_details(
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None,
+        source_id: Optional[int] = None,
+        source_empty: bool = False,
+        region_id: Optional[int] = None,
+        region_empty: bool = False,
+        user=Depends(get_current_user),
+    ):
+        # Отдаем расшифровку выбранной строки отчета по источникам без ручных SQL-запросов.
+        filters = ["activity_date IS NOT NULL"]
+        params: list[Any] = []
+        if date_from is not None:
+            filters.append("activity_date >= %s")
+            params.append(date_from)
+        if date_to is not None:
+            filters.append("activity_date <= %s")
+            params.append(date_to)
+        _append_nullable_id_filter(filters, params, "source_id", source_id, source_empty)
+        _append_nullable_id_filter(filters, params, "region_id", region_id, region_empty)
+        where_sql = " AND ".join(filters)
+
+        with psycopg.connect(DB_DSN) as conn:
+            rows = qall(
+                conn,
+                f"""
+                WITH detail_rows AS (
+                  SELECT
+                    'deal'::text AS row_type,
+                    d.deal_id,
+                    NULL::bigint AS entry_id,
+                    d.completed_at::date AS activity_date,
+                    NULLIF(d.order_number, '') AS order_number,
+                    COALESCE(NULLIF(c.nickname, ''), NULLIF(c.customer_login, ''), '—') AS customer_name,
+                    fds.source_id,
+                    COALESCE(fds.code, src.code) AS source_code,
+                    COALESCE(fds.name, src.name, 'Без источника') AS source_name,
+                    CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id,
+                    CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.code, rd.code) END AS region_code,
+                    CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.name, rd.name, 'Без региона') END AS region_name,
+                    CASE WHEN d.deal_type_code = 'rental' THEN 'Шеринг' ELSE 'Услуга' END AS operation_name,
+                    STRING_AGG(COALESCE(NULLIF(p.title, ''), 'item-' || di.deal_item_id::text), '; ' ORDER BY di.deal_item_id) AS item_title,
+                    COALESCE(SUM(di.qty), 0) AS qty,
+                    COALESCE(SUM(di.price * di.qty), 0) AS revenue,
+                    COALESCE(SUM(di.purchase_cost * di.qty), 0) AS purchase_cost,
+                    CASE WHEN d.deal_type_code = 'sale' THEN COALESCE(MAX(rd.purchase_cost_rate), 1.0) ELSE NULL END AS purchase_cost_rate,
+                    COALESCE(SUM(
+                      CASE
+                        WHEN d.deal_type_code = 'sale'
+                        THEN di.purchase_cost * di.qty * COALESCE(rd.purchase_cost_rate, 1.0)
+                        WHEN d.deal_type_code = 'rental'
+                        THEN di.purchase_cost * di.qty
+                        ELSE 0
+                      END
+                    ), 0) AS direct_expense,
+                    NULL::text AS comment,
+                    NULL::text AS external_key,
+                    '[]'::jsonb AS order_ids,
+                    '[]'::jsonb AS shop_skus,
+                    0::integer AS orders_count,
+                    0::integer AS rows_count,
+                    CASE
+                      WHEN d.deal_type_code = 'rental' THEN 'Шеринг считается без региона'
+                      WHEN fds.source_id IS NULL THEN 'Источник клиента не привязан к finance source'
+                      ELSE 'Источник клиента связан с finance source'
+                    END AS reason
+                  FROM app.deal_items di
+                  JOIN app.deals d ON d.deal_id = di.deal_id
+                  LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+                  LEFT JOIN finance.dim_regions fdr ON fdr.app_region_id = rd.region_id
+                  LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+                  LEFT JOIN app.sources src ON src.source_id = c.source_id
+                  LEFT JOIN finance.dim_sources fds ON fds.app_source_id = src.source_id
+                  LEFT JOIN app.products p ON p.product_id = di.product_id
+                  WHERE (
+                      d.deal_type_code = 'sale'
+                      OR (d.deal_type_code = 'rental' AND COALESCE(di.price, 0) > 0)
+                    )
+                    AND d.flow_status_code = 'completed'
+                    AND d.status_code = 'confirmed'
+                    AND d.completed_at IS NOT NULL
+                    AND di.returned_at IS NULL
+                  GROUP BY
+                    d.deal_id, d.completed_at::date, d.order_number,
+                    c.nickname, c.customer_login,
+                    fds.source_id, fds.code, src.code, fds.name, src.name,
+                    fdr.region_id, fdr.code, rd.code, fdr.name, rd.name,
+                    d.deal_type_code
+
+                  UNION ALL
+
+                  SELECT
+                    'entry'::text AS row_type,
+                    NULL::bigint AS deal_id,
+                    e.entry_id,
+                    e.biz_date AS activity_date,
+                    NULL::text AS order_number,
+                    NULL::text AS customer_name,
+                    src.source_id,
+                    src.code AS source_code,
+                    COALESCE(src.name, 'Без источника') AS source_name,
+                    r.region_id,
+                    r.code AS region_code,
+                    COALESCE(r.name, 'Без региона') AS region_name,
+                    o.name AS operation_name,
+                    COALESCE(NULLIF(e.comment, ''), o.name) AS item_title,
+                    e.qty,
+                    CASE WHEN p.metric_code = 'revenue' THEN p.amount ELSE 0 END AS revenue,
+                    0::numeric AS purchase_cost,
+                    NULL::numeric AS purchase_cost_rate,
+                    CASE WHEN p.metric_code IN ('direct_expense', 'indirect_expense') THEN p.amount ELSE 0 END AS direct_expense,
+                    e.comment,
+                    e.external_key,
+                    COALESCE(e.payload_json->'order_ids', '[]'::jsonb) AS order_ids,
+                    COALESCE(e.payload_json->'shop_skus', '[]'::jsonb) AS shop_skus,
+                    COALESCE((e.payload_json->>'orders_count')::integer, 0) AS orders_count,
+                    COALESCE((e.payload_json->>'rows_count')::integer, 0) AS rows_count,
+                    CASE
+                      WHEN e.input_channel = 'api' THEN 'API-проводка finance'
+                      WHEN e.input_channel = 'import' THEN 'Импортированная проводка finance'
+                      ELSE 'Ручная проводка finance'
+                    END AS reason
+                  FROM finance.entry_postings p
+                  JOIN finance.entries e
+                    ON e.entry_id = p.entry_id
+                   AND e.biz_date = p.entry_biz_date
+                  JOIN finance.operations o ON o.operation_id = e.operation_id
+                  LEFT JOIN finance.dim_sources src ON src.source_id = e.source_id
+                  LEFT JOIN finance.dim_regions r ON r.region_id = e.region_id
+                  WHERE e.status_code = 'confirmed'
+                    AND e.input_channel IN ('manual', 'api', 'import')
+                    AND p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')
+                )
+                SELECT
+                  row_type, deal_id, entry_id, activity_date, order_number, customer_name,
+                  source_id, source_code, source_name,
+                  region_id, region_code, region_name,
+                  operation_name, item_title, qty, revenue, purchase_cost,
+                  purchase_cost_rate, direct_expense, comment, external_key,
+                  order_ids, shop_skus, orders_count, rows_count, reason
+                FROM detail_rows
+                WHERE {where_sql}
+                ORDER BY activity_date, COALESCE(deal_id, entry_id), row_type
+                """,
+                tuple(params),
+            )
+
+        items: list[FinanceSourcesReportDetailRowOut] = []
+        revenue_total = Decimal("0")
+        direct_total = Decimal("0")
+        for row in rows:
+            row_revenue = _round_money(Decimal(row[15] or 0))
+            row_direct = _round_money(Decimal(row[18] or 0))
+            row_cash_flow = _round_money(row_revenue - row_direct)
+            revenue_total += row_revenue
+            direct_total += row_direct
+            items.append(
+                FinanceSourcesReportDetailRowOut(
+                    row_type=str(row[0] or ""),
+                    deal_id=int(row[1]) if row[1] is not None else None,
+                    entry_id=int(row[2]) if row[2] is not None else None,
+                    activity_date=row[3],
+                    customer_name=str(row[5]) if row[5] is not None else None,
+                    source_id=int(row[6]) if row[6] is not None else None,
+                    source_code=str(row[7]) if row[7] is not None else None,
+                    source_name=str(row[8]) if row[8] is not None else None,
+                    region_id=int(row[9]) if row[9] is not None else None,
+                    region_code=str(row[10]) if row[10] is not None else None,
+                    region_name=str(row[11]) if row[11] is not None else None,
+                    operation_name=str(row[12]) if row[12] is not None else None,
+                    item_title=str(row[13]) if row[13] is not None else None,
+                    qty=Decimal(row[14] or 0),
+                    revenue=row_revenue,
+                    purchase_cost=_round_money(Decimal(row[16] or 0)),
+                    purchase_cost_rate=Decimal(str(row[17])) if row[17] is not None else None,
+                    direct_expense=row_direct,
+                    cash_flow=row_cash_flow,
+                    comment=str(row[19]) if row[19] is not None else None,
+                    external_key=str(row[20]) if row[20] is not None else None,
+                    order_ids=_json_list_as_strings(row[21]),
+                    shop_skus=_json_list_as_strings(row[22]),
+                    orders_count=int(row[23] or 0),
+                    rows_count=int(row[24] or 0),
+                    reason=str(row[25]) if row[25] is not None else None,
+                )
+            )
+
+        revenue_total = _round_money(revenue_total)
+        direct_total = _round_money(direct_total)
+        cash_flow_total = _round_money(revenue_total - direct_total)
+        margin_total = _round_ratio((cash_flow_total / revenue_total) if revenue_total != 0 else Decimal("0"))
+        title_source = "Без источника" if source_empty else (f"source_id={source_id}" if source_id is not None else "Все источники")
+        title_region = "Без региона" if region_empty else (f"region_id={region_id}" if region_id is not None else "Все регионы")
+        return FinanceSourcesReportDetailsOut(
+            title=f"{title_source} / {title_region}",
             totals=FinancePnlTotalsOut(
                 revenue=revenue_total,
                 direct_expense=direct_total,

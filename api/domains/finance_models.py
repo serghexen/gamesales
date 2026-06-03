@@ -342,6 +342,41 @@ class FinanceSourcesReportOut(BaseModel):
     items: list[FinanceSourcesReportRowOut] = Field(default_factory=list)
 
 
+class FinanceSourcesReportDetailRowOut(BaseModel):
+    row_type: str
+    deal_id: Optional[int] = None
+    entry_id: Optional[int] = None
+    activity_date: date
+    customer_name: Optional[str] = None
+    source_id: Optional[int] = None
+    source_code: Optional[str] = None
+    source_name: Optional[str] = None
+    region_id: Optional[int] = None
+    region_code: Optional[str] = None
+    region_name: Optional[str] = None
+    operation_name: Optional[str] = None
+    item_title: Optional[str] = None
+    qty: Decimal = Decimal("0")
+    revenue: Decimal = Decimal("0")
+    purchase_cost: Decimal = Decimal("0")
+    purchase_cost_rate: Optional[Decimal] = None
+    direct_expense: Decimal = Decimal("0")
+    cash_flow: Decimal = Decimal("0")
+    comment: Optional[str] = None
+    external_key: Optional[str] = None
+    order_ids: list[str] = Field(default_factory=list)
+    shop_skus: list[str] = Field(default_factory=list)
+    orders_count: int = 0
+    rows_count: int = 0
+    reason: Optional[str] = None
+
+
+class FinanceSourcesReportDetailsOut(BaseModel):
+    title: str
+    totals: FinancePnlTotalsOut
+    items: list[FinanceSourcesReportDetailRowOut] = Field(default_factory=list)
+
+
 class FinanceCashFlowLineOut(BaseModel):
     name: str
     amount: Decimal = Decimal("0")

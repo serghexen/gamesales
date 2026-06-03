@@ -53,6 +53,17 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     margin: 0,
   })
   const financeReportItems = ref([])
+  const financeSourceDetails = ref([])
+  const financeSourceDetailsTotals = reactive({
+    revenue: 0,
+    direct_expense: 0,
+    indirect_expense: 0,
+    gross_profit: 0,
+    operating_profit: 0,
+    margin: 0,
+  })
+  const financeSourceDetailsTitle = ref('')
+  const financeSourceDetailsOpen = ref(false)
   const financeCashFlowTotals = reactive({
     revenue: 0,
     expense: 0,
@@ -99,6 +110,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeEntrySaving = ref(false)
   const financeCatalogSaving = ref(false)
   const financeYandexSyncLoading = ref(false)
+  const financeSourceDetailsLoading = ref(false)
   const financeError = ref(null)
   const financeEntriesError = ref(null)
   const financeEntryError = ref(null)
@@ -108,6 +120,19 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeCashFlowOpeningOk = ref('')
   const financeYandexSyncError = ref(null)
   const financeYandexSyncOk = ref('')
+
+  const clearFinanceSourceDetails = () => {
+    // Закрываем расшифровку и сбрасываем суммы, чтобы не показывать старую строку отчета.
+    financeSourceDetails.value = []
+    financeSourceDetailsTotals.revenue = 0
+    financeSourceDetailsTotals.direct_expense = 0
+    financeSourceDetailsTotals.indirect_expense = 0
+    financeSourceDetailsTotals.gross_profit = 0
+    financeSourceDetailsTotals.operating_profit = 0
+    financeSourceDetailsTotals.margin = 0
+    financeSourceDetailsTitle.value = ''
+    financeSourceDetailsOpen.value = false
+  }
 
   const clearFinanceReport = () => {
     // Сбрасываем отчет, чтобы не показывать устаревшие агрегаты при ошибке запроса.
@@ -268,6 +293,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
 
       const query = params.toString()
       const data = await apiGet(`/finance/reports/sources${query ? `?${query}` : ''}`, { token: auth.state.token })
+      clearFinanceSourceDetails()
       financeReportTotals.revenue = Number(data?.totals?.revenue || 0)
       financeReportTotals.direct_expense = Number(data?.totals?.direct_expense || 0)
       financeReportTotals.indirect_expense = Number(data?.totals?.indirect_expense || 0)
@@ -282,6 +308,47 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       financeError.value = mapApiError(e?.message)
     } finally {
       financeLoading.value = false
+    }
+  }
+
+  const loadFinanceSourceDetails = async (row, title = '') => {
+    // Загружаем расшифровку конкретной строки отчета: сделки и finance-проводки с теми же фильтрами.
+    financeError.value = null
+    financeSourceDetailsLoading.value = true
+    financeSourceDetailsOpen.value = true
+    financeSourceDetailsTitle.value = String(title || '').trim() || 'Расшифровка строки'
+    try {
+      const params = new URLSearchParams()
+      if (financeFilters.date_from) params.set('date_from', financeFilters.date_from)
+      if (financeFilters.date_to) params.set('date_to', financeFilters.date_to)
+      const sourceId = Number(row?.source_id || 0)
+      const regionId = Number(row?.region_id || 0)
+      if (sourceId > 0) {
+        params.set('source_id', String(sourceId))
+      } else {
+        params.set('source_empty', '1')
+      }
+      if (regionId > 0) {
+        params.set('region_id', String(regionId))
+      } else {
+        params.set('region_empty', '1')
+      }
+      const query = params.toString()
+      const data = await apiGet(`/finance/reports/sources/details${query ? `?${query}` : ''}`, { token: auth.state.token })
+      financeSourceDetails.value = Array.isArray(data?.items) ? data.items : []
+      financeSourceDetailsTotals.revenue = Number(data?.totals?.revenue || 0)
+      financeSourceDetailsTotals.direct_expense = Number(data?.totals?.direct_expense || 0)
+      financeSourceDetailsTotals.indirect_expense = Number(data?.totals?.indirect_expense || 0)
+      financeSourceDetailsTotals.gross_profit = Number(data?.totals?.gross_profit || 0)
+      financeSourceDetailsTotals.operating_profit = Number(data?.totals?.operating_profit || 0)
+      financeSourceDetailsTotals.margin = Number(data?.totals?.margin || 0)
+      return true
+    } catch (e) {
+      financeSourceDetails.value = []
+      financeError.value = mapApiError(e?.message)
+      return false
+    } finally {
+      financeSourceDetailsLoading.value = false
     }
   }
 
@@ -756,6 +823,10 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeEntriesTotal,
     financeReportTotals,
     financeReportItems,
+    financeSourceDetails,
+    financeSourceDetailsTotals,
+    financeSourceDetailsTitle,
+    financeSourceDetailsOpen,
     financeCashFlowTotals,
     financeCashFlowMonth,
     financeCashFlowOpeningDraft,
@@ -774,6 +845,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeEntrySaving,
     financeCatalogSaving,
     financeYandexSyncLoading,
+    financeSourceDetailsLoading,
     financeError,
     financeEntriesError,
     financeEntryError,
@@ -800,6 +872,8 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     archiveFinanceProject,
     updateFinanceProject,
     loadFinanceProjectsReport,
+    loadFinanceSourceDetails,
+    clearFinanceSourceDetails,
     loadFinanceCashFlowReport,
     saveFinanceCashFlowOpeningBalance,
     syncFinanceYandexMarket,

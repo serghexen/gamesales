@@ -74,6 +74,33 @@ describe('useFinanceReports', () => {
     expect(h.finance.financeReportItems.value).toHaveLength(1)
   })
 
+  it('loads source report detail rows for selected table line', async () => {
+    const h = createHarness()
+    h.finance.financeFilters.date_from = '2026-06-02'
+    h.finance.financeFilters.date_to = '2026-06-02'
+    h.apiGet.mockResolvedValueOnce({
+      totals: {
+        revenue: '35821.00',
+        direct_expense: '25840.00',
+        operating_profit: '9981.00',
+        margin: '0.2786',
+      },
+      items: [{ row_type: 'deal', deal_id: 16308, revenue: '5810.00', direct_expense: '4150.00' }],
+    })
+
+    const ok = await h.finance.loadFinanceSourceDetails({ source_id: null, region_id: 10 }, 'Услуга / TR')
+
+    expect(ok).toBe(true)
+    expect(h.apiGet).toHaveBeenCalledWith(
+      '/finance/reports/sources/details?date_from=2026-06-02&date_to=2026-06-02&source_empty=1&region_id=10',
+      { token: 'token-1' },
+    )
+    expect(h.finance.financeSourceDetailsOpen.value).toBe(true)
+    expect(h.finance.financeSourceDetailsTitle.value).toBe('Услуга / TR')
+    expect(h.finance.financeSourceDetailsTotals.operating_profit).toBe(9981)
+    expect(h.finance.financeSourceDetails.value[0]?.deal_id).toBe(16308)
+  })
+
   it('builds cash flow report query and fills line totals', async () => {
     const h = createHarness()
     h.finance.financeCashFlowMonth.value = '2026-06'

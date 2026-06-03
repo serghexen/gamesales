@@ -136,6 +136,34 @@ function buildCtx(overrides = {}) {
         deals_count: 1,
       },
     ],
+    financeSourceDetails: [
+      {
+        row_type: 'deal',
+        deal_id: 16308,
+        activity_date: '2026-06-02',
+        customer_name: 'LifeGuard58',
+        operation_name: 'Услуга',
+        item_title: 'item-16308',
+        revenue: 5810,
+        purchase_cost: 1660,
+        purchase_cost_rate: 2.5,
+        direct_expense: 4150,
+        cash_flow: 1660,
+        order_ids: ['577', '578'],
+        orders_count: 2,
+        reason: 'Источник клиента не привязан к finance source',
+      },
+    ],
+    financeSourceDetailsTotals: {
+      revenue: 5810,
+      direct_expense: 4150,
+      indirect_expense: 0,
+      operating_profit: 1660,
+      margin: 0.2857,
+    },
+    financeSourceDetailsTitle: 'Услуга / TR',
+    financeSourceDetailsOpen: false,
+    financeSourceDetailsLoading: false,
     financeCashFlowLoaded: true,
     financeCashFlowTotals: {
       revenue: 20000,
@@ -160,6 +188,8 @@ function buildCtx(overrides = {}) {
     ],
     financeYandexSyncResult: null,
     loadFinanceProjectsReport: vi.fn(),
+    loadFinanceSourceDetails: vi.fn(),
+    clearFinanceSourceDetails: vi.fn(),
     loadFinanceCashFlowReport: vi.fn(),
     saveFinanceCashFlowOpeningBalance: vi.fn(),
     syncFinanceYandexMarket: vi.fn(),
@@ -321,9 +351,12 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.find('[data-test="finance-report-regions"]').text()).toContain('Все')
     const regionCheckboxes = wrapper.findAll('[data-test="finance-report-regions"] input[type="checkbox"]')
     expect(regionCheckboxes).toHaveLength(2)
+    regionCheckboxes[1].element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('[data-test="finance-report-regions"] input[type="checkbox"]')).toHaveLength(2)
     await regionCheckboxes[1].setValue(false)
     expect(ctx.financeFilters.region_id).toEqual([])
-    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
     await wrapper.vm.$nextTick()
     expect(wrapper.findAll('[data-test="finance-report-regions"] input[type="checkbox"]')).toHaveLength(0)
     expect(wrapper.text()).toContain('Название')
@@ -338,6 +371,37 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('TR')
     expect(wrapper.text()).not.toContain('Без источника')
     expect(wrapper.text()).not.toContain('Turkey - TR')
+  })
+
+  it('opens source report detail modal for selected row', async () => {
+    const ctx = buildCtx({ financeSourceDetailsOpen: true })
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-report"]').trigger('click')
+    const buttons = wrapper.findAll('[data-test^="finance-source-details-"]')
+    await buttons[1].trigger('click')
+
+    expect(ctx.loadFinanceSourceDetails).toHaveBeenCalledWith(
+      expect.objectContaining({ source_id: null, region_id: 10 }),
+      'Услуга / TR',
+    )
+    expect(wrapper.text()).toContain('Услуга / TR')
+    expect(wrapper.text()).toContain('Сделка #16308')
+    expect(wrapper.text()).toContain('LifeGuard58')
+    expect(wrapper.text()).toContain('577, 578')
+    expect(wrapper.text()).toContain('заказов 2')
+    expect(wrapper.text()).toContain('Источник клиента не привязан к finance source')
   })
 
   it('shows cash flow report rows and balances', async () => {

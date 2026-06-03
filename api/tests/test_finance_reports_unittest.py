@@ -111,6 +111,68 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertTrue(any("source_id = ANY(%s)" in sql for sql in sql_collector))
         self.assertTrue(any("HAVING COALESCE(SUM(revenue), 0) <> 0" in sql for sql in sql_collector))
 
+    # Детализация строки отчета должна возвращать сделки/проводки с теми же фильтрами, что и агрегат.
+    def test_finance_sources_report_details_success(self):
+        script = [
+            {
+                "all": [
+                    (
+                        "deal",
+                        16308,
+                        None,
+                        date(2026, 6, 2),
+                        None,
+                        "LifeGuard58",
+                        None,
+                        None,
+                        "Без источника",
+                        10,
+                        "TR",
+                        "Turkey",
+                        "Услуга",
+                        "item-16308",
+                        "1",
+                        "5810.00",
+                        "1660.00",
+                        "2.5",
+                        "4150.00",
+                        None,
+                        None,
+                        ["577", "578"],
+                        ["SKU-1", "SKU-2"],
+                        2,
+                        2,
+                        "Источник клиента не привязан к finance source",
+                    ),
+                ],
+            },
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/finance/reports/sources/details?date_from=2026-06-02&date_to=2026-06-02&source_empty=1&region_id=10",
+                    headers=self._auth_headers(role="manager"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["totals"]["revenue"], "5810.00")
+        self.assertEqual(body["totals"]["direct_expense"], "4150.00")
+        self.assertEqual(body["totals"]["operating_profit"], "1660.00")
+        self.assertEqual(body["items"][0]["deal_id"], 16308)
+        self.assertEqual(body["items"][0]["customer_name"], "LifeGuard58")
+        self.assertEqual(body["items"][0]["purchase_cost_rate"], "2.5")
+        self.assertEqual(body["items"][0]["order_ids"], ["577", "578"])
+        self.assertEqual(body["items"][0]["orders_count"], 2)
+        self.assertTrue(any("source_id IS NULL" in sql for sql in sql_collector))
+        self.assertTrue(any("region_id = %s" in sql for sql in sql_collector))
+
     # Cash Flow должен отдавать поступления/расходы отдельными строками и считать остатки.
     def test_finance_cash_flow_report_success(self):
         script = [
