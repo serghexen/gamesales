@@ -31,7 +31,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       TELEGRAM_API_URL: ${TELEGRAM_API_URL:-http://telegram-service:8082}
       TELEGRAM_API_KEY: ${TELEGRAM_API_KEY}
-      UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
       IMPORT_MAX_CONCURRENT_JOBS: ${IMPORT_MAX_CONCURRENT_JOBS:-1}
     depends_on:
       postgres:

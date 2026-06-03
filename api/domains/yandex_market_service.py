@@ -7,6 +7,7 @@ import io
 import json
 import os
 import ssl
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -18,6 +19,8 @@ from fastapi import HTTPException
 
 
 YANDEX_MARKET_BASE_URL = "https://api.partner.market.yandex.ru"
+_GENERATE_RATE_LIMIT_LOCK = threading.Lock()
+_GENERATE_LAST_ATTEMPT: dict[str, float] = {}
 
 
 def normalize_yandex_market_store_code(value: str | None) -> str:
@@ -130,6 +133,11 @@ def _request_json(method: str, url: str, *, token: str, payload: dict[str, Any] 
             text = resp.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         error_text = exc.read().decode("utf-8", errors="replace")
+        if "Hit rate limit" in error_text or "METHOD_FAILURE" in error_text:
+            raise HTTPException(
+                429,
+                "Лимит Yandex Market: отчет united-orders можно создавать не чаще 1 раза за 2 минуты для одного businessId. Подождите и повторите синхронизацию.",
+            )
         raise HTTPException(exc.code, f"Yandex Market API error: {error_text[:1000]}")
     except urllib.error.URLError as exc:
         raise HTTPException(502, f"Yandex Market API unavailable: {exc}")
@@ -151,6 +159,26 @@ def _download_bytes(url: str, *, timeout: int = 60) -> bytes:
         raise HTTPException(exc.code, f"Yandex Market report download error: {error_text[:1000]}")
     except urllib.error.URLError as exc:
         raise HTTPException(502, f"Yandex Market report download unavailable: {exc}")
+
+
+def _guard_united_orders_generate_rate_limit(business_id: int) -> None:
+    # Не дергаем генерацию отчета чаще лимита Яндекса, чтобы не получать METHOD_FAILURE.
+    cooldown_seconds = max(0, _env_int("YANDEX_MARKET_GENERATE_COOLDOWN_SEC", 125))
+    if cooldown_seconds <= 0:
+        return
+    key = f"united-orders:{business_id}"
+    now = time.monotonic()
+    with _GENERATE_RATE_LIMIT_LOCK:
+        last_attempt = _GENERATE_LAST_ATTEMPT.get(key)
+        if last_attempt is not None:
+            remaining_seconds = cooldown_seconds - (now - last_attempt)
+            if remaining_seconds > 0:
+                wait_seconds = int(max(1, remaining_seconds))
+                raise HTTPException(
+                    429,
+                    f"Лимит Yandex Market: отчет united-orders для этого магазина можно запускать раз в 2 минуты. Повторите примерно через {wait_seconds} сек.",
+                )
+        _GENERATE_LAST_ATTEMPT[key] = now
 
 
 def _normalize_report_rows(json_files: list[dict[str, Any]]) -> list[tuple[str, dict[str, Any]]]:
@@ -297,6 +325,7 @@ def fetch_yandex_market_order_economics(
     generate_url = f"{base_url}/v2/reports/united-orders/generate?format=JSON&language=RU"
     if progress:
         progress(f"Создаем отчет Yandex Market: {normalized_store_code.upper()}")
+    _guard_united_orders_generate_rate_limit(business_id)
     report_data = _request_json("POST", generate_url, token=token, payload=payload, timeout=timeout)
     report_id = (report_data.get("result") or {}).get("reportId")
     if not report_id:

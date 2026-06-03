@@ -1461,7 +1461,7 @@ def mount_accounts_routes(
         ]
     
     @app.post("/slot-assignments/{assignment_id}/release")
-    def release_slot_assignment_api(assignment_id: int, user=Depends(get_current_user)):
+    def release_slot_assignment_api(assignment_id: int, user=Depends(require_role("admin", "owner"))):
         with psycopg.connect(DB_DSN) as conn:
             row = q1(
                 conn,
@@ -1493,7 +1493,7 @@ def mount_accounts_routes(
         return {"ok": True}
 
     @app.post("/slot-assignments/{assignment_id}/restore")
-    def restore_slot_assignment_api(assignment_id: int, user=Depends(get_current_user)):
+    def restore_slot_assignment_api(assignment_id: int, user=Depends(require_role("admin", "owner"))):
         with psycopg.connect(DB_DSN) as conn:
             row = q1(
                 conn,

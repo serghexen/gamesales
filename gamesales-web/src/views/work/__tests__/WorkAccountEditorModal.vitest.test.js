@@ -56,6 +56,7 @@ function buildProps(overrides = {}) {
     getSlotAssignmentStatus: () => 'Активен',
     formatDateTimeMinutes: (value) => String(value || ''),
     accountSlotReleaseLoading: false,
+    canManageAccountSlotAssignments: true,
     releaseSlotAssignment: vi.fn(),
     restoreSlotAssignment: vi.fn(),
     accountDealsError: '',
@@ -303,6 +304,32 @@ describe('WorkAccountEditorModal', () => {
     expect(restoreBtn).toBeTruthy()
     await restoreBtn.trigger('click')
     expect(restoreSlotAssignment).toHaveBeenCalledWith(55)
+  })
+
+  it('hides manual slot buttons when role cannot manage assignments', () => {
+    const wrapper = mount(WorkAccountEditorModal, {
+      props: buildProps({
+        accountModalMode: 'edit',
+        accountEditMode: 'view',
+        canManageAccountSlotAssignments: false,
+        accountSlotAssignments: [{ assignment_id: 56 }],
+        sortedAccountSlotAssignments: [
+          {
+            assignment_id: 56,
+            slot_type_code: 'play_ps5',
+            released_at: null,
+            released_by: '',
+            product_title: 'Game B',
+            customer_nickname: 'buyer',
+            assigned_at: '2026-03-20T10:00:00Z',
+          },
+        ],
+      }),
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(wrapper.text()).not.toContain('Снять')
+    expect(wrapper.text()).not.toContain('Вернуть')
   })
 
   it('copies account email from modal header', async () => {

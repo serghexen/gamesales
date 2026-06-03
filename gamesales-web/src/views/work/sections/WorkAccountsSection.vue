@@ -162,6 +162,7 @@
         :get-slot-assignment-status="ctx.getSlotAssignmentStatus"
         :format-date-time-minutes="ctx.formatDateTimeMinutes"
         :account-slot-release-loading="ctx.accountSlotReleaseLoading"
+        :can-manage-account-slot-assignments="ctx.isAdmin"
         :release-slot-assignment="ctx.releaseSlotAssignment"
         :restore-slot-assignment="ctx.restoreSlotAssignment"
         :account-deals-error="ctx.accountDealsError"

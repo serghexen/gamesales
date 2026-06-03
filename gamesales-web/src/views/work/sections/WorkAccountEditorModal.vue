@@ -411,7 +411,7 @@
                               <td>{{ s.released_by || '—' }}</td>
                               <td class="cell--tight">
                                 <button
-                                  v-if="!s.released_at"
+                                  v-if="canManageSlotAssignments && !s.released_at"
                                   class="ghost ghost--small"
                                   type="button"
                                   :disabled="accountSlotReleaseLoading"
@@ -420,7 +420,7 @@
                                   Снять
                                 </button>
                                 <button
-                                  v-else
+                                  v-else-if="canManageSlotAssignments"
                                   class="ghost ghost--small"
                                   type="button"
                                   :disabled="accountSlotReleaseLoading"
@@ -725,6 +725,7 @@ const props = defineProps([
   'getSlotAssignmentStatus',
   'formatDateTimeMinutes',
   'accountSlotReleaseLoading',
+  'canManageAccountSlotAssignments',
   'releaseSlotAssignment',
   'restoreSlotAssignment',
   'accountDealsError',
@@ -768,6 +769,9 @@ const editAccountProductSearchModel = computed({
 
 // Блокируем форму при загрузке или сохранении, чтобы пользователь видел единый индикатор.
 const accountBusy = computed(() => Boolean(props.accountsLoading || props.accountSaving))
+
+// Ручное снятие и возврат слотов доступны только административным ролям.
+const canManageSlotAssignments = computed(() => props.canManageAccountSlotAssignments !== false)
 
 // Обновляет текущую карточку аккаунта с сервера, чтобы подтянуть изменения из других вкладок.
 const refreshOpenAccountFromDb = () => {

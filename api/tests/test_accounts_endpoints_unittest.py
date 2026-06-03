@@ -1130,7 +1130,7 @@ class AccountsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 422)
 
-    # Ручное снятие игрового назначения слота должно оставаться доступным.
+    # Ручное снятие игрового назначения слота доступно только admin/owner.
     def test_release_slot_assignment_allows_game_assignment(self):
         script = [
             {"one": (900, None, "game")},
@@ -1143,9 +1143,20 @@ class AccountsEndpointsTests(unittest.TestCase):
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
             with self._client() as client:
-                res = client.post("/slot-assignments/900/release", headers=self._auth_headers(role="manager"))
+                res = client.post("/slot-assignments/900/release", headers=self._auth_headers(role="admin"))
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
+
+    # Manager/operator не должны вручную снимать слоты из формы аккаунта.
+    def test_release_slot_assignment_blocks_manager_role(self):
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post("/slot-assignments/900/release", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 403)
 
     # Ручное снятие подписочного назначения слота должно быть запрещено.
     def test_release_slot_assignment_blocks_subscription_assignment(self):
@@ -1159,10 +1170,10 @@ class AccountsEndpointsTests(unittest.TestCase):
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
             with self._client() as client:
-                res = client.post("/slot-assignments/901/release", headers=self._auth_headers(role="manager"))
+                res = client.post("/slot-assignments/901/release", headers=self._auth_headers(role="admin"))
             self.assertEqual(res.status_code, 409)
 
-    # Ручное восстановление игрового назначения слота должно возвращать слот в работу.
+    # Ручное восстановление игрового назначения слота доступно только admin/owner.
     def test_restore_slot_assignment_allows_game_assignment(self):
         script = [
             {"one": (910, 7, "ps5_p1", "2026-05-10T10:00:00Z", None, "game")},
@@ -1176,9 +1187,20 @@ class AccountsEndpointsTests(unittest.TestCase):
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
             with self._client() as client:
-                res = client.post("/slot-assignments/910/restore", headers=self._auth_headers(role="manager"))
+                res = client.post("/slot-assignments/910/restore", headers=self._auth_headers(role="admin"))
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
+
+    # Operator не должен вручную возвращать снятые слоты из формы аккаунта.
+    def test_restore_slot_assignment_blocks_operator_role(self):
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post("/slot-assignments/910/restore", headers=self._auth_headers(role="operator"))
+            self.assertEqual(res.status_code, 403)
 
     # Восстановление должно отклоняться, если по слоту больше нет свободного места.
     def test_restore_slot_assignment_blocks_when_no_free_capacity(self):
@@ -1193,7 +1215,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
             with self._client() as client:
-                res = client.post("/slot-assignments/911/restore", headers=self._auth_headers(role="manager"))
+                res = client.post("/slot-assignments/911/restore", headers=self._auth_headers(role="admin"))
             self.assertEqual(res.status_code, 409)
 
     # Восстановление подписочного назначения вручную должно быть запрещено.
@@ -1208,7 +1230,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
             with self._client() as client:
-                res = client.post("/slot-assignments/912/restore", headers=self._auth_headers(role="manager"))
+                res = client.post("/slot-assignments/912/restore", headers=self._auth_headers(role="admin"))
             self.assertEqual(res.status_code, 409)
 
 

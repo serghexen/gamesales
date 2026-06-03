@@ -1810,6 +1810,10 @@ def mount_finance_routes(
         # Стартуем ручную синхронизацию в фоне, чтобы кнопка не держала HTTP-запрос до готовности отчета.
         if payload.date_to < payload.date_from:
             raise HTTPException(400, "date_to must be >= date_from")
+        store_code = normalize_yandex_market_store_code(payload.store_code)
+        for existing_job_id, existing_job in list(yandex_sync_jobs.items()):
+            if existing_job.get("store_code") == store_code and existing_job.get("status") in {"queued", "running"}:
+                return _to_yandex_job_out(existing_job_id, existing_job)
         job_id = uuid.uuid4().hex
         now = datetime.now(timezone.utc)
         yandex_sync_jobs[job_id] = {
@@ -1817,6 +1821,9 @@ def mount_finance_routes(
             "message": "Синхронизация поставлена в очередь",
             "result": None,
             "error": None,
+            "store_code": store_code,
+            "date_from": payload.date_from.isoformat(),
+            "date_to": payload.date_to.isoformat(),
             "created_at": now,
             "updated_at": now,
         }

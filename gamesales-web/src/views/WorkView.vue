@@ -2778,6 +2778,7 @@ const accountsSectionCtx = asCtx({
   getSlotAssignmentStatus,
   formatDateTimeMinutes,
   accountSlotReleaseLoading,
+  isAdmin,
   releaseSlotAssignment,
   restoreSlotAssignment,
   accountDealsError,
