@@ -705,7 +705,16 @@
                 <tbody>
                   <tr v-for="item in ctx.financeSourceDetails" :key="`${item.row_type}-${item.deal_id || item.entry_id}`">
                     <td>
-                      <div class="finance-detail-main">{{ formatDetailRef(item) }}</div>
+                      <button
+                        v-if="canOpenDetailDeal(item)"
+                        class="finance-detail-link"
+                        type="button"
+                        :data-test="`finance-detail-open-deal-${item.deal_id}`"
+                        @click="openDetailDeal(item)"
+                      >
+                        {{ formatDetailRef(item) }}
+                      </button>
+                      <div v-else class="finance-detail-main">{{ formatDetailRef(item) }}</div>
                       <div class="muted">{{ item.activity_date }}</div>
                     </td>
                     <td>
@@ -879,7 +888,19 @@ const showAdminTabs = computed(() => (
   || canViewFinanceSection.value
 ))
 
-const financeMode = ref('entry')
+const fallbackFinanceMode = ref('entry')
+const financeMode = computed({
+  get: () => String(unref(props.ctx.financeMode) || fallbackFinanceMode.value || 'entry'),
+  set: (mode) => {
+    // Сохраняем выбранную подвкладку в общем контексте, чтобы она переживала переход в сделку.
+    const nextMode = String(mode || 'entry')
+    if (Object.prototype.hasOwnProperty.call(props.ctx, 'financeMode')) {
+      props.ctx.financeMode = nextMode
+    } else {
+      fallbackFinanceMode.value = nextMode
+    }
+  },
+})
 const journalSectionKind = ref('')
 const openFinanceReportFilter = ref('')
 
@@ -1132,6 +1153,18 @@ function formatDetailRef(item) {
   const entryId = Number(item?.entry_id || 0)
   if (entryId) return `Проводка #${entryId}`
   return '—'
+}
+
+// Разрешаем переход только для строк, где есть app deal_id и обработчик из WorkView.
+function canOpenDetailDeal(item) {
+  return Number(item?.deal_id || 0) > 0 && typeof props.ctx.openFinanceDetailDeal === 'function'
+}
+
+// Передаем deal_id наверх, чтобы WorkView загрузил сделку и открыл общую карточку.
+async function openDetailDeal(item) {
+  const dealId = Number(item?.deal_id || 0)
+  if (!dealId || typeof props.ctx.openFinanceDetailDeal !== 'function') return
+  await props.ctx.openFinanceDetailDeal(dealId)
 }
 
 // Показываем клиента для сделки или операцию для finance-проводки.
@@ -1563,6 +1596,21 @@ async function reloadFinanceCatalogs() {
 .finance-detail-main {
   font-weight: 800;
   color: var(--text);
+}
+
+.finance-detail-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.finance-detail-link:hover {
+  text-decoration: underline;
 }
 
 .finance-detail-reason {

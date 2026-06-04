@@ -154,6 +154,90 @@ def mount_deals_routes(
         username = (getattr(user, "username", "") or "").strip().lower()
         return role in {"admin", "owner"} or username in {"admin", "owner"}
 
+    # Превращает SQL-строку сделки в общий DTO, чтобы список и карточка по id отдавали один формат.
+    def build_deal_list_item(r) -> DealListItem:
+        login_full = f"{r[10]}@{r[11]}" if r[10] and r[11] else None
+        product_id = r[12]
+        product_title = r[13]
+        product_short_title = r[14]
+        platform_code = r[15]
+        customer_nickname = r[16]
+        login = r[17]
+        password = r[18]
+        source_id = r[19]
+        price_value = r[20]
+        purchase_cost_value = r[21]
+        purchase_at = r[22]
+        created_at = r[23]
+        completed_at = r[24]
+        slots_used = r[25]
+        slot_type_code = r[26]
+        if len(r) > 34:
+            subscription_term_id = r[27]
+            subscription_valid_until = r[28]
+            reserve_key = r[29]
+            notes = r[30]
+            product_link = r[31]
+            is_refund = bool(r[32])
+            lock_version = int((r[33] if len(r) > 33 else 1) or 1)
+            messenger_id = r[34]
+        elif len(r) > 33:
+            # Поддерживаем переходный формат строки без даты срока подписки.
+            subscription_term_id = r[27]
+            subscription_valid_until = None
+            reserve_key = r[28]
+            notes = r[29]
+            product_link = r[30]
+            is_refund = bool(r[31])
+            lock_version = int((r[32] if len(r) > 32 else 1) or 1)
+            messenger_id = r[33]
+        else:
+            # Поддерживаем старые тестовые строки без reserve_key.
+            subscription_term_id = None
+            subscription_valid_until = None
+            reserve_key = None
+            notes = r[27]
+            product_link = r[28]
+            is_refund = bool(r[29])
+            lock_version = int((r[30] if len(r) > 30 else 1) or 1)
+            messenger_id = None
+        return DealListItem(
+            deal_id=r[0],
+            lock_version=lock_version,
+            deal_type=r[1],
+            deal_type_code=r[2],
+            status=r[3],
+            flow_status_code=r[4],
+            flow_status=r[5],
+            order_number=r[6],
+            responsible_username=r[7],
+            region_code=r[8],
+            account_id=r[9],
+            account_login=login_full,
+            product_id=product_id,
+            product_title=product_title,
+            product_short_title=product_short_title,
+            platform_code=platform_code,
+            customer_nickname=customer_nickname,
+            login=login,
+            password=password,
+            source_id=source_id,
+            messenger_id=messenger_id,
+            price=float(price_value or 0),
+            purchase_cost=float(purchase_cost_value or 0),
+            purchase_at=purchase_at,
+            created_at=created_at,
+            completed_at=completed_at,
+            slots_used=slots_used,
+            slot_type_code=slot_type_code,
+            subscription_term_id=subscription_term_id,
+            subscription_valid_until=subscription_valid_until,
+            reserve_key=reserve_key,
+            notes=notes,
+            product_link=product_link,
+            is_refund=is_refund,
+        )
+
     # Находит owner и возвращает отображаемое имя для поля "Ответственный".
     def resolve_owner_responsible_name(conn) -> str:
         row = q1(
@@ -807,7 +891,84 @@ def mount_deals_routes(
                     pass
     
             return {"deal_id": deal_id}
-    
+
+    @app.get("/deals/{deal_id}", response_model=DealListItem)
+    def get_deal(deal_id: int, user=Depends(get_current_user)):
+        # Отдаем одну сделку в формате списка, чтобы фронт мог открыть карточку из других разделов.
+        if deal_id <= 0:
+            raise HTTPException(400, "deal_id must be positive")
+        with psycopg.connect(DB_DSN) as conn:
+            where_sql = "WHERE d.deal_id=%s AND d.status_code <> 'cancelled'"
+            params = [deal_id]
+            if not has_completed_deal_access(user):
+                where_sql = f"{where_sql} AND di.returned_at IS NULL"
+            row = q1(conn, f"""
+                SELECT
+                  d.deal_id,
+                  dt.name as deal_type_name,
+                  dt.code as deal_type_code,
+                  ds.name as status_name,
+                  d.flow_status_code,
+                  fs.name as flow_status_name,
+                  d.order_number,
+                  COALESCE(
+                    (
+                      SELECT NULLIF(btrim(u.name), '')
+                      FROM app.users u
+                      WHERE lower(u.username) = lower(d.responsible_username)
+                      ORDER BY u.user_id ASC
+                      LIMIT 1
+                    ),
+                    d.responsible_username
+                  ) as responsible_username,
+                  COALESCE(rd.code, ra.code) as region_code,
+                  di.account_id,
+                  a.login_name,
+                  dm.name as domain_name,
+                  di.product_id,
+                  pr.title as product_title,
+                  pr.short_title as product_short_title,
+                  p.code as platform_code,
+                  c.nickname,
+                  c.customer_login,
+                  c.customer_password,
+                  c.source_id,
+                  di.price,
+                  di.purchase_cost,
+                  di.purchase_at,
+                  d.created_at,
+                  d.completed_at,
+                  di.slots_used,
+                  di.slot_type_code,
+                  di.subscription_term_id,
+                  st.valid_until AS subscription_valid_until,
+                  di.reserve_key,
+                  di.notes,
+                  di.game_link as product_link,
+                  (di.returned_at IS NOT NULL) as is_refund,
+                  d.lock_version,
+                  d.messenger_id
+                FROM app.deal_items di
+                JOIN app.deals d ON d.deal_id = di.deal_id
+                LEFT JOIN app.deal_types dt ON dt.code = d.deal_type_code
+                LEFT JOIN app.deal_statuses ds ON ds.code = d.status_code
+                LEFT JOIN app.deal_flow_statuses fs ON fs.code = d.flow_status_code
+                LEFT JOIN app.accounts a ON a.account_id = di.account_id
+                LEFT JOIN app.domains dm ON dm.domain_id = a.domain_id
+                LEFT JOIN app.regions ra ON ra.region_id = a.region_id
+                LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+                LEFT JOIN app.products pr ON pr.product_id = di.product_id
+                LEFT JOIN app.subscription_terms st ON st.term_id = di.subscription_term_id
+                LEFT JOIN app.platforms p ON p.platform_id = di.platform_id
+                LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+                LEFT JOIN app.sources src ON src.source_id = c.source_id
+                {where_sql}
+                LIMIT 1
+            """, params)
+        if not row:
+            raise HTTPException(404, "deal not found")
+        return build_deal_list_item(row)
+
     @app.put("/deals/{deal_id}")
     def update_deal(deal_id: int, payload: DealUpdate, user=Depends(get_current_user)):
         if payload.purchase_at is not None:
@@ -1647,93 +1808,7 @@ def mount_deals_routes(
                 LIMIT %s OFFSET %s
             """, params + [page_size, offset])
     
-        items = []
-        for r in rows:
-            login_full = f"{r[10]}@{r[11]}" if r[10] and r[11] else None
-            # Разбираем единый product-first формат строки из SQL списка сделок.
-            product_id = r[12]
-            product_title = r[13]
-            product_short_title = r[14]
-            platform_code = r[15]
-            customer_nickname = r[16]
-            login = r[17]
-            password = r[18]
-            source_id = r[19]
-            price_value = r[20]
-            purchase_cost_value = r[21]
-            purchase_at = r[22]
-            created_at = r[23]
-            completed_at = r[24]
-            slots_used = r[25]
-            slot_type_code = r[26]
-            # Срок подписки обязателен для корректного открытия шеринга в режиме редактирования.
-            if len(r) > 34:
-                subscription_term_id = r[27]
-                subscription_valid_until = r[28]
-                reserve_key = r[29]
-                notes = r[30]
-                product_link = r[31]
-                is_refund = bool(r[32])
-                lock_version = int((r[33] if len(r) > 33 else 1) or 1)
-                messenger_id = r[34]
-            elif len(r) > 33:
-                # Поддерживаем переходный формат строки без даты срока подписки.
-                subscription_term_id = r[27]
-                subscription_valid_until = None
-                reserve_key = r[28]
-                notes = r[29]
-                product_link = r[30]
-                is_refund = bool(r[31])
-                lock_version = int((r[32] if len(r) > 32 else 1) or 1)
-                messenger_id = r[33]
-            else:
-                # Поддерживаем старые тестовые строки без reserve_key.
-                subscription_term_id = None
-                subscription_valid_until = None
-                reserve_key = None
-                notes = r[27]
-                product_link = r[28]
-                is_refund = bool(r[29])
-                lock_version = int((r[30] if len(r) > 30 else 1) or 1)
-                messenger_id = None
-            items.append(
-                DealListItem(
-                    deal_id=r[0],
-                    lock_version=lock_version,
-                    deal_type=r[1],
-                    deal_type_code=r[2],
-                    status=r[3],
-                    flow_status_code=r[4],
-                    flow_status=r[5],
-                    order_number=r[6],
-                    responsible_username=r[7],
-                    region_code=r[8],
-                    account_id=r[9],
-                    account_login=login_full,
-                    product_id=product_id,
-                    product_title=product_title,
-                    product_short_title=product_short_title,
-                    platform_code=platform_code,
-                    customer_nickname=customer_nickname,
-                    login=login,
-                    password=password,
-                    source_id=source_id,
-                    messenger_id=messenger_id,
-                    price=float(price_value or 0),
-                    purchase_cost=float(purchase_cost_value or 0),
-                    purchase_at=purchase_at,
-                    created_at=created_at,
-                    completed_at=completed_at,
-                    slots_used=slots_used,
-                    slot_type_code=slot_type_code,
-                    subscription_term_id=subscription_term_id,
-                    subscription_valid_until=subscription_valid_until,
-                    reserve_key=reserve_key,
-                    notes=notes,
-                    product_link=product_link,
-                    is_refund=is_refund,
-                )
-            )
+        items = [build_deal_list_item(r) for r in rows]
     
         return DealListOut(total=total, items=items)
     

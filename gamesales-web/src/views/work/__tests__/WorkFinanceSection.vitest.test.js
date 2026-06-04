@@ -12,6 +12,7 @@ function buildCtx(overrides = {}) {
     canViewAnalyticsSection: true,
     canViewCatalogsSection: true,
     canViewFinanceSection: true,
+    financeMode: 'entry',
     financeLoading: false,
     financeCashFlowLoading: false,
     financeEntriesLoading: false,
@@ -190,6 +191,7 @@ function buildCtx(overrides = {}) {
     loadFinanceProjectsReport: vi.fn(),
     loadFinanceSourceDetails: vi.fn(),
     clearFinanceSourceDetails: vi.fn(),
+    openFinanceDetailDeal: vi.fn(),
     loadFinanceCashFlowReport: vi.fn(),
     saveFinanceCashFlowOpeningBalance: vi.fn(),
     syncFinanceYandexMarket: vi.fn(),
@@ -345,6 +347,7 @@ describe('WorkFinanceSection', () => {
     })
 
     await wrapper.find('[data-test="finance-mode-report"]').trigger('click')
+    expect(ctx.financeMode).toBe('report')
     expect(wrapper.find('[data-test="finance-report-regions"]').text()).toContain('Turkey')
     expect(wrapper.find('[data-test="finance-report-sources"]').text()).toContain('ASAT - ym')
     await wrapper.find('[data-test="finance-report-regions"] button').trigger('click')
@@ -398,6 +401,8 @@ describe('WorkFinanceSection', () => {
     )
     expect(wrapper.text()).toContain('Услуга / TR')
     expect(wrapper.text()).toContain('Сделка #16308')
+    await wrapper.find('[data-test="finance-detail-open-deal-16308"]').trigger('click')
+    expect(ctx.openFinanceDetailDeal).toHaveBeenCalledWith(16308)
     expect(wrapper.text()).toContain('LifeGuard58')
     expect(wrapper.text()).toContain('577, 578')
     expect(wrapper.text()).toContain('заказов 2')

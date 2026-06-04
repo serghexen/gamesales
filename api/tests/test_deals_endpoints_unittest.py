@@ -99,6 +99,59 @@ class DealsEndpointsTests(unittest.TestCase):
                 res = client.get("/deals?page=1&page_size=500", headers=self._auth_headers(role="manager"))
             self.assertEqual(res.status_code, 400)
 
+    # Карточка по id должна отдавать сделку в том же формате, что и список.
+    def test_get_deal_success(self):
+        script = [
+            {
+                "one": (
+                    15,
+                    "Услуга",
+                    "sale",
+                    "Подтверждена",
+                    "pending",
+                    "В ожидании",
+                    "ORD-1",
+                    "admin",
+                    "RU",
+                    7,
+                    "login1",
+                    "gmail.com",
+                    21,
+                    "Game A",
+                    "GA",
+                    "ps5",
+                    "cust1",
+                    "cust-login",
+                    "cust-pass",
+                    3,
+                    1200.0,
+                    500.0,
+                    datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc),
+                    datetime(2026, 2, 1, 11, 0, tzinfo=timezone.utc),
+                    None,
+                    0,
+                    None,
+                    "note",
+                    "https://game",
+                    False,
+                )
+            },
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get("/deals/15", headers=self._auth_headers(role="admin"))
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertEqual(body["deal_id"], 15)
+            self.assertEqual(body["account_login"], "login1@gmail.com")
+            self.assertEqual(body["product_id"], 21)
+            self.assertEqual(body["order_number"], "ORD-1")
+
     # Успешная выдача сделок должна собирать account_login и total.
     def test_list_deals_success(self):
         script = [

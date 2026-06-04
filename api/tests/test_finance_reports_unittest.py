@@ -107,6 +107,11 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertTrue(any("di.returned_at IS NULL" in sql for sql in sql_collector))
         self.assertTrue(any("FROM finance.entry_postings p" in sql for sql in sql_collector))
         self.assertTrue(any("e.input_channel IN ('manual', 'api', 'import')" in sql for sql in sql_collector))
+        self.assertTrue(any("JOIN finance.section_types st ON st.type_id = o.type_id" in sql for sql in sql_collector))
+        self.assertTrue(any("st.code = 'revenue' AND p.metric_code = 'revenue'" in sql for sql in sql_collector))
+        self.assertTrue(any("st.code = 'direct_expense' AND p.metric_code = 'direct_expense'" in sql for sql in sql_collector))
+        self.assertFalse(any("p.metric_code IN ('revenue', 'direct_expense')" in sql for sql in sql_collector))
+        self.assertFalse(any("p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')" in sql for sql in sql_collector))
         self.assertTrue(any("region_id = ANY(%s)" in sql for sql in sql_collector))
         self.assertTrue(any("source_id = ANY(%s)" in sql for sql in sql_collector))
         self.assertTrue(any("HAVING COALESCE(SUM(revenue), 0) <> 0" in sql for sql in sql_collector))
@@ -172,6 +177,11 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(body["items"][0]["orders_count"], 2)
         self.assertTrue(any("source_id IS NULL" in sql for sql in sql_collector))
         self.assertTrue(any("region_id = %s" in sql for sql in sql_collector))
+        self.assertTrue(any("JOIN finance.section_types st ON st.type_id = o.type_id" in sql for sql in sql_collector))
+        self.assertTrue(any("st.code = 'revenue' AND p.metric_code = 'revenue'" in sql for sql in sql_collector))
+        self.assertTrue(any("st.code = 'direct_expense' AND p.metric_code = 'direct_expense'" in sql for sql in sql_collector))
+        self.assertFalse(any("p.metric_code IN ('revenue', 'direct_expense')" in sql for sql in sql_collector))
+        self.assertFalse(any("p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')" in sql for sql in sql_collector))
 
     # Cash Flow должен отдавать поступления/расходы отдельными строками и считать остатки.
     def test_finance_cash_flow_report_success(self):
@@ -266,6 +276,68 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(body["month"], "2026-07-01")
         self.assertEqual(body["amount"], "12345.67")
         self.assertTrue(any("finance.cash_flow_opening_balances" in sql for sql in sql_collector))
+
+    # Смена типа операции должна пересобрать postings, чтобы отчеты не жили со старой классификацией.
+    def test_finance_update_operation_rebuilds_entry_postings_on_type_change(self):
+        script = [
+            {
+                "one": (
+                    15,
+                    2,
+                    None,
+                    "zakup_shering",
+                    "Закуп шеринг",
+                    "mixed",
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    0,
+                    True,
+                ),
+            },
+            {"one": (1,)},  # type lookup
+            {
+                "one": (
+                    15,
+                    3,
+                    None,
+                    "zakup_shering",
+                    "Закуп шеринг",
+                    "mixed",
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    0,
+                    True,
+                ),
+            },
+            {"one": ("indirect_expense",)},  # rebuild metric lookup
+            {},
+            {},
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/finance/catalogs/operations/15",
+                    json={"type_id": 3},
+                    headers=self._auth_headers(role="admin"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["type_id"], 3)
+        self.assertTrue(any("DELETE FROM finance.entry_postings p" in sql for sql in sql_collector))
+        self.assertTrue(any("p.formula_id IS NULL" in sql for sql in sql_collector))
+        self.assertTrue(any("INSERT INTO finance.entry_postings" in sql for sql in sql_collector))
 
     # Ручная синхронизация Яндекса должна сворачивать строки заказов в дневные gross/commission проводки.
     def test_finance_yandex_sync_creates_daily_gross_and_commission_entries(self):

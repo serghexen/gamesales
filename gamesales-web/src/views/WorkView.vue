@@ -1264,6 +1264,7 @@ const {
   saveFinanceCashFlowOpeningBalance,
   syncFinanceYandexMarket,
 } = useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, mapApiError })
+const financeMode = ref('entry')
 
 watch(
   [activeTab, () => auth.state.token],
@@ -2192,6 +2193,19 @@ const {
 })
 
 closeDealModalDeferred.set(closeDealModalFromFlow)
+
+// Загружает сделку из расшифровки финансов и открывает общую карточку с возвратом во вкладку финансов.
+async function openFinanceDetailDeal(dealId) {
+  const normalizedId = Number(dealId || 0)
+  if (!normalizedId) return
+  try {
+    const deal = await apiGet(`/deals/${normalizedId}`, { token: auth.state.token })
+    financeMode.value = 'report'
+    await startEditDeal(deal, { returnTab: 'finance' })
+  } catch (error) {
+    showDealWarning(mapApiError(error?.message) || `Сделка #${normalizedId} не найдена`)
+  }
+}
 
 // Вся логика вкладки Telegram.
 const {
@@ -3298,6 +3312,7 @@ const financeSectionCtx = asCtx({
   canViewCatalogsSection,
   canViewFinanceSection,
   canManageRolePermissions,
+  financeMode,
   financeNewEntry,
   financeEntryFilters,
   financeYandexSync,
@@ -3365,6 +3380,7 @@ const financeSectionCtx = asCtx({
   loadFinanceProjectsReport,
   loadFinanceSourceDetails,
   clearFinanceSourceDetails,
+  openFinanceDetailDeal,
   loadFinanceCashFlowReport,
   saveFinanceCashFlowOpeningBalance,
   syncFinanceYandexMarket,

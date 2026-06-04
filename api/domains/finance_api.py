@@ -108,6 +108,44 @@ def mount_finance_routes(
         }
         return mapping.get((kind or "").strip(), "other")
 
+    def _rebuild_entry_postings_for_operation(conn, operation_id: int) -> None:
+        # Пересобираем базовые postings операции после смены типа, чтобы отчеты и справочник не расходились.
+        row = q1(
+            conn,
+            """
+            SELECT t.code
+            FROM finance.operations o
+            JOIN finance.section_types t ON t.type_id = o.type_id
+            WHERE o.operation_id=%s
+            """,
+            (operation_id,),
+        )
+        if not row:
+            return
+        metric_code = _metric_from_section_kind(str(row[0] or ""))
+        exec1(
+            conn,
+            """
+            DELETE FROM finance.entry_postings p
+            USING finance.entries e
+            WHERE p.entry_id = e.entry_id
+              AND p.entry_biz_date = e.biz_date
+              AND e.operation_id = %s
+              AND p.formula_id IS NULL
+            """,
+            (operation_id,),
+        )
+        exec1(
+            conn,
+            """
+            INSERT INTO finance.entry_postings(entry_id, entry_biz_date, metric_code, amount)
+            SELECT e.entry_id, e.biz_date, %s, e.amount
+            FROM finance.entries e
+            WHERE e.operation_id = %s
+            """,
+            (metric_code, operation_id),
+        )
+
     def _round_money(value: Decimal) -> Decimal:
         # Округляем денежные значения единообразно до двух знаков.
         return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -1538,6 +1576,8 @@ def mount_finance_routes(
                     operation_id,
                 ),
             )
+            if next_type_id != int(current[1]):
+                _rebuild_entry_postings_for_operation(conn, operation_id)
             conn.commit()
         if not row:
             raise HTTPException(500, "Failed to update operation")
@@ -2241,17 +2281,22 @@ def mount_finance_routes(
                       r.code AS region_code,
                       COALESCE(r.name, 'Без региона') AS region_name,
                       CASE WHEN p.metric_code = 'revenue' THEN p.amount ELSE 0 END AS revenue,
-                      CASE WHEN p.metric_code IN ('direct_expense', 'indirect_expense') THEN p.amount ELSE 0 END AS direct_expense,
+                      CASE WHEN p.metric_code = 'direct_expense' THEN p.amount ELSE 0 END AS direct_expense,
                       ('entry-' || e.entry_id::text) AS row_ref_key
                     FROM finance.entry_postings p
                     JOIN finance.entries e
                       ON e.entry_id = p.entry_id
                      AND e.biz_date = p.entry_biz_date
+                    JOIN finance.operations o ON o.operation_id = e.operation_id
+                    JOIN finance.section_types st ON st.type_id = o.type_id
                     LEFT JOIN finance.dim_sources src ON src.source_id = e.source_id
                     LEFT JOIN finance.dim_regions r ON r.region_id = e.region_id
                     WHERE e.status_code = 'confirmed'
                       AND e.input_channel IN ('manual', 'api', 'import')
-                      AND p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')
+                      AND (
+                        (st.code = 'revenue' AND p.metric_code = 'revenue')
+                        OR (st.code = 'direct_expense' AND p.metric_code = 'direct_expense')
+                      )
                 )
                 SELECT
                   source_id,
@@ -2424,7 +2469,7 @@ def mount_finance_routes(
                     CASE WHEN p.metric_code = 'revenue' THEN p.amount ELSE 0 END AS revenue,
                     0::numeric AS purchase_cost,
                     NULL::numeric AS purchase_cost_rate,
-                    CASE WHEN p.metric_code IN ('direct_expense', 'indirect_expense') THEN p.amount ELSE 0 END AS direct_expense,
+                    CASE WHEN p.metric_code = 'direct_expense' THEN p.amount ELSE 0 END AS direct_expense,
                     e.comment,
                     e.external_key,
                     COALESCE(e.payload_json->'order_ids', '[]'::jsonb) AS order_ids,
@@ -2441,11 +2486,15 @@ def mount_finance_routes(
                     ON e.entry_id = p.entry_id
                    AND e.biz_date = p.entry_biz_date
                   JOIN finance.operations o ON o.operation_id = e.operation_id
+                  JOIN finance.section_types st ON st.type_id = o.type_id
                   LEFT JOIN finance.dim_sources src ON src.source_id = e.source_id
                   LEFT JOIN finance.dim_regions r ON r.region_id = e.region_id
                   WHERE e.status_code = 'confirmed'
                     AND e.input_channel IN ('manual', 'api', 'import')
-                    AND p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')
+                    AND (
+                      (st.code = 'revenue' AND p.metric_code = 'revenue')
+                      OR (st.code = 'direct_expense' AND p.metric_code = 'direct_expense')
+                    )
                 )
                 SELECT
                   row_type, deal_id, entry_id, activity_date, order_number, customer_name,
