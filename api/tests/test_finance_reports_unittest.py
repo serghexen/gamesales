@@ -100,7 +100,7 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(body["items"][0]["cash_flow"], "3000.00")
         self.assertTrue(any("d.deal_type_code = 'sale'" in sql for sql in sql_collector))
         self.assertTrue(any("d.deal_type_code = 'rental' AND COALESCE(di.price, 0) > 0" in sql for sql in sql_collector))
-        self.assertTrue(any("CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id" in sql for sql in sql_collector))
+        self.assertTrue(any("CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id" in sql for sql in sql_collector))
         self.assertTrue(any("WHEN d.deal_type_code = 'rental'" in sql and "THEN di.purchase_cost * di.qty" in sql for sql in sql_collector))
         self.assertTrue(any("WHEN d.deal_type_code = 'sale'" in sql for sql in sql_collector))
         self.assertTrue(any("d.flow_status_code = 'completed'" in sql for sql in sql_collector))
@@ -112,6 +112,10 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertTrue(any("st.code = 'direct_expense' AND p.metric_code = 'direct_expense'" in sql for sql in sql_collector))
         self.assertFalse(any("p.metric_code IN ('revenue', 'direct_expense')" in sql for sql in sql_collector))
         self.assertFalse(any("p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')" in sql for sql in sql_collector))
+        self.assertTrue(any("CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE r.region_id END AS region_id" in sql for sql in sql_collector))
+        self.assertTrue(any("fds.source_id IS NOT NULL AS ignore_region_filter" in sql for sql in sql_collector))
+        self.assertTrue(any("src.source_id IS NOT NULL AS ignore_region_filter" in sql for sql in sql_collector))
+        self.assertTrue(any("OR ignore_region_filter IS TRUE" in sql for sql in sql_collector))
         self.assertTrue(any("region_id = ANY(%s)" in sql for sql in sql_collector))
         self.assertTrue(any("source_id = ANY(%s)" in sql for sql in sql_collector))
         self.assertTrue(any("HAVING COALESCE(SUM(revenue), 0) <> 0" in sql for sql in sql_collector))
@@ -182,6 +186,10 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertTrue(any("st.code = 'direct_expense' AND p.metric_code = 'direct_expense'" in sql for sql in sql_collector))
         self.assertFalse(any("p.metric_code IN ('revenue', 'direct_expense')" in sql for sql in sql_collector))
         self.assertFalse(any("p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')" in sql for sql in sql_collector))
+        self.assertTrue(any("CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE r.region_id END AS region_id" in sql for sql in sql_collector))
+        self.assertTrue(any("COALESCE(revenue, 0) <> 0" in sql for sql in sql_collector))
+        self.assertTrue(any("COALESCE(purchase_cost, 0) <> 0" in sql for sql in sql_collector))
+        self.assertTrue(any("COALESCE(direct_expense, 0) <> 0" in sql for sql in sql_collector))
 
     # Cash Flow должен отдавать поступления/расходы отдельными строками и считать остатки.
     def test_finance_cash_flow_report_success(self):

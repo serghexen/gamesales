@@ -154,6 +154,21 @@ function buildCtx(overrides = {}) {
         orders_count: 2,
         reason: 'Источник клиента не привязан к finance source',
       },
+      {
+        row_type: 'entry',
+        entry_id: 55,
+        activity_date: '2026-06-02',
+        operation_name: 'Комиссия',
+        item_title: 'нулевая проверка',
+        revenue: 0,
+        purchase_cost: 0,
+        purchase_cost_rate: null,
+        direct_expense: 0,
+        cash_flow: 0,
+        order_ids: [],
+        orders_count: 0,
+        reason: '',
+      },
     ],
     financeSourceDetailsTotals: {
       revenue: 5810,
@@ -407,6 +422,12 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('577, 578')
     expect(wrapper.text()).toContain('заказов 2')
     expect(wrapper.text()).toContain('Источник клиента не привязан к finance source')
+    const zeroRowCells = wrapper.findAll('.finance-details-table tbody tr')[1].findAll('td').map((cell) => cell.text())
+    expect(zeroRowCells[2]).toBe('0')
+    expect(zeroRowCells[3]).toBe('0')
+    expect(zeroRowCells[4]).toBe('—')
+    expect(zeroRowCells[5]).toBe('0')
+    expect(zeroRowCells[6]).toBe('0')
   })
 
   it('shows cash flow report rows and balances', async () => {

@@ -2228,7 +2228,11 @@ def mount_finance_routes(
         if date_to is not None:
             filters.append("activity_date <= %s")
             params.append(date_to)
-        _append_multi_id_filter(filters, params, "region_id", region_id)
+        region_ids = [int(value) for value in (region_id or []) if value is not None]
+        if region_ids:
+            # Расходы с источником берутся из одного кошелька источника, поэтому фильтр региона их не дробит и не скрывает.
+            filters.append("(region_id = ANY(%s) OR ignore_region_filter IS TRUE)")
+            params.append(region_ids)
         _append_multi_id_filter(filters, params, "source_id", source_id)
         where_sql = " AND ".join(filters)
 
@@ -2242,9 +2246,9 @@ def mount_finance_routes(
                       fds.source_id,
                       COALESCE(fds.code, src.code) AS source_code,
                       COALESCE(fds.name, src.name, 'Без источника') AS source_name,
-                      CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id,
-                      CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.code, rd.code) END AS region_code,
-                      CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.name, rd.name, 'Без региона') END AS region_name,
+                      CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id,
+                      CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.code, rd.code) END AS region_code,
+                      CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.name, rd.name, 'Без региона') END AS region_name,
                       (di.price * di.qty) AS revenue,
                       CASE
                         WHEN d.deal_type_code = 'sale'
@@ -2253,6 +2257,7 @@ def mount_finance_routes(
                         THEN di.purchase_cost * di.qty
                         ELSE 0
                       END AS direct_expense,
+                      fds.source_id IS NOT NULL AS ignore_region_filter,
                       ('deal-' || d.deal_id::text) AS row_ref_key
                     FROM app.deal_items di
                     JOIN app.deals d ON d.deal_id = di.deal_id
@@ -2277,11 +2282,12 @@ def mount_finance_routes(
                       src.source_id,
                       src.code AS source_code,
                       COALESCE(src.name, 'Без источника') AS source_name,
-                      r.region_id,
-                      r.code AS region_code,
-                      COALESCE(r.name, 'Без региона') AS region_name,
+                      CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE r.region_id END AS region_id,
+                      CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE r.code END AS region_code,
+                      CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE COALESCE(r.name, 'Без региона') END AS region_name,
                       CASE WHEN p.metric_code = 'revenue' THEN p.amount ELSE 0 END AS revenue,
                       CASE WHEN p.metric_code = 'direct_expense' THEN p.amount ELSE 0 END AS direct_expense,
+                      src.source_id IS NOT NULL AS ignore_region_filter,
                       ('entry-' || e.entry_id::text) AS row_ref_key
                     FROM finance.entry_postings p
                     JOIN finance.entries e
@@ -2396,9 +2402,9 @@ def mount_finance_routes(
                     fds.source_id,
                     COALESCE(fds.code, src.code) AS source_code,
                     COALESCE(fds.name, src.name, 'Без источника') AS source_name,
-                    CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id,
-                    CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.code, rd.code) END AS region_code,
-                    CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.name, rd.name, 'Без региона') END AS region_name,
+                    CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id,
+                    CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.code, rd.code) END AS region_code,
+                    CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.name, rd.name, 'Без региона') END AS region_name,
                     CASE WHEN d.deal_type_code = 'rental' THEN 'Шеринг' ELSE 'Услуга' END AS operation_name,
                     STRING_AGG(COALESCE(NULLIF(p.title, ''), 'item-' || di.deal_item_id::text), '; ' ORDER BY di.deal_item_id) AS item_title,
                     COALESCE(SUM(di.qty), 0) AS qty,
@@ -2460,9 +2466,9 @@ def mount_finance_routes(
                     src.source_id,
                     src.code AS source_code,
                     COALESCE(src.name, 'Без источника') AS source_name,
-                    r.region_id,
-                    r.code AS region_code,
-                    COALESCE(r.name, 'Без региона') AS region_name,
+                    CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE r.region_id END AS region_id,
+                    CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE r.code END AS region_code,
+                    CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE COALESCE(r.name, 'Без региона') END AS region_name,
                     o.name AS operation_name,
                     COALESCE(NULLIF(e.comment, ''), o.name) AS item_title,
                     e.qty,
@@ -2505,6 +2511,11 @@ def mount_finance_routes(
                   order_ids, shop_skus, orders_count, rows_count, reason
                 FROM detail_rows
                 WHERE {where_sql}
+                  AND (
+                    COALESCE(revenue, 0) <> 0
+                    OR COALESCE(purchase_cost, 0) <> 0
+                    OR COALESCE(direct_expense, 0) <> 0
+                  )
                 ORDER BY activity_date, COALESCE(deal_id, entry_id), row_type
                 """,
                 tuple(params),
