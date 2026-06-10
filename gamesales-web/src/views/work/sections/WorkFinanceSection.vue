@@ -191,6 +191,13 @@
 
             <div class="analytics-filters">
               <label class="field">
+                <span class="label">Магазин</span>
+                <select v-model="ctx.financeWildberriesSync.store_code" class="input input--select">
+                  <option value="asat">ASAT - wb</option>
+                  <option value="sps">SPS - wb</option>
+                </select>
+              </label>
+              <label class="field">
                 <span class="label">Дата</span>
                 <input v-model="ctx.financeNewEntry.biz_date" class="input" type="date" :max="ctx.maxDate" />
               </label>
@@ -355,6 +362,77 @@
               <div class="mini">
                 <div class="mini__label">Ошибки</div>
                 <div class="mini__value">{{ Number(ctx.financeYandexSyncResult.failed_rows || 0) }}</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="finance-integration-panel finance-integration-panel--separated">
+            <div class="finance-integration-panel__head">
+              <div>
+                <h4 class="section-title">Wildberries</h4>
+              </div>
+              <span class="finance-integration-badge">API</span>
+            </div>
+
+            <div class="analytics-filters">
+              <label class="field">
+                <span class="label">Магазин</span>
+                <select v-model="ctx.financeWildberriesSync.store_code" class="input input--select">
+                  <option value="asat">ASAT - wb</option>
+                  <option value="sps">SPS - wb</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Период с</span>
+                <input v-model="ctx.financeWildberriesSync.date_from" class="input" type="date" :max="ctx.financeWildberriesSync.date_to || ctx.maxDate" />
+              </label>
+              <label class="field">
+                <span class="label">Период по</span>
+                <input v-model="ctx.financeWildberriesSync.date_to" class="input" type="date" :min="ctx.financeWildberriesSync.date_from || ctx.minDate" :max="ctx.maxDate" />
+              </label>
+              <label class="field">
+                <button
+                  data-test="finance-sync-wildberries"
+                  class="ghost"
+                  type="button"
+                  :disabled="ctx.financeWildberriesSyncLoading || (Number(ctx.financeWildberriesCooldownSeconds || 0) > 0 && ctx.financeWildberriesCooldownStoreCode === ctx.financeWildberriesSync.store_code)"
+                  @click="syncWildberries"
+                >
+                  {{ ctx.financeWildberriesSyncLoading
+                    ? Number(ctx.financeWildberriesWaitSeconds || 0) > 0
+                      ? `Ждем ${Number(ctx.financeWildberriesWaitSeconds)} сек.`
+                      : 'Синхронизируем...'
+                    : Number(ctx.financeWildberriesCooldownSeconds || 0) > 0 && ctx.financeWildberriesCooldownStoreCode === ctx.financeWildberriesSync.store_code
+                      ? `Повторить через ${Number(ctx.financeWildberriesCooldownSeconds)} сек.`
+                      : 'Синхронизировать Wildberries' }}
+                </button>
+              </label>
+            </div>
+
+            <p v-if="ctx.financeWildberriesSyncStatus" class="muted">{{ ctx.financeWildberriesSyncStatus }}</p>
+            <p v-if="ctx.financeWildberriesSyncError" class="bad">{{ ctx.financeWildberriesSyncError }}</p>
+            <p v-if="ctx.financeWildberriesSyncOk" class="good">{{ ctx.financeWildberriesSyncOk }}</p>
+
+            <div v-if="ctx.financeWildberriesSyncResult" class="analytics-cards finance-sync-cards">
+              <div class="mini">
+                <div class="mini__label">Строк WB</div>
+                <div class="mini__value">{{ Number(ctx.financeWildberriesSyncResult.total_rows || 0) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Дней добавлено</div>
+                <div class="mini__value">{{ Number(ctx.financeWildberriesSyncResult.created_rows || 0) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Дней обновлено</div>
+                <div class="mini__value">{{ Number(ctx.financeWildberriesSyncResult.updated_rows || 0) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Дней пропущено</div>
+                <div class="mini__value">{{ Number(ctx.financeWildberriesSyncResult.skipped_rows || 0) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Ошибки</div>
+                <div class="mini__value">{{ Number(ctx.financeWildberriesSyncResult.failed_rows || 0) }}</div>
               </div>
             </div>
           </section>
@@ -1452,6 +1530,11 @@ async function syncYandexMarket() {
   await props.ctx.syncFinanceYandexMarket?.()
 }
 
+// Запускаем ручной импорт финансового отчета Wildberries через backend endpoint.
+async function syncWildberries() {
+  await props.ctx.syncFinanceWildberries?.()
+}
+
 // Перечитываем каталоги типов и видов операций по кнопке "Обновить".
 async function reloadFinanceCatalogs() {
   await props.ctx.loadFinanceBootstrap?.()
@@ -1534,6 +1617,12 @@ async function reloadFinanceCatalogs() {
   display: grid;
   gap: 14px;
   min-width: 0;
+}
+
+.finance-integration-panel--separated {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .finance-integration-panel__head {

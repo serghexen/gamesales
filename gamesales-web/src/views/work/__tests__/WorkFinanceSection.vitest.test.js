@@ -19,6 +19,10 @@ function buildCtx(overrides = {}) {
     financeEntrySaving: false,
     financeCatalogSaving: false,
     financeYandexSyncLoading: false,
+    financeWildberriesSyncLoading: false,
+    financeWildberriesWaitSeconds: 0,
+    financeWildberriesCooldownSeconds: 0,
+    financeWildberriesCooldownStoreCode: '',
     financeError: '',
     financeEntriesError: '',
     financeEntryError: '',
@@ -28,6 +32,9 @@ function buildCtx(overrides = {}) {
     financeYandexSyncError: '',
     financeYandexSyncOk: '',
     financeYandexSyncStatus: '',
+    financeWildberriesSyncError: '',
+    financeWildberriesSyncOk: '',
+    financeWildberriesSyncStatus: '',
     financeLoaded: true,
     financeEntriesTotal: 1,
     financeFilters: {
@@ -58,6 +65,11 @@ function buildCtx(overrides = {}) {
       operation_id: '',
     },
     financeYandexSync: {
+      store_code: 'asat',
+      date_from: '2026-05-30',
+      date_to: '2026-05-31',
+    },
+    financeWildberriesSync: {
       store_code: 'asat',
       date_from: '2026-05-30',
       date_to: '2026-05-31',
@@ -203,6 +215,7 @@ function buildCtx(overrides = {}) {
       { name: 'Маркетинг', amount: 1000 },
     ],
     financeYandexSyncResult: null,
+    financeWildberriesSyncResult: null,
     loadFinanceProjectsReport: vi.fn(),
     loadFinanceSourceDetails: vi.fn(),
     clearFinanceSourceDetails: vi.fn(),
@@ -210,6 +223,7 @@ function buildCtx(overrides = {}) {
     loadFinanceCashFlowReport: vi.fn(),
     saveFinanceCashFlowOpeningBalance: vi.fn(),
     syncFinanceYandexMarket: vi.fn(),
+    syncFinanceWildberries: vi.fn(),
     loadFinanceEntries: vi.fn(),
     createFinanceEntry: vi.fn(),
     deleteFinanceEntry: vi.fn(),
@@ -280,6 +294,7 @@ describe('WorkFinanceSection', () => {
     await wrapper.find('[data-test="finance-apply-entries-filters"]').trigger('click')
     await wrapper.find('[data-test="finance-mode-integrations"]').trigger('click')
     await wrapper.find('[data-test="finance-sync-yandex"]').trigger('click')
+    await wrapper.find('[data-test="finance-sync-wildberries"]').trigger('click')
     await wrapper.find('[data-test="finance-mode-report"]').trigger('click')
     await wrapper.find('[data-test="finance-apply-report"]').trigger('click')
     await wrapper.find('[data-test="finance-mode-cash-flow"]').trigger('click')
@@ -294,6 +309,7 @@ describe('WorkFinanceSection', () => {
     expect(ctx.createFinanceEntry).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceEntries).toHaveBeenCalledTimes(1)
     expect(ctx.syncFinanceYandexMarket).toHaveBeenCalledTimes(1)
+    expect(ctx.syncFinanceWildberries).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceProjectsReport).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceCashFlowReport).toHaveBeenCalledTimes(1)
     expect(ctx.saveFinanceCashFlowOpeningBalance).toHaveBeenCalledTimes(1)
@@ -335,6 +351,91 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('Дней обновлено')
     expect(wrapper.text()).toContain('Дней пропущено')
     expect(wrapper.text()).toContain('Yandex: дней добавлено 1, дней обновлено 2, дней пропущено 0, ошибок 0')
+  })
+
+  it('shows Wildberries sync result as daily aggregates', async () => {
+    const ctx = buildCtx({
+      financeWildberriesSyncResult: {
+        total_rows: 45,
+        created_rows: 2,
+        updated_rows: 1,
+        skipped_rows: 0,
+        failed_rows: 0,
+      },
+      financeWildberriesSyncOk: 'Wildberries: дней добавлено 2, дней обновлено 1, дней пропущено 0, ошибок 0',
+    })
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-integrations"]').trigger('click')
+
+    expect(wrapper.text()).toContain('Wildberries')
+    expect(wrapper.text()).toContain('ASAT - wb')
+    expect(wrapper.text()).toContain('SPS - wb')
+    expect(wrapper.text()).toContain('Строк WB')
+    expect(wrapper.text()).toContain('Wildberries: дней добавлено 2, дней обновлено 1, дней пропущено 0, ошибок 0')
+  })
+
+  it('shows Wildberries retry countdown and disables sync button', async () => {
+    const ctx = buildCtx({
+      financeWildberriesCooldownSeconds: 47,
+      financeWildberriesCooldownStoreCode: 'asat',
+      financeWildberriesSyncStatus: 'Повторный запуск будет доступен через 47 сек.',
+    })
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-integrations"]').trigger('click')
+    const button = wrapper.find('[data-test="finance-sync-wildberries"]')
+
+    expect(button.attributes('disabled')).toBeDefined()
+    expect(button.text()).toContain('Повторить через 47 сек.')
+    expect(wrapper.text()).toContain('Повторный запуск будет доступен через 47 сек.')
+  })
+
+  it('shows Wildberries wait countdown during active sync', async () => {
+    const ctx = buildCtx({
+      financeWildberriesSyncLoading: true,
+      financeWildberriesWaitSeconds: 54,
+      financeWildberriesSyncStatus: 'Ждем лимит Wildberries: 54 сек.',
+    })
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-integrations"]').trigger('click')
+
+    expect(wrapper.find('[data-test="finance-sync-wildberries"]').text()).toContain('Ждем 54 сек.')
+    expect(wrapper.text()).toContain('Ждем лимит Wildberries: 54 сек.')
   })
 
   it('shows source report rows', async () => {

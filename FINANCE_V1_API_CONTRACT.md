@@ -109,6 +109,20 @@
 `GET /finance/integrations/yandex/sync/{job_id}`
 - Возвращает статус ручной синхронизации: `queued/running/done/failed`, сообщение, ошибку или итоговую статистику.
 
+`POST /finance/integrations/wildberries/sync`
+- Старт ручной синхронизации Wildberries за период `date_from/date_to`, возвращает `job_id`.
+- В теле передается `store_code`: `asat` или `sps`; backend выбирает отдельный токен и finance-источник `ASAT / wb` либо `SPS / wb`.
+- Использует новый Finance API `POST /api/finance/v1/sales-reports/detailed` и пагинацию по `rrdId`.
+- Для Basic-токена с многочасовым лимитом автоматически использует старый `reportDetailByPeriod` до его отключения 15 июля 2026 года.
+- Сворачивает строки по `rrDate` в дневную gross-запись продаж и дневную запись прямых расходов.
+- Расходы включают возвраты, разницу между продажами и `forPay`, логистику, хранение, приемку, удержания и штрафы за вычетом дополнительных начислений.
+- В `payload_json` сохраняются суммы `gross_sales`, `returns`, `for_pay`, `delivery`, `storage`, `acceptance`, `deduction`, `penalty`, `additional_payment`, `payout_amount`.
+- Идемпотентность: `external_key` вида `wildberries:{store_code}:sales-reports:daily:{biz_date}:gross|expense`.
+
+`GET /finance/integrations/wildberries/sync/{job_id}`
+- Возвращает статус ручной синхронизации WB: `queued/running/done/failed`, сообщение, ошибку или итоговую статистику.
+- При лимите API задача остается в `running`, показывает обратный отсчет в `message` и автоматически продолжает запрос.
+
 `GET /finance/entries`
 - Журнал записей с фильтрами: `date_from`, `date_to`, `project_id`, `region_id`, `source_id`, `operation_id`, `status_code`, `limit`, `offset`.
 

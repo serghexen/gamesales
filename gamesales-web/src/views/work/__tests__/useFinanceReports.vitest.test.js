@@ -263,6 +263,81 @@ describe('useFinanceReports', () => {
     expect(h.apiGet).toHaveBeenCalledTimes(3)
   })
 
+  it('syncs Wildberries entries and refreshes finance data', async () => {
+    const h = createHarness()
+    h.finance.financeWildberriesSync.store_code = 'sps'
+    h.finance.financeWildberriesSync.date_from = '2026-06-01'
+    h.finance.financeWildberriesSync.date_to = '2026-06-02'
+    h.apiPost.mockResolvedValueOnce({
+      job_id: 'wb-job-1',
+      status: 'queued',
+      message: 'Синхронизация поставлена в очередь',
+    })
+    h.apiGet
+      .mockResolvedValueOnce({
+        job_id: 'wb-job-1',
+        status: 'done',
+        message: 'Синхронизация завершена',
+        result: {
+          total_rows: 20,
+          created_rows: 2,
+          updated_rows: 0,
+          skipped_rows: 1,
+          failed_rows: 0,
+          errors: [],
+        },
+      })
+      .mockResolvedValueOnce({ total: 2, items: [{ entry_id: 801, amount: '100.00', qty: '1.00' }] })
+      .mockResolvedValueOnce({ totals: { revenue: '100.00' }, items: [] })
+
+    const ok = await h.finance.syncFinanceWildberries()
+
+    expect(ok).toBe(true)
+    expect(h.apiPost).toHaveBeenCalledWith(
+      '/finance/integrations/wildberries/sync',
+      { store_code: 'sps', date_from: '2026-06-01', date_to: '2026-06-02' },
+      { token: 'token-1' },
+    )
+    expect(h.finance.financeWildberriesSyncOk.value).toBe('Wildberries: дней добавлено 2, дней обновлено 0, дней пропущено 1, ошибок 0')
+    expect(h.finance.financeWildberriesSyncResult.value.total_rows).toBe(20)
+    expect(h.finance.financeWildberriesSyncStatus.value).toBe('Синхронизация завершена')
+    expect(h.apiGet).toHaveBeenCalledTimes(3)
+  })
+
+  it('counts down Wildberries retry delay after rate limit', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = createHarness()
+      h.apiPost.mockResolvedValueOnce({
+        job_id: 'wb-job-rate-limit',
+        status: 'queued',
+        message: 'Синхронизация поставлена в очередь',
+      })
+      h.apiGet.mockResolvedValueOnce({
+        job_id: 'wb-job-rate-limit',
+        status: 'failed',
+        message: 'Синхронизация завершилась ошибкой',
+        error: 'Лимит Wildberries Finance API. Повторите примерно через 3 сек.',
+        retry_after_seconds: 3,
+      })
+
+      const resultPromise = h.finance.syncFinanceWildberries()
+      await vi.runAllTicks()
+      const result = await resultPromise
+
+      expect(result).toBe(false)
+      expect(h.finance.financeWildberriesCooldownSeconds.value).toBe(3)
+      expect(h.finance.financeWildberriesSyncStatus.value).toBe('Повторный запуск будет доступен через 3 сек.')
+
+      await vi.advanceTimersByTimeAsync(3000)
+
+      expect(h.finance.financeWildberriesCooldownSeconds.value).toBe(0)
+      expect(h.finance.financeWildberriesSyncStatus.value).toBe('Можно повторить синхронизацию')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('creates finance operation catalog record and reloads bootstrap', async () => {
     const h = createHarness()
     h.finance.financeNewOperation.type_id = 3

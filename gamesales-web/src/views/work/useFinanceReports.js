@@ -35,6 +35,11 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     date_from: today,
     date_to: today,
   })
+  const financeWildberriesSync = reactive({
+    store_code: 'asat',
+    date_from: today,
+    date_to: today,
+  })
   const financeOperations = ref([])
   const financeTypes = ref([])
   const financeSections = ref([])
@@ -77,6 +82,8 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeCashFlowExpenses = ref([])
   const financeYandexSyncResult = ref(null)
   const financeYandexSyncStatus = ref('')
+  const financeWildberriesSyncResult = ref(null)
+  const financeWildberriesSyncStatus = ref('')
   const financeNewSection = reactive({
     type_id: '',
     code: '',
@@ -110,6 +117,10 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeEntrySaving = ref(false)
   const financeCatalogSaving = ref(false)
   const financeYandexSyncLoading = ref(false)
+  const financeWildberriesSyncLoading = ref(false)
+  const financeWildberriesWaitSeconds = ref(0)
+  const financeWildberriesCooldownSeconds = ref(0)
+  const financeWildberriesCooldownStoreCode = ref('')
   const financeSourceDetailsLoading = ref(false)
   const financeError = ref(null)
   const financeEntriesError = ref(null)
@@ -120,6 +131,37 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeCashFlowOpeningOk = ref('')
   const financeYandexSyncError = ref(null)
   const financeYandexSyncOk = ref('')
+  const financeWildberriesSyncError = ref(null)
+  const financeWildberriesSyncOk = ref('')
+  let financeWildberriesCooldownTimer = null
+
+  const startFinanceWildberriesCooldown = (seconds, storeCode = 'asat') => {
+    // Показываем обратный отсчет лимита WB и автоматически разрешаем повторный запуск.
+    const initialSeconds = Math.max(0, Math.ceil(Number(seconds) || 0))
+    if (financeWildberriesCooldownTimer) clearInterval(financeWildberriesCooldownTimer)
+    financeWildberriesCooldownSeconds.value = initialSeconds
+    financeWildberriesCooldownStoreCode.value = initialSeconds ? String(storeCode || 'asat') : ''
+    if (!initialSeconds) return
+    financeWildberriesSyncStatus.value = `Повторный запуск будет доступен через ${initialSeconds} сек.`
+    financeWildberriesCooldownTimer = setInterval(() => {
+      financeWildberriesCooldownSeconds.value = Math.max(0, financeWildberriesCooldownSeconds.value - 1)
+      if (financeWildberriesCooldownSeconds.value > 0) {
+        financeWildberriesSyncStatus.value = `Повторный запуск будет доступен через ${financeWildberriesCooldownSeconds.value} сек.`
+        return
+      }
+      clearInterval(financeWildberriesCooldownTimer)
+      financeWildberriesCooldownTimer = null
+      financeWildberriesCooldownStoreCode.value = ''
+      financeWildberriesSyncStatus.value = 'Можно повторить синхронизацию'
+    }, 1000)
+  }
+
+  const updateFinanceWildberriesProgress = (message) => {
+    // Извлекаем секунды из статуса backend, чтобы кнопка показывала ожидание текущей задачи.
+    financeWildberriesSyncStatus.value = String(message || '')
+    const waitMatch = financeWildberriesSyncStatus.value.match(/(\d+)\s+сек/i)
+    financeWildberriesWaitSeconds.value = waitMatch ? Number(waitMatch[1]) : 0
+  }
 
   const clearFinanceSourceDetails = () => {
     // Закрываем расшифровку и сбрасываем суммы, чтобы не показывать старую строку отчета.
@@ -468,6 +510,73 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     }
   }
 
+  const syncFinanceWildberries = async () => {
+    // Запускаем ручную загрузку финансового отчета WB и обновляем отчеты после завершения.
+    const storeCode = String(financeWildberriesSync.store_code || 'asat').trim().toLowerCase()
+    if (financeWildberriesCooldownSeconds.value > 0 && financeWildberriesCooldownStoreCode.value === storeCode) return false
+    financeWildberriesSyncError.value = null
+    financeWildberriesSyncOk.value = ''
+    financeWildberriesSyncResult.value = null
+    financeWildberriesSyncStatus.value = ''
+    financeWildberriesWaitSeconds.value = 0
+    const dateFrom = String(financeWildberriesSync.date_from || '').trim()
+    const dateTo = String(financeWildberriesSync.date_to || '').trim()
+    if (!dateFrom || !dateTo) {
+      financeWildberriesSyncError.value = 'Выберите период синхронизации'
+      return false
+    }
+    if (dateTo < dateFrom) {
+      financeWildberriesSyncError.value = 'Дата окончания должна быть не раньше даты начала'
+      return false
+    }
+    financeWildberriesSyncLoading.value = true
+    try {
+      const started = await apiPost('/finance/integrations/wildberries/sync', {
+        store_code: storeCode,
+        date_from: dateFrom,
+        date_to: dateTo,
+      }, { token: auth.state.token })
+      const jobId = String(started?.job_id || '')
+      if (!jobId) throw new Error('Wildberries sync job_id is missing')
+      updateFinanceWildberriesProgress(started?.message || 'Синхронизация запущена')
+      let job = started
+      for (let attempt = 0; attempt < 180; attempt += 1) {
+        if (job?.status === 'done' || job?.status === 'failed') break
+        job = await apiGet(`/finance/integrations/wildberries/sync/${encodeURIComponent(jobId)}`, { token: auth.state.token })
+        updateFinanceWildberriesProgress(job?.message || String(job?.status || ''))
+        if (job?.status === 'done' || job?.status === 'failed') break
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+      }
+      if (job?.status !== 'done') {
+        startFinanceWildberriesCooldown(job?.retry_after_seconds, storeCode)
+        throw new Error(job?.error || 'Wildberries sync job was not completed')
+      }
+      const result = job?.result || {}
+      financeWildberriesWaitSeconds.value = 0
+      financeWildberriesSyncResult.value = result || null
+      const created = Number(result?.created_rows || 0)
+      const updated = Number(result?.updated_rows || 0)
+      const skipped = Number(result?.skipped_rows || 0)
+      const failed = Number(result?.failed_rows || 0)
+      financeWildberriesSyncOk.value = `Wildberries: дней добавлено ${created}, дней обновлено ${updated}, дней пропущено ${skipped}, ошибок ${failed}`
+      const refreshTasks = [loadFinanceEntries(), loadFinanceProjectsReport()]
+      if (financeCashFlowLoaded.value) refreshTasks.push(loadFinanceCashFlowReport())
+      await Promise.all(refreshTasks)
+      return failed === 0
+    } catch (e) {
+      const errorMessage = mapApiError(e?.message)
+      financeWildberriesSyncError.value = errorMessage
+      const retryMatch = String(errorMessage).match(/через\s+(\d+)\s+сек/i)
+      if (retryMatch && financeWildberriesCooldownSeconds.value <= 0) {
+        startFinanceWildberriesCooldown(Number(retryMatch[1]), storeCode)
+      }
+      return false
+    } finally {
+      financeWildberriesSyncLoading.value = false
+      financeWildberriesWaitSeconds.value = 0
+    }
+  }
+
   const createFinanceSection = async (draft = null) => {
     // Добавляем новый раздел в справочник finance и обновляем bootstrap.
     financeCatalogError.value = null
@@ -808,6 +917,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeNewEntry,
     financeEntryFilters,
     financeYandexSync,
+    financeWildberriesSync,
     financeNewSection,
     financeNewType,
     financeNewOperation,
@@ -834,6 +944,8 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeCashFlowExpenses,
     financeYandexSyncResult,
     financeYandexSyncStatus,
+    financeWildberriesSyncResult,
+    financeWildberriesSyncStatus,
     financeCatalogsLoaded,
     financeLoaded,
     financeCashFlowLoaded,
@@ -845,6 +957,10 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeEntrySaving,
     financeCatalogSaving,
     financeYandexSyncLoading,
+    financeWildberriesSyncLoading,
+    financeWildberriesWaitSeconds,
+    financeWildberriesCooldownSeconds,
+    financeWildberriesCooldownStoreCode,
     financeSourceDetailsLoading,
     financeError,
     financeEntriesError,
@@ -855,6 +971,8 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeCashFlowOpeningOk,
     financeYandexSyncError,
     financeYandexSyncOk,
+    financeWildberriesSyncError,
+    financeWildberriesSyncOk,
     loadFinanceBootstrap,
     loadFinanceEntries,
     createFinanceEntry,
@@ -877,5 +995,6 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     loadFinanceCashFlowReport,
     saveFinanceCashFlowOpeningBalance,
     syncFinanceYandexMarket,
+    syncFinanceWildberries,
   }
 }

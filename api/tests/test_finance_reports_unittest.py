@@ -468,6 +468,108 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(body["result"]["created_rows"], 1)
         self.assertEqual(body["result"]["skipped_rows"], 0)
         self.assertTrue(any("finance.entries" in sql and "input_channel" in sql for sql in sql_collector))
+
+    # Ручная синхронизация WB должна создавать дневные проводки продаж и всех удержаний.
+    def test_finance_wildberries_sync_creates_daily_gross_and_expense_entries(self):
+        wb_rows = [{"rrdId": 10}, {"rrdId": 11}]
+        daily_rows = [
+            {
+                "biz_date": date(2026, 6, 1),
+                "gross_amount": "1000.00",
+                "expense_amount": "405.00",
+                "payout_amount": "595.00",
+                "external_key_base": "wildberries:sps:sales-reports:daily:2026-06-01",
+                "comment": "Wildberries SPS; отчет реализации за 2026-06-01; строк 2",
+                "payload_json": {"provider": "wildberries", "store_code": "sps", "payout_amount": "595.00"},
+            }
+        ]
+        script = [
+            {"one": (99,)},  # source
+            {"one": (1,)},  # project
+            {"one": (7,)},  # revenue operation
+            {"one": (8,)},  # expense operation
+            {"one": (7, 2, "revenue_marketplace_api", "Продажи маркетплейсов", "api", False, False, False, False, False, 10, True, "revenue")},
+            {"one": (1,)},
+            {"one": (1,)},
+            {"one": (1,)},
+            {"one": None},
+            {
+                "one": (
+                    801,
+                    date(2026, 6, 1),
+                    7,
+                    None,
+                    99,
+                    1,
+                    "1",
+                    "1000.00",
+                    "RUB",
+                    "api",
+                    "wildberries:sps:sales-reports:daily:2026-06-01:gross",
+                    "confirmed",
+                    "Wildberries SPS; отчет реализации за 2026-06-01; строк 2; продажи gross",
+                    "admin",
+                    datetime(2026, 6, 2, 10, 0, 0),
+                    datetime(2026, 6, 2, 10, 0, 0),
+                ),
+            },
+            {},
+            {},
+            {},
+            {"one": (8, 3, "direct_marketplace_commission_api", "Комиссии маркетплейсов", "api", False, False, False, False, False, 20, True, "direct_expense")},
+            {"one": (1,)},
+            {"one": (1,)},
+            {"one": (1,)},
+            {"one": None},
+            {
+                "one": (
+                    802,
+                    date(2026, 6, 1),
+                    8,
+                    None,
+                    99,
+                    1,
+                    "1",
+                    "405.00",
+                    "RUB",
+                    "api",
+                    "wildberries:sps:sales-reports:daily:2026-06-01:expense",
+                    "confirmed",
+                    "Wildberries SPS; отчет реализации за 2026-06-01; строк 2; возвраты, комиссии и услуги",
+                    "admin",
+                    datetime(2026, 6, 2, 10, 0, 0),
+                    datetime(2026, 6, 2, 10, 0, 0),
+                ),
+            },
+            {},
+            {},
+            {},
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(finance_api_module, "fetch_wildberries_sales_report", return_value=wb_rows),
+            patch.object(finance_api_module, "aggregate_wildberries_report_rows", return_value=daily_rows),
+            patch.dict(os.environ, {"FINANCE_WILDBERRIES_SYNC_INLINE": "1"}),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/finance/integrations/wildberries/sync",
+                    json={"store_code": "sps", "date_from": "2026-06-01", "date_to": "2026-06-01"},
+                    headers=self._auth_headers(role="admin"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["status"], "done")
+        self.assertEqual(body["result"]["total_rows"], 2)
+        self.assertEqual(body["result"]["store_code"], "sps")
+        self.assertEqual(body["result"]["created_rows"], 1)
+        self.assertEqual(body["result"]["failed_rows"], 0)
+        self.assertTrue(any("wildberries:sales-reports" in str(sql) or "finance.entries" in str(sql) for sql in sql_collector))
         self.assertTrue(any("finance.entry_dedupe_keys" in sql for sql in sql_collector))
 
     # Повторная синхронизация Яндекса должна обновлять дневной итог, если отчет пересчитался.
