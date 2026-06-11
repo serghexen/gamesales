@@ -14,10 +14,11 @@ import app as app_module
 
 
 class _ScriptedCursor:
-    def __init__(self, script):
+    def __init__(self, script, sql_collector=None):
         self._script = script
         self._current = None
         self.rowcount = 0
+        self._sql_collector = sql_collector
 
     def __enter__(self):
         return self
@@ -26,6 +27,8 @@ class _ScriptedCursor:
         return False
 
     def execute(self, sql, params=None):
+        if self._sql_collector is not None:
+            self._sql_collector.append(str(sql))
         if not self._script:
             raise AssertionError(f"Unexpected SQL without scripted response: {sql}")
         self._current = self._script.pop(0)
@@ -43,8 +46,9 @@ class _ScriptedCursor:
 
 
 class _ScriptedConnCtx:
-    def __init__(self, script):
+    def __init__(self, script, sql_collector=None):
         self._script = list(script)
+        self._sql_collector = sql_collector
 
     def __enter__(self):
         return self
@@ -56,7 +60,7 @@ class _ScriptedConnCtx:
         return None
 
     def cursor(self):
-        return _ScriptedCursor(self._script)
+        return _ScriptedCursor(self._script, sql_collector=self._sql_collector)
 
 
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
@@ -504,9 +508,10 @@ class AccountsImportFormatTests(unittest.TestCase):
                 ("winner@example.com", "activate_ps4", 1, 5, "Game E", "Buyer 5", dt_2, dt_2, dt_3),
             ],
         }]
+        sql_collector = []
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
-            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -524,6 +529,8 @@ class AccountsImportFormatTests(unittest.TestCase):
         self.assertTrue(any(row[1] is None and row[2] == "Game E" for row in values))
         free_row_idx = next(idx for idx, row in enumerate(values, start=2) if row[3] == "Свободен")
         self.assertEqual(ws.cell(free_row_idx, 1).fill.fgColor.rgb, "00C6EFCE")
+        self.assertIn("to_jsonb(a)->>'is_archived'", sql_collector[0])
+        self.assertNotIn("COALESCE(a.is_archived", sql_collector[0])
 
     # Проверяет поиск сделок по связке "дата + ник" в отдельном файле проверки.
     def test_accounts_import_deals_check_warns_when_deal_not_found(self):

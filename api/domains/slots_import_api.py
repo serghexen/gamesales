@@ -198,7 +198,7 @@ def mount_slots_import_routes(
                       JOIN app.domains d ON d.domain_id = a.domain_id
                       CROSS JOIN app.slot_types st
                       LEFT JOIN account_platforms ap ON ap.account_id = a.account_id
-                      WHERE COALESCE(a.is_archived, false) IS NOT TRUE
+                      WHERE COALESCE((to_jsonb(a)->>'is_archived')::boolean, false) IS NOT TRUE
                         AND (
                           st.platform_code = 'ps5'
                           OR COALESCE(ap.has_ps4, false)
