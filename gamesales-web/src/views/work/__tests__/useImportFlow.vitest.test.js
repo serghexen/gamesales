@@ -51,6 +51,9 @@ function createHarness() {
     accountImportMessage: ref(''),
     slotImportMessage: ref(''),
     slotImportError: ref(''),
+    slotsExportLoading: ref(false),
+    slotsExportMessage: ref(''),
+    slotsExportError: ref(''),
     slotImportAction: ref(''),
     slotImportProgress: reactive({ current: 0, total: 0, phase: '' }),
     slotImportJobId: ref(''),
@@ -120,6 +123,20 @@ describe('useImportFlow', () => {
     expect(h.apiGetFile).toHaveBeenCalledWith('/accounts/slots/export', { token: 'token-1' })
     expect(click).toHaveBeenCalled()
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:slots')
+    expect(h.deps.slotsExportLoading.value).toBe(false)
+    expect(h.deps.slotsExportMessage.value).toBe('Файл скачан')
+    expect(h.deps.slotsExportError.value).toBe('')
+  })
+
+  it('shows slots export error and resets loading state', async () => {
+    const h = createHarness()
+    h.apiGetFile.mockRejectedValueOnce(new Error('export failed'))
+
+    await h.flow.downloadSlotsExport()
+
+    expect(h.deps.slotsExportLoading.value).toBe(false)
+    expect(h.deps.slotsExportMessage.value).toBe('')
+    expect(h.deps.slotsExportError.value).toBe('export failed')
   })
 
   it('validateProductImport posts to products import validate endpoint', async () => {

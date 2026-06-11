@@ -383,14 +383,29 @@
   transform: translateY(0);
 }
 
+.work-page .account-import-btn:disabled,
 .work-page .account-refresh-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
   box-shadow: 0 3px 9px rgba(236, 72, 153, 0.24);
 }
 
+.work-page .account-import-btn:disabled::before,
 .work-page .account-refresh-btn:disabled::before {
   display: none;
+}
+
+.work-page .account-export-status {
+  max-width: 180px;
+  color: #a7f3d0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: right;
+}
+
+.work-page .account-export-status--error {
+  color: #fca5a5;
 }
 
 .work-page .account-search-btn__content,

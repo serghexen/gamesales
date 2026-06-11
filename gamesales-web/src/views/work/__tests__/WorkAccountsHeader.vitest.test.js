@@ -11,6 +11,9 @@ function buildProps(overrides = {}) {
     openAccountImport: vi.fn(),
     openSlotImport: vi.fn(),
     downloadSlotsExport: vi.fn(),
+    slotsExportLoading: false,
+    slotsExportMessage: '',
+    slotsExportError: '',
     loadAccounts: vi.fn(),
     accountsLoading: false,
     ...overrides,
@@ -42,5 +45,19 @@ describe('WorkAccountsHeader', () => {
     await wrapper.find('[aria-label="Выгрузить историю слотов"]').trigger('click')
 
     expect(downloadSlotsExport).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows progress and disables slots export button while file is generated', () => {
+    const wrapper = mount(WorkAccountsHeader, {
+      props: buildProps({
+        slotsExportLoading: true,
+        slotsExportMessage: 'Формируем XLSX…',
+      }),
+    })
+
+    const button = wrapper.find('[aria-label="Формируется выгрузка слотов"]')
+    expect(button.attributes('disabled')).toBeDefined()
+    expect(button.find('.spinner').exists()).toBe(true)
+    expect(wrapper.get('[role="status"]').text()).toBe('Формируем XLSX…')
   })
 })

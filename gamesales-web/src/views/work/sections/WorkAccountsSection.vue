@@ -7,6 +7,9 @@
       :open-account-import="ctx.openAccountImport"
       :open-slot-import="ctx.openSlotImport"
       :download-slots-export="ctx.downloadSlotsExport"
+      :slots-export-loading="ctx.slotsExportLoading"
+      :slots-export-message="ctx.slotsExportMessage"
+      :slots-export-error="ctx.slotsExportError"
       :load-accounts="ctx.loadAccounts"
       :accounts-loading="ctx.accountsLoading"
     />

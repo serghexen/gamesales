@@ -40,6 +40,15 @@
       </div>
     </div>
     <div class="toolbar-actions toolbar-actions--account-tools">
+      <span
+        v-if="slotsExportMessage || slotsExportError"
+        class="account-export-status"
+        :class="{ 'account-export-status--error': slotsExportError }"
+        role="status"
+        aria-live="polite"
+      >
+        {{ slotsExportError || slotsExportMessage }}
+      </span>
       <button
         class="account-import-btn account-import-btn--accounts"
         type="button"
@@ -73,12 +82,15 @@
       <button
         class="account-import-btn account-import-btn--slots-export"
         type="button"
-        title="Выгрузить историю слотов"
-        aria-label="Выгрузить историю слотов"
+        :title="slotsExportLoading ? 'Формируем XLSX…' : 'Выгрузить историю слотов'"
+        :aria-label="slotsExportLoading ? 'Формируется выгрузка слотов' : 'Выгрузить историю слотов'"
+        :disabled="slotsExportLoading"
+        :aria-busy="slotsExportLoading"
         @click="downloadSlotsExport"
       >
         <span class="account-import-btn__content">
-          <svg class="account-import-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+          <span v-if="slotsExportLoading" class="spinner spinner--small" aria-hidden="true"></span>
+          <svg v-else class="account-import-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />
@@ -112,6 +124,9 @@ defineProps({
   openAccountImport: { type: Function, required: true },
   openSlotImport: { type: Function, required: true },
   downloadSlotsExport: { type: Function, required: true },
+  slotsExportLoading: { type: Boolean, required: true },
+  slotsExportMessage: { type: String, default: '' },
+  slotsExportError: { type: String, default: '' },
   loadAccounts: { type: Function, required: true },
   accountsLoading: { type: Boolean, required: true },
 })

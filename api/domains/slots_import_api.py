@@ -68,16 +68,14 @@ def _build_slots_export_rows(db_rows):
                 lane[:] = [end_at for end_at in lane if end_at > assigned_dt]
 
             lane_idx = next((idx for idx, lane in enumerate(lane_intervals) if not lane), None)
-            is_duplicate = lane_idx is None
             if lane_idx is None:
                 lane_idx = min(range(capacity), key=lambda idx: min(lane_intervals[idx]))
             lane_intervals[lane_idx].append(released_dt)
 
             export_rows.append({
                 "account": account_full,
-                "duplicate": "Да" if is_duplicate else "",
                 "product": product_title or "",
-                "status": "Занят",
+                "status": "Снят" if released_at is not None else "Занят",
                 "customer": customer_nickname or "",
                 "purchase_at": purchase_at or assigned_at,
                 "slot_type": _slot_export_label(slot_type_code, lane_idx, capacity),
@@ -92,7 +90,6 @@ def _build_slots_export_rows(db_rows):
                 continue
             export_rows.append({
                 "account": account_full,
-                "duplicate": "",
                 "product": "",
                 "status": "Свободен",
                 "customer": "",
@@ -110,7 +107,7 @@ def _build_slots_export_xlsx(db_rows):
     wb = Workbook()
     ws = wb.active
     ws.title = "Слоты"
-    headers = ["Аккаунт", "Дубль", "Товар", "Статус", "Пользователь", "Дата покупки (сделки)", "Тип слота"]
+    headers = ["Аккаунт", "Товар", "Статус", "Пользователь", "Дата покупки (сделки)", "Тип слота"]
     ws.append(headers)
 
     header_fill = PatternFill("solid", fgColor="1F4E78")
@@ -123,7 +120,6 @@ def _build_slots_export_xlsx(db_rows):
     for item in _build_slots_export_rows(db_rows):
         ws.append([
             item["account"],
-            item["duplicate"],
             item["product"],
             item["status"],
             item["customer"],
@@ -134,11 +130,11 @@ def _build_slots_export_xlsx(db_rows):
         if item["is_free"]:
             for cell in ws[row_idx]:
                 cell.fill = free_fill
-        ws.cell(row=row_idx, column=6).number_format = "DD.MM.YYYY"
+        ws.cell(row=row_idx, column=5).number_format = "dd.mm.yyyy"
 
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:G{max(ws.max_row, 1)}"
-    widths = {"A": 32, "B": 12, "C": 36, "D": 14, "E": 24, "F": 24, "G": 16}
+    ws.auto_filter.ref = f"A1:F{max(ws.max_row, 1)}"
+    widths = {"A": 32, "B": 36, "C": 14, "D": 24, "E": 24, "F": 16}
     for column, width in widths.items():
         ws.column_dimensions[column].width = width
 

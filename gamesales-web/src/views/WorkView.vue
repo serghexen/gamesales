@@ -1413,6 +1413,9 @@ const productImportMessage = ref('')
 const accountImportMessage = ref('')
 const slotImportMessage = ref('')
 const slotImportError = ref('')
+const slotsExportLoading = ref(false)
+const slotsExportMessage = ref('')
+const slotsExportError = ref('')
 const slotImportAction = ref('')
 const slotImportProgress = reactive({ current: 0, total: 0, phase: '' })
 const slotImportJobId = ref('')
@@ -2448,6 +2451,9 @@ const {
   accountImportMessage,
   slotImportMessage,
   slotImportError,
+  slotsExportLoading,
+  slotsExportMessage,
+  slotsExportError,
   slotImportAction,
   slotImportProgress,
   slotImportJobId,
@@ -2732,6 +2738,9 @@ const accountsSectionCtx = asCtx({
   openAccountImport,
   openSlotImport,
   downloadSlotsExport,
+  slotsExportLoading,
+  slotsExportMessage,
+  slotsExportError,
   loadAccounts,
   accountsLoading,
   accountSaving,

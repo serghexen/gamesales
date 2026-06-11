@@ -493,8 +493,8 @@ class AccountsImportFormatTests(unittest.TestCase):
             warnings = body.get("warnings", [])
             self.assertFalse(any("Конфликт слотов" in str(w.get("message") or "") for w in warnings))
 
-    # Проверяет XLSX-выгрузку истории, отметку дубля и зеленую строку свободного слота.
-    def test_slots_export_contains_history_duplicates_and_free_rows(self):
+    # Проверяет XLSX-выгрузку истории, снятые назначения и зеленую строку свободного слота.
+    def test_slots_export_contains_occupied_released_and_free_rows(self):
         dt_1 = datetime(2026, 5, 17, tzinfo=timezone.utc)
         dt_2 = datetime(2026, 5, 18, tzinfo=timezone.utc)
         dt_3 = datetime(2026, 5, 19, tzinfo=timezone.utc)
@@ -522,12 +522,16 @@ class AccountsImportFormatTests(unittest.TestCase):
         wb = load_workbook(BytesIO(res.content))
         ws = wb["Слоты"]
         self.assertEqual([cell.value for cell in ws[1]], [
-            "Аккаунт", "Дубль", "Товар", "Статус", "Пользователь", "Дата покупки (сделки)", "Тип слота",
+            "Аккаунт", "Товар", "Статус", "Пользователь", "Дата покупки (сделки)", "Тип слота",
         ])
         values = list(ws.iter_rows(min_row=2, values_only=True))
-        self.assertTrue(any(row[1] == "Да" and row[2] == "Game C" for row in values))
-        self.assertTrue(any(row[1] is None and row[2] == "Game E" for row in values))
-        free_row_idx = next(idx for idx, row in enumerate(values, start=2) if row[3] == "Свободен")
+        self.assertTrue(any(row[1] == "Game A" and row[2] == "Занят" for row in values))
+        self.assertTrue(any(row[1] == "Game D" and row[2] == "Снят" for row in values))
+        self.assertTrue(any(row[1] == "Game E" and row[2] == "Снят" for row in values))
+        occupied_row_idx = next(idx for idx, row in enumerate(values, start=2) if row[1] == "Game A")
+        self.assertEqual(ws.cell(occupied_row_idx, 5).number_format, "dd.mm.yyyy")
+        self.assertIsInstance(ws.cell(occupied_row_idx, 5).value, datetime)
+        free_row_idx = next(idx for idx, row in enumerate(values, start=2) if row[2] == "Свободен")
         self.assertEqual(ws.cell(free_row_idx, 1).fill.fgColor.rgb, "00C6EFCE")
         self.assertIn("to_jsonb(a)->>'is_archived'", sql_collector[0])
         self.assertNotIn("COALESCE(a.is_archived", sql_collector[0])
