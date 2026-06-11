@@ -40,6 +40,11 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     date_from: today,
     date_to: today,
   })
+  const financeOzonSync = reactive({
+    store_code: 'asat',
+    date_from: today,
+    date_to: today,
+  })
   const financeOperations = ref([])
   const financeTypes = ref([])
   const financeSections = ref([])
@@ -84,6 +89,8 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeYandexSyncStatus = ref('')
   const financeWildberriesSyncResult = ref(null)
   const financeWildberriesSyncStatus = ref('')
+  const financeOzonSyncResult = ref(null)
+  const financeOzonSyncStatus = ref('')
   const financeNewSection = reactive({
     type_id: '',
     code: '',
@@ -118,9 +125,12 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeCatalogSaving = ref(false)
   const financeYandexSyncLoading = ref(false)
   const financeWildberriesSyncLoading = ref(false)
+  const financeOzonSyncLoading = ref(false)
   const financeWildberriesWaitSeconds = ref(0)
   const financeWildberriesCooldownSeconds = ref(0)
   const financeWildberriesCooldownStoreCode = ref('')
+  const financeOzonCooldownSeconds = ref(0)
+  const financeOzonCooldownStoreCode = ref('')
   const financeSourceDetailsLoading = ref(false)
   const financeError = ref(null)
   const financeEntriesError = ref(null)
@@ -133,7 +143,10 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeYandexSyncOk = ref('')
   const financeWildberriesSyncError = ref(null)
   const financeWildberriesSyncOk = ref('')
+  const financeOzonSyncError = ref(null)
+  const financeOzonSyncOk = ref('')
   let financeWildberriesCooldownTimer = null
+  let financeOzonCooldownTimer = null
 
   const startFinanceWildberriesCooldown = (seconds, storeCode = 'asat') => {
     // Показываем обратный отсчет лимита WB и автоматически разрешаем повторный запуск.
@@ -161,6 +174,27 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeWildberriesSyncStatus.value = String(message || '')
     const waitMatch = financeWildberriesSyncStatus.value.match(/(\d+)\s+сек/i)
     financeWildberriesWaitSeconds.value = waitMatch ? Number(waitMatch[1]) : 0
+  }
+
+  const startFinanceOzonCooldown = (seconds, storeCode = 'asat') => {
+    // Показываем время до повторного запроса Ozon и разблокируем кнопку после лимита.
+    const initialSeconds = Math.max(0, Math.ceil(Number(seconds) || 0))
+    if (financeOzonCooldownTimer) clearInterval(financeOzonCooldownTimer)
+    financeOzonCooldownSeconds.value = initialSeconds
+    financeOzonCooldownStoreCode.value = initialSeconds ? String(storeCode || 'asat') : ''
+    if (!initialSeconds) return
+    financeOzonSyncStatus.value = `Повторный запуск будет доступен через ${initialSeconds} сек.`
+    financeOzonCooldownTimer = setInterval(() => {
+      financeOzonCooldownSeconds.value = Math.max(0, financeOzonCooldownSeconds.value - 1)
+      if (financeOzonCooldownSeconds.value > 0) {
+        financeOzonSyncStatus.value = `Повторный запуск будет доступен через ${financeOzonCooldownSeconds.value} сек.`
+        return
+      }
+      clearInterval(financeOzonCooldownTimer)
+      financeOzonCooldownTimer = null
+      financeOzonCooldownStoreCode.value = ''
+      financeOzonSyncStatus.value = 'Можно повторить синхронизацию'
+    }, 1000)
   }
 
   const clearFinanceSourceDetails = () => {
@@ -577,6 +611,70 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     }
   }
 
+  const syncFinanceOzon = async () => {
+    // Запускаем ручную загрузку финансовых операций Ozon и обновляем отчеты после завершения.
+    const storeCode = String(financeOzonSync.store_code || 'asat').trim().toLowerCase()
+    if (financeOzonCooldownSeconds.value > 0 && financeOzonCooldownStoreCode.value === storeCode) return false
+    financeOzonSyncError.value = null
+    financeOzonSyncOk.value = ''
+    financeOzonSyncResult.value = null
+    financeOzonSyncStatus.value = ''
+    const dateFrom = String(financeOzonSync.date_from || '').trim()
+    const dateTo = String(financeOzonSync.date_to || '').trim()
+    if (!dateFrom || !dateTo) {
+      financeOzonSyncError.value = 'Выберите период синхронизации'
+      return false
+    }
+    if (dateTo < dateFrom) {
+      financeOzonSyncError.value = 'Дата окончания должна быть не раньше даты начала'
+      return false
+    }
+    financeOzonSyncLoading.value = true
+    try {
+      const started = await apiPost('/finance/integrations/ozon/sync', {
+        store_code: storeCode,
+        date_from: dateFrom,
+        date_to: dateTo,
+      }, { token: auth.state.token })
+      const jobId = String(started?.job_id || '')
+      if (!jobId) throw new Error('Ozon sync job_id is missing')
+      financeOzonSyncStatus.value = started?.message || 'Синхронизация запущена'
+      let job = started
+      for (let attempt = 0; attempt < 180; attempt += 1) {
+        if (job?.status === 'done' || job?.status === 'failed') break
+        job = await apiGet(`/finance/integrations/ozon/sync/${encodeURIComponent(jobId)}`, { token: auth.state.token })
+        financeOzonSyncStatus.value = job?.message || String(job?.status || '')
+        if (job?.status === 'done' || job?.status === 'failed') break
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+      }
+      if (job?.status !== 'done') {
+        startFinanceOzonCooldown(job?.retry_after_seconds, storeCode)
+        throw new Error(job?.error || 'Ozon sync job was not completed')
+      }
+      const result = job?.result || {}
+      financeOzonSyncResult.value = result || null
+      const created = Number(result?.created_rows || 0)
+      const updated = Number(result?.updated_rows || 0)
+      const skipped = Number(result?.skipped_rows || 0)
+      const failed = Number(result?.failed_rows || 0)
+      financeOzonSyncOk.value = `Ozon: дней добавлено ${created}, дней обновлено ${updated}, дней пропущено ${skipped}, ошибок ${failed}`
+      const refreshTasks = [loadFinanceEntries(), loadFinanceProjectsReport()]
+      if (financeCashFlowLoaded.value) refreshTasks.push(loadFinanceCashFlowReport())
+      await Promise.all(refreshTasks)
+      return failed === 0
+    } catch (e) {
+      const errorMessage = mapApiError(e?.message)
+      financeOzonSyncError.value = errorMessage
+      const retryMatch = String(errorMessage).match(/через\s+(\d+)\s+сек/i)
+      if (retryMatch && financeOzonCooldownSeconds.value <= 0) {
+        startFinanceOzonCooldown(Number(retryMatch[1]), storeCode)
+      }
+      return false
+    } finally {
+      financeOzonSyncLoading.value = false
+    }
+  }
+
   const createFinanceSection = async (draft = null) => {
     // Добавляем новый раздел в справочник finance и обновляем bootstrap.
     financeCatalogError.value = null
@@ -918,6 +1016,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeEntryFilters,
     financeYandexSync,
     financeWildberriesSync,
+    financeOzonSync,
     financeNewSection,
     financeNewType,
     financeNewOperation,
@@ -946,6 +1045,8 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeYandexSyncStatus,
     financeWildberriesSyncResult,
     financeWildberriesSyncStatus,
+    financeOzonSyncResult,
+    financeOzonSyncStatus,
     financeCatalogsLoaded,
     financeLoaded,
     financeCashFlowLoaded,
@@ -958,9 +1059,12 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeCatalogSaving,
     financeYandexSyncLoading,
     financeWildberriesSyncLoading,
+    financeOzonSyncLoading,
     financeWildberriesWaitSeconds,
     financeWildberriesCooldownSeconds,
     financeWildberriesCooldownStoreCode,
+    financeOzonCooldownSeconds,
+    financeOzonCooldownStoreCode,
     financeSourceDetailsLoading,
     financeError,
     financeEntriesError,
@@ -973,6 +1077,8 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeYandexSyncOk,
     financeWildberriesSyncError,
     financeWildberriesSyncOk,
+    financeOzonSyncError,
+    financeOzonSyncOk,
     loadFinanceBootstrap,
     loadFinanceEntries,
     createFinanceEntry,
@@ -996,5 +1102,6 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     saveFinanceCashFlowOpeningBalance,
     syncFinanceYandexMarket,
     syncFinanceWildberries,
+    syncFinanceOzon,
   }
 }

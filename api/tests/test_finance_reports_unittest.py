@@ -572,6 +572,108 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertTrue(any("wildberries:sales-reports" in str(sql) or "finance.entries" in str(sql) for sql in sql_collector))
         self.assertTrue(any("finance.entry_dedupe_keys" in sql for sql in sql_collector))
 
+    # Ручная синхронизация Ozon должна создавать дневные gross/expense проводки из финансовых операций.
+    def test_finance_ozon_sync_creates_daily_gross_and_expense_entries(self):
+        ozon_rows = [{"operation_id": 10}, {"operation_id": 11}]
+        daily_rows = [
+            {
+                "biz_date": date(2026, 6, 1),
+                "gross_amount": "1200.00",
+                "expense_amount": "430.00",
+                "payout_amount": "770.00",
+                "external_key_base": "ozon:asat:finance-transactions:daily:2026-06-01",
+                "comment": "Ozon ASAT; финансовые операции за 2026-06-01; строк 2",
+                "payload_json": {"provider": "ozon", "store_code": "asat", "payout_amount": "770.00"},
+            }
+        ]
+        script = [
+            {"one": (99,)},
+            {"one": (1,)},
+            {"one": (7,)},
+            {"one": (8,)},
+            {"one": (7, 2, "revenue_marketplace_api", "Продажи маркетплейсов", "api", False, False, False, False, False, 10, True, "revenue")},
+            {"one": (1,)},
+            {"one": (1,)},
+            {"one": (1,)},
+            {"one": None},
+            {
+                "one": (
+                    901,
+                    date(2026, 6, 1),
+                    7,
+                    None,
+                    99,
+                    1,
+                    "1",
+                    "1200.00",
+                    "RUB",
+                    "api",
+                    "ozon:asat:finance-transactions:daily:2026-06-01:gross",
+                    "confirmed",
+                    "Ozon ASAT; финансовые операции за 2026-06-01; строк 2; начисления и компенсации",
+                    "admin",
+                    datetime(2026, 6, 2, 10, 0, 0),
+                    datetime(2026, 6, 2, 10, 0, 0),
+                ),
+            },
+            {},
+            {},
+            {},
+            {"one": (8, 3, "direct_marketplace_commission_api", "Комиссии маркетплейсов", "api", False, False, False, False, False, 20, True, "direct_expense")},
+            {"one": (1,)},
+            {"one": (1,)},
+            {"one": (1,)},
+            {"one": None},
+            {
+                "one": (
+                    902,
+                    date(2026, 6, 1),
+                    8,
+                    None,
+                    99,
+                    1,
+                    "1",
+                    "430.00",
+                    "RUB",
+                    "api",
+                    "ozon:asat:finance-transactions:daily:2026-06-01:expense",
+                    "confirmed",
+                    "Ozon ASAT; финансовые операции за 2026-06-01; строк 2; возвраты, комиссии, логистика и услуги",
+                    "admin",
+                    datetime(2026, 6, 2, 10, 0, 0),
+                    datetime(2026, 6, 2, 10, 0, 0),
+                ),
+            },
+            {},
+            {},
+            {},
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(finance_api_module, "fetch_ozon_finance_transactions", return_value=ozon_rows),
+            patch.object(finance_api_module, "aggregate_ozon_finance_transactions", return_value=daily_rows),
+            patch.dict(os.environ, {"FINANCE_OZON_SYNC_INLINE": "1"}),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/finance/integrations/ozon/sync",
+                    json={"store_code": "asat", "date_from": "2026-06-01", "date_to": "2026-06-01"},
+                    headers=self._auth_headers(role="admin"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["status"], "done")
+        self.assertEqual(body["result"]["provider"], "ozon")
+        self.assertEqual(body["result"]["store_code"], "asat")
+        self.assertEqual(body["result"]["created_rows"], 1)
+        self.assertEqual(body["result"]["failed_rows"], 0)
+        self.assertTrue(any("finance.entries" in sql and "input_channel" in sql for sql in sql_collector))
+
     # Повторная синхронизация Яндекса должна обновлять дневной итог, если отчет пересчитался.
     def test_finance_yandex_sync_updates_existing_daily_entry(self):
         yandex_rows = [

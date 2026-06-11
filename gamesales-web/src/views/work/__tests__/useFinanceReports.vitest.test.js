@@ -304,6 +304,47 @@ describe('useFinanceReports', () => {
     expect(h.apiGet).toHaveBeenCalledTimes(3)
   })
 
+  it('syncs Ozon entries and refreshes finance data', async () => {
+    const h = createHarness()
+    h.finance.financeOzonSync.store_code = 'asat'
+    h.finance.financeOzonSync.date_from = '2026-06-01'
+    h.finance.financeOzonSync.date_to = '2026-06-02'
+    h.apiPost.mockResolvedValueOnce({
+      job_id: 'ozon-job-1',
+      status: 'queued',
+      message: 'Синхронизация поставлена в очередь',
+    })
+    h.apiGet
+      .mockResolvedValueOnce({
+        job_id: 'ozon-job-1',
+        status: 'done',
+        message: 'Синхронизация завершена',
+        result: {
+          total_rows: 35,
+          created_rows: 2,
+          updated_rows: 1,
+          skipped_rows: 0,
+          failed_rows: 0,
+          errors: [],
+        },
+      })
+      .mockResolvedValueOnce({ total: 2, items: [{ entry_id: 901, amount: '100.00', qty: '1.00' }] })
+      .mockResolvedValueOnce({ totals: { revenue: '100.00' }, items: [] })
+
+    const ok = await h.finance.syncFinanceOzon()
+
+    expect(ok).toBe(true)
+    expect(h.apiPost).toHaveBeenCalledWith(
+      '/finance/integrations/ozon/sync',
+      { store_code: 'asat', date_from: '2026-06-01', date_to: '2026-06-02' },
+      { token: 'token-1' },
+    )
+    expect(h.finance.financeOzonSyncOk.value).toBe('Ozon: дней добавлено 2, дней обновлено 1, дней пропущено 0, ошибок 0')
+    expect(h.finance.financeOzonSyncResult.value.total_rows).toBe(35)
+    expect(h.finance.financeOzonSyncStatus.value).toBe('Синхронизация завершена')
+    expect(h.apiGet).toHaveBeenCalledTimes(3)
+  })
+
   it('counts down Wildberries retry delay after rate limit', async () => {
     vi.useFakeTimers()
     try {

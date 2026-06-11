@@ -11,6 +11,7 @@ from fastapi import Depends, HTTPException, Query
 
 from .yandex_market_service import fetch_yandex_market_order_economics, normalize_yandex_market_store_code
 from .wildberries_service import aggregate_wildberries_report_rows, fetch_wildberries_sales_report, normalize_wildberries_store_code
+from .ozon_service import aggregate_ozon_finance_transactions, fetch_ozon_finance_transactions, normalize_ozon_store_code
 from .finance_models import (
     FinanceBootstrapOut,
     FinanceCashFlowLineOut,
@@ -30,6 +31,9 @@ from .finance_models import (
     FinanceOperationOut,
     FinanceOperationCreateIn,
     FinanceOperationUpdateIn,
+    FinanceOzonSyncIn,
+    FinanceOzonSyncJobOut,
+    FinanceOzonSyncOut,
     FinancePnlBucketOut,
     FinancePnlOut,
     FinancePnlTotalsOut,
@@ -74,6 +78,7 @@ def mount_finance_routes(
 ):
     yandex_sync_jobs: dict[str, dict[str, Any]] = {}
     wildberries_sync_jobs: dict[str, dict[str, Any]] = {}
+    ozon_sync_jobs: dict[str, dict[str, Any]] = {}
 
     def _normalize_code(value: Optional[str], *, upper: bool = False) -> str:
         # Нормализуем кодовые поля, чтобы избежать лишних дублей из-за регистра и пробелов.
@@ -684,9 +689,8 @@ def mount_finance_routes(
             """
             INSERT INTO finance.dim_sources(code, name, is_active)
             VALUES (%s, %s, true)
-            ON CONFLICT (code) DO UPDATE
-            SET name=excluded.name,
-                is_active=true,
+            ON CONFLICT (code, name) DO UPDATE
+            SET is_active=true,
                 updated_at=now()
             RETURNING source_id
             """,
@@ -743,6 +747,125 @@ def mount_finance_routes(
         if operation_code == _normalize_code(os.getenv("YANDEX_MARKET_COMMISSION_OPERATION_CODE", "direct_marketplace_commission_api")):
             return _resolve_yandex_commission_operation_id(conn)
         raise HTTPException(400, f"Wildberries expense operation is not configured: {operation_code}")
+
+    def _ozon_store_env(store_code: str, name: str, default: str = "") -> str:
+        # Читаем настройку выбранного кабинета Ozon и сохраняем общий fallback для ASAT.
+        normalized_store_code = normalize_ozon_store_code(store_code)
+        scoped = str(os.getenv(f"OZON_{normalized_store_code.upper()}_{name}", "") or "").strip()
+        if scoped:
+            return scoped
+        if normalized_store_code in {"asat", "default"}:
+            return str(os.getenv(f"OZON_{name}", default) or "").strip()
+        return default
+
+    def _ozon_store_env_int(store_code: str, name: str) -> Optional[int]:
+        # Читаем числовую настройку кабинета Ozon без подмены другого магазина.
+        raw = _ozon_store_env(store_code, name)
+        if not raw:
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            normalized_store_code = normalize_ozon_store_code(store_code)
+            raise HTTPException(500, f"OZON_{normalized_store_code.upper()}_{name} must be integer")
+
+    def _resolve_ozon_source_id(conn, store_code: str) -> int:
+        # Находим или создаем finance-источник конкретного кабинета Ozon.
+        normalized_store_code = normalize_ozon_store_code(store_code)
+        source_id = _ozon_store_env_int(normalized_store_code, "FINANCE_SOURCE_ID")
+        if source_id is not None:
+            row = q1(conn, "SELECT source_id FROM finance.dim_sources WHERE source_id=%s AND is_active IS TRUE", (source_id,))
+            if not row:
+                raise HTTPException(400, f"Unknown OZON_{normalized_store_code.upper()}_FINANCE_SOURCE_ID: {source_id}")
+            return int(row[0])
+
+        source_code = _normalize_code(_ozon_store_env(normalized_store_code, "SOURCE_CODE", "ozon"))
+        source_name_value = _ozon_store_env(normalized_store_code, "SOURCE_NAME", normalized_store_code.upper()).strip()
+        row = q1(
+            conn,
+            """
+            SELECT source_id
+            FROM finance.dim_sources
+            WHERE lower(code)=%s AND lower(name)=%s AND is_active IS TRUE
+            ORDER BY source_id
+            LIMIT 1
+            """,
+            (source_code, source_name_value.lower()),
+        )
+        if row:
+            return int(row[0])
+        rows = qall(
+            conn,
+            "SELECT source_id FROM finance.dim_sources WHERE lower(code)=%s AND is_active IS TRUE ORDER BY source_id LIMIT 2",
+            (source_code,),
+        )
+        if len(rows) == 1:
+            return int(rows[0][0])
+        if len(rows) > 1:
+            raise HTTPException(400, f"Ozon finance source is ambiguous for {normalized_store_code}; set OZON_{normalized_store_code.upper()}_FINANCE_SOURCE_ID")
+        source_row = q1(
+            conn,
+            """
+            INSERT INTO finance.dim_sources(code, name, is_active)
+            VALUES (%s, %s, true)
+            ON CONFLICT (code, name) DO UPDATE
+            SET is_active=true,
+                updated_at=now()
+            RETURNING source_id
+            """,
+            (source_code, source_name_value),
+        )
+        if not source_row:
+            raise HTTPException(500, "Failed to create Ozon finance source")
+        return int(source_row[0])
+
+    def _resolve_ozon_project_id(conn) -> Optional[int]:
+        # Подставляем общий проект marketplace для совместного отчета по маркетплейсам.
+        project_id = _env_int("OZON_PROJECT_ID")
+        if project_id is not None:
+            row = q1(conn, "SELECT project_id FROM finance.projects WHERE project_id=%s AND is_active IS TRUE", (project_id,))
+            if not row:
+                raise HTTPException(400, f"Unknown OZON_PROJECT_ID: {project_id}")
+            return int(row[0])
+        project_code = _normalize_code(os.getenv("OZON_PROJECT_CODE", "marketplace"))
+        row = q1(
+            conn,
+            "SELECT project_id FROM finance.projects WHERE lower(code)=%s AND is_active IS TRUE ORDER BY project_id LIMIT 1",
+            (project_code,),
+        )
+        return int(row[0]) if row else None
+
+    def _resolve_ozon_revenue_operation_id(conn) -> int:
+        # Используем общую операцию продаж маркетплейсов или явную операцию Ozon.
+        operation_id = _env_int("OZON_REVENUE_OPERATION_ID")
+        if operation_id is not None:
+            row = q1(conn, "SELECT operation_id FROM finance.operations WHERE operation_id=%s AND is_active IS TRUE", (operation_id,))
+            if not row:
+                raise HTTPException(400, f"Unknown OZON_REVENUE_OPERATION_ID: {operation_id}")
+            return int(row[0])
+        operation_code = _normalize_code(os.getenv("OZON_REVENUE_OPERATION_CODE", "revenue_marketplace_api"))
+        row = q1(conn, "SELECT operation_id FROM finance.operations WHERE lower(code)=%s AND is_active IS TRUE ORDER BY operation_id LIMIT 1", (operation_code,))
+        if row:
+            return int(row[0])
+        if operation_code == _normalize_code(os.getenv("YANDEX_MARKET_REVENUE_OPERATION_CODE", "revenue_marketplace_api")):
+            return _resolve_yandex_operation_id(conn)
+        raise HTTPException(400, f"Ozon revenue operation is not configured: {operation_code}")
+
+    def _resolve_ozon_expense_operation_id(conn) -> int:
+        # Используем общую операцию прямых расходов для удержаний и возвратов Ozon.
+        operation_id = _env_int("OZON_EXPENSE_OPERATION_ID")
+        if operation_id is not None:
+            row = q1(conn, "SELECT operation_id FROM finance.operations WHERE operation_id=%s AND is_active IS TRUE", (operation_id,))
+            if not row:
+                raise HTTPException(400, f"Unknown OZON_EXPENSE_OPERATION_ID: {operation_id}")
+            return int(row[0])
+        operation_code = _normalize_code(os.getenv("OZON_EXPENSE_OPERATION_CODE", "direct_marketplace_commission_api"))
+        row = q1(conn, "SELECT operation_id FROM finance.operations WHERE lower(code)=%s AND is_active IS TRUE ORDER BY operation_id LIMIT 1", (operation_code,))
+        if row:
+            return int(row[0])
+        if operation_code == _normalize_code(os.getenv("YANDEX_MARKET_COMMISSION_OPERATION_CODE", "direct_marketplace_commission_api")):
+            return _resolve_yandex_commission_operation_id(conn)
+        raise HTTPException(400, f"Ozon expense operation is not configured: {operation_code}")
 
     def _money_from_yandex_raw(raw: dict[str, Any], keys: tuple[str, ...]) -> Decimal:
         # Достаем контрольные суммы из сырой строки Яндекса для дневного payload_json.
@@ -2321,6 +2444,197 @@ def mount_finance_routes(
         if not job:
             raise HTTPException(404, "Wildberries sync job not found")
         return _to_wildberries_job_out(job_id, job)
+
+    def _sync_ozon_now(
+        payload: FinanceOzonSyncIn,
+        created_by: str,
+        progress: Optional[Any] = None,
+    ) -> FinanceOzonSyncOut:
+        # Загружает операции Ozon и сохраняет дневные поступления и расходы в finance.entries.
+        if payload.date_to < payload.date_from:
+            raise HTTPException(400, "date_to must be >= date_from")
+        store_code = normalize_ozon_store_code(payload.store_code)
+        rows = fetch_ozon_finance_transactions(payload.date_from, payload.date_to, store_code=store_code, progress=progress)
+        daily_rows = aggregate_ozon_finance_transactions(rows, fallback_date=payload.date_from, store_code=store_code)
+        created_rows = 0
+        updated_rows = 0
+        skipped_rows = 0
+        failed_rows = 0
+        errors: list[FinanceEntryBulkErrorOut] = []
+
+        with psycopg.connect(DB_DSN) as conn:
+            if progress:
+                progress("Проверяем finance-справочники для Ozon")
+            source_id = _resolve_ozon_source_id(conn, store_code)
+            project_id = _resolve_ozon_project_id(conn)
+            revenue_operation_id = _resolve_ozon_revenue_operation_id(conn)
+            expense_operation_id = _resolve_ozon_expense_operation_id(conn)
+
+            for idx, row in enumerate(daily_rows, start=1):
+                if progress:
+                    progress(f"Сохраняем дневной итог Ozon: {idx}/{len(daily_rows)}")
+                external_key_base = str(row.get("external_key_base") or "")
+                try:
+                    gross_amount = _round_money(Decimal(row.get("gross_amount") or 0))
+                    expense_amount = _round_money(Decimal(row.get("expense_amount") or 0))
+                    if gross_amount <= 0 and expense_amount <= 0:
+                        skipped_rows += 1
+                        continue
+                    payload_json = row.get("payload_json") if isinstance(row.get("payload_json"), dict) else {}
+                    day_created = False
+                    day_updated = False
+                    if gross_amount > 0:
+                        revenue_payload = FinanceEntryCreateIn(
+                            biz_date=row["biz_date"],
+                            operation_id=revenue_operation_id,
+                            region_id=None,
+                            source_id=source_id,
+                            project_id=project_id,
+                            qty=Decimal("1"),
+                            amount=gross_amount,
+                            currency="RUB",
+                            input_channel="api",
+                            external_key=f"{external_key_base}:gross",
+                            status_code="confirmed",
+                            comment=f"{row.get('comment') or 'Ozon'}; начисления и компенсации",
+                            payload_json={**payload_json, "amount_kind": "gross_revenue"},
+                        )
+                        _, revenue_state = _upsert_entry_in_tx(conn, revenue_payload, created_by)
+                        day_created = revenue_state == "created"
+                        day_updated = revenue_state == "updated"
+                    if expense_amount > 0:
+                        expense_payload = FinanceEntryCreateIn(
+                            biz_date=row["biz_date"],
+                            operation_id=expense_operation_id,
+                            region_id=None,
+                            source_id=source_id,
+                            project_id=project_id,
+                            qty=Decimal("1"),
+                            amount=expense_amount,
+                            currency="RUB",
+                            input_channel="api",
+                            external_key=f"{external_key_base}:expense",
+                            status_code="confirmed",
+                            comment=f"{row.get('comment') or 'Ozon'}; возвраты, комиссии, логистика и услуги",
+                            payload_json={**payload_json, "amount_kind": "marketplace_expense"},
+                        )
+                        _, expense_state = _upsert_entry_in_tx(conn, expense_payload, created_by)
+                        day_created = day_created or expense_state == "created"
+                        day_updated = day_updated or expense_state == "updated"
+                    if day_created:
+                        created_rows += 1
+                    elif day_updated:
+                        updated_rows += 1
+                    else:
+                        skipped_rows += 1
+                except Exception as exc:
+                    failed_rows += 1
+                    errors.append(FinanceEntryBulkErrorOut(row_no=idx, error=str(exc), external_key=external_key_base or None))
+            conn.commit()
+
+        return FinanceOzonSyncOut(
+            store_code=store_code,
+            date_from=payload.date_from,
+            date_to=payload.date_to,
+            total_rows=len(rows),
+            created_rows=created_rows,
+            updated_rows=updated_rows,
+            skipped_rows=skipped_rows,
+            failed_rows=failed_rows,
+            errors=errors,
+        )
+
+    def _to_ozon_job_out(job_id: str, job: dict[str, Any]) -> FinanceOzonSyncJobOut:
+        # Преобразует внутренний статус задачи Ozon в публичную модель для polling-а.
+        return FinanceOzonSyncJobOut(
+            job_id=job_id,
+            status=str(job.get("status") or "unknown"),
+            message=job.get("message"),
+            result=job.get("result"),
+            error=job.get("error"),
+            retry_after_seconds=int(job.get("retry_after_seconds") or 0),
+            created_at=job["created_at"],
+            updated_at=job["updated_at"],
+        )
+
+    def _run_ozon_sync_job(job_id: str, payload: FinanceOzonSyncIn, created_by: str):
+        # Выполняет импорт Ozon в фоне и передает текущий этап в интерфейс.
+        ozon_sync_jobs[job_id].update(status="running", message="Запрашиваем операции Ozon", updated_at=datetime.now(timezone.utc))
+
+        def update_progress(message: str):
+            # Обновляем статус без передачи ключей и содержимого финансовых строк.
+            ozon_sync_jobs[job_id].update(message=message, updated_at=datetime.now(timezone.utc))
+
+        try:
+            result = _sync_ozon_now(payload, created_by, progress=update_progress)
+            ozon_sync_jobs[job_id].update(
+                status="done",
+                message="Синхронизация завершена",
+                result=result,
+                error=None,
+                retry_after_seconds=0,
+                updated_at=datetime.now(timezone.utc),
+            )
+        except HTTPException as exc:
+            error_text = str(exc.detail)
+            retry_after_seconds = 0
+            if exc.status_code == 429:
+                match = re.search(r"через\s+(\d+)\s+сек", error_text, flags=re.IGNORECASE)
+                retry_after_seconds = int(match.group(1)) if match else 60
+            ozon_sync_jobs[job_id].update(
+                status="failed",
+                message="Синхронизация завершилась ошибкой",
+                error=error_text,
+                retry_after_seconds=retry_after_seconds,
+                updated_at=datetime.now(timezone.utc),
+            )
+        except Exception as exc:
+            ozon_sync_jobs[job_id].update(
+                status="failed",
+                message="Синхронизация завершилась ошибкой",
+                error=str(exc),
+                retry_after_seconds=0,
+                updated_at=datetime.now(timezone.utc),
+            )
+
+    @app.post("/finance/integrations/ozon/sync", response_model=FinanceOzonSyncJobOut)
+    def finance_sync_ozon(payload: FinanceOzonSyncIn, user=Depends(require_role("admin", "owner"))):
+        # Ставит синхронизацию Ozon в очередь и не запускает две задачи одного кабинета одновременно.
+        if payload.date_to < payload.date_from:
+            raise HTTPException(400, "date_to must be >= date_from")
+        store_code = normalize_ozon_store_code(payload.store_code)
+        for existing_job_id, existing_job in list(ozon_sync_jobs.items()):
+            if existing_job.get("store_code") == store_code and existing_job.get("status") in {"queued", "running"}:
+                return _to_ozon_job_out(existing_job_id, existing_job)
+        job_id = uuid.uuid4().hex
+        now = datetime.now(timezone.utc)
+        ozon_sync_jobs[job_id] = {
+            "status": "queued",
+            "message": "Синхронизация поставлена в очередь",
+            "result": None,
+            "error": None,
+            "retry_after_seconds": 0,
+            "store_code": store_code,
+            "date_from": payload.date_from.isoformat(),
+            "date_to": payload.date_to.isoformat(),
+            "created_at": now,
+            "updated_at": now,
+        }
+        created_by = str(getattr(user, "username", "") or "")
+        if str(os.getenv("FINANCE_OZON_SYNC_INLINE", "") or "").strip() == "1":
+            _run_ozon_sync_job(job_id, payload, created_by)
+        else:
+            thread = threading.Thread(target=_run_ozon_sync_job, args=(job_id, payload, created_by), daemon=True)
+            thread.start()
+        return _to_ozon_job_out(job_id, ozon_sync_jobs[job_id])
+
+    @app.get("/finance/integrations/ozon/sync/{job_id}", response_model=FinanceOzonSyncJobOut)
+    def finance_get_ozon_sync_job(job_id: str, user=Depends(require_role("admin", "owner"))):
+        # Возвращает состояние синхронизации Ozon для периодического опроса интерфейсом.
+        job = ozon_sync_jobs.get(job_id)
+        if not job:
+            raise HTTPException(404, "Ozon sync job not found")
+        return _to_ozon_job_out(job_id, job)
 
     @app.delete("/finance/entries/{entry_id}")
     def finance_delete_entry(entry_id: int, user=Depends(require_role("admin", "owner"))):

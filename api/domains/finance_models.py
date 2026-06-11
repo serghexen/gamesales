@@ -299,6 +299,36 @@ class FinanceWildberriesSyncJobOut(BaseModel):
     updated_at: datetime
 
 
+class FinanceOzonSyncIn(BaseModel):
+    date_from: date
+    date_to: date
+    store_code: str = "asat"
+
+
+class FinanceOzonSyncOut(BaseModel):
+    provider: str = "ozon"
+    store_code: str = "asat"
+    date_from: date
+    date_to: date
+    total_rows: int = 0
+    created_rows: int = 0
+    updated_rows: int = 0
+    skipped_rows: int = 0
+    failed_rows: int = 0
+    errors: list[FinanceEntryBulkErrorOut] = Field(default_factory=list)
+
+
+class FinanceOzonSyncJobOut(BaseModel):
+    job_id: str
+    status: str
+    message: Optional[str] = None
+    result: Optional[FinanceOzonSyncOut] = None
+    error: Optional[str] = None
+    retry_after_seconds: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
 class FinanceCatalogSyncOut(BaseModel):
     regions_synced: int = 0
     sources_synced: int = 0

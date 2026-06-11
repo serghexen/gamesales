@@ -6,6 +6,7 @@
       :open-create-account-modal="ctx.openCreateAccountModal"
       :open-account-import="ctx.openAccountImport"
       :open-slot-import="ctx.openSlotImport"
+      :download-slots-export="ctx.downloadSlotsExport"
       :load-accounts="ctx.loadAccounts"
       :accounts-loading="ctx.accountsLoading"
     />

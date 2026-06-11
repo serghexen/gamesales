@@ -1009,6 +1009,8 @@ mount_accounts_import_routes(
 
 mount_slots_import_routes(
     app,
+    DB_DSN=DB_DSN,
+    psycopg=pooled_psycopg,
     clean_slots_excel=clean_slots_excel,
     set_import_progress=set_import_progress,
     get_import_progress=get_import_progress,

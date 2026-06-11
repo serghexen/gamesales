@@ -20,9 +20,12 @@ function buildCtx(overrides = {}) {
     financeCatalogSaving: false,
     financeYandexSyncLoading: false,
     financeWildberriesSyncLoading: false,
+    financeOzonSyncLoading: false,
     financeWildberriesWaitSeconds: 0,
     financeWildberriesCooldownSeconds: 0,
     financeWildberriesCooldownStoreCode: '',
+    financeOzonCooldownSeconds: 0,
+    financeOzonCooldownStoreCode: '',
     financeError: '',
     financeEntriesError: '',
     financeEntryError: '',
@@ -35,6 +38,9 @@ function buildCtx(overrides = {}) {
     financeWildberriesSyncError: '',
     financeWildberriesSyncOk: '',
     financeWildberriesSyncStatus: '',
+    financeOzonSyncError: '',
+    financeOzonSyncOk: '',
+    financeOzonSyncStatus: '',
     financeLoaded: true,
     financeEntriesTotal: 1,
     financeFilters: {
@@ -70,6 +76,11 @@ function buildCtx(overrides = {}) {
       date_to: '2026-05-31',
     },
     financeWildberriesSync: {
+      store_code: 'asat',
+      date_from: '2026-05-30',
+      date_to: '2026-05-31',
+    },
+    financeOzonSync: {
       store_code: 'asat',
       date_from: '2026-05-30',
       date_to: '2026-05-31',
@@ -216,6 +227,7 @@ function buildCtx(overrides = {}) {
     ],
     financeYandexSyncResult: null,
     financeWildberriesSyncResult: null,
+    financeOzonSyncResult: null,
     loadFinanceProjectsReport: vi.fn(),
     loadFinanceSourceDetails: vi.fn(),
     clearFinanceSourceDetails: vi.fn(),
@@ -224,6 +236,7 @@ function buildCtx(overrides = {}) {
     saveFinanceCashFlowOpeningBalance: vi.fn(),
     syncFinanceYandexMarket: vi.fn(),
     syncFinanceWildberries: vi.fn(),
+    syncFinanceOzon: vi.fn(),
     loadFinanceEntries: vi.fn(),
     createFinanceEntry: vi.fn(),
     deleteFinanceEntry: vi.fn(),
@@ -295,6 +308,7 @@ describe('WorkFinanceSection', () => {
     await wrapper.find('[data-test="finance-mode-integrations"]').trigger('click')
     await wrapper.find('[data-test="finance-sync-yandex"]').trigger('click')
     await wrapper.find('[data-test="finance-sync-wildberries"]').trigger('click')
+    await wrapper.find('[data-test="finance-sync-ozon"]').trigger('click')
     await wrapper.find('[data-test="finance-mode-report"]').trigger('click')
     await wrapper.find('[data-test="finance-apply-report"]').trigger('click')
     await wrapper.find('[data-test="finance-mode-cash-flow"]').trigger('click')
@@ -310,6 +324,7 @@ describe('WorkFinanceSection', () => {
     expect(ctx.loadFinanceEntries).toHaveBeenCalledTimes(1)
     expect(ctx.syncFinanceYandexMarket).toHaveBeenCalledTimes(1)
     expect(ctx.syncFinanceWildberries).toHaveBeenCalledTimes(1)
+    expect(ctx.syncFinanceOzon).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceProjectsReport).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceCashFlowReport).toHaveBeenCalledTimes(1)
     expect(ctx.saveFinanceCashFlowOpeningBalance).toHaveBeenCalledTimes(1)
@@ -384,6 +399,39 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('SPS - wb')
     expect(wrapper.text()).toContain('Строк WB')
     expect(wrapper.text()).toContain('Wildberries: дней добавлено 2, дней обновлено 1, дней пропущено 0, ошибок 0')
+  })
+
+  it('shows Ozon sync result as daily aggregates', async () => {
+    const ctx = buildCtx({
+      financeOzonSyncResult: {
+        total_rows: 60,
+        created_rows: 2,
+        updated_rows: 1,
+        skipped_rows: 0,
+        failed_rows: 0,
+      },
+      financeOzonSyncOk: 'Ozon: дней добавлено 2, дней обновлено 1, дней пропущено 0, ошибок 0',
+    })
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-integrations"]').trigger('click')
+
+    expect(wrapper.text()).toContain('Ozon')
+    expect(wrapper.text()).toContain('ASAT - ozon')
+    expect(wrapper.text()).not.toContain('SPS - ozon')
+    expect(wrapper.text()).toContain('Операций Ozon')
+    expect(wrapper.text()).toContain('Ozon: дней добавлено 2, дней обновлено 1, дней пропущено 0, ошибок 0')
   })
 
   it('shows Wildberries retry countdown and disables sync button', async () => {

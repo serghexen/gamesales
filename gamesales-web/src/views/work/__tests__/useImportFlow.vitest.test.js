@@ -107,6 +107,21 @@ describe('useImportFlow', () => {
     expect(click).toHaveBeenCalled()
   })
 
+  it('downloadSlotsExport calls slots export endpoint', async () => {
+    const h = createHarness()
+    h.apiGetFile.mockResolvedValueOnce(new Blob(['ok']))
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:slots')
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    const click = vi.fn()
+    vi.spyOn(document, 'createElement').mockReturnValue({ click })
+
+    await h.flow.downloadSlotsExport()
+
+    expect(h.apiGetFile).toHaveBeenCalledWith('/accounts/slots/export', { token: 'token-1' })
+    expect(click).toHaveBeenCalled()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:slots')
+  })
+
   it('validateProductImport posts to products import validate endpoint', async () => {
     const h = createHarness()
     h.deps.productImportFile.value = { name: 'products.xlsx' }

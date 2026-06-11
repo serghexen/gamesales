@@ -436,6 +436,74 @@
               </div>
             </div>
           </section>
+
+          <section class="finance-integration-panel finance-integration-panel--separated">
+            <div class="finance-integration-panel__head">
+              <div>
+                <h4 class="section-title">Ozon</h4>
+              </div>
+              <span class="finance-integration-badge">API</span>
+            </div>
+
+            <div class="analytics-filters">
+              <label class="field">
+                <span class="label">Магазин</span>
+                <select v-model="ctx.financeOzonSync.store_code" class="input input--select">
+                  <option value="asat">ASAT - ozon</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Период с</span>
+                <input v-model="ctx.financeOzonSync.date_from" class="input" type="date" :max="ctx.financeOzonSync.date_to || ctx.maxDate" />
+              </label>
+              <label class="field">
+                <span class="label">Период по</span>
+                <input v-model="ctx.financeOzonSync.date_to" class="input" type="date" :min="ctx.financeOzonSync.date_from || ctx.minDate" :max="ctx.maxDate" />
+              </label>
+              <label class="field">
+                <button
+                  data-test="finance-sync-ozon"
+                  class="ghost"
+                  type="button"
+                  :disabled="ctx.financeOzonSyncLoading || (Number(ctx.financeOzonCooldownSeconds || 0) > 0 && ctx.financeOzonCooldownStoreCode === ctx.financeOzonSync.store_code)"
+                  @click="syncOzon"
+                >
+                  {{ ctx.financeOzonSyncLoading
+                    ? 'Синхронизируем...'
+                    : Number(ctx.financeOzonCooldownSeconds || 0) > 0 && ctx.financeOzonCooldownStoreCode === ctx.financeOzonSync.store_code
+                      ? `Повторить через ${Number(ctx.financeOzonCooldownSeconds)} сек.`
+                      : 'Синхронизировать Ozon' }}
+                </button>
+              </label>
+            </div>
+
+            <p v-if="ctx.financeOzonSyncStatus" class="muted">{{ ctx.financeOzonSyncStatus }}</p>
+            <p v-if="ctx.financeOzonSyncError" class="bad">{{ ctx.financeOzonSyncError }}</p>
+            <p v-if="ctx.financeOzonSyncOk" class="good">{{ ctx.financeOzonSyncOk }}</p>
+
+            <div v-if="ctx.financeOzonSyncResult" class="analytics-cards finance-sync-cards">
+              <div class="mini">
+                <div class="mini__label">Операций Ozon</div>
+                <div class="mini__value">{{ Number(ctx.financeOzonSyncResult.total_rows || 0) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Дней добавлено</div>
+                <div class="mini__value">{{ Number(ctx.financeOzonSyncResult.created_rows || 0) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Дней обновлено</div>
+                <div class="mini__value">{{ Number(ctx.financeOzonSyncResult.updated_rows || 0) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Дней пропущено</div>
+                <div class="mini__value">{{ Number(ctx.financeOzonSyncResult.skipped_rows || 0) }}</div>
+              </div>
+              <div class="mini">
+                <div class="mini__label">Ошибки</div>
+                <div class="mini__value">{{ Number(ctx.financeOzonSyncResult.failed_rows || 0) }}</div>
+              </div>
+            </div>
+          </section>
         </template>
 
         <template v-if="financeMode === 'report'">
@@ -1533,6 +1601,11 @@ async function syncYandexMarket() {
 // Запускаем ручной импорт финансового отчета Wildberries через backend endpoint.
 async function syncWildberries() {
   await props.ctx.syncFinanceWildberries?.()
+}
+
+// Запускаем ручной импорт финансовых операций Ozon через backend endpoint.
+async function syncOzon() {
+  await props.ctx.syncFinanceOzon?.()
 }
 
 // Перечитываем каталоги типов и видов операций по кнопке "Обновить".

@@ -123,6 +123,19 @@
 - Возвращает статус ручной синхронизации WB: `queued/running/done/failed`, сообщение, ошибку или итоговую статистику.
 - При лимите API задача остается в `running`, показывает обратный отсчет в `message` и автоматически продолжает запрос.
 
+`POST /finance/integrations/ozon/sync`
+- Старт ручной синхронизации Ozon за период `date_from/date_to`, возвращает `job_id`.
+- В теле передается единственный доступный `store_code`: `asat`; backend использует `OZON_ASAT_CLIENT_ID`, `OZON_ASAT_API_KEY` и finance-источник ASAT.
+- Использует Seller API `POST /v3/finance/transaction/list`, интервалы до 30 дней и пагинацию `page/page_size`.
+- Сворачивает операции по `operation_date` в дневную gross-запись и дневную запись прямых расходов.
+- Gross включает начисления за товары и положительные компенсации сверх продаж. Расход равен разнице между gross и суммой `amount`, поэтому итог проводок совпадает с расчетным результатом операций Ozon.
+- В `payload_json` сохраняются `gross_sales`, `returns`, `sale_commission`, логистика, услуги, компенсации, итоговая выплата, номера отправлений и типы операций.
+- Идемпотентность: `external_key` вида `ozon:{store_code}:finance-transactions:daily:{biz_date}:gross|expense`.
+- SSL по умолчанию проверяется через `certifi`; для корпоративного сертификата используется `OZON_CA_CERT_PATH`, а локально проверку можно временно отключить через `OZON_SSL_VERIFY=false`.
+
+`GET /finance/integrations/ozon/sync/{job_id}`
+- Возвращает статус ручной синхронизации Ozon: `queued/running/done/failed`, сообщение, ошибку, задержку после rate limit или итоговую статистику.
+
 `GET /finance/entries`
 - Журнал записей с фильтрами: `date_from`, `date_to`, `project_id`, `region_id`, `source_id`, `operation_id`, `status_code`, `limit`, `offset`.
 

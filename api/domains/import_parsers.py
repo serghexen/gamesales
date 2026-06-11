@@ -108,6 +108,8 @@ def build_import_parsers(*, q1, qall, normalize_platform_codes):
         "слот": "slot",
         "Платформа": "slot",
         "платформа": "slot",
+        "Тип слота": "slot",
+        "тип слота": "slot",
     }
     slot_file_to_type = {
         "п4": ("activate_ps4", 1),

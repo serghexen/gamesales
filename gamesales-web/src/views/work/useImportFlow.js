@@ -692,6 +692,21 @@ export function useImportFlow({
     }
   }
 
+  // Скачивает полную историю занятости слотов и актуальные свободные места.
+  async function downloadSlotsExport() {
+    try {
+      const blob = await apiGetFile('/accounts/slots/export', { token: auth.state.token })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'slots_history.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      slotImportError.value = mapApiError(e?.message)
+    }
+  }
+
   async function downloadProductImportReportInternal() {
     try {
       const payload = { errors: productImportErrors.value || [], warnings: productImportWarnings.value || [] }
@@ -1195,6 +1210,7 @@ export function useImportFlow({
     downloadProductTemplate,
     downloadAccountTemplate,
     downloadAccountImportExport,
+    downloadSlotsExport,
     downloadProductImportReport,
     downloadAccountImportReport,
     validateProductImport,

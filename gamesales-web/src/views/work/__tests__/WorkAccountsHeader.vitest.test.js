@@ -10,6 +10,7 @@ function buildProps(overrides = {}) {
     openCreateAccountModal: vi.fn(),
     openAccountImport: vi.fn(),
     openSlotImport: vi.fn(),
+    downloadSlotsExport: vi.fn(),
     loadAccounts: vi.fn(),
     accountsLoading: false,
     ...overrides,
@@ -30,5 +31,16 @@ describe('WorkAccountsHeader', () => {
     await input.trigger('keydown.enter')
 
     expect(applyAccountSearch).toHaveBeenCalledTimes(1)
+  })
+
+  it('downloads slots history from the toolbar', async () => {
+    const downloadSlotsExport = vi.fn()
+    const wrapper = mount(WorkAccountsHeader, {
+      props: buildProps({ downloadSlotsExport }),
+    })
+
+    await wrapper.find('[aria-label="Выгрузить историю слотов"]').trigger('click')
+
+    expect(downloadSlotsExport).toHaveBeenCalledTimes(1)
   })
 })

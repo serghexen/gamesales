@@ -1,6 +1,6 @@
 import unittest
 from io import BytesIO
-from datetime import date
+from datetime import date, datetime, timezone
 from unittest.mock import patch
 
 try:
@@ -8,7 +8,7 @@ try:
 except Exception:  # pragma: no cover
     TestClient = None
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 import app as app_module
 
@@ -488,6 +488,42 @@ class AccountsImportFormatTests(unittest.TestCase):
             body = res.json()
             warnings = body.get("warnings", [])
             self.assertFalse(any("Конфликт слотов" in str(w.get("message") or "") for w in warnings))
+
+    # Проверяет XLSX-выгрузку истории, отметку дубля и зеленую строку свободного слота.
+    def test_slots_export_contains_history_duplicates_and_free_rows(self):
+        dt_1 = datetime(2026, 5, 17, tzinfo=timezone.utc)
+        dt_2 = datetime(2026, 5, 18, tzinfo=timezone.utc)
+        dt_3 = datetime(2026, 5, 19, tzinfo=timezone.utc)
+        script = [{
+            "all": [
+                ("winner@example.com", "play_ps5", 2, 1, "Game A", "Buyer 1", dt_1, dt_1, None),
+                ("winner@example.com", "play_ps5", 2, 2, "Game B", "Buyer 2", dt_2, dt_2, None),
+                ("winner@example.com", "play_ps5", 2, 3, "Game C", "Buyer 3", dt_3, dt_3, None),
+                ("winner@example.com", "activate_ps5", 1, None, None, None, None, None, None),
+                ("winner@example.com", "activate_ps4", 1, 4, "Game D", "Buyer 4", dt_1, dt_1, dt_2),
+                ("winner@example.com", "activate_ps4", 1, 5, "Game E", "Buyer 5", dt_2, dt_2, dt_3),
+            ],
+        }]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get("/accounts/slots/export", headers=self._auth_headers(role="admin"))
+
+        self.assertEqual(res.status_code, 200)
+        wb = load_workbook(BytesIO(res.content))
+        ws = wb["Слоты"]
+        self.assertEqual([cell.value for cell in ws[1]], [
+            "Аккаунт", "Дубль", "Товар", "Статус", "Пользователь", "Дата покупки (сделки)", "Тип слота",
+        ])
+        values = list(ws.iter_rows(min_row=2, values_only=True))
+        self.assertTrue(any(row[1] == "Да" and row[2] == "Game C" for row in values))
+        self.assertTrue(any(row[1] is None and row[2] == "Game E" for row in values))
+        free_row_idx = next(idx for idx, row in enumerate(values, start=2) if row[3] == "Свободен")
+        self.assertEqual(ws.cell(free_row_idx, 1).fill.fgColor.rgb, "00C6EFCE")
 
     # Проверяет поиск сделок по связке "дата + ник" в отдельном файле проверки.
     def test_accounts_import_deals_check_warns_when_deal_not_found(self):
