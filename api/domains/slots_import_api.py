@@ -117,7 +117,8 @@ def _build_slots_export_xlsx(db_rows):
         cell.font = Font(color="FFFFFF", bold=True)
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    for item in _build_slots_export_rows(db_rows):
+    # Используем последовательный номер, чтобы не пересчитывать ws.max_row на каждой строке.
+    for row_idx, item in enumerate(_build_slots_export_rows(db_rows), start=2):
         ws.append([
             item["account"],
             item["product"],
@@ -126,10 +127,10 @@ def _build_slots_export_xlsx(db_rows):
             _excel_date(item["purchase_at"]),
             item["slot_type"],
         ])
-        row_idx = ws.max_row
         if item["is_free"]:
-            for cell in ws[row_idx]:
-                cell.fill = free_fill
+            # Красим известные шесть колонок напрямую, не заставляя openpyxl пересчитывать размер листа.
+            for column_idx in range(1, 7):
+                ws.cell(row=row_idx, column=column_idx).fill = free_fill
         ws.cell(row=row_idx, column=5).number_format = "dd.mm.yyyy"
 
     ws.freeze_panes = "A2"
