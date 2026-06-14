@@ -101,6 +101,10 @@ class AccountSecretsBatchItem(BaseModel):
     secrets: List[AccountSecretOut]
 
 
+class AccountReserveUsageOut(BaseModel):
+    used_reserve_keys: List[str]
+
+
 class AccountSecretPatchItemIn(BaseModel):
     secret_key: str
     secret_value: str

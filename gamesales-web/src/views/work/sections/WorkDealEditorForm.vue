@@ -1677,6 +1677,7 @@ const {
   getAccountLabelById,
   getAccountSecret,
   getReserveSecretEntries,
+  loadAccountUsedReserveKeys,
   accountsAll,
   accountSecrets,
   ensureAccountSecretsLoaded,
@@ -1773,6 +1774,7 @@ const editSaleProductLinks = ref([])
 const newSaleProductLinks = ref([])
 const editDealAccountDetailsLoading = ref(false)
 const newDealAccountDetailsLoading = ref(false)
+const accountReserveUsage = ref({})
 const copiedSaleLinkKey = ref('')
 const copiedSharingFieldKey = ref('')
 const forceNewDuplicateMode = ref(false)
@@ -2090,10 +2092,44 @@ function normalizeReserveKey(value) {
   return `reserve${Number(raw.replace('reserve', ''))}`
 }
 
+// Строит ключ кеша с учетом сделки, которую backend должен исключить при редактировании.
+function getReserveUsageCacheKey(accountId, currentDealId = null) {
+  return `${Number(accountId || 0)}:${Number(currentDealId || 0)}`
+}
+
+// Проверяет, загружена ли точная занятость резервов для выбранного аккаунта.
+function hasAccountReserveUsage(accountId, currentDealId = null) {
+  const cacheKey = getReserveUsageCacheKey(accountId, currentDealId)
+  return Object.prototype.hasOwnProperty.call(accountReserveUsage.value || {}, cacheKey)
+}
+
+// Загружает точную занятость резервов и сохраняет нормализованные ключи локально.
+async function ensureAccountReserveUsageLoaded(accountId, currentDealId = null, forceReload = false) {
+  const targetId = Number(accountId || 0)
+  if (!targetId || typeof loadAccountUsedReserveKeys.value !== 'function') return
+  const cacheKey = getReserveUsageCacheKey(targetId, currentDealId)
+  if (!forceReload && hasAccountReserveUsage(targetId, currentDealId)) return
+  if (forceReload && hasAccountReserveUsage(targetId, currentDealId)) {
+    const nextUsage = { ...(accountReserveUsage.value || {}) }
+    delete nextUsage[cacheKey]
+    accountReserveUsage.value = nextUsage
+  }
+  const keys = await loadAccountUsedReserveKeys.value(targetId, currentDealId)
+  accountReserveUsage.value = {
+    ...(accountReserveUsage.value || {}),
+    [cacheKey]: (Array.isArray(keys) ? keys : []).map(normalizeReserveKey).filter(Boolean),
+  }
+}
+
 // Собирает занятые ключи резервов по аккаунту из уже загруженных сделок.
 function getUsedReserveKeysByAccount(accountId, currentDealId = null) {
   const targetId = Number(accountId || 0)
   if (!targetId) return new Set()
+  const cacheKey = getReserveUsageCacheKey(targetId, currentDealId)
+  if (hasAccountReserveUsage(targetId, currentDealId)) {
+    // После ответа API используем полный список из БД, а не текущую страницу таблицы.
+    return new Set(accountReserveUsage.value[cacheKey] || [])
+  }
   const currentId = Number(currentDealId || 0)
   const items = Array.isArray(sortedDeals.value) ? sortedDeals.value : []
   const used = new Set()
@@ -2206,14 +2242,14 @@ function getDealAccountLoginLabel(target) {
   return hasHumanDealAccountLabel(accountId, label) ? label : '—'
 }
 
-// Догружает справочник и секреты для выбранного аккаунта перед показом блока с деталями.
+// Догружает справочник, секреты и точную занятость резервов перед показом блока с деталями.
 async function ensureDealAccountDetailsLoaded(target) {
   const accountId = getDealAccountIdByTarget(target)
   if (!accountId) return
   const loadingRef = target === 'edit' ? editDealAccountDetailsLoading : newDealAccountDetailsLoading
+  const currentDealId = target === 'edit' ? editDeal.value?.deal_id : null
   const hasLabel = hasAccountLabelForDetails(accountId)
   const hasSecrets = hasAccountSecretsForDetails(accountId)
-  if (hasLabel && hasSecrets) return
   loadingRef.value = true
   try {
     const tasks = []
@@ -2224,7 +2260,22 @@ async function ensureDealAccountDetailsLoaded(target) {
     if (!hasSecrets && typeof ensureAccountSecretsLoaded.value === 'function') {
       tasks.push(ensureAccountSecretsLoaded.value(accountId))
     }
+    // При каждом выборе аккаунта обновляем занятость, чтобы новая сделка не использовала устаревший кеш.
+    tasks.push(ensureAccountReserveUsageLoaded(accountId, currentDealId, true))
     if (tasks.length) await Promise.allSettled(tasks)
+    if (!hasAccountReserveUsage(accountId, currentDealId)) return
+    if (getDealAccountIdByTarget(target) !== accountId) return
+    const deal = target === 'edit' ? editDeal.value : newDeal.value
+    if (String(deal?.deal_type_code || '').toLowerCase() !== 'rental') return
+    const currentKey = normalizeReserveKey(deal?.reserve_key)
+    const used = getUsedReserveKeysByAccount(accountId, currentDealId)
+    // Для новой сделки всегда пересчитываем выбор; в edit сохраняем текущий ключ, если он свободен.
+    if (target === 'new' || !currentKey || used.has(currentKey)) {
+      deal.reserve_key = pickFirstFreeReserveKey(accountId, currentDealId)
+    }
+    if (target === 'new' && !deal.reserve_key && getAccountReserveEntriesForDeal(accountId).length > 0) {
+      showDealWarning.value?.('У выбранного аккаунта нет доступных резервов')
+    }
   } finally {
     loadingRef.value = false
   }

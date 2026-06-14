@@ -206,6 +206,10 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('const reserveKey = pickFirstFreeReserveKey(accountId)')
     expect(source).toContain('newDeal.value.reserve_key = reserveKey')
     expect(source).toContain('if (!normalizedKey && !allowFallback) return emptyLabel')
+    expect(source).toContain('loadAccountUsedReserveKeys.value(targetId, currentDealId)')
+    expect(source).toContain('hasAccountReserveUsage(accountId, currentDealId)')
+    expect(source).toContain('return new Set(accountReserveUsage.value[cacheKey] || [])')
+    expect(source).toContain("if (target === 'new' || !currentKey || used.has(currentKey))")
   })
 
   it('hides refund field in pending and draft statuses and keeps it only for other flows', () => {

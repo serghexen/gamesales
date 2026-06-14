@@ -17,6 +17,7 @@ from .accounts_models import (
     AccountSecretsPatchIn,
     AccountSecretsBatchIn,
     AccountSecretsBatchItem,
+    AccountReserveUsageOut,
     SlotAvailabilityOut,
     AccountProductsIn,
     AccountLabelOut,
@@ -668,7 +669,43 @@ def mount_accounts_routes(
                 (account_id,),
             )
         return [AccountSecretOut(secret_key=r0, secret_value_b64=r1, created_at=r2) for (r0, r1, r2) in rows]
-    
+
+    @app.get("/accounts/{account_id}/reserve-usage", response_model=AccountReserveUsageOut)
+    def get_account_reserve_usage(
+        account_id: int,
+        exclude_deal_id: Optional[int] = None,
+        user=Depends(require_role("admin", "owner", "manager", "operator")),
+    ):
+        # Читаем занятые резервы напрямую из БД, чтобы фильтры и пагинация сделок не искажали результат.
+        params = [account_id]
+        exclude_sql = ""
+        if exclude_deal_id is not None:
+            exclude_sql = "AND d.deal_id <> %s"
+            params.append(exclude_deal_id)
+        with psycopg.connect(DB_DSN) as conn:
+            rows = qall(
+                conn,
+                f"""
+                SELECT DISTINCT lower(di.reserve_key)
+                FROM app.deal_items di
+                JOIN app.deals d ON d.deal_id = di.deal_id
+                WHERE d.deal_type_code='rental'
+                  AND di.account_id=%s
+                  AND di.reserve_key IS NOT NULL
+                  AND d.status_code <> 'cancelled'
+                  {exclude_sql}
+                """,
+                tuple(params),
+            )
+        keys = []
+        for row in rows:
+            raw = str(row[0] or "").strip().lower()
+            suffix = raw.replace("reserve", "", 1) if raw.startswith("reserve") else ""
+            if suffix.isdigit():
+                keys.append(f"reserve{int(suffix)}")
+        keys = sorted(set(keys), key=lambda key: int(key.replace("reserve", "", 1)))
+        return AccountReserveUsageOut(used_reserve_keys=keys)
+
     @app.post("/accounts/secrets/batch", response_model=List[AccountSecretsBatchItem])
     def list_account_secrets_batch(payload: AccountSecretsBatchIn, user=Depends(require_role("admin", "owner", "manager", "operator"))):
         account_ids = list({int(a) for a in (payload.account_ids or [])})

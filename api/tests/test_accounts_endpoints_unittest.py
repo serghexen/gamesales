@@ -438,6 +438,28 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json()["secret_value_b64"], "c2VjcmV0")
 
+    # Endpoint занятости резервов должен нормализовать ключи и исключать текущую сделку.
+    def test_get_account_reserve_usage(self):
+        script = [
+            {"all": [("reserve2",), ("Reserve01",), ("invalid",), ("reserve2",)]},
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/accounts/7/reserve-usage?exclude_deal_id=55",
+                    headers=self._auth_headers(role="manager"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json(), {"used_reserve_keys": ["reserve1", "reserve2"]})
+        self.assertIn("d.deal_id <> %s", sql_collector[0])
+
     # Менеджеру разрешено управлять секретами аккаунта.
     def test_upsert_account_secret_allowed_for_manager(self):
         script = [

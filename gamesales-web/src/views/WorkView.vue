@@ -348,6 +348,20 @@ const accountSlotReleaseLoading = ref(false)
 const dealSaving = createBooleanFlag(false)
 const productSaving = createBooleanFlag(false)
 const catalogSaving = createBooleanFlag(false)
+
+// Загружает занятые резервы аккаунта напрямую из БД, независимо от фильтров таблицы сделок.
+async function loadAccountUsedReserveKeys(accountId, excludeDealId = null) {
+  const targetId = Number(accountId || 0)
+  if (!targetId) return []
+  const params = new URLSearchParams()
+  if (Number(excludeDealId || 0)) params.set('exclude_deal_id', String(Number(excludeDealId)))
+  const query = params.toString()
+  const result = await apiGet(`/accounts/${targetId}/reserve-usage${query ? `?${query}` : ''}`, {
+    token: auth.state.token,
+  })
+  return Array.isArray(result?.used_reserve_keys) ? result.used_reserve_keys : []
+}
+
 const tgMessagesList = ref(null)
 const users = ref([])
 const roles = ref([])
@@ -3082,6 +3096,7 @@ const {
   getAccountSecret,
   getReserveSecrets,
   getReserveSecretEntries,
+  loadAccountUsedReserveKeys,
   accountSecrets,
   ensureAccountSecretsLoaded,
   loadAccountsAll,
