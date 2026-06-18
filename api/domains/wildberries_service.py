@@ -328,14 +328,15 @@ def aggregate_wildberries_report_rows(
         else:
             group["gross_sales"] += retail_amount
             group["for_pay"] += _parse_money(row.get("forPay"))
-        group["delivery"] += abs(_parse_money(row.get("deliveryService")))
-        group["storage"] += abs(_parse_money(row.get("paidStorage")))
-        group["acceptance"] += abs(_parse_money(row.get("paidAcceptance")))
-        group["deduction"] += abs(_parse_money(row.get("deduction")))
-        group["penalty"] += abs(_parse_money(row.get("penalty")))
+        # Сервисные поля суммируем в net-виде, потому что WB может прислать сторно.
+        group["delivery"] += _parse_money(row.get("deliveryService"))
+        group["storage"] += _parse_money(row.get("paidStorage"))
+        group["acceptance"] += _parse_money(row.get("paidAcceptance"))
+        group["deduction"] += _parse_money(row.get("deduction"))
+        group["penalty"] += _parse_money(row.get("penalty"))
         group["additional_payment"] += _parse_money(row.get("additionalPayment"))
-        group["acquiring"] += abs(_parse_money(row.get("acquiringFee")))
-        group["sales_commission"] += abs(_parse_money(row.get("ppvzSalesCommission")))
+        group["acquiring"] += _parse_money(row.get("acquiringFee"))
+        group["sales_commission"] += _parse_money(row.get("ppvzSalesCommission"))
         group["rows_count"] += 1
         if row.get("reportId") not in (None, ""):
             group["report_ids"].add(str(row.get("reportId")))
@@ -348,6 +349,7 @@ def aggregate_wildberries_report_rows(
 
     result: list[dict[str, Any]] = []
     for biz_date, group in sorted(groups.items()):
+        # Повторяем формулу ЛК WB: из суммы к перечислению вычитаются сервисы и штрафы.
         service_expenses = group["delivery"] + group["storage"] + group["acceptance"] + group["deduction"] + group["penalty"]
         goods_net = group["for_pay"]
         payout = goods_net - service_expenses + group["additional_payment"]

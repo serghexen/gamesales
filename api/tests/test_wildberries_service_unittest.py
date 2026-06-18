@@ -2,6 +2,7 @@ import json
 import io
 import unittest
 from datetime import date
+from decimal import Decimal
 from unittest.mock import patch
 import urllib.error
 
@@ -66,6 +67,61 @@ class WildberriesServiceTests(unittest.TestCase):
         self.assertEqual(result[0]["payload_json"]["returns"], "200")
         self.assertEqual(result[0]["payload_json"]["store_code"], "sps")
         self.assertIn("wildberries:sps:", result[0]["external_key_base"])
+
+    # Видимый штраф WB должен уменьшать "Итого к оплате" как в ежедневном отчете ЛК.
+    def test_aggregate_report_rows_subtracts_visible_daily_cabinet_penalty(self):
+        rows = [
+            {
+                "rrDate": "2026-06-17",
+                "docTypeName": "Продажа",
+                "retailAmount": "8731",
+                "forPay": "7676.89",
+                "penalty": "155.32",
+                "reportId": "410635220260617",
+            },
+        ]
+
+        result = wildberries_service.aggregate_wildberries_report_rows(rows, fallback_date=date(2026, 6, 17), store_code="asat")
+
+        self.assertEqual(result[0]["gross_amount"], 8731)
+        self.assertEqual(result[0]["payout_amount"], Decimal("7521.57"))
+        self.assertEqual(result[0]["expense_amount"], Decimal("1209.43"))
+        self.assertEqual(result[0]["payload_json"]["penalty"], "155.32")
+
+    # Сторно штрафа WB должно закрывать штраф в ноль, как в сводке ежедневного отчета ЛК.
+    def test_aggregate_report_rows_nets_penalty_reversal(self):
+        rows = [
+            {
+                "rrDate": "2026-06-13",
+                "docTypeName": "Продажа",
+                "retailAmount": "12328",
+                "forPay": "10722.88",
+                "reportId": "410635220260613",
+            },
+            {
+                "rrDate": "2026-06-13",
+                "sellerOperName": "Штраф",
+                "retailAmount": "0",
+                "forPay": "0",
+                "penalty": "13.34",
+                "reportId": "410635220260613",
+            },
+            {
+                "rrDate": "2026-06-13",
+                "sellerOperName": "Штраф",
+                "retailAmount": "0",
+                "forPay": "0",
+                "penalty": "-13.34",
+                "reportId": "410635220260613",
+            },
+        ]
+
+        result = wildberries_service.aggregate_wildberries_report_rows(rows, fallback_date=date(2026, 6, 13), store_code="asat")
+
+        self.assertEqual(result[0]["gross_amount"], 12328)
+        self.assertEqual(result[0]["payout_amount"], Decimal("10722.88"))
+        self.assertEqual(result[0]["expense_amount"], Decimal("1605.12"))
+        self.assertEqual(result[0]["payload_json"]["penalty"], "0.00")
 
     # Загрузка должна продолжаться с последнего rrdId и завершаться после пустой страницы.
     def test_fetch_report_uses_rrd_id_pagination(self):
