@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
+import uuid
 
 from fastapi import Depends, HTTPException, Query
 
@@ -18,6 +19,7 @@ from .accounts_models import (
     AccountSecretsBatchIn,
     AccountSecretsBatchItem,
     AccountReserveUsageOut,
+    AccountReserveClaimOut,
     SlotAvailabilityOut,
     AccountProductsIn,
     AccountLabelOut,
@@ -686,16 +688,23 @@ def mount_accounts_routes(
             rows = qall(
                 conn,
                 f"""
-                SELECT DISTINCT lower(di.reserve_key)
-                FROM app.deal_items di
-                JOIN app.deals d ON d.deal_id = di.deal_id
-                WHERE d.deal_type_code='rental'
-                  AND di.account_id=%s
-                  AND di.reserve_key IS NOT NULL
-                  AND d.status_code <> 'cancelled'
-                  {exclude_sql}
+                SELECT DISTINCT lower(used.reserve_key)
+                FROM (
+                  SELECT di.reserve_key
+                  FROM app.deal_items di
+                  JOIN app.deals d ON d.deal_id = di.deal_id
+                  WHERE d.deal_type_code='rental'
+                    AND di.account_id=%s
+                    AND di.reserve_key IS NOT NULL
+                    AND d.status_code <> 'cancelled'
+                    {exclude_sql}
+                  UNION ALL
+                  SELECT arc.reserve_key
+                  FROM app.account_reserve_claims arc
+                  WHERE arc.account_id=%s
+                ) used
                 """,
-                tuple(params),
+                tuple([*params, account_id]),
             )
         keys = []
         for row in rows:
@@ -705,6 +714,85 @@ def mount_accounts_routes(
                 keys.append(f"reserve{int(suffix)}")
         keys = sorted(set(keys), key=lambda key: int(key.replace("reserve", "", 1)))
         return AccountReserveUsageOut(used_reserve_keys=keys)
+
+    @app.post("/accounts/{account_id}/reserves/{reserve_key}/claim", response_model=AccountReserveClaimOut)
+    def claim_account_reserve(
+        account_id: int,
+        reserve_key: str,
+        user=Depends(require_role("admin", "owner", "manager", "operator")),
+    ):
+        # Атомарно занимает резерв перед копированием, чтобы два пользователя не получили один код.
+        raw_key = str(reserve_key or "").strip().lower()
+        suffix = raw_key.replace("reserve", "", 1) if raw_key.startswith("reserve") else ""
+        if not suffix.isdigit():
+            raise HTTPException(400, "Invalid reserve_key")
+        normalized_key = f"reserve{int(suffix)}"
+        claim_token = str(uuid.uuid4())
+        with psycopg.connect(DB_DSN) as conn:
+            ensure_account_exists(conn, account_id)
+            secret_row = q1(
+                conn,
+                """
+                SELECT 1
+                FROM app.account_secrets
+                WHERE account_id=%s
+                  AND lower(secret_key)=%s
+                  AND btrim(COALESCE(secret_value, '')) <> ''
+                """,
+                (account_id, normalized_key),
+            )
+            if not secret_row:
+                raise HTTPException(404, "Reserve not found")
+            deal_row = q1(
+                conn,
+                """
+                SELECT 1
+                FROM app.deal_items di
+                JOIN app.deals d ON d.deal_id = di.deal_id
+                WHERE d.deal_type_code='rental'
+                  AND d.status_code <> 'cancelled'
+                  AND di.account_id=%s
+                  AND lower(di.reserve_key)=%s
+                LIMIT 1
+                """,
+                (account_id, normalized_key),
+            )
+            if deal_row:
+                raise HTTPException(409, "Reserve already used")
+            row = q1(
+                conn,
+                """
+                INSERT INTO app.account_reserve_claims(claim_token, account_id, reserve_key, claimed_by)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (account_id, reserve_key) DO NOTHING
+                RETURNING claim_token
+                """,
+                (claim_token, account_id, normalized_key, user.username),
+            )
+            if not row:
+                raise HTTPException(409, "Reserve already used")
+            conn.commit()
+        return AccountReserveClaimOut(claim_token=claim_token, reserve_key=normalized_key)
+
+    @app.delete("/accounts/{account_id}/reserves/{reserve_key}/claim")
+    def release_account_reserve_claim(
+        account_id: int,
+        reserve_key: str,
+        claim_token: str,
+        user=Depends(require_role("admin", "owner", "manager", "operator")),
+    ):
+        # Освобождает отметку только по выданному токену, если копирование в браузере не удалось.
+        with psycopg.connect(DB_DSN) as conn:
+            exec1(
+                conn,
+                """
+                DELETE FROM app.account_reserve_claims
+                WHERE account_id=%s AND lower(reserve_key)=lower(%s) AND claim_token=%s
+                """,
+                (account_id, reserve_key, claim_token),
+            )
+            conn.commit()
+        return {"ok": True}
 
     @app.post("/accounts/secrets/batch", response_model=List[AccountSecretsBatchItem])
     def list_account_secrets_batch(payload: AccountSecretsBatchIn, user=Depends(require_role("admin", "owner", "manager", "operator"))):

@@ -460,6 +460,54 @@ class AccountsEndpointsTests(unittest.TestCase):
         self.assertEqual(res.json(), {"used_reserve_keys": ["reserve1", "reserve2"]})
         self.assertIn("d.deal_id <> %s", sql_collector[0])
 
+    # Первое копирование должно атомарно создать отметку и вернуть токен владельцу формы.
+    def test_claim_account_reserve_success(self):
+        script = [
+            {"one": (1,)},  # ensure_account_exists
+            {"one": (1,)},  # reserve secret exists
+            {"one": None},  # reserve is not used by deal
+            {"one": ("claim-row",)},  # claim insert
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/accounts/7/reserves/reserve01/claim",
+                    headers=self._auth_headers(role="manager"),
+                    json={},
+                )
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["reserve_key"], "reserve1")
+        self.assertTrue(res.json()["claim_token"])
+
+    # Повторное копирование уже занятого резерва должно завершаться конфликтом без выдачи значения.
+    def test_claim_account_reserve_conflict(self):
+        script = [
+            {"one": (1,)},  # ensure_account_exists
+            {"one": (1,)},  # reserve secret exists
+            {"one": None},  # reserve is not used by deal
+            {"one": None},  # unique claim already exists
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/accounts/7/reserves/reserve1/claim",
+                    headers=self._auth_headers(role="manager"),
+                    json={},
+                )
+
+        self.assertEqual(res.status_code, 409)
+
     # Менеджеру разрешено управлять секретами аккаунта.
     def test_upsert_account_secret_allowed_for_manager(self):
         script = [

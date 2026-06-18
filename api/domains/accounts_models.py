@@ -105,6 +105,11 @@ class AccountReserveUsageOut(BaseModel):
     used_reserve_keys: List[str]
 
 
+class AccountReserveClaimOut(BaseModel):
+    claim_token: str
+    reserve_key: str
+
+
 class AccountSecretPatchItemIn(BaseModel):
     secret_key: str
     secret_value: str

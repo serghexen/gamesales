@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 import json
@@ -14,6 +14,8 @@ from .wildberries_service import aggregate_wildberries_report_rows, fetch_wildbe
 from .ozon_service import aggregate_ozon_finance_transactions, fetch_ozon_finance_transactions, normalize_ozon_store_code
 from .finance_models import (
     FinanceBootstrapOut,
+    FinanceCashFlowDetailRowOut,
+    FinanceCashFlowDetailsOut,
     FinanceCashFlowLineOut,
     FinanceCashFlowOpeningBalanceIn,
     FinanceCashFlowOpeningBalanceOut,
@@ -3431,6 +3433,322 @@ def mount_finance_routes(
             ),
             revenues=revenues,
             expenses=expenses,
+        )
+
+    @app.get("/finance/reports/cash-flow/details", response_model=FinanceCashFlowDetailsOut)
+    def finance_report_cash_flow_details(
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None,
+        line_type: Optional[str] = None,
+        line_name: Optional[str] = None,
+        user=Depends(get_current_user),
+    ):
+        # Отдаем строки Cash Flow на уровне сделок и finance-проводок для проверки суммы за период.
+        month_start = date.today().replace(day=1)
+        date_from_value = date_from or month_start
+        date_to_value = date_to or (_next_month_start(month_start) - timedelta(days=1))
+        if date_to_value < date_from_value:
+            raise HTTPException(400, "date_to must be greater than or equal to date_from")
+
+        filters = ["activity_date >= %s", "activity_date <= %s"]
+        params: list[Any] = [date_from_value, date_to_value]
+        normalized_line_type = (line_type or "").strip().lower()
+        if normalized_line_type:
+            if normalized_line_type not in {"revenue", "expense"}:
+                raise HTTPException(400, "line_type must be revenue or expense")
+            filters.append("line_type = %s")
+            params.append(normalized_line_type)
+        normalized_line_name = (line_name or "").strip()
+        if normalized_line_name:
+            filters.append("line_name = %s")
+            params.append(normalized_line_name)
+        where_sql = " AND ".join(filters)
+
+        with psycopg.connect(DB_DSN) as conn:
+            rows = qall(
+                conn,
+                f"""
+                WITH completed_deal_authors AS (
+                  SELECT DISTINCT ON (a.deal_id)
+                    a.deal_id,
+                    COALESCE(NULLIF(u.name, ''), a.changed_by) AS created_by
+                  FROM app.deal_audit a
+                  LEFT JOIN app.users u ON lower(u.username) = lower(a.changed_by)
+                  WHERE a.table_name = 'deals'
+                    AND a.action = 'UPDATE'
+                    AND a.new_data->>'flow_status_code' = 'completed'
+                    AND COALESCE(a.old_data->>'flow_status_code', '') <> 'completed'
+                  ORDER BY a.deal_id, a.changed_at DESC, a.audit_id DESC
+                ), detail_rows AS (
+                  SELECT
+                    'deal'::text AS row_type,
+                    'revenue'::text AS line_type,
+                    CASE
+                      WHEN d.deal_type_code = 'rental' THEN 'Продажа Шеринг'
+                      ELSE CONCAT('Продажа ', COALESCE(fdr.code, rd.code, 'Без региона'))
+                    END AS line_name,
+                    d.completed_at::date AS activity_date,
+                    d.deal_id,
+                    NULL::bigint AS entry_id,
+                    COALESCE(NULLIF(c.nickname, ''), NULLIF(c.customer_login, ''), '—') AS customer_name,
+                    CASE WHEN d.deal_type_code = 'rental' THEN 'Шеринг' ELSE 'Услуга' END AS operation_name,
+                    STRING_AGG(COALESCE(NULLIF(p.title, ''), 'item-' || di.deal_item_id::text), '; ' ORDER BY di.deal_item_id) AS item_title,
+                    CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id,
+                    CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.code, rd.code) END AS region_code,
+                    CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.name, rd.name, 'Без региона') END AS region_name,
+                    fds.source_id,
+                    COALESCE(fds.code, src.code) AS source_code,
+                    COALESCE(fds.name, src.name, 'Без источника') AS source_name,
+                    COALESCE(SUM(di.qty), 0) AS qty,
+                    COALESCE(SUM(di.price * di.qty), 0) AS amount,
+                    NULL::text AS comment,
+                    NULL::text AS external_key,
+                    '[]'::jsonb AS order_ids,
+                    '[]'::jsonb AS shop_skus,
+                    0::integer AS orders_count,
+                    0::integer AS rows_count,
+                    closer.created_by,
+                    CASE
+                      WHEN d.deal_type_code = 'rental' THEN 'Поступление по завершенной сделке шеринга'
+                      ELSE 'Поступление по завершенной продаже'
+                    END AS reason
+                  FROM app.deal_items di
+                  JOIN app.deals d ON d.deal_id = di.deal_id
+                  LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+                  LEFT JOIN finance.dim_regions fdr ON fdr.app_region_id = rd.region_id
+                  LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+                  LEFT JOIN app.sources src ON src.source_id = c.source_id
+                  LEFT JOIN finance.dim_sources fds ON fds.app_source_id = src.source_id
+                  LEFT JOIN app.products p ON p.product_id = di.product_id
+                  LEFT JOIN completed_deal_authors closer ON closer.deal_id = d.deal_id
+                  WHERE (
+                      d.deal_type_code = 'sale'
+                      OR (d.deal_type_code = 'rental' AND COALESCE(di.price, 0) > 0)
+                    )
+                    AND d.flow_status_code = 'completed'
+                    AND d.status_code = 'confirmed'
+                    AND d.completed_at IS NOT NULL
+                    AND di.returned_at IS NULL
+                    AND COALESCE(di.price, 0) > 0
+                  GROUP BY
+                    d.deal_id, d.completed_at::date, d.deal_type_code,
+                    c.nickname, c.customer_login,
+                    fdr.region_id, fdr.code, rd.code, fdr.name, rd.name,
+                    fds.source_id, fds.code, src.code, fds.name, src.name,
+                    closer.created_by
+
+                  UNION ALL
+
+                  SELECT
+                    'deal'::text AS row_type,
+                    'expense'::text AS line_type,
+                    'Закуп Шеринг' AS line_name,
+                    d.completed_at::date AS activity_date,
+                    d.deal_id,
+                    NULL::bigint AS entry_id,
+                    COALESCE(NULLIF(c.nickname, ''), NULLIF(c.customer_login, ''), '—') AS customer_name,
+                    'Шеринг' AS operation_name,
+                    STRING_AGG(COALESCE(NULLIF(p.title, ''), 'item-' || di.deal_item_id::text), '; ' ORDER BY di.deal_item_id) AS item_title,
+                    NULL::bigint AS region_id,
+                    NULL::text AS region_code,
+                    NULL::text AS region_name,
+                    fds.source_id,
+                    COALESCE(fds.code, src.code) AS source_code,
+                    COALESCE(fds.name, src.name, 'Без источника') AS source_name,
+                    COALESCE(SUM(di.qty), 0) AS qty,
+                    COALESCE(SUM(di.purchase_cost * di.qty), 0) AS amount,
+                    NULL::text AS comment,
+                    NULL::text AS external_key,
+                    '[]'::jsonb AS order_ids,
+                    '[]'::jsonb AS shop_skus,
+                    0::integer AS orders_count,
+                    0::integer AS rows_count,
+                    closer.created_by,
+                    'Закупка по завершенной сделке шеринга' AS reason
+                  FROM app.deal_items di
+                  JOIN app.deals d ON d.deal_id = di.deal_id
+                  LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+                  LEFT JOIN app.sources src ON src.source_id = c.source_id
+                  LEFT JOIN finance.dim_sources fds ON fds.app_source_id = src.source_id
+                  LEFT JOIN app.products p ON p.product_id = di.product_id
+                  LEFT JOIN completed_deal_authors closer ON closer.deal_id = d.deal_id
+                  WHERE d.deal_type_code = 'rental'
+                    AND d.flow_status_code = 'completed'
+                    AND d.status_code = 'confirmed'
+                    AND d.completed_at IS NOT NULL
+                    AND di.returned_at IS NULL
+                    AND COALESCE(di.purchase_cost, 0) <> 0
+                  GROUP BY
+                    d.deal_id, d.completed_at::date,
+                    c.nickname, c.customer_login,
+                    fds.source_id, fds.code, src.code, fds.name, src.name,
+                    closer.created_by
+
+                  UNION ALL
+
+                  SELECT
+                    'deal'::text AS row_type,
+                    'expense'::text AS line_type,
+                    CONCAT('Закуп ', COALESCE(fdr.code, rd.code, 'Без региона')) AS line_name,
+                    d.completed_at::date AS activity_date,
+                    d.deal_id,
+                    NULL::bigint AS entry_id,
+                    COALESCE(NULLIF(c.nickname, ''), NULLIF(c.customer_login, ''), '—') AS customer_name,
+                    'Услуга' AS operation_name,
+                    STRING_AGG(COALESCE(NULLIF(p.title, ''), 'item-' || di.deal_item_id::text), '; ' ORDER BY di.deal_item_id) AS item_title,
+                    fdr.region_id,
+                    COALESCE(fdr.code, rd.code) AS region_code,
+                    COALESCE(fdr.name, rd.name, 'Без региона') AS region_name,
+                    fds.source_id,
+                    COALESCE(fds.code, src.code) AS source_code,
+                    COALESCE(fds.name, src.name, 'Без источника') AS source_name,
+                    COALESCE(SUM(di.qty), 0) AS qty,
+                    COALESCE(SUM(di.purchase_cost * di.qty * COALESCE(rd.purchase_cost_rate, 1.0)), 0) AS amount,
+                    NULL::text AS comment,
+                    NULL::text AS external_key,
+                    '[]'::jsonb AS order_ids,
+                    '[]'::jsonb AS shop_skus,
+                    0::integer AS orders_count,
+                    0::integer AS rows_count,
+                    closer.created_by,
+                    'Закупка по завершенной продаже с коэффициентом региона' AS reason
+                  FROM app.deal_items di
+                  JOIN app.deals d ON d.deal_id = di.deal_id
+                  LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+                  LEFT JOIN finance.dim_regions fdr ON fdr.app_region_id = rd.region_id
+                  LEFT JOIN app.customers c ON c.customer_id = d.customer_id
+                  LEFT JOIN app.sources src ON src.source_id = c.source_id
+                  LEFT JOIN finance.dim_sources fds ON fds.app_source_id = src.source_id
+                  LEFT JOIN app.products p ON p.product_id = di.product_id
+                  LEFT JOIN completed_deal_authors closer ON closer.deal_id = d.deal_id
+                  WHERE d.deal_type_code = 'sale'
+                    AND d.flow_status_code = 'completed'
+                    AND d.status_code = 'confirmed'
+                    AND d.completed_at IS NOT NULL
+                    AND di.returned_at IS NULL
+                    AND COALESCE(di.purchase_cost, 0) <> 0
+                  GROUP BY
+                    d.deal_id, d.completed_at::date,
+                    c.nickname, c.customer_login,
+                    fdr.region_id, fdr.code, rd.code, fdr.name, rd.name,
+                    fds.source_id, fds.code, src.code, fds.name, src.name,
+                    closer.created_by
+
+                  UNION ALL
+
+                  SELECT
+                    'entry'::text AS row_type,
+                    CASE WHEN p.metric_code = 'revenue' THEN 'revenue' ELSE 'expense' END AS line_type,
+                    COALESCE(op.name, 'Ручная операция') AS line_name,
+                    e.biz_date AS activity_date,
+                    e.app_deal_id AS deal_id,
+                    e.entry_id,
+                    NULL::text AS customer_name,
+                    COALESCE(op.name, 'Ручная операция') AS operation_name,
+                    COALESCE(NULLIF(e.comment, ''), op.name, 'Проводка finance') AS item_title,
+                    r.region_id,
+                    r.code AS region_code,
+                    r.name AS region_name,
+                    src.source_id,
+                    src.code AS source_code,
+                    src.name AS source_name,
+                    e.qty,
+                    p.amount,
+                    e.comment,
+                    e.external_key,
+                    COALESCE(e.payload_json->'order_ids', '[]'::jsonb) AS order_ids,
+                    COALESCE(e.payload_json->'shop_skus', '[]'::jsonb) AS shop_skus,
+                    COALESCE((e.payload_json->>'orders_count')::integer, 0) AS orders_count,
+                    COALESCE((e.payload_json->>'rows_count')::integer, 0) AS rows_count,
+                    COALESCE(NULLIF(author.name, ''), e.created_by) AS created_by,
+                    CASE
+                      WHEN e.input_channel = 'api' THEN 'API-проводка finance'
+                      WHEN e.input_channel = 'import' THEN 'Импортированная проводка finance'
+                      ELSE 'Ручная проводка finance'
+                    END AS reason
+                  FROM finance.entry_postings p
+                  JOIN finance.entries e
+                    ON e.entry_id = p.entry_id
+                   AND e.biz_date = p.entry_biz_date
+                  LEFT JOIN finance.operations op ON op.operation_id = e.operation_id
+                  LEFT JOIN finance.dim_regions r ON r.region_id = e.region_id
+                  LEFT JOIN finance.dim_sources src ON src.source_id = e.source_id
+                  LEFT JOIN app.users author ON lower(author.username) = lower(e.created_by)
+                  WHERE e.status_code = 'confirmed'
+                    AND e.input_channel IN ('manual', 'api', 'import')
+                    AND p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')
+                    AND COALESCE(p.amount, 0) <> 0
+                )
+                SELECT
+                  row_type, line_type, line_name, activity_date, deal_id, entry_id,
+                  customer_name, operation_name, item_title,
+                  region_id, region_code, region_name,
+                  source_id, source_code, source_name,
+                  qty, amount, comment, external_key,
+                  order_ids, shop_skus, orders_count, rows_count, created_by, reason
+                FROM detail_rows
+                WHERE {where_sql}
+                  AND COALESCE(amount, 0) <> 0
+                ORDER BY activity_date, line_type DESC, line_name, COALESCE(deal_id, entry_id)
+                """,
+                tuple(params),
+            )
+
+        items: list[FinanceCashFlowDetailRowOut] = []
+        revenue_total = Decimal("0")
+        expense_total = Decimal("0")
+        for row in rows:
+            row_line_type = str(row[1] or "")
+            row_amount = _round_money(Decimal(row[16] or 0))
+            if row_line_type == "revenue":
+                revenue_total += row_amount
+            else:
+                expense_total += row_amount
+            items.append(
+                FinanceCashFlowDetailRowOut(
+                    row_type=str(row[0] or ""),
+                    line_type=row_line_type,
+                    line_name=str(row[2] or "Без названия"),
+                    activity_date=row[3],
+                    deal_id=int(row[4]) if row[4] is not None else None,
+                    entry_id=int(row[5]) if row[5] is not None else None,
+                    customer_name=str(row[6]) if row[6] is not None else None,
+                    operation_name=str(row[7]) if row[7] is not None else None,
+                    item_title=str(row[8]) if row[8] is not None else None,
+                    region_id=int(row[9]) if row[9] is not None else None,
+                    region_code=str(row[10]) if row[10] is not None else None,
+                    region_name=str(row[11]) if row[11] is not None else None,
+                    source_id=int(row[12]) if row[12] is not None else None,
+                    source_code=str(row[13]) if row[13] is not None else None,
+                    source_name=str(row[14]) if row[14] is not None else None,
+                    qty=Decimal(row[15] or 0),
+                    amount=row_amount,
+                    comment=str(row[17]) if row[17] is not None else None,
+                    external_key=str(row[18]) if row[18] is not None else None,
+                    order_ids=_json_list_as_strings(row[19]),
+                    shop_skus=_json_list_as_strings(row[20]),
+                    orders_count=int(row[21] or 0),
+                    rows_count=int(row[22] or 0),
+                    created_by=str(row[23]) if row[23] is not None else None,
+                    reason=str(row[24]) if row[24] is not None else None,
+                )
+            )
+
+        revenue_total = _round_money(revenue_total)
+        expense_total = _round_money(expense_total)
+        cash_flow_total = _round_money(revenue_total - expense_total)
+        title_line_type = {"revenue": "Поступления", "expense": "Расходы"}.get(normalized_line_type, "Все строки")
+        title_line_name = normalized_line_name or "Все строки"
+        return FinanceCashFlowDetailsOut(
+            title=f"{title_line_type}: {title_line_name}",
+            totals=FinanceCashFlowTotalsOut(
+                revenue=revenue_total,
+                expense=expense_total,
+                cash_flow=cash_flow_total,
+                opening_balance=Decimal("0"),
+                current_balance=Decimal("0"),
+            ),
+            items=items,
         )
 
     @app.get("/finance/reports/projects", response_model=FinanceProjectsReportOut)

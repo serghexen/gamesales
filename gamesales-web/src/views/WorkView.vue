@@ -362,6 +362,28 @@ async function loadAccountUsedReserveKeys(accountId, excludeDealId = null) {
   return Array.isArray(result?.used_reserve_keys) ? result.used_reserve_keys : []
 }
 
+// Атомарно отмечает резерв использованным перед записью значения в буфер обмена.
+async function claimAccountReserve(accountId, reserveKey) {
+  const targetId = Number(accountId || 0)
+  const normalizedKey = String(reserveKey || '').trim().toLowerCase()
+  if (!targetId || !normalizedKey) throw new Error('Не выбран резерв')
+  return apiPost(`/accounts/${targetId}/reserves/${encodeURIComponent(normalizedKey)}/claim`, {}, {
+    token: auth.state.token,
+  })
+}
+
+// Освобождает резерв, если браузер не смог завершить физическое копирование.
+async function releaseAccountReserveClaim(accountId, reserveKey, claimToken) {
+  const targetId = Number(accountId || 0)
+  const normalizedKey = String(reserveKey || '').trim().toLowerCase()
+  const token = String(claimToken || '').trim()
+  if (!targetId || !normalizedKey || !token) return
+  const params = new URLSearchParams({ claim_token: token })
+  await apiDelete(`/accounts/${targetId}/reserves/${encodeURIComponent(normalizedKey)}/claim?${params.toString()}`, {
+    token: auth.state.token,
+  })
+}
+
 const tgMessagesList = ref(null)
 const users = ref([])
 const roles = ref([])
@@ -1207,6 +1229,7 @@ const {
   financeFilters,
   financeNewEntry,
   financeEntryFilters,
+  financeCashFlowDetailsFilters,
   financeYandexSync,
   financeWildberriesSync,
   financeOzonSync,
@@ -1234,6 +1257,10 @@ const {
   financeCashFlowOpeningDraft,
   financeCashFlowRevenues,
   financeCashFlowExpenses,
+  financeCashFlowDetails,
+  financeCashFlowDetailsTotals,
+  financeCashFlowDetailsTitle,
+  financeCashFlowDetailsOpen,
   financeYandexSyncResult,
   financeYandexSyncStatus,
   financeWildberriesSyncResult,
@@ -1247,6 +1274,7 @@ const {
   financeLoading,
   financeCashFlowLoading,
   financeCashFlowOpeningSaving,
+  financeCashFlowDetailsLoading,
   financeEntriesLoading,
   financeEntrySaving,
   financeCatalogSaving,
@@ -1292,6 +1320,9 @@ const {
   loadFinanceSourceDetails,
   clearFinanceSourceDetails,
   loadFinanceCashFlowReport,
+  loadFinanceCashFlowDetails,
+  clearFinanceCashFlowDetails,
+  resetFinanceCashFlowDetailsPeriod,
   saveFinanceCashFlowOpeningBalance,
   syncFinanceYandexMarket,
   syncFinanceWildberries,
@@ -2230,13 +2261,14 @@ const {
 
 closeDealModalDeferred.set(closeDealModalFromFlow)
 
-// Загружает сделку из расшифровки финансов и открывает общую карточку с возвратом во вкладку финансов.
-async function openFinanceDetailDeal(dealId) {
+// Загружает сделку из расшифровки финансов и возвращает пользователя в исходную подвкладку.
+async function openFinanceDetailDeal(dealId, returnFinanceMode = 'report') {
   const normalizedId = Number(dealId || 0)
   if (!normalizedId) return
+  const nextFinanceMode = ['report', 'cash-flow'].includes(String(returnFinanceMode || '')) ? String(returnFinanceMode) : 'report'
   try {
     const deal = await apiGet(`/deals/${normalizedId}`, { token: auth.state.token })
-    financeMode.value = 'report'
+    financeMode.value = nextFinanceMode
     await startEditDeal(deal, { returnTab: 'finance' })
   } catch (error) {
     showDealWarning(mapApiError(error?.message) || `Сделка #${normalizedId} не найдена`)
@@ -2802,6 +2834,9 @@ const accountsSectionCtx = asCtx({
   getReserveSecrets,
   ensureAccountSecretsLoaded,
   getReserveSecretEntries,
+  loadAccountUsedReserveKeys,
+  claimAccountReserve,
+  releaseAccountReserveClaim,
   accountsTotal,
   accountsPageSize,
   setAccountsPage,
@@ -3097,6 +3132,8 @@ const {
   getReserveSecrets,
   getReserveSecretEntries,
   loadAccountUsedReserveKeys,
+  claimAccountReserve,
+  releaseAccountReserveClaim,
   accountSecrets,
   ensureAccountSecretsLoaded,
   loadAccountsAll,
@@ -3360,6 +3397,7 @@ const financeSectionCtx = asCtx({
   financeMode,
   financeNewEntry,
   financeEntryFilters,
+  financeCashFlowDetailsFilters,
   financeYandexSync,
   financeWildberriesSync,
   financeOzonSync,
@@ -3373,6 +3411,7 @@ const financeSectionCtx = asCtx({
   financeLoading,
   financeCashFlowLoading,
   financeCashFlowOpeningSaving,
+  financeCashFlowDetailsLoading,
   financeEntriesLoading,
   financeEntrySaving,
   financeCatalogSaving,
@@ -3418,6 +3457,10 @@ const financeSectionCtx = asCtx({
   financeCashFlowOpeningDraft,
   financeCashFlowRevenues,
   financeCashFlowExpenses,
+  financeCashFlowDetails,
+  financeCashFlowDetailsTotals,
+  financeCashFlowDetailsTitle,
+  financeCashFlowDetailsOpen,
   financeYandexSyncResult,
   financeYandexSyncStatus,
   financeWildberriesSyncResult,
@@ -3444,6 +3487,9 @@ const financeSectionCtx = asCtx({
   clearFinanceSourceDetails,
   openFinanceDetailDeal,
   loadFinanceCashFlowReport,
+  loadFinanceCashFlowDetails,
+  clearFinanceCashFlowDetails,
+  resetFinanceCashFlowDetailsPeriod,
   saveFinanceCashFlowOpeningBalance,
   syncFinanceYandexMarket,
   syncFinanceWildberries,

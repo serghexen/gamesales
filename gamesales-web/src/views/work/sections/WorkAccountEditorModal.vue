@@ -282,11 +282,12 @@
                             <div class="input--select-wrap">
                               <input
                                 class="input input--compact input--with-copy"
-                                :value="reserveItem.value"
+                                :value="getReserveDisplayValue(reserveItem)"
                                 placeholder="код резерва"
                                 readonly
                               />
                               <button
+                                v-if="!isReserveUsedByKey(reserveItem.key)"
                                 class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
                                 type="button"
                                 :aria-label="getReserveCopyLabel(reserveItem)"
@@ -731,6 +732,9 @@ const props = defineProps([
   'accountDealsError',
   'accountDealsLoading',
   'accountDeals',
+  'loadAccountUsedReserveKeys',
+  'claimAccountReserve',
+  'releaseAccountReserveClaim',
   'startEditDeal',
   'getDealProductTitleTooltip',
   'getDealProductTitleDisplay',
@@ -882,6 +886,9 @@ const editAccountReserveOpen = ref(false)
 const editAccountCommentOpen = ref(false)
 const editReserveRows = ref([])
 const copiedAccountFieldKey = ref('')
+const persistedUsedReserveKeys = ref(new Set())
+const persistedReserveUsageLoaded = ref(false)
+let reserveUsageRequestSeq = 0
 let copiedAccountFieldTimerId = 0
 
 // Возвращает дату срока подписки по умолчанию: текущая дата плюс один год.
@@ -972,11 +979,26 @@ const getReserveCopyLabel = (reserveItem) => getAccountFieldCopyLabel('reserve',
 // Возвращает значение резерва для копирования без служебных пустых меток.
 const getReserveCopyValue = (reserveItem) => getAccountFieldCopyValue('reserve', reserveItem)
 
+// Возвращает реальное значение резерва; блокировка копирования идет через кнопку и обработчик.
+const getReserveDisplayValue = (reserveItem) => {
+  return String(reserveItem?.value || '').trim()
+}
+
 // Копирует выбранное поле аккаунта и показывает короткий статус на кнопке.
 const copyAccountField = async (field, reserveItem = null) => {
   const value = getAccountFieldCopyValue(field, reserveItem)
   if (isCopyPlaceholderValue(value)) return
+  const accountId = Number(props.editAccount?.account_id || 0)
+  const reserveKey = normalizeReserveKey(reserveItem?.key)
+  if (field === 'reserve' && (!accountId || !reserveKey || isReserveUsedByKey(reserveKey))) return
+  let claimToken = ''
   try {
+    if (field === 'reserve') {
+      const claim = await props.claimAccountReserve?.(accountId, reserveKey)
+      claimToken = String(claim?.claim_token || '').trim()
+      if (!claimToken) return
+      persistedUsedReserveKeys.value = new Set([...persistedUsedReserveKeys.value, reserveKey])
+    }
     await copyTextToClipboard(value)
     copiedAccountFieldKey.value = getAccountFieldCopyKey(field, reserveItem)
     if (copiedAccountFieldTimerId) window.clearTimeout(copiedAccountFieldTimerId)
@@ -985,6 +1007,12 @@ const copyAccountField = async (field, reserveItem = null) => {
       copiedAccountFieldTimerId = 0
     }, 1400)
   } catch {
+    if (field === 'reserve' && claimToken) {
+      await Promise.resolve(props.releaseAccountReserveClaim?.(accountId, reserveKey, claimToken)).catch(() => {})
+      const nextKeys = new Set(persistedUsedReserveKeys.value)
+      nextKeys.delete(reserveKey)
+      persistedUsedReserveKeys.value = nextKeys
+    }
     // Ошибку копирования игнорируем: форма продолжает работать без блокировки.
   }
 }
@@ -1048,14 +1076,46 @@ const usedReserveKeys = computed(() => {
     const key = normalizeReserveKey(deal?.reserve_key)
     if (key) keys.add(key)
   })
+  persistedUsedReserveKeys.value.forEach((key) => keys.add(key))
   return keys
 })
+
+// Пока usage не загрузился, не показываем резервные коды в карточке аккаунта.
+const isReserveUsagePending = () => {
+  return Boolean(props.editAccount?.open && props.accountModalMode === 'edit' && !persistedReserveUsageLoaded.value)
+}
 
 // Проверяет, занят ли конкретный reserve-ключ в активных шеринговых сделках аккаунта.
 const isReserveUsedByKey = (key) => {
   const normalizedKey = normalizeReserveKey(key)
   if (!normalizedKey) return false
+  if (isReserveUsagePending()) return true
   return usedReserveKeys.value.has(normalizedKey)
+}
+
+// Загружает постоянные отметки копирования при каждом открытии карточки аккаунта.
+const loadPersistedReserveUsage = async () => {
+  const requestId = ++reserveUsageRequestSeq
+  const accountId = Number(props.editAccount?.account_id || 0)
+  if (!props.editAccount?.open || props.accountModalMode !== 'edit' || !accountId) {
+    persistedUsedReserveKeys.value = new Set()
+    persistedReserveUsageLoaded.value = false
+    return
+  }
+  persistedReserveUsageLoaded.value = false
+  try {
+    const keys = await props.loadAccountUsedReserveKeys?.(accountId)
+    if (requestId !== reserveUsageRequestSeq || Number(props.editAccount?.account_id || 0) !== accountId) return
+    persistedUsedReserveKeys.value = new Set(
+      (Array.isArray(keys) ? keys : []).map(normalizeReserveKey).filter(Boolean)
+    )
+    persistedReserveUsageLoaded.value = true
+  } catch {
+    if (requestId === reserveUsageRequestSeq) {
+      persistedUsedReserveKeys.value = new Set()
+      persistedReserveUsageLoaded.value = false
+    }
+  }
 }
 
 // Синхронизирует локальные строки резервов с полем reserve_text из формы.
@@ -1095,6 +1155,14 @@ const syncCollapsiblePanels = () => {
 watch(
   () => [props.editAccount?.open, props.accountModalMode, props.editAccount?.account_id, props.accountEditMode, props.editAccount?.reserve_text],
   () => syncCollapsiblePanels(),
+  { immediate: true },
+)
+
+watch(
+  () => [props.editAccount?.open, props.accountModalMode, props.editAccount?.account_id, props.accountEditMode],
+  () => {
+    void loadPersistedReserveUsage()
+  },
   { immediate: true },
 )
 

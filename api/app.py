@@ -33,6 +33,21 @@ def ensure_analytics_schema():
             exec1(conn, "ALTER TABLE app.accounts ADD COLUMN IF NOT EXISTS is_deactivated boolean NOT NULL DEFAULT false")
             exec1(conn, "ALTER TABLE app.accounts ADD COLUMN IF NOT EXISTS deactivated_at timestamptz")
             exec1(conn, "ALTER TABLE app.accounts ADD COLUMN IF NOT EXISTS next_activation_at timestamptz")
+            # Фиксируем копирование резерва отдельно от сделки, чтобы повторная выдача была невозможна.
+            exec1(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS app.account_reserve_claims (
+                  claim_token uuid PRIMARY KEY,
+                  account_id bigint NOT NULL REFERENCES app.accounts(account_id) ON DELETE CASCADE,
+                  reserve_key text NOT NULL,
+                  claimed_by text NOT NULL DEFAULT '',
+                  claimed_at timestamptz NOT NULL DEFAULT now(),
+                  UNIQUE (account_id, reserve_key)
+                )
+                """,
+            )
+            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_account_reserve_claims_account ON app.account_reserve_claims(account_id)")
             # Подготавливаем инфраструктуру сроков подписок, чтобы схема поднималась при деплое без ручного шага.
             exec1(
                 conn,

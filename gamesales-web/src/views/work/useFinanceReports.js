@@ -30,6 +30,10 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     source_id: '',
     operation_id: '',
   })
+  const financeCashFlowDetailsFilters = reactive({
+    date_from: '',
+    date_to: '',
+  })
   const financeYandexSync = reactive({
     store_code: 'asat',
     date_from: today,
@@ -85,6 +89,14 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeCashFlowOpeningDraft = ref('')
   const financeCashFlowRevenues = ref([])
   const financeCashFlowExpenses = ref([])
+  const financeCashFlowDetails = ref([])
+  const financeCashFlowDetailsTotals = reactive({
+    revenue: 0,
+    expense: 0,
+    cash_flow: 0,
+  })
+  const financeCashFlowDetailsTitle = ref('')
+  const financeCashFlowDetailsOpen = ref(false)
   const financeYandexSyncResult = ref(null)
   const financeYandexSyncStatus = ref('')
   const financeWildberriesSyncResult = ref(null)
@@ -120,6 +132,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeLoading = ref(false)
   const financeCashFlowLoading = ref(false)
   const financeCashFlowOpeningSaving = ref(false)
+  const financeCashFlowDetailsLoading = ref(false)
   const financeEntriesLoading = ref(false)
   const financeEntrySaving = ref(false)
   const financeCatalogSaving = ref(false)
@@ -147,6 +160,19 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeOzonSyncOk = ref('')
   let financeWildberriesCooldownTimer = null
   let financeOzonCooldownTimer = null
+
+  const getFinanceCashFlowMonthRange = (monthValue = financeCashFlowMonth.value) => {
+    // Строим границы месяца для фильтра расшифровки, чтобы дата проводки совпадала с отчетным месяцем.
+    const raw = String(monthValue || currentMonth).trim()
+    const match = raw.match(/^(\d{4})-(\d{2})$/)
+    const normalized = match ? raw : currentMonth
+    const [year, month] = normalized.split('-').map((part) => Number(part))
+    const lastDay = new Date(year, month, 0).getDate()
+    return {
+      date_from: `${normalized}-01`,
+      date_to: `${normalized}-${String(lastDay).padStart(2, '0')}`,
+    }
+  }
 
   const startFinanceWildberriesCooldown = (seconds, storeCode = 'asat') => {
     // Показываем обратный отсчет лимита WB и автоматически разрешаем повторный запуск.
@@ -221,6 +247,16 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeReportItems.value = []
   }
 
+  const clearFinanceCashFlowDetails = () => {
+    // Закрываем расшифровку Cash Flow и очищаем старые строки выбранной статьи.
+    financeCashFlowDetails.value = []
+    financeCashFlowDetailsTotals.revenue = 0
+    financeCashFlowDetailsTotals.expense = 0
+    financeCashFlowDetailsTotals.cash_flow = 0
+    financeCashFlowDetailsTitle.value = ''
+    financeCashFlowDetailsOpen.value = false
+  }
+
   const clearFinanceCashFlowReport = () => {
     // Сбрасываем Cash Flow отдельно, чтобы вкладки отчетов не перетирали друг друга.
     financeCashFlowTotals.revenue = 0
@@ -230,6 +266,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeCashFlowTotals.current_balance = 0
     financeCashFlowRevenues.value = []
     financeCashFlowExpenses.value = []
+    clearFinanceCashFlowDetails()
   }
 
   const loadFinanceBootstrap = async () => {
@@ -438,6 +475,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
 
       const query = params.toString()
       const data = await apiGet(`/finance/reports/cash-flow${query ? `?${query}` : ''}`, { token: auth.state.token })
+      clearFinanceCashFlowDetails()
       financeCashFlowTotals.revenue = Number(data?.totals?.revenue || 0)
       financeCashFlowTotals.expense = Number(data?.totals?.expense || 0)
       financeCashFlowTotals.cash_flow = Number(data?.totals?.cash_flow || 0)
@@ -453,6 +491,44 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       financeError.value = mapApiError(e?.message)
     } finally {
       financeCashFlowLoading.value = false
+    }
+  }
+
+  const resetFinanceCashFlowDetailsPeriod = () => {
+    // Возвращаем фильтр расшифровки к полному выбранному месяцу Cash Flow.
+    const range = getFinanceCashFlowMonthRange()
+    financeCashFlowDetailsFilters.date_from = range.date_from
+    financeCashFlowDetailsFilters.date_to = range.date_to
+  }
+
+  const loadFinanceCashFlowDetails = async (line, title = '') => {
+    // Загружаем строки выбранной статьи Cash Flow с фильтром по дате проводки.
+    financeError.value = null
+    financeCashFlowDetailsLoading.value = true
+    financeCashFlowDetailsOpen.value = true
+    financeCashFlowDetailsTitle.value = String(title || '').trim() || 'Расшифровка Cash Flow'
+    try {
+      const params = new URLSearchParams()
+      if (!financeCashFlowDetailsFilters.date_from || !financeCashFlowDetailsFilters.date_to) {
+        resetFinanceCashFlowDetailsPeriod()
+      }
+      if (financeCashFlowDetailsFilters.date_from) params.set('date_from', financeCashFlowDetailsFilters.date_from)
+      if (financeCashFlowDetailsFilters.date_to) params.set('date_to', financeCashFlowDetailsFilters.date_to)
+      if (line?.line_type) params.set('line_type', String(line.line_type))
+      if (line?.name) params.set('line_name', String(line.name))
+      const query = params.toString()
+      const data = await apiGet(`/finance/reports/cash-flow/details${query ? `?${query}` : ''}`, { token: auth.state.token })
+      financeCashFlowDetails.value = Array.isArray(data?.items) ? data.items : []
+      financeCashFlowDetailsTotals.revenue = Number(data?.totals?.revenue || 0)
+      financeCashFlowDetailsTotals.expense = Number(data?.totals?.expense || 0)
+      financeCashFlowDetailsTotals.cash_flow = Number(data?.totals?.cash_flow || 0)
+      return true
+    } catch (e) {
+      financeCashFlowDetails.value = []
+      financeError.value = mapApiError(e?.message)
+      return false
+    } finally {
+      financeCashFlowDetailsLoading.value = false
     }
   }
 
@@ -1014,6 +1090,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeFilters,
     financeNewEntry,
     financeEntryFilters,
+    financeCashFlowDetailsFilters,
     financeYandexSync,
     financeWildberriesSync,
     financeOzonSync,
@@ -1041,6 +1118,10 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeCashFlowOpeningDraft,
     financeCashFlowRevenues,
     financeCashFlowExpenses,
+    financeCashFlowDetails,
+    financeCashFlowDetailsTotals,
+    financeCashFlowDetailsTitle,
+    financeCashFlowDetailsOpen,
     financeYandexSyncResult,
     financeYandexSyncStatus,
     financeWildberriesSyncResult,
@@ -1054,6 +1135,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeLoading,
     financeCashFlowLoading,
     financeCashFlowOpeningSaving,
+    financeCashFlowDetailsLoading,
     financeEntriesLoading,
     financeEntrySaving,
     financeCatalogSaving,
@@ -1099,6 +1181,9 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     loadFinanceSourceDetails,
     clearFinanceSourceDetails,
     loadFinanceCashFlowReport,
+    loadFinanceCashFlowDetails,
+    clearFinanceCashFlowDetails,
+    resetFinanceCashFlowDetailsPeriod,
     saveFinanceCashFlowOpeningBalance,
     syncFinanceYandexMarket,
     syncFinanceWildberries,

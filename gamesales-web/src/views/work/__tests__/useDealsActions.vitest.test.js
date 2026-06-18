@@ -25,6 +25,7 @@ function createDeps(overrides = {}) {
       region_code: 'RU',
       slot_type_code: '',
       reserve_key: '',
+      reserve_claim_token: '',
       duplicate_assignment_id: '',
       price: 100,
       purchase_cost: 50,
@@ -49,6 +50,7 @@ function createDeps(overrides = {}) {
       region_code: 'RU',
       slot_type_code: '',
       reserve_key: '',
+      reserve_claim_token: '',
       duplicate_assignment_id: '',
       price: 100,
       purchase_cost: 50,
@@ -159,6 +161,7 @@ describe('useDealsActions', () => {
     deps.newDeal.product_id = 56
     deps.newDeal.slot_type_code = 'share'
     deps.newDeal.reserve_key = 'reserve1'
+    deps.newDeal.reserve_claim_token = 'claim-1'
     deps.newDeal.is_refund = true
     const { createDeal } = useDealsActions(deps)
 
@@ -167,6 +170,7 @@ describe('useDealsActions', () => {
     expect(deps.apiPost).toHaveBeenCalledTimes(1)
     expect(deps.apiPost.mock.calls[0][1].is_refund).toBe(false)
     expect(deps.apiPost.mock.calls[0][1].reserve_key).toBe('reserve1')
+    expect(deps.apiPost.mock.calls[0][1].reserve_claim_token).toBe('claim-1')
   })
 
   it('createDeal appends "Дубль" to notes for duplicate rental flow', async () => {

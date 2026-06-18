@@ -234,6 +234,106 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertTrue(any("CONCAT('Закуп '" in sql for sql in sql_collector))
         self.assertTrue(any("e.input_channel IN ('manual', 'api', 'import')" in sql for sql in sql_collector))
 
+    # Расшифровка Cash Flow должна отдавать строки по выбранной статье и интервалу даты проводки.
+    def test_finance_cash_flow_details_success(self):
+        script = [
+            {
+                "all": [
+                    (
+                        "deal",
+                        "revenue",
+                        "Продажа TR",
+                        date(2026, 6, 2),
+                        16308,
+                        None,
+                        "LifeGuard58",
+                        "Услуга",
+                        "item-16308",
+                        10,
+                        "TR",
+                        "Turkey",
+                        99,
+                        "ym",
+                        "ASAT",
+                        "1",
+                        "5810.00",
+                        None,
+                        None,
+                        ["577", "578"],
+                        ["SKU-1", "SKU-2"],
+                        2,
+                        2,
+                        "Анатолий",
+                        "Поступление по завершенной продаже",
+                    ),
+                    (
+                        "entry",
+                        "revenue",
+                        "Продажа TR",
+                        date(2026, 6, 3),
+                        None,
+                        294,
+                        None,
+                        "Продажа TR",
+                        "Ручной расход",
+                        10,
+                        "TR",
+                        "Turkey",
+                        99,
+                        "ym",
+                        "ASAT",
+                        "1",
+                        "100.00",
+                        "Ручной расход",
+                        "ui-294",
+                        [],
+                        [],
+                        0,
+                        0,
+                        "Анатолий",
+                        "Ручная проводка finance",
+                    ),
+                ],
+            },
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/finance/reports/cash-flow/details?date_from=2026-06-01&date_to=2026-06-30&line_type=revenue&line_name=%D0%9F%D1%80%D0%BE%D0%B4%D0%B0%D0%B6%D0%B0%20TR",
+                    headers=self._auth_headers(role="manager"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["title"], "Поступления: Продажа TR")
+        self.assertEqual(body["totals"]["revenue"], "5910.00")
+        self.assertEqual(body["totals"]["expense"], "0.00")
+        self.assertEqual(body["totals"]["cash_flow"], "5910.00")
+        self.assertEqual(body["items"][0]["activity_date"], "2026-06-02")
+        self.assertEqual(body["items"][0]["line_name"], "Продажа TR")
+        self.assertEqual(body["items"][0]["deal_id"], 16308)
+        self.assertEqual(body["items"][0]["amount"], "5810.00")
+        self.assertEqual(body["items"][0]["created_by"], "Анатолий")
+        self.assertEqual(body["items"][1]["entry_id"], 294)
+        self.assertEqual(body["items"][1]["amount"], "100.00")
+        self.assertEqual(body["items"][1]["created_by"], "Анатолий")
+        self.assertEqual(body["items"][1]["reason"], "Ручная проводка finance")
+        self.assertTrue(any("line_type = %s" in sql for sql in sql_collector))
+        self.assertTrue(any("line_name = %s" in sql for sql in sql_collector))
+        self.assertTrue(any("WITH completed_deal_authors AS" in sql for sql in sql_collector))
+        self.assertTrue(any("a.new_data->>'flow_status_code' = 'completed'" in sql for sql in sql_collector))
+        self.assertTrue(any("d.completed_at::date AS activity_date" in sql for sql in sql_collector))
+        self.assertTrue(any("e.biz_date AS activity_date" in sql for sql in sql_collector))
+        self.assertTrue(any("LEFT JOIN app.users author ON lower(author.username) = lower(e.created_by)" in sql for sql in sql_collector))
+        self.assertTrue(any("COALESCE(NULLIF(author.name, ''), e.created_by) AS created_by" in sql for sql in sql_collector))
+        self.assertTrue(any("p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')" in sql for sql in sql_collector))
+
     # Если у месяца нет ручного остатка, берем ближайший прошлый и добавляем накопленный cash flow.
     def test_finance_cash_flow_report_uses_previous_opening_balance(self):
         script = [

@@ -87,7 +87,9 @@
         :format-account-slot-status-line="ctx.formatAccountSlotStatusLine"
         :format-secret="ctx.formatSecret"
         :get-reserve-secrets="ctx.getReserveSecrets"
+        :get-reserve-secret-entries="ctx.getReserveSecretEntries"
         :ensure-account-secrets-loaded="ctx.ensureAccountSecretsLoaded"
+        :load-account-used-reserve-keys="ctx.loadAccountUsedReserveKeys"
       />
       <div v-if="ctx.accountsTotal > 0" class="pager">
         <span class="muted">Всего: {{ ctx.accountsTotal }}</span>
@@ -172,6 +174,9 @@
         :account-deals-error="ctx.accountDealsError"
         :account-deals-loading="ctx.accountDealsLoading"
         :account-deals="ctx.accountDeals"
+        :load-account-used-reserve-keys="ctx.loadAccountUsedReserveKeys"
+        :claim-account-reserve="ctx.claimAccountReserve"
+        :release-account-reserve-claim="ctx.releaseAccountReserveClaim"
         :start-edit-deal="ctx.startEditDeal"
         :get-deal-product-title-tooltip="ctx.getDealProductTitleTooltip"
         :get-deal-product-title-display="ctx.getDealProductTitleDisplay"

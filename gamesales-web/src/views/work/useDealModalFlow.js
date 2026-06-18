@@ -126,6 +126,7 @@ export function useDealModalFlow({
       slot_type_code: newDeal.slot_type_code,
       subscription_term_id: newDeal.subscription_term_id,
       reserve_key: newDeal.reserve_key,
+      reserve_claim_token: newDeal.reserve_claim_token,
       duplicate_assignment_id: newDeal.duplicate_assignment_id,
       price: newDeal.price,
       purchase_cost: newDeal.purchase_cost,
@@ -160,6 +161,7 @@ export function useDealModalFlow({
     editDeal.slot_type_code = deal.slot_type_code || ''
     editDeal.subscription_term_id = deal.subscription_term_id || ''
     editDeal.reserve_key = deal.reserve_key || ''
+    editDeal.reserve_claim_token = ''
     editDeal.duplicate_assignment_id = deal.duplicate_assignment_id || ''
     editDeal.price = Number(deal.price || 0)
     editDeal.purchase_cost = Number(deal.purchase_cost || 0)
@@ -195,6 +197,7 @@ export function useDealModalFlow({
     editDeal.slot_type_code = ''
     editDeal.subscription_term_id = ''
     editDeal.reserve_key = ''
+    editDeal.reserve_claim_token = ''
     editDeal.duplicate_assignment_id = ''
     editDeal.price = 0
     editDeal.purchase_cost = 0
@@ -282,6 +285,7 @@ export function useDealModalFlow({
       slot_type_code: '',
       subscription_term_id: '',
       reserve_key: '',
+      reserve_claim_token: '',
       duplicate_assignment_id: '',
       price: 0,
       purchase_cost: 0,
@@ -307,6 +311,7 @@ export function useDealModalFlow({
       slot_type_code: newDeal.slot_type_code,
       subscription_term_id: newDeal.subscription_term_id,
       reserve_key: newDeal.reserve_key,
+      reserve_claim_token: newDeal.reserve_claim_token,
       duplicate_assignment_id: newDeal.duplicate_assignment_id,
       price: newDeal.price,
       purchase_cost: newDeal.purchase_cost,
@@ -333,6 +338,7 @@ export function useDealModalFlow({
       slot_type_code: editDeal.slot_type_code,
       subscription_term_id: editDeal.subscription_term_id,
       reserve_key: editDeal.reserve_key,
+      reserve_claim_token: editDeal.reserve_claim_token,
       duplicate_assignment_id: editDeal.duplicate_assignment_id,
       price: editDeal.price,
       purchase_cost: editDeal.purchase_cost,
@@ -367,6 +373,7 @@ export function useDealModalFlow({
     newDeal.slot_type_code = ''
     newDeal.subscription_term_id = ''
     newDeal.reserve_key = ''
+    newDeal.reserve_claim_token = ''
     newDeal.duplicate_assignment_id = ''
     newDeal.price = 0
     newDeal.purchase_cost = 0

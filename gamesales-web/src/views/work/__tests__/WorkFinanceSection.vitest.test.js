@@ -216,6 +216,7 @@ function buildCtx(overrides = {}) {
     financeCashFlowMonth: '2026-05',
     financeCashFlowOpeningDraft: '3000',
     financeCashFlowOpeningSaving: false,
+    financeCashFlowDetailsLoading: false,
     financeCashFlowOpeningOk: '',
     financeCashFlowRevenues: [
       { name: 'Продажа TR', amount: 15000 },
@@ -225,6 +226,38 @@ function buildCtx(overrides = {}) {
       { name: 'Закуп TR', amount: 6000 },
       { name: 'Маркетинг', amount: 1000 },
     ],
+    financeCashFlowDetailsFilters: {
+      date_from: '2026-05-01',
+      date_to: '2026-05-31',
+    },
+    financeCashFlowDetails: [
+      {
+        row_type: 'deal',
+        line_type: 'revenue',
+        line_name: 'Продажа TR',
+        activity_date: '2026-05-10',
+        deal_id: 16308,
+        customer_name: 'LifeGuard58',
+        operation_name: 'Услуга',
+        item_title: 'item-16308',
+        region_code: 'TR',
+        source_name: 'ASAT',
+        source_code: 'ym',
+        qty: '1',
+        amount: 5810,
+        created_by: 'Анатолий',
+        order_ids: ['577', '578'],
+        orders_count: 2,
+        reason: 'Поступление по завершенной продаже',
+      },
+    ],
+    financeCashFlowDetailsTotals: {
+      revenue: 5810,
+      expense: 0,
+      cash_flow: 5810,
+    },
+    financeCashFlowDetailsTitle: 'Поступление: Продажа TR',
+    financeCashFlowDetailsOpen: false,
     financeYandexSyncResult: null,
     financeWildberriesSyncResult: null,
     financeOzonSyncResult: null,
@@ -233,6 +266,9 @@ function buildCtx(overrides = {}) {
     clearFinanceSourceDetails: vi.fn(),
     openFinanceDetailDeal: vi.fn(),
     loadFinanceCashFlowReport: vi.fn(),
+    loadFinanceCashFlowDetails: vi.fn(),
+    clearFinanceCashFlowDetails: vi.fn(),
+    resetFinanceCashFlowDetailsPeriod: vi.fn(),
     saveFinanceCashFlowOpeningBalance: vi.fn(),
     syncFinanceYandexMarket: vi.fn(),
     syncFinanceWildberries: vi.fn(),
@@ -566,7 +602,7 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('Услуга / TR')
     expect(wrapper.text()).toContain('Сделка #16308')
     await wrapper.find('[data-test="finance-detail-open-deal-16308"]').trigger('click')
-    expect(ctx.openFinanceDetailDeal).toHaveBeenCalledWith(16308)
+    expect(ctx.openFinanceDetailDeal).toHaveBeenCalledWith(16308, 'report')
     expect(wrapper.text()).toContain('LifeGuard58')
     expect(wrapper.text()).toContain('577, 578')
     expect(wrapper.text()).toContain('заказов 2')
@@ -605,6 +641,47 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('Шеринг TR')
     expect(wrapper.text()).toContain('Закуп TR')
     expect(wrapper.text()).toContain('Маркетинг')
+  })
+
+  it('opens cash flow detail modal and applies date interval', async () => {
+    const ctx = buildCtx({ financeCashFlowDetailsOpen: true })
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-cash-flow"]').trigger('click')
+    await wrapper.find('[data-test="finance-cash-flow-details-revenue-0"]').trigger('click')
+
+    expect(ctx.resetFinanceCashFlowDetailsPeriod).toHaveBeenCalledTimes(1)
+    expect(ctx.loadFinanceCashFlowDetails).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Продажа TR', line_type: 'revenue' }),
+      'Поступление: Продажа TR',
+    )
+    expect(wrapper.text()).toContain('Дата проводки 2026-05-01 — 2026-05-31')
+    expect(wrapper.text()).toContain('Сделка #16308')
+    expect(wrapper.text()).toContain('LifeGuard58')
+    expect(wrapper.text()).toContain('ASAT - ym')
+    expect(wrapper.text()).toContain('Кто внес')
+    expect(wrapper.text()).toContain('Анатолий')
+    expect(wrapper.text()).not.toContain('Строка Cash Flow')
+    expect(wrapper.text()).not.toContain('Товар / комментарий')
+    expect(wrapper.text()).not.toContain('Кол-во')
+    expect(wrapper.text()).not.toContain('Заказы')
+
+    await wrapper.find('[data-test="finance-cash-flow-open-deal-16308"]').trigger('click')
+    expect(ctx.openFinanceDetailDeal).toHaveBeenCalledWith(16308, 'cash-flow')
+
+    await wrapper.find('[data-test="finance-apply-cash-flow-details"]').trigger('click')
+    expect(ctx.loadFinanceCashFlowDetails).toHaveBeenCalledTimes(2)
   })
 
   it('keeps cash flow apply button enabled when only source report is loading', async () => {

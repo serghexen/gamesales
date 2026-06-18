@@ -134,6 +134,33 @@ describe('useFinanceReports', () => {
     expect(h.finance.financeCashFlowExpenses.value[0]?.name).toBe('Закуп TR')
   })
 
+  it('loads cash flow details with date interval and selected line', async () => {
+    const h = createHarness()
+    h.finance.financeCashFlowMonth.value = '2026-06'
+    h.finance.financeCashFlowDetailsFilters.date_from = '2026-06-10'
+    h.finance.financeCashFlowDetailsFilters.date_to = '2026-06-20'
+    h.apiGet.mockResolvedValueOnce({
+      totals: {
+        revenue: '5810.00',
+        expense: '0.00',
+        cash_flow: '5810.00',
+      },
+      items: [{ row_type: 'deal', line_type: 'revenue', line_name: 'Продажа TR', deal_id: 16308, amount: '5810.00' }],
+    })
+
+    const ok = await h.finance.loadFinanceCashFlowDetails({ line_type: 'revenue', name: 'Продажа TR' }, 'Поступление: Продажа TR')
+
+    expect(ok).toBe(true)
+    expect(h.apiGet).toHaveBeenCalledWith(
+      '/finance/reports/cash-flow/details?date_from=2026-06-10&date_to=2026-06-20&line_type=revenue&line_name=%D0%9F%D1%80%D0%BE%D0%B4%D0%B0%D0%B6%D0%B0+TR',
+      { token: 'token-1' },
+    )
+    expect(h.finance.financeCashFlowDetailsOpen.value).toBe(true)
+    expect(h.finance.financeCashFlowDetailsTitle.value).toBe('Поступление: Продажа TR')
+    expect(h.finance.financeCashFlowDetailsTotals.revenue).toBe(5810)
+    expect(h.finance.financeCashFlowDetails.value[0]?.deal_id).toBe(16308)
+  })
+
   it('allows cash flow report to be loaded repeatedly', async () => {
     const h = createHarness()
     h.apiGet

@@ -100,6 +100,7 @@ export function useDealsWatchers({
         newDeal.subscription_term_id = ''
       }
       newDeal.reserve_key = ''
+      newDeal.reserve_claim_token = ''
       // Для подписок оставляем выбранный тип слота, потому что там сценарий slot -> product.
       if (productType !== 'subscription') newDeal.slot_type_code = ''
       accountSlotStatusNew.value = []
@@ -128,6 +129,7 @@ export function useDealsWatchers({
         editDeal.subscription_term_id = ''
       }
       editDeal.reserve_key = ''
+      editDeal.reserve_claim_token = ''
       // Для подписок сохраняем слот, чтобы не ломать порядок выбора в форме.
       if (productType !== 'subscription') editDeal.slot_type_code = ''
       accountSlotStatusEdit.value = []
@@ -142,6 +144,7 @@ export function useDealsWatchers({
     (val) => {
       if (!val) {
         newDeal.reserve_key = ''
+        newDeal.reserve_claim_token = ''
         newDeal.duplicate_assignment_id = ''
         accountSlotStatusNew.value = []
         dealAccountAssignmentsNew.value = []
@@ -155,6 +158,7 @@ export function useDealsWatchers({
       if (!editDeal.open || dealInitLock.value) return
       if (!val) {
         editDeal.reserve_key = ''
+        editDeal.reserve_claim_token = ''
         editDeal.duplicate_assignment_id = ''
         accountSlotStatusEdit.value = []
         dealAccountAssignmentsEdit.value = []
@@ -181,6 +185,7 @@ export function useDealsWatchers({
         newDeal.account_id = ''
         newDeal.subscription_term_id = ''
         newDeal.reserve_key = ''
+        newDeal.reserve_claim_token = ''
         accountSlotStatusNew.value = []
         dealAccountAssignmentsNew.value = []
         return
@@ -188,6 +193,7 @@ export function useDealsWatchers({
       newDeal.account_id = ''
       newDeal.subscription_term_id = ''
       newDeal.reserve_key = ''
+      newDeal.reserve_claim_token = ''
       accountSlotStatusNew.value = []
       dealAccountAssignmentsNew.value = []
     }
@@ -209,6 +215,7 @@ export function useDealsWatchers({
         editDeal.account_id = ''
         editDeal.subscription_term_id = ''
         editDeal.reserve_key = ''
+        editDeal.reserve_claim_token = ''
         accountSlotStatusEdit.value = []
         dealAccountAssignmentsEdit.value = []
         return
@@ -216,6 +223,7 @@ export function useDealsWatchers({
       editDeal.account_id = ''
       editDeal.subscription_term_id = ''
       editDeal.reserve_key = ''
+      editDeal.reserve_claim_token = ''
       accountSlotStatusEdit.value = []
       dealAccountAssignmentsEdit.value = []
     }

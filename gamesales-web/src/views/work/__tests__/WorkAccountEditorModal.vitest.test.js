@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 import WorkAccountEditorModal from '../sections/WorkAccountEditorModal.vue'
 
@@ -62,6 +62,9 @@ function buildProps(overrides = {}) {
     accountDealsError: '',
     accountDealsLoading: false,
     accountDeals: [],
+    loadAccountUsedReserveKeys: vi.fn().mockResolvedValue([]),
+    claimAccountReserve: vi.fn().mockResolvedValue({ claim_token: 'claim-1', reserve_key: 'reserve1' }),
+    releaseAccountReserveClaim: vi.fn().mockResolvedValue(undefined),
     startEditDeal: vi.fn(),
     getDealProductTitleTooltip: () => '',
     getDealProductTitleDisplay: () => '',
@@ -357,7 +360,7 @@ describe('WorkAccountEditorModal', () => {
     expect(writeText).toHaveBeenCalledWith('user@mail.com')
   })
 
-  it('renders copy button for reserve row in view mode', () => {
+  it('renders copy button for reserve row in view mode', async () => {
     const wrapper = mount(WorkAccountEditorModal, {
       props: buildProps({
         accountModalMode: 'edit',
@@ -370,8 +373,61 @@ describe('WorkAccountEditorModal', () => {
       }),
       global: { stubs: { teleport: true } },
     })
+    await flushPromises()
 
     expect(wrapper.find('button[aria-label="Копировать Резерв 1"]').exists()).toBe(true)
+  })
+
+  it('keeps single reserve textarea in edit mode', async () => {
+    const wrapper = mount(WorkAccountEditorModal, {
+      props: buildProps({
+        accountModalMode: 'edit',
+        accountEditMode: 'edit',
+        editAccount: {
+          ...buildProps().editAccount,
+          reserve_text: 'AAA111 BBB222',
+          existing_reserve_keys: ['reserve1', 'reserve2'],
+        },
+        loadAccountUsedReserveKeys: vi.fn().mockResolvedValue(['reserve1']),
+      }),
+      global: { stubs: { teleport: true } },
+    })
+    await flushPromises()
+
+    const textarea = wrapper.find('textarea')
+    expect(textarea.exists()).toBe(true)
+    expect(textarea.element.value).toBe('AAA111 BBB222')
+    expect(wrapper.find('.account-reserve-row').exists()).toBe(false)
+  })
+
+  it('marks reserve as used and removes copy access after clipboard action', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const claimAccountReserve = vi.fn().mockResolvedValue({ claim_token: 'claim-1', reserve_key: 'reserve1' })
+    const wrapper = mount(WorkAccountEditorModal, {
+      props: buildProps({
+        accountModalMode: 'edit',
+        accountEditMode: 'view',
+        editAccount: {
+          ...buildProps().editAccount,
+          reserve_text: 'AAA111',
+          existing_reserve_keys: ['reserve1'],
+        },
+        claimAccountReserve,
+      }),
+      global: { stubs: { teleport: true } },
+    })
+    await flushPromises()
+
+    const copyButton = wrapper.find('button[aria-label="Копировать Резерв 1"]')
+    await copyButton.trigger('click')
+    await flushPromises()
+
+    expect(claimAccountReserve).toHaveBeenCalledWith(5, 'reserve1')
+    expect(writeText).toHaveBeenCalledWith('AAA111')
+    expect(wrapper.find('button[aria-label="Копировать Резерв 1"]').exists()).toBe(false)
+    expect(wrapper.find('.account-reserve-row input').element.value).toBe('AAA111')
+    expect(wrapper.find('.account-reserve-row__badge').text()).toBe('использован')
   })
 
   it('opens deal editor when user clicks deal row in account modal', async () => {

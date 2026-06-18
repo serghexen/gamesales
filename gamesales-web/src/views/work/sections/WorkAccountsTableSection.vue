@@ -129,9 +129,9 @@
           <td
             class="cell--selectable account-col-reserve"
             @click.stop
-            @mouseenter="ensureAccountSecretsLoaded(a.account_id)"
+            @mouseenter="preloadAccountReserveData(a.account_id)"
           >
-            {{ formatSecret(getReserveSecrets(a.account_id)) }}
+            {{ formatSecret(getMaskedReserveSecrets(a.account_id)) }}
           </td>
         </tr>
       </tbody>
@@ -173,16 +173,50 @@ const props = defineProps({
   formatAccountSlotStatusLine: { type: Function, required: true },
   formatSecret: { type: Function, required: true },
   getReserveSecrets: { type: Function, required: true },
+  getReserveSecretEntries: { type: Function, required: true },
   ensureAccountSecretsLoaded: { type: Function, required: true },
+  loadAccountUsedReserveKeys: { type: Function, required: true },
 })
 
-// Догружает секреты для видимых аккаунтов сразу после рендера таблицы, чтобы колонка "Резерв" не зависела от hover.
+const accountUsedReserveKeys = ref({})
+
+// Нормализует ключ резерва к формату reserveN для надежного сравнения в таблице.
+function normalizeReserveKey(value) {
+  const raw = String(value || '').trim().toLowerCase()
+  if (!/^reserve\d+$/.test(raw)) return ''
+  return `reserve${Number(raw.replace('reserve', ''))}`
+}
+
+// Догружает секреты и отметки занятости одного аккаунта для безопасного отображения резервов.
+async function preloadAccountReserveData(accountId) {
+  const targetId = Number(accountId || 0)
+  if (!targetId) return
+  await Promise.resolve(props.ensureAccountSecretsLoaded(targetId)).catch(() => {})
+  if (Object.prototype.hasOwnProperty.call(accountUsedReserveKeys.value || {}, targetId)) return
+  const keys = await Promise.resolve(props.loadAccountUsedReserveKeys(targetId)).catch(() => [])
+  accountUsedReserveKeys.value = {
+    ...(accountUsedReserveKeys.value || {}),
+    [targetId]: (Array.isArray(keys) ? keys : []).map(normalizeReserveKey).filter(Boolean),
+  }
+}
+
+// Показывает резервы после загрузки usage, чтобы список не мигал до проверки занятости.
+function getMaskedReserveSecrets(accountId) {
+  const targetId = Number(accountId || 0)
+  if (!Object.prototype.hasOwnProperty.call(accountUsedReserveKeys.value || {}, targetId)) return ''
+  return props.getReserveSecretEntries(targetId)
+    .map((item) => item?.value)
+    .filter(Boolean)
+    .join(' ')
+}
+
+// Догружает данные для видимых аккаунтов сразу после рендера таблицы, чтобы колонка "Резерв" не зависела от hover.
 function preloadVisibleAccountSecrets(list) {
   const ids = [...new Set((Array.isArray(list) ? list : [])
     .map((item) => Number(item?.account_id || 0))
     .filter((id) => id > 0))]
   for (const accountId of ids) {
-    void Promise.resolve(props.ensureAccountSecretsLoaded(accountId)).catch(() => {})
+    void preloadAccountReserveData(accountId)
   }
 }
 

@@ -442,6 +442,34 @@ class FinanceCashFlowLineOut(BaseModel):
     amount: Decimal = Decimal("0")
 
 
+class FinanceCashFlowDetailRowOut(BaseModel):
+    row_type: str
+    line_type: str
+    line_name: str
+    activity_date: date
+    deal_id: Optional[int] = None
+    entry_id: Optional[int] = None
+    customer_name: Optional[str] = None
+    operation_name: Optional[str] = None
+    item_title: Optional[str] = None
+    region_id: Optional[int] = None
+    region_code: Optional[str] = None
+    region_name: Optional[str] = None
+    source_id: Optional[int] = None
+    source_code: Optional[str] = None
+    source_name: Optional[str] = None
+    qty: Decimal = Decimal("0")
+    amount: Decimal = Decimal("0")
+    comment: Optional[str] = None
+    external_key: Optional[str] = None
+    order_ids: list[str] = Field(default_factory=list)
+    shop_skus: list[str] = Field(default_factory=list)
+    orders_count: int = 0
+    rows_count: int = 0
+    created_by: Optional[str] = None
+    reason: Optional[str] = None
+
+
 class FinanceCashFlowTotalsOut(BaseModel):
     revenue: Decimal = Decimal("0")
     expense: Decimal = Decimal("0")
@@ -450,6 +478,12 @@ class FinanceCashFlowTotalsOut(BaseModel):
     current_balance: Decimal = Decimal("0")
     opening_balance_month: Optional[date] = None
     opening_balance_manual: bool = False
+
+
+class FinanceCashFlowDetailsOut(BaseModel):
+    title: str
+    totals: FinanceCashFlowTotalsOut
+    items: list[FinanceCashFlowDetailRowOut] = Field(default_factory=list)
 
 
 class FinanceCashFlowReportOut(BaseModel):

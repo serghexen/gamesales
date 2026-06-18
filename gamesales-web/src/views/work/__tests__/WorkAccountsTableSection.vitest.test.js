@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 import WorkAccountsTableSection from '../sections/WorkAccountsTableSection.vue'
 
@@ -20,7 +20,9 @@ function buildProps(overrides = {}) {
     formatAccountSlotStatusLine: vi.fn(() => ''),
     formatSecret: vi.fn((value) => value),
     getReserveSecrets: vi.fn(() => ''),
+    getReserveSecretEntries: vi.fn(() => []),
     ensureAccountSecretsLoaded: vi.fn().mockResolvedValue(undefined),
+    loadAccountUsedReserveKeys: vi.fn().mockResolvedValue([]),
     ...overrides,
   }
 }
@@ -83,5 +85,22 @@ describe('WorkAccountsTableSection', () => {
     expect(ensureAccountSecretsLoaded).toHaveBeenCalledTimes(2)
     expect(ensureAccountSecretsLoaded).toHaveBeenNthCalledWith(1, 11)
     expect(ensureAccountSecretsLoaded).toHaveBeenNthCalledWith(2, 12)
+  })
+
+  it('shows reserve values in accounts table after usage check', async () => {
+    const wrapper = mount(WorkAccountsTableSection, {
+      props: buildProps({
+        sortedAccounts: [{ account_id: 5, login_full: 'a@mail.com' }],
+        getReserveSecretEntries: vi.fn(() => [
+          { key: 'reserve1', value: 'AAA111' },
+          { key: 'reserve2', value: 'BBB222' },
+        ]),
+        loadAccountUsedReserveKeys: vi.fn().mockResolvedValue(['reserve1']),
+      }),
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('AAA111 BBB222')
   })
 })

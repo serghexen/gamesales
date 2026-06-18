@@ -747,12 +747,24 @@
                     <tr>
                       <th>Строка</th>
                       <th>Сумма</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="line in ctx.financeCashFlowRevenues" :key="`cf-rev-${line.name}`">
+                    <tr v-for="(line, index) in ctx.financeCashFlowRevenues" :key="`cf-rev-${line.name}`">
                       <td>{{ line.name }}</td>
                       <td>{{ ctx.formatPrice(line.amount) }}</td>
+                      <td class="table__actions">
+                        <button
+                          class="ghost ghost--compact"
+                          type="button"
+                          :data-test="`finance-cash-flow-details-revenue-${index}`"
+                          :disabled="ctx.financeCashFlowDetailsLoading"
+                          @click="openCashFlowDetails(line, 'revenue')"
+                        >
+                          Расшифровать
+                        </button>
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -766,12 +778,24 @@
                     <tr>
                       <th>Строка</th>
                       <th>Сумма</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="line in ctx.financeCashFlowExpenses" :key="`cf-exp-${line.name}`">
+                    <tr v-for="(line, index) in ctx.financeCashFlowExpenses" :key="`cf-exp-${line.name}`">
                       <td>{{ line.name }}</td>
                       <td>{{ ctx.formatPrice(line.amount) }}</td>
+                      <td class="table__actions">
+                        <button
+                          class="ghost ghost--compact"
+                          type="button"
+                          :data-test="`finance-cash-flow-details-expense-${index}`"
+                          :disabled="ctx.financeCashFlowDetailsLoading"
+                          @click="openCashFlowDetails(line, 'expense')"
+                        >
+                          Расшифровать
+                        </button>
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -873,6 +897,117 @@
                     <td>{{ ctx.formatPrice(item.direct_expense) }}</td>
                     <td>{{ ctx.formatPrice(item.cash_flow) }}</td>
                     <td class="finance-detail-orders">{{ formatDetailOrders(item) }}</td>
+                    <td class="finance-detail-reason">{{ item.reason || '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p v-else class="muted">Нет строк для расшифровки.</p>
+            </template>
+          </div>
+        </div>
+      </div>
+    </teleport>
+
+    <teleport to="body">
+      <div v-if="ctx.financeCashFlowDetailsOpen" class="work-page work-modal-root modal-backdrop" @click.self="closeCashFlowDetails">
+        <div class="modal modal--auto finance-details-modal">
+          <div class="panel__head panel__head--tight">
+            <div>
+              <h3>{{ ctx.financeCashFlowDetailsTitle || 'Расшифровка Cash Flow' }}</h3>
+              <p class="muted">Дата проводки {{ ctx.financeCashFlowDetailsFilters?.date_from || '—' }} — {{ ctx.financeCashFlowDetailsFilters?.date_to || '—' }}</p>
+            </div>
+            <button class="ghost ghost--compact" type="button" @click="closeCashFlowDetails">Закрыть</button>
+          </div>
+          <div class="modal__body finance-details-modal__body">
+            <div class="analytics-filters finance-details-filters">
+              <label class="field">
+                <span class="label">Период с</span>
+                <input v-model="ctx.financeCashFlowDetailsFilters.date_from" class="input" type="date" :max="ctx.financeCashFlowDetailsFilters.date_to || ctx.maxDate" />
+              </label>
+              <label class="field">
+                <span class="label">Период по</span>
+                <input v-model="ctx.financeCashFlowDetailsFilters.date_to" class="input" type="date" :min="ctx.financeCashFlowDetailsFilters.date_from || ctx.minDate" :max="ctx.maxDate" />
+              </label>
+              <label class="field">
+                <button data-test="finance-apply-cash-flow-details" class="ghost" type="button" :disabled="ctx.financeCashFlowDetailsLoading" @click="reloadCashFlowDetails">Применить</button>
+              </label>
+            </div>
+
+            <div v-if="ctx.financeCashFlowDetailsLoading" class="loader-wrap loader-wrap--compact">
+              <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
+                <div class="wheel"></div>
+                <div class="hamster">
+                  <div class="hamster__body">
+                    <div class="hamster__head">
+                      <div class="hamster__ear"></div>
+                      <div class="hamster__eye"></div>
+                      <div class="hamster__nose"></div>
+                    </div>
+                    <div class="hamster__limb hamster__limb--fr"></div>
+                    <div class="hamster__limb hamster__limb--fl"></div>
+                    <div class="hamster__limb hamster__limb--br"></div>
+                    <div class="hamster__limb hamster__limb--bl"></div>
+                    <div class="hamster__tail"></div>
+                  </div>
+                </div>
+                <div class="spoke"></div>
+              </div>
+            </div>
+            <template v-else>
+              <div class="analytics-cards finance-details-cards">
+                <div class="mini">
+                  <div class="mini__label">Поступления</div>
+                  <div class="mini__value">{{ ctx.formatPrice(ctx.financeCashFlowDetailsTotals.revenue) }}</div>
+                </div>
+                <div class="mini">
+                  <div class="mini__label">Расходы</div>
+                  <div class="mini__value">{{ ctx.formatPrice(ctx.financeCashFlowDetailsTotals.expense) }}</div>
+                </div>
+                <div class="mini">
+                  <div class="mini__label">Cash Flow</div>
+                  <div class="mini__value">{{ ctx.formatPrice(ctx.financeCashFlowDetailsTotals.cash_flow) }}</div>
+                </div>
+                <div class="mini">
+                  <div class="mini__label">Строк</div>
+                  <div class="mini__value">{{ Number((ctx.financeCashFlowDetails || []).length) }}</div>
+                </div>
+              </div>
+
+              <table v-if="ctx.financeCashFlowDetails.length" class="table table--compact table--dense finance-details-table finance-details-table--cash-flow">
+                <thead>
+                  <tr>
+                    <th>Дата проводки</th>
+                    <th>Основание</th>
+                    <th>Клиент / операция</th>
+                    <th>Регион</th>
+                    <th>Источник</th>
+                    <th>Сумма</th>
+                    <th>Кто внес</th>
+                    <th>Почему</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in ctx.financeCashFlowDetails" :key="`cf-detail-${item.row_type}-${item.line_type}-${item.deal_id || item.entry_id}-${item.line_name}`">
+                    <td>{{ item.activity_date }}</td>
+                    <td>
+                      <button
+                        v-if="canOpenDetailDeal(item)"
+                        class="finance-detail-link"
+                        type="button"
+                        :data-test="`finance-cash-flow-open-deal-${item.deal_id}`"
+                        @click="openDetailDeal(item)"
+                      >
+                        {{ formatCashFlowDetailRef(item) }}
+                      </button>
+                      <div v-else class="finance-detail-main">{{ formatCashFlowDetailRef(item) }}</div>
+                    </td>
+                    <td>
+                      <div class="finance-detail-main">{{ formatCashFlowActor(item) }}</div>
+                    </td>
+                    <td>{{ formatCashFlowRegion(item) }}</td>
+                    <td>{{ formatCashFlowSource(item) }}</td>
+                    <td>{{ ctx.formatPrice(item.amount) }}</td>
+                    <td>{{ item.created_by || '—' }}</td>
                     <td class="finance-detail-reason">{{ item.reason || '—' }}</td>
                   </tr>
                 </tbody>
@@ -1049,6 +1184,7 @@ const financeMode = computed({
 })
 const journalSectionKind = ref('')
 const openFinanceReportFilter = ref('')
+const cashFlowDetailsLine = ref(null)
 
 const typeModal = reactive({ open: false, mode: 'create', type_id: null })
 const operationModal = reactive({ open: false, mode: 'create', operation_id: null })
@@ -1306,11 +1442,79 @@ function canOpenDetailDeal(item) {
   return Number(item?.deal_id || 0) > 0 && typeof props.ctx.openFinanceDetailDeal === 'function'
 }
 
-// Передаем deal_id наверх, чтобы WorkView загрузил сделку и открыл общую карточку.
+// Передаем deal_id и текущую подвкладку, чтобы после карточки сделки вернуться в тот же отчет.
 async function openDetailDeal(item) {
   const dealId = Number(item?.deal_id || 0)
   if (!dealId || typeof props.ctx.openFinanceDetailDeal !== 'function') return
-  await props.ctx.openFinanceDetailDeal(dealId)
+  await props.ctx.openFinanceDetailDeal(dealId, financeMode.value)
+}
+
+// Открываем расшифровку выбранной строки Cash Flow и ставим фильтр на весь месяц отчета.
+async function openCashFlowDetails(line, lineType) {
+  const nextLine = { ...(line || {}), line_type: String(lineType || '') }
+  cashFlowDetailsLine.value = nextLine
+  props.ctx.resetFinanceCashFlowDetailsPeriod?.()
+  await props.ctx.loadFinanceCashFlowDetails?.(nextLine, formatCashFlowDetailsTitle(nextLine))
+}
+
+// Перечитываем текущую статью Cash Flow после изменения интервала даты проводки.
+async function reloadCashFlowDetails() {
+  if (!cashFlowDetailsLine.value) return
+  await props.ctx.loadFinanceCashFlowDetails?.(cashFlowDetailsLine.value, formatCashFlowDetailsTitle(cashFlowDetailsLine.value))
+}
+
+// Закрываем модалку и забываем выбранную статью Cash Flow.
+function closeCashFlowDetails() {
+  cashFlowDetailsLine.value = null
+  props.ctx.clearFinanceCashFlowDetails?.()
+}
+
+// Заголовок модалки показывает направление денег и выбранную строку отчета.
+function formatCashFlowDetailsTitle(line) {
+  const typeLabel = formatCashFlowLineType(line?.line_type)
+  const name = String(line?.name || line?.line_name || '').trim() || 'Без названия'
+  return `${typeLabel}: ${name}`
+}
+
+// Тип Cash Flow переводим в пользовательскую подпись.
+function formatCashFlowLineType(lineType) {
+  return String(lineType || '') === 'revenue' ? 'Поступление' : 'Расход'
+}
+
+// Формируем основание для строки Cash Flow details.
+function formatCashFlowDetailRef(item) {
+  const dealId = Number(item?.deal_id || 0)
+  if (dealId) return `Сделка #${dealId}`
+  const entryId = Number(item?.entry_id || 0)
+  if (entryId) return `Проводка #${entryId}`
+  return '—'
+}
+
+// Для сделок показываем клиента, для finance-проводок - операцию.
+function formatCashFlowActor(item) {
+  const customer = String(item?.customer_name || '').trim()
+  if (customer) return customer
+  const operation = String(item?.operation_name || '').trim()
+  if (operation) return operation
+  return '—'
+}
+
+// Регион выводим компактно кодом, потому что модалка широкая и строк много.
+function formatCashFlowRegion(item) {
+  const code = String(item?.region_code || '').trim()
+  if (code) return code
+  const name = String(item?.region_name || '').trim()
+  return name || '—'
+}
+
+// Источник собираем из названия и кода, как в остальных finance-таблицах.
+function formatCashFlowSource(item) {
+  const name = String(item?.source_name || '').trim()
+  const code = String(item?.source_code || '').trim()
+  if (name && code) return `${name} - ${code}`
+  if (name) return name
+  if (code) return code
+  return '—'
 }
 
 // Показываем клиента для сделки или операцию для finance-проводки.
@@ -1753,6 +1957,10 @@ async function reloadFinanceCatalogs() {
 
 .finance-details-table {
   min-width: 1040px;
+}
+
+.finance-details-table--cash-flow {
+  min-width: 1200px;
 }
 
 .finance-detail-main {

@@ -557,6 +557,52 @@ class DealsEndpointsTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json(), {"deal_id": 33})
 
+    # Сделка с токеном копирования должна сохранить именно занятый этой формой резерв и поглотить токен.
+    def test_create_deal_rental_consumes_reserve_claim(self):
+        script = [
+            {"one": ("game", False)},  # product lookup
+            {"one": (1,)},  # ensure_account_exists
+            {"one": (1,)},  # ensure_messenger_exists
+            {"one": ("ps5_p1", "ps5", "single", 1)},  # get_slot_type
+            {"one": (2,)},  # get_platform_id
+            {"one": (7,)},  # region from account
+            {"one": (22,)},  # customer insert
+            {"one": (1,)},  # get_account_slot_free
+            {"one": (1,)},  # reserve claim belongs to this form
+            {"all": []},  # no usage except excluded claim
+            {"one": (33,)},  # deal insert
+            {"one": (44,)},  # deal_item insert
+            {"rowcount": 1},  # assignment insert
+            {"rowcount": 1},  # consume claim
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/deals",
+                    headers=self._auth_headers(role="manager"),
+                    json={
+                        "deal_type_code": "rental",
+                        "account_id": 7,
+                        "product_id": 55,
+                        "slot_type_code": "ps5_p1",
+                        "messenger_id": 1,
+                        "customer_nickname": "cust",
+                        "reserve_key": "reserve1",
+                        "reserve_claim_token": "claim-1",
+                        "price": 500,
+                    },
+                )
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json(), {"deal_id": 33})
+        self.assertTrue(any("DELETE FROM app.account_reserve_claims" in sql for sql in sql_collector))
+
     # Аренда по product_id должна поддерживать подписку как товар.
     def test_create_deal_rental_with_subscription_product(self):
         script = [

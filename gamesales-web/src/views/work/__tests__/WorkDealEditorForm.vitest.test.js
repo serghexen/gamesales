@@ -145,10 +145,10 @@ describe('WorkDealEditorForm template', () => {
 
     expect(source).toContain('v-if="editDeal.account_id"')
     expect(source).toContain('getAccountPasswordById(editDeal.account_id)')
-    expect(source).toContain("getDealReserveLabel(editDeal.account_id, editDeal.reserve_key, editDeal.deal_id, { allowFallback: dealEditMode === 'edit', emptyLabel: '— не назначен' })")
+    expect(source).toContain("getSharingReserveDisplayValue('edit')")
     expect(source).toContain('v-if="newDeal.account_id"')
     expect(source).toContain('getAccountPasswordById(newDeal.account_id)')
-    expect(source).toContain('getDealReserveLabel(newDeal.account_id, newDeal.reserve_key, null, { allowFallback: true })')
+    expect(source).toContain("getSharingReserveDisplayValue('new')")
     expect(source).toContain("getDealAccountLoginLabel('edit')")
     expect(source).toContain("getDealAccountLoginLabel('new')")
     expect(source).toContain('function getDealAccountLoginLabel(target)')
@@ -164,7 +164,7 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('deal-form__account-details-head">Данные аккаунта</div>')
     expect(newRentalMain).not.toContain('getAccountPasswordById(newDeal.account_id)')
     expect(newRentalSide).toContain('getAccountPasswordById(newDeal.account_id)')
-    expect(newRentalSide).toContain('getDealReserveLabel(newDeal.account_id, newDeal.reserve_key, null, { allowFallback: true })')
+    expect(newRentalSide).toContain("getSharingReserveDisplayValue('new')")
     expect(source.indexOf('<span class="label">Логин</span>'))
       .toBeLessThan(source.indexOf('<span class="label">Пароль</span>'))
   })
@@ -182,6 +182,10 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('function getSharingFieldCopyValue(target, field)')
     expect(source).toContain('function copySharingField(target, field)')
     expect(source).toContain('const copiedSharingFieldKey = ref(\'\')')
+    expect(source).toContain("v-if=\"!isSharingReserveUsed('edit')\"")
+    expect(source).toContain("v-if=\"!isSharingReserveUsed('new')\"")
+    expect(source).toContain('claimAccountReserve.value?.(accountId, reserveKey)')
+    expect(source).toContain('deal.reserve_claim_token = claimToken')
   })
 
   it('supports forced duplicate mode in create and edit sharing forms', () => {
@@ -209,7 +213,7 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('loadAccountUsedReserveKeys.value(targetId, currentDealId)')
     expect(source).toContain('hasAccountReserveUsage(accountId, currentDealId)')
     expect(source).toContain('return new Set(accountReserveUsage.value[cacheKey] || [])')
-    expect(source).toContain("if (target === 'new' || !currentKey || used.has(currentKey))")
+    expect(source).toContain("if (!String(deal?.reserve_claim_token || '').trim() && (target === 'new' || !currentKey || used.has(currentKey)))")
   })
 
   it('hides refund field in pending and draft statuses and keeps it only for other flows', () => {
