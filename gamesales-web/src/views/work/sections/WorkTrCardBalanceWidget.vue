@@ -162,9 +162,13 @@ async function saveTrCardBalance() {
 <style scoped>
 .tr-card-balance {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
   min-width: 0;
+  min-height: 42px;
   margin-left: 2px;
   padding: 5px 8px;
+  box-sizing: border-box;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 12px;
   background:
@@ -180,7 +184,7 @@ async function saveTrCardBalance() {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
-  min-height: 28px;
+  min-height: 0;
 }
 
 .tr-card-balance__value {
