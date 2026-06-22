@@ -371,9 +371,6 @@ describe('WorkFinanceSection', () => {
     await wrapper.find('[data-test="finance-mode-cash-flow"]').trigger('click')
     await wrapper.find('[data-test="finance-apply-cash-flow"]').trigger('click')
     await wrapper.find('[data-test="finance-save-cash-flow-opening"]').trigger('click')
-    await wrapper.find('[data-test="finance-refresh-tr-card-balance"]').trigger('click')
-    await wrapper.find('[data-test="finance-edit-tr-card-balance"]').trigger('click')
-    await wrapper.find('[data-test="finance-save-tr-card-balance"]').trigger('click')
     await wrapper.find('[data-test="finance-mode-catalogs"]').trigger('click')
     await wrapper.find('[data-test="finance-open-create-type"]').trigger('click')
     await wrapper.find('[data-test="finance-create-type"]').trigger('click')
@@ -388,8 +385,6 @@ describe('WorkFinanceSection', () => {
     expect(ctx.loadFinanceProjectsReport).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceCashFlowReport).toHaveBeenCalledTimes(1)
     expect(ctx.saveFinanceCashFlowOpeningBalance).toHaveBeenCalledTimes(1)
-    expect(ctx.loadFinanceTrCardBalance).toHaveBeenCalledTimes(1)
-    expect(ctx.saveFinanceTrCardBalance).toHaveBeenCalledTimes(1)
     expect(ctx.createFinanceType).toHaveBeenCalledTimes(1)
     expect(ctx.createFinanceOperation).toHaveBeenCalledTimes(1)
   })
@@ -669,71 +664,6 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('Шеринг TR')
     expect(wrapper.text()).toContain('Закуп TR')
     expect(wrapper.text()).toContain('Маркетинг')
-  })
-
-  it('shows TR card balance with sign color', async () => {
-    const ctx = buildCtx()
-    const wrapper = mount(WorkFinanceSection, {
-      props: { ctx },
-      global: {
-        stubs: {
-          teleport: true,
-          RouterLink: {
-            props: ['to'],
-            template: '<a><slot /></a>',
-          },
-        },
-      },
-    })
-
-    expect(wrapper.find('[data-test="finance-tr-card-balance"]').text()).toContain('19000 TRY')
-    expect(wrapper.find('.finance-tr-card__value').classes()).toContain('finance-tr-card__value--positive')
-    expect(wrapper.text()).not.toContain('Списано: 6000 TRY')
-    expect(wrapper.text()).not.toContain('снимок 2026-05-10 11:20')
-    expect(wrapper.find('[aria-label="Фактический баланс TR-карты"]').exists()).toBe(false)
-    await wrapper.find('[data-test="finance-edit-tr-card-balance"]').trigger('click')
-    expect(wrapper.text()).toContain('Баланс TR-карты')
-    expect(wrapper.find('[aria-label="Фактический баланс TR-карты"]').exists()).toBe(true)
-    await wrapper.find('[data-test="finance-cancel-tr-card-balance"]').trigger('click')
-    expect(wrapper.find('[aria-label="Фактический баланс TR-карты"]').exists()).toBe(false)
-
-    const negativeWrapper = mount(WorkFinanceSection, {
-      props: {
-        ctx: buildCtx({
-          financeTrCardBalance: {
-            ...ctx.financeTrCardBalance,
-            current_balance: -500,
-          },
-        }),
-      },
-      global: {
-        stubs: {
-          teleport: true,
-          RouterLink: {
-            props: ['to'],
-            template: '<a><slot /></a>',
-          },
-        },
-      },
-    })
-
-    expect(negativeWrapper.find('.finance-tr-card__value').text()).toContain('-500 TRY')
-    expect(negativeWrapper.find('.finance-tr-card__value').classes()).toContain('finance-tr-card__value--negative')
-
-    const loadingWrapper = mount(WorkFinanceSection, {
-      props: { ctx: buildCtx({ financeTrCardBalanceLoading: true }) },
-      global: {
-        stubs: {
-          teleport: true,
-          RouterLink: {
-            props: ['to'],
-            template: '<a><slot /></a>',
-          },
-        },
-      },
-    })
-
-    expect(loadingWrapper.find('[data-test="finance-refresh-tr-card-balance"] .wheel-and-hamster').exists()).toBe(true)
   })
 
   it('opens cash flow detail modal and applies date interval', async () => {

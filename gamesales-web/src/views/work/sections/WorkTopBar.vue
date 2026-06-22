@@ -47,6 +47,7 @@
             Пользователи
           </router-link>
         </nav>
+        <WorkTrCardBalanceWidget :ctx="ctx" />
         <div class="tab-workload">
           <span class="tab-workload__title">Сделок в работе:</span>
           <div class="tab-workload__line">
@@ -101,6 +102,7 @@
 
 <script setup>
 import { computed, unref } from 'vue'
+import WorkTrCardBalanceWidget from './WorkTrCardBalanceWidget.vue'
 
 // Контекст верхней панели (табы, пользователь, выход).
 const props = defineProps({

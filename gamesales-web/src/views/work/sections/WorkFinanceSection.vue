@@ -71,62 +71,6 @@
             </button>
           </div>
 
-          <section data-test="finance-tr-card-balance" class="finance-tr-card">
-            <div class="finance-tr-card__summary">
-              <div class="finance-tr-card__balance">
-                <strong class="finance-tr-card__value" :class="trCardBalanceClass">{{ formatTrCardAmount(ctx.financeTrCardBalance?.current_balance) }}</strong>
-                <button
-                  data-test="finance-edit-tr-card-balance"
-                  class="finance-tr-card__icon-btn"
-                  type="button"
-                  :disabled="ctx.financeTrCardBalanceLoading || ctx.financeTrCardBalanceSaving"
-                  aria-label="Редактировать баланс TR-карты"
-                  title="Редактировать баланс"
-                  @click="openTrCardBalanceEdit"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                    <path d="M12 20h9" />
-                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                  </svg>
-                </button>
-                <button
-                  data-test="finance-refresh-tr-card-balance"
-                  class="finance-tr-card__icon-btn"
-                  type="button"
-                  :disabled="ctx.financeTrCardBalanceLoading || ctx.financeTrCardBalanceSaving"
-                  aria-label="Обновить баланс TR-карты"
-                  title="Обновить баланс"
-                  @click="refreshTrCardBalance"
-                >
-                  <span v-if="ctx.financeTrCardBalanceLoading" class="finance-tr-card__loader">
-                    <span aria-label="Обновляем баланс" role="img" class="wheel-and-hamster wheel-and-hamster--mini finance-tr-card__loader-wheel">
-                      <span class="wheel"></span>
-                      <span class="hamster">
-                        <span class="hamster__body">
-                          <span class="hamster__head">
-                            <span class="hamster__ear"></span>
-                            <span class="hamster__eye"></span>
-                            <span class="hamster__nose"></span>
-                          </span>
-                          <span class="hamster__limb hamster__limb--fr"></span>
-                          <span class="hamster__limb hamster__limb--fl"></span>
-                          <span class="hamster__limb hamster__limb--br"></span>
-                          <span class="hamster__limb hamster__limb--bl"></span>
-                          <span class="hamster__tail"></span>
-                        </span>
-                      </span>
-                      <span class="spoke"></span>
-                    </span>
-                  </span>
-                  <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                    <path d="M20 12a8 8 0 1 1-2.3-5.7" />
-                    <path d="M20 4v6h-6" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <p v-if="ctx.financeTrCardBalanceError" class="bad finance-tr-card__message">{{ ctx.financeTrCardBalanceError }}</p>
-          </section>
         </div>
 
         <template v-if="financeMode === 'catalogs'">
@@ -1078,60 +1022,6 @@
     </teleport>
 
     <teleport to="body">
-      <div v-if="trCardEditOpen" class="work-page work-modal-root modal-backdrop" @click.self="closeTrCardBalanceEdit">
-        <div class="modal modal--auto finance-card-modal">
-          <div class="panel__head panel__head--tight">
-            <h3>Баланс TR-карты</h3>
-          </div>
-          <div class="modal__body" :class="{ 'modal__body--locked': ctx.financeTrCardBalanceSaving }">
-            <div v-if="ctx.financeTrCardBalanceSaving" class="modal__body-overlay">
-              <div class="loader-wrap loader-wrap--compact">
-                <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
-                  <div class="wheel"></div>
-                  <div class="hamster">
-                    <div class="hamster__body">
-                      <div class="hamster__head">
-                        <div class="hamster__ear"></div>
-                        <div class="hamster__eye"></div>
-                        <div class="hamster__nose"></div>
-                      </div>
-                      <div class="hamster__limb hamster__limb--fr"></div>
-                      <div class="hamster__limb hamster__limb--fl"></div>
-                      <div class="hamster__limb hamster__limb--br"></div>
-                      <div class="hamster__limb hamster__limb--bl"></div>
-                      <div class="hamster__tail"></div>
-                    </div>
-                  </div>
-                  <div class="spoke"></div>
-                </div>
-                <p class="muted">Сохраняем…</p>
-              </div>
-            </div>
-            <div class="analytics-filters">
-              <label class="field">
-                <span class="label">Новый баланс</span>
-                <input
-                  v-model="ctx.financeTrCardBalanceDraft"
-                  class="input"
-                  type="number"
-                  step="0.01"
-                  aria-label="Фактический баланс TR-карты"
-                />
-              </label>
-            </div>
-            <p v-if="ctx.financeTrCardBalanceError" class="bad">{{ ctx.financeTrCardBalanceError }}</p>
-            <div class="toolbar-actions">
-              <button data-test="finance-cancel-tr-card-balance" class="ghost" type="button" :disabled="ctx.financeTrCardBalanceSaving" @click="closeTrCardBalanceEdit">Отмена</button>
-              <button data-test="finance-save-tr-card-balance" class="ghost" type="button" :disabled="ctx.financeTrCardBalanceSaving" @click="saveTrCardBalance">
-                {{ ctx.financeTrCardBalanceSaving ? 'Сохраняем...' : 'Сохранить' }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </teleport>
-
-    <teleport to="body">
       <div v-if="typeModal.open" class="work-page work-modal-root modal-backdrop" @click.self="closeTypeModal">
         <div class="modal modal--auto finance-catalog-modal">
           <div class="panel__head panel__head--tight">
@@ -1297,8 +1187,6 @@ const financeMode = computed({
 const journalSectionKind = ref('')
 const openFinanceReportFilter = ref('')
 const cashFlowDetailsLine = ref(null)
-const trCardEditOpen = ref(false)
-
 const typeModal = reactive({ open: false, mode: 'create', type_id: null })
 const operationModal = reactive({ open: false, mode: 'create', operation_id: null })
 
@@ -1317,12 +1205,6 @@ const sectionsMap = computed(() => new Map((unref(props.ctx.financeSections) || 
 const regionsMap = computed(() => new Map((unref(props.ctx.financeRegions) || []).map((item) => [Number(item.region_id), item])))
 const sourcesMap = computed(() => new Map((unref(props.ctx.financeSources) || []).map((item) => [Number(item.source_id), item])))
 const statusesMap = computed(() => new Map((unref(props.ctx.financeStatuses) || []).map((item) => [String(item.code || '').toLowerCase(), item])))
-
-const trCardBalanceClass = computed(() => {
-  // Подсвечиваем остаток карты по знаку, чтобы минус был заметен без чтения деталей.
-  const currentBalance = Number(props.ctx.financeTrCardBalance?.current_balance || 0)
-  return currentBalance < 0 ? 'finance-tr-card__value--negative' : 'finance-tr-card__value--positive'
-})
 
 const selectedOperation = computed(() => {
   const opId = Number(unref(props.ctx.financeNewEntry?.operation_id) || 0)
@@ -1438,38 +1320,6 @@ function formatSourceLabel(source) {
   if (sourceName) return sourceName
   if (sourceCode) return sourceCode
   return '—'
-}
-
-// Форматируем баланс TR отдельно от рублевых отчетов, чтобы валюта карты не смешивалась с Cash Flow.
-function formatTrCardAmount(value) {
-  const amount = Number(value || 0)
-  const formatted = typeof props.ctx.formatPrice === 'function'
-    ? props.ctx.formatPrice(amount)
-    : amount.toFixed(2)
-  return `${formatted} TRY`
-}
-
-// Открываем ручную установку баланса и подставляем текущий расчетный остаток.
-function openTrCardBalanceEdit() {
-  props.ctx.financeTrCardBalanceDraft = String(props.ctx.financeTrCardBalance?.current_balance ?? '')
-  trCardEditOpen.value = true
-}
-
-// Закрываем форму без сохранения и возвращаем черновик к текущему остатку.
-function closeTrCardBalanceEdit() {
-  props.ctx.financeTrCardBalanceDraft = String(props.ctx.financeTrCardBalance?.current_balance ?? '')
-  trCardEditOpen.value = false
-}
-
-// Перечитываем баланс TR-карты без открытия формы редактирования.
-async function refreshTrCardBalance() {
-  await props.ctx.loadFinanceTrCardBalance?.()
-}
-
-// Сохраняем введенный фактический остаток TR-карты.
-async function saveTrCardBalance() {
-  const ok = await props.ctx.saveFinanceTrCardBalance?.()
-  if (ok) trCardEditOpen.value = false
 }
 
 // Получаем выбранные id фильтра отчета в виде числового списка.
@@ -2005,134 +1855,6 @@ async function reloadFinanceCatalogs() {
   margin-bottom: 0;
 }
 
-.finance-tr-card {
-  flex: 0 0 auto;
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  margin-left: auto;
-  padding: 8px 13px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
-    rgba(15, 23, 42, 0.36);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 4px 12px rgba(5, 9, 20, 0.2);
-}
-
-.finance-tr-card__summary,
-.finance-tr-card__balance {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.finance-tr-card__summary {
-  justify-content: flex-end;
-}
-
-.finance-tr-card__balance {
-  justify-content: flex-end;
-  min-width: 0;
-}
-
-.finance-tr-card__label {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.finance-tr-card__value {
-  font-size: 15px;
-  line-height: 1.15;
-}
-
-.finance-tr-card__value--positive {
-  color: #22c55e;
-}
-
-.finance-tr-card__value--negative {
-  color: #ef4444;
-}
-
-.finance-tr-card__icon-btn {
-  display: inline-grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid rgba(148, 163, 184, 0.32);
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.42);
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.finance-tr-card__icon-btn:hover:not(:disabled) {
-  color: var(--text);
-  border-color: rgba(148, 163, 184, 0.58);
-}
-
-.finance-tr-card__icon-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.finance-tr-card__icon-btn svg {
-  width: 14px;
-  height: 14px;
-}
-
-.finance-tr-card__loader {
-  display: inline-grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  overflow: visible;
-}
-
-.finance-tr-card__loader-wheel.wheel-and-hamster--mini {
-  width: 11.5em;
-  height: 11.5em;
-  font-size: 1.4px;
-}
-
-.finance-tr-card__message {
-  margin: 0;
-  font-size: 12px;
-}
-
-.finance-card-modal.modal {
-  width: min(420px, calc(100vw - 32px)) !important;
-  max-width: min(420px, calc(100vw - 32px)) !important;
-}
-
-.finance-card-modal .modal__body {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  padding-top: 14px;
-  padding-bottom: 16px;
-}
-
-.finance-card-modal .analytics-filters {
-  align-self: stretch;
-  max-width: none;
-  width: 100%;
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.finance-card-modal .field,
-.finance-card-modal .input {
-  align-self: stretch;
-  max-width: none;
-  width: 100%;
-}
-
 .finance-multi-filter {
   position: relative;
 }
@@ -2356,11 +2078,6 @@ async function reloadFinanceCatalogs() {
 @media (max-width: 1100px) {
   .finance-mode-row {
     flex-direction: column;
-  }
-
-  .finance-tr-card {
-    width: 100%;
-    min-width: 0;
   }
 
   .finance-catalog-grid,

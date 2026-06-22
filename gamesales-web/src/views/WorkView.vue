@@ -198,6 +198,7 @@ import { useWorkActions } from './work/useWorkActions'
 import { useWorkUiHelpers } from './work/useWorkUiHelpers'
 import { createDeferredCall } from './work/deferredCall'
 import { useWorkSectionContexts } from './work/useWorkSectionContexts'
+import { createRealtimeRefreshScheduler, isDealMutationRealtimeEvent } from './work/realtimeRefreshScheduler'
 import WorkDashboardHero from './work/sections/WorkDashboardHero.vue'
 import WorkDashboardPanel from './work/sections/WorkDashboardPanel.vue'
 import WorkAnalyticsSection from './work/sections/WorkAnalyticsSection.vue'
@@ -465,6 +466,8 @@ let managersRealtimeRefreshTimer = null
 let managersRealtimeRefreshQueued = false
 let managersRealtimeRefreshLastAt = 0
 const MANAGERS_REALTIME_REFRESH_MIN_MS = 1000
+const TR_CARD_BALANCE_REALTIME_REFRESH_MIN_MS = 1000
+let trCardBalanceRealtimeRefreshScheduler = null
 
 // Нормализует роль из сессии, чтобы проверки прав не зависели от регистра и вариантов названия.
 function normalizeRole(value) {
@@ -551,9 +554,9 @@ function scheduleManagersRealtimeRefresh() {
 
 // Реагируем только на события, которые меняют состав/статус сделок.
 function handleDealsRealtimeEvent(payload) {
-  const eventType = String(payload?.event || '').trim().toLowerCase()
-  if (eventType !== 'deal_created' && eventType !== 'deal_updated' && eventType !== 'deal_deleted') return
+  if (!isDealMutationRealtimeEvent(payload)) return
   scheduleManagersRealtimeRefresh()
+  trCardBalanceRealtimeRefreshScheduler?.schedule()
 }
 
 const responsibleUserOptions = computed(() => {
@@ -1337,6 +1340,23 @@ const {
   syncFinanceOzon,
 } = useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, mapApiError })
 const financeMode = ref('entry')
+trCardBalanceRealtimeRefreshScheduler = createRealtimeRefreshScheduler(
+  () => {
+    // Перечитываем серверный расчет баланса после realtime-изменений сделок.
+    loadFinanceTrCardBalance()
+  },
+  TR_CARD_BALANCE_REALTIME_REFRESH_MIN_MS,
+)
+
+watch(
+  [activeTab, () => auth.state.token],
+  async ([, token]) => {
+    // Баланс TR-карты в шапке перечитываем при каждом переходе, чтобы всем был виден свежий остаток.
+    if (!token) return
+    await loadFinanceTrCardBalance()
+  },
+  { immediate: true },
+)
 
 watch(
   [activeTab, () => auth.state.token],
@@ -1352,8 +1372,6 @@ watch(
     if (!financeLoaded.value) {
       await loadFinanceProjectsReport()
     }
-    // Баланс TR-карты перечитываем при каждом входе на вкладку, чтобы видеть новые проведенные сделки.
-    await loadFinanceTrCardBalance()
   },
 )
 const slotTypes = ref([])
@@ -2407,12 +2425,21 @@ const topBarCtx = asCtx({
   canViewUsersSection: canViewUsersTab,
   canViewProfileSection,
   canViewDashboardSection,
+  canManageRolePermissions,
   showChatsTab,
   showUsersTab,
   showDashboard,
   managersLoadItems,
   managersLoadOnlineCount,
   managersLoadLoading,
+  financeTrCardBalance,
+  financeTrCardBalanceDraft,
+  financeTrCardBalanceLoading,
+  financeTrCardBalanceSaving,
+  financeTrCardBalanceError,
+  loadFinanceTrCardBalance,
+  saveFinanceTrCardBalance,
+  formatPrice,
   onLogout,
 })
 
@@ -3591,6 +3618,7 @@ useWorkLifecycle({
       managersRealtimeRefreshTimer = null
     }
     managersRealtimeRefreshQueued = false
+    trCardBalanceRealtimeRefreshScheduler?.cleanup()
   },
   startPresenceHeartbeatPolling,
   stopGameImportStatusPolling: stopProductImportStatusPolling,
