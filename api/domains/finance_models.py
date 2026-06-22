@@ -431,9 +431,13 @@ class FinanceSourcesReportDetailRowOut(BaseModel):
     reason: Optional[str] = None
 
 
+class FinanceSourcesReportDetailTotalsOut(FinancePnlTotalsOut):
+    purchase_cost: Decimal = Decimal("0")
+
+
 class FinanceSourcesReportDetailsOut(BaseModel):
     title: str
-    totals: FinancePnlTotalsOut
+    totals: FinanceSourcesReportDetailTotalsOut
     items: list[FinanceSourcesReportDetailRowOut] = Field(default_factory=list)
 
 
@@ -503,3 +507,20 @@ class FinanceCashFlowOpeningBalanceOut(BaseModel):
     amount: Decimal
     comment: Optional[str] = None
     updated_at: datetime
+
+
+class FinanceCardBalanceSetIn(BaseModel):
+    amount: Decimal
+    comment: Optional[str] = None
+
+
+class FinanceCardBalanceOut(BaseModel):
+    card_code: str
+    region_code: str
+    currency: str
+    snapshot_balance: Decimal = Decimal("0")
+    spent_after_snapshot: Decimal = Decimal("0")
+    current_balance: Decimal = Decimal("0")
+    snapshot_at: Optional[datetime] = None
+    snapshot_manual: bool = False
+    comment: Optional[str] = None

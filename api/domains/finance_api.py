@@ -14,6 +14,8 @@ from .wildberries_service import aggregate_wildberries_report_rows, fetch_wildbe
 from .ozon_service import aggregate_ozon_finance_transactions, fetch_ozon_finance_transactions, normalize_ozon_store_code
 from .finance_models import (
     FinanceBootstrapOut,
+    FinanceCardBalanceOut,
+    FinanceCardBalanceSetIn,
     FinanceCashFlowDetailRowOut,
     FinanceCashFlowDetailsOut,
     FinanceCashFlowLineOut,
@@ -52,6 +54,7 @@ from .finance_models import (
     FinanceSourceOut,
     FinanceSourcesReportOut,
     FinanceSourcesReportDetailRowOut,
+    FinanceSourcesReportDetailTotalsOut,
     FinanceSourcesReportDetailsOut,
     FinanceSourcesReportRowOut,
     FinanceStatusOut,
@@ -3158,12 +3161,15 @@ def mount_finance_routes(
 
         items: list[FinanceSourcesReportDetailRowOut] = []
         revenue_total = Decimal("0")
+        purchase_cost_total = Decimal("0")
         direct_total = Decimal("0")
         for row in rows:
             row_revenue = _round_money(Decimal(row[15] or 0))
+            row_purchase_cost = _round_money(Decimal(row[16] or 0))
             row_direct = _round_money(Decimal(row[18] or 0))
             row_cash_flow = _round_money(row_revenue - row_direct)
             revenue_total += row_revenue
+            purchase_cost_total += row_purchase_cost
             direct_total += row_direct
             items.append(
                 FinanceSourcesReportDetailRowOut(
@@ -3182,7 +3188,7 @@ def mount_finance_routes(
                     item_title=str(row[13]) if row[13] is not None else None,
                     qty=Decimal(row[14] or 0),
                     revenue=row_revenue,
-                    purchase_cost=_round_money(Decimal(row[16] or 0)),
+                    purchase_cost=row_purchase_cost,
                     purchase_cost_rate=Decimal(str(row[17])) if row[17] is not None else None,
                     direct_expense=row_direct,
                     cash_flow=row_cash_flow,
@@ -3197,6 +3203,7 @@ def mount_finance_routes(
             )
 
         revenue_total = _round_money(revenue_total)
+        purchase_cost_total = _round_money(purchase_cost_total)
         direct_total = _round_money(direct_total)
         cash_flow_total = _round_money(revenue_total - direct_total)
         margin_total = _round_ratio((cash_flow_total / revenue_total) if revenue_total != 0 else Decimal("0"))
@@ -3204,8 +3211,9 @@ def mount_finance_routes(
         title_region = "Без региона" if region_empty else (f"region_id={region_id}" if region_id is not None else "Все регионы")
         return FinanceSourcesReportDetailsOut(
             title=f"{title_source} / {title_region}",
-            totals=FinancePnlTotalsOut(
+            totals=FinanceSourcesReportDetailTotalsOut(
                 revenue=revenue_total,
+                purchase_cost=purchase_cost_total,
                 direct_expense=direct_total,
                 indirect_expense=Decimal("0"),
                 gross_profit=cash_flow_total,
@@ -3248,6 +3256,88 @@ def mount_finance_routes(
             comment=row[2],
             updated_at=row[3],
         )
+
+    def _load_finance_card_balance(conn, card_code: str = "TR") -> FinanceCardBalanceOut:
+        # Считаем баланс карты от последнего ручного снимка и завершенных TR-сделок после него.
+        normalized_card_code = _normalize_code(card_code, upper=True) or "TR"
+        region_code = "TR"
+        currency = "TRY"
+        snapshot_row = q1(
+            conn,
+            """
+            SELECT card_code, region_code, currency, amount, comment, created_by, created_at
+            FROM finance.card_balance_snapshots
+            WHERE upper(card_code) = %s
+            ORDER BY created_at DESC, snapshot_id DESC
+            LIMIT 1
+            """,
+            (normalized_card_code,),
+        )
+        snapshot_at = snapshot_row[6] if snapshot_row else None
+        snapshot_balance = _round_money(Decimal((snapshot_row or [None, None, None, 0])[3] or 0))
+        filters = [
+            "d.deal_type_code = 'sale'",
+            "d.flow_status_code = 'completed'",
+            "d.status_code = 'confirmed'",
+            "d.completed_at IS NOT NULL",
+            "di.returned_at IS NULL",
+            "upper(COALESCE(rd.code, '')) = %s",
+            "COALESCE(di.purchase_cost, 0) <> 0",
+        ]
+        params: list[Any] = [region_code]
+        if snapshot_at is not None:
+            filters.append("d.completed_at > %s")
+            params.append(snapshot_at)
+        spent_row = q1(
+            conn,
+            f"""
+            SELECT COALESCE(SUM(di.purchase_cost * di.qty), 0) AS spent_after_snapshot
+            FROM app.deal_items di
+            JOIN app.deals d ON d.deal_id = di.deal_id
+            LEFT JOIN app.regions rd ON rd.region_id = d.region_id
+            WHERE {' AND '.join(filters)}
+            """,
+            tuple(params),
+        )
+        spent_after_snapshot = _round_money(Decimal((spent_row or [0])[0] or 0))
+        return FinanceCardBalanceOut(
+            card_code=normalized_card_code,
+            region_code=region_code,
+            currency=currency,
+            snapshot_balance=snapshot_balance,
+            spent_after_snapshot=spent_after_snapshot,
+            current_balance=_round_money(snapshot_balance - spent_after_snapshot),
+            snapshot_at=snapshot_at,
+            snapshot_manual=bool(snapshot_row),
+            comment=snapshot_row[4] if snapshot_row else None,
+        )
+
+    @app.get("/finance/card-balances/tr", response_model=FinanceCardBalanceOut)
+    def finance_get_tr_card_balance(user=Depends(get_current_user)):
+        # Возвращаем текущий баланс TR-карты для виджета в разделе Финансы.
+        with psycopg.connect(DB_DSN) as conn:
+            return _load_finance_card_balance(conn, "TR")
+
+    @app.put("/finance/card-balances/tr", response_model=FinanceCardBalanceOut)
+    def finance_set_tr_card_balance(
+        payload: FinanceCardBalanceSetIn,
+        user=Depends(require_role("admin", "owner")),
+    ):
+        # Фиксируем фактический баланс карты сейчас, чтобы будущие сделки списывались от нового снимка.
+        amount = _round_money(Decimal(payload.amount or 0))
+        comment = (payload.comment or "").strip() or None
+        actor = getattr(user, "username", "") or ""
+        with psycopg.connect(DB_DSN) as conn:
+            exec1(
+                conn,
+                """
+                INSERT INTO finance.card_balance_snapshots(card_code, region_code, currency, amount, comment, created_by)
+                VALUES ('TR', 'TR', 'TRY', %s, %s, %s)
+                """,
+                (amount, comment, actor),
+            )
+            conn.commit()
+            return _load_finance_card_balance(conn, "TR")
 
     @app.get("/finance/reports/cash-flow", response_model=FinanceCashFlowReportOut)
     def finance_report_cash_flow(

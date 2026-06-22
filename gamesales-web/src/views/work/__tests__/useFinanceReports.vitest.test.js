@@ -81,6 +81,7 @@ describe('useFinanceReports', () => {
     h.apiGet.mockResolvedValueOnce({
       totals: {
         revenue: '35821.00',
+        purchase_cost: '1660.00',
         direct_expense: '25840.00',
         operating_profit: '9981.00',
         margin: '0.2786',
@@ -97,6 +98,7 @@ describe('useFinanceReports', () => {
     )
     expect(h.finance.financeSourceDetailsOpen.value).toBe(true)
     expect(h.finance.financeSourceDetailsTitle.value).toBe('Услуга / TR')
+    expect(h.finance.financeSourceDetailsTotals.purchase_cost).toBe(1660)
     expect(h.finance.financeSourceDetailsTotals.operating_profit).toBe(9981)
     expect(h.finance.financeSourceDetails.value[0]?.deal_id).toBe(16308)
   })
@@ -192,6 +194,55 @@ describe('useFinanceReports', () => {
     )
     expect(h.apiGet).toHaveBeenCalledWith('/finance/reports/cash-flow?month=2026-07', { token: 'token-1' })
     expect(h.finance.financeCashFlowOpeningOk.value).toBe('Начальный остаток сохранен')
+  })
+
+  it('loads TR card balance and prepares current balance draft', async () => {
+    const h = createHarness()
+    h.apiGet.mockResolvedValueOnce({
+      card_code: 'TR',
+      region_code: 'TR',
+      currency: 'TRY',
+      snapshot_balance: '25000.00',
+      spent_after_snapshot: '6000.00',
+      current_balance: '19000.00',
+      snapshot_at: '2026-06-22T10:00:00+03:00',
+      snapshot_manual: true,
+      comment: 'manual',
+    })
+
+    const ok = await h.finance.loadFinanceTrCardBalance()
+
+    expect(ok).toBe(true)
+    expect(h.apiGet).toHaveBeenCalledWith('/finance/card-balances/tr', { token: 'token-1' })
+    expect(h.finance.financeTrCardBalanceLoaded.value).toBe(true)
+    expect(h.finance.financeTrCardBalance.current_balance).toBe(19000)
+    expect(h.finance.financeTrCardBalance.spent_after_snapshot).toBe(6000)
+    expect(h.finance.financeTrCardBalanceDraft.value).toBe('19000.00')
+  })
+
+  it('saves TR card balance as current factual snapshot', async () => {
+    const h = createHarness()
+    h.finance.financeTrCardBalanceDraft.value = '3456.78'
+    h.apiPut.mockResolvedValueOnce({
+      card_code: 'TR',
+      region_code: 'TR',
+      currency: 'TRY',
+      snapshot_balance: '3456.78',
+      spent_after_snapshot: '0.00',
+      current_balance: '3456.78',
+      snapshot_at: '2026-06-22T12:00:00+03:00',
+      snapshot_manual: true,
+    })
+
+    const ok = await h.finance.saveFinanceTrCardBalance()
+
+    expect(ok).toBe(true)
+    expect(h.apiPut).toHaveBeenCalledWith(
+      '/finance/card-balances/tr',
+      { amount: 3456.78, comment: 'Ручная установка фактического баланса' },
+      { token: 'token-1' },
+    )
+    expect(h.finance.financeTrCardBalance.current_balance).toBe(3456.78)
   })
 
   it('loads entries journal with filters', async () => {

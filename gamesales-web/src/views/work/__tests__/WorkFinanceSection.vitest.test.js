@@ -15,6 +15,8 @@ function buildCtx(overrides = {}) {
     financeMode: 'entry',
     financeLoading: false,
     financeCashFlowLoading: false,
+    financeTrCardBalanceLoading: false,
+    financeTrCardBalanceSaving: false,
     financeEntriesLoading: false,
     financeEntrySaving: false,
     financeCatalogSaving: false,
@@ -32,6 +34,7 @@ function buildCtx(overrides = {}) {
     financeCatalogError: '',
     financeCatalogOk: '',
     financeEntryOk: '',
+    financeTrCardBalanceError: '',
     financeYandexSyncError: '',
     financeYandexSyncOk: '',
     financeYandexSyncStatus: '',
@@ -114,7 +117,7 @@ function buildCtx(overrides = {}) {
     financeRegions: [{ region_id: 10, code: 'TR', name: 'Turkey' }],
     financeSources: [{ source_id: 99, code: 'ym', name: 'ASAT' }],
     financeStatuses: [{ code: 'confirmed', name: 'Подтверждено' }],
-    financeEntries: [{ entry_id: 1, biz_date: '2026-05-30', operation_id: 7, project_id: 1, region_id: 10, source_id: 99, qty: '1.00', amount: '100.00', status_code: 'confirmed', created_by: 'qa' }],
+    financeEntries: [{ entry_id: 1, biz_date: '2026-05-30', operation_id: 7, project_id: 1, region_id: 10, source_id: 99, qty: '1.00', amount: '100.00', comment: 'Ручная корректировка', status_code: 'confirmed', created_by: 'qa' }],
     financeReportTotals: {
       revenue: 1000,
       direct_expense: 500,
@@ -195,6 +198,7 @@ function buildCtx(overrides = {}) {
     ],
     financeSourceDetailsTotals: {
       revenue: 5810,
+      purchase_cost: 1660,
       direct_expense: 4150,
       indirect_expense: 0,
       operating_profit: 1660,
@@ -204,6 +208,7 @@ function buildCtx(overrides = {}) {
     financeSourceDetailsOpen: false,
     financeSourceDetailsLoading: false,
     financeCashFlowLoaded: true,
+    financeTrCardBalanceLoaded: true,
     financeCashFlowTotals: {
       revenue: 20000,
       expense: 7000,
@@ -215,6 +220,18 @@ function buildCtx(overrides = {}) {
     },
     financeCashFlowMonth: '2026-05',
     financeCashFlowOpeningDraft: '3000',
+    financeTrCardBalance: {
+      card_code: 'TR',
+      region_code: 'TR',
+      currency: 'TRY',
+      snapshot_balance: 25000,
+      spent_after_snapshot: 6000,
+      current_balance: 19000,
+      snapshot_at: '2026-05-10T11:20:00+03:00',
+      snapshot_manual: true,
+      comment: '',
+    },
+    financeTrCardBalanceDraft: '19000',
     financeCashFlowOpeningSaving: false,
     financeCashFlowDetailsLoading: false,
     financeCashFlowOpeningOk: '',
@@ -270,6 +287,8 @@ function buildCtx(overrides = {}) {
     clearFinanceCashFlowDetails: vi.fn(),
     resetFinanceCashFlowDetailsPeriod: vi.fn(),
     saveFinanceCashFlowOpeningBalance: vi.fn(),
+    loadFinanceTrCardBalance: vi.fn(),
+    saveFinanceTrCardBalance: vi.fn(),
     syncFinanceYandexMarket: vi.fn(),
     syncFinanceWildberries: vi.fn(),
     syncFinanceOzon: vi.fn(),
@@ -352,6 +371,9 @@ describe('WorkFinanceSection', () => {
     await wrapper.find('[data-test="finance-mode-cash-flow"]').trigger('click')
     await wrapper.find('[data-test="finance-apply-cash-flow"]').trigger('click')
     await wrapper.find('[data-test="finance-save-cash-flow-opening"]').trigger('click')
+    await wrapper.find('[data-test="finance-refresh-tr-card-balance"]').trigger('click')
+    await wrapper.find('[data-test="finance-edit-tr-card-balance"]').trigger('click')
+    await wrapper.find('[data-test="finance-save-tr-card-balance"]').trigger('click')
     await wrapper.find('[data-test="finance-mode-catalogs"]').trigger('click')
     await wrapper.find('[data-test="finance-open-create-type"]').trigger('click')
     await wrapper.find('[data-test="finance-create-type"]').trigger('click')
@@ -366,6 +388,8 @@ describe('WorkFinanceSection', () => {
     expect(ctx.loadFinanceProjectsReport).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceCashFlowReport).toHaveBeenCalledTimes(1)
     expect(ctx.saveFinanceCashFlowOpeningBalance).toHaveBeenCalledTimes(1)
+    expect(ctx.loadFinanceTrCardBalance).toHaveBeenCalledTimes(1)
+    expect(ctx.saveFinanceTrCardBalance).toHaveBeenCalledTimes(1)
     expect(ctx.createFinanceType).toHaveBeenCalledTimes(1)
     expect(ctx.createFinanceOperation).toHaveBeenCalledTimes(1)
   })
@@ -602,6 +626,8 @@ describe('WorkFinanceSection', () => {
       'Услуга / TR',
     )
     expect(wrapper.text()).toContain('Услуга / TR')
+    expect(wrapper.text()).toContain('Себестоимость')
+    expect(wrapper.text()).toContain('1660')
     expect(wrapper.text()).toContain('Сделка #16308')
     await wrapper.find('[data-test="finance-detail-open-deal-16308"]').trigger('click')
     expect(ctx.openFinanceDetailDeal).toHaveBeenCalledWith(16308, 'report')
@@ -643,6 +669,71 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('Шеринг TR')
     expect(wrapper.text()).toContain('Закуп TR')
     expect(wrapper.text()).toContain('Маркетинг')
+  })
+
+  it('shows TR card balance with sign color', async () => {
+    const ctx = buildCtx()
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-test="finance-tr-card-balance"]').text()).toContain('19000 TRY')
+    expect(wrapper.find('.finance-tr-card__value').classes()).toContain('finance-tr-card__value--positive')
+    expect(wrapper.text()).not.toContain('Списано: 6000 TRY')
+    expect(wrapper.text()).not.toContain('снимок 2026-05-10 11:20')
+    expect(wrapper.find('[aria-label="Фактический баланс TR-карты"]').exists()).toBe(false)
+    await wrapper.find('[data-test="finance-edit-tr-card-balance"]').trigger('click')
+    expect(wrapper.text()).toContain('Баланс TR-карты')
+    expect(wrapper.find('[aria-label="Фактический баланс TR-карты"]').exists()).toBe(true)
+    await wrapper.find('[data-test="finance-cancel-tr-card-balance"]').trigger('click')
+    expect(wrapper.find('[aria-label="Фактический баланс TR-карты"]').exists()).toBe(false)
+
+    const negativeWrapper = mount(WorkFinanceSection, {
+      props: {
+        ctx: buildCtx({
+          financeTrCardBalance: {
+            ...ctx.financeTrCardBalance,
+            current_balance: -500,
+          },
+        }),
+      },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    expect(negativeWrapper.find('.finance-tr-card__value').text()).toContain('-500 TRY')
+    expect(negativeWrapper.find('.finance-tr-card__value').classes()).toContain('finance-tr-card__value--negative')
+
+    const loadingWrapper = mount(WorkFinanceSection, {
+      props: { ctx: buildCtx({ financeTrCardBalanceLoading: true }) },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    expect(loadingWrapper.find('[data-test="finance-refresh-tr-card-balance"] .wheel-and-hamster').exists()).toBe(true)
   })
 
   it('opens cash flow detail modal and applies date interval', async () => {
@@ -785,5 +876,34 @@ describe('WorkFinanceSection', () => {
 
     expect(ctx.deleteFinanceEntry).toHaveBeenCalledWith(1)
     confirmSpy.mockRestore()
+  })
+
+  it('shows entry comments in journal', async () => {
+    const ctx = buildCtx({
+      financeEntries: [
+        { entry_id: 1, biz_date: '2026-05-30', operation_id: 7, project_id: 1, region_id: 10, source_id: 99, qty: '1.00', amount: '100.00', comment: 'Ручная корректировка', status_code: 'confirmed' },
+        { entry_id: 2, biz_date: '2026-05-31', operation_id: 7, project_id: 1, region_id: 10, source_id: 99, qty: '1.00', amount: '200.00', comment: '', status_code: 'confirmed' },
+      ],
+      financeEntriesTotal: 2,
+    })
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-journal"]').trigger('click')
+    const rows = wrapper.findAll('tbody tr')
+
+    expect(wrapper.find('table thead').text()).toContain('Комментарий')
+    expect(rows[0].text()).toContain('Ручная корректировка')
+    expect(rows[1].text()).toContain('—')
   })
 })

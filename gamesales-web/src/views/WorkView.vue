@@ -1253,8 +1253,10 @@ const {
   financeSourceDetailsTitle,
   financeSourceDetailsOpen,
   financeCashFlowTotals,
+  financeTrCardBalance,
   financeCashFlowMonth,
   financeCashFlowOpeningDraft,
+  financeTrCardBalanceDraft,
   financeCashFlowRevenues,
   financeCashFlowExpenses,
   financeCashFlowDetails,
@@ -1270,10 +1272,13 @@ const {
   financeCatalogsLoaded,
   financeLoaded,
   financeCashFlowLoaded,
+  financeTrCardBalanceLoaded,
   financeEntriesLoaded,
   financeLoading,
   financeCashFlowLoading,
   financeCashFlowOpeningSaving,
+  financeTrCardBalanceLoading,
+  financeTrCardBalanceSaving,
   financeCashFlowDetailsLoading,
   financeEntriesLoading,
   financeEntrySaving,
@@ -1294,6 +1299,7 @@ const {
   financeCatalogOk,
   financeEntryOk,
   financeCashFlowOpeningOk,
+  financeTrCardBalanceError,
   financeYandexSyncError,
   financeYandexSyncOk,
   financeWildberriesSyncError,
@@ -1324,6 +1330,8 @@ const {
   clearFinanceCashFlowDetails,
   resetFinanceCashFlowDetailsPeriod,
   saveFinanceCashFlowOpeningBalance,
+  loadFinanceTrCardBalance,
+  saveFinanceTrCardBalance,
   syncFinanceYandexMarket,
   syncFinanceWildberries,
   syncFinanceOzon,
@@ -1343,6 +1351,10 @@ watch(
     }
     if (!financeLoaded.value) {
       await loadFinanceProjectsReport()
+    }
+    if (!financeTrCardBalanceLoaded.value) {
+      // Подгружаем виджет TR-карты вместе с finance-вкладкой, чтобы справа сразу был актуальный остаток.
+      await loadFinanceTrCardBalance()
     }
   },
 )
@@ -3453,8 +3465,10 @@ const financeSectionCtx = asCtx({
   financeSourceDetailsTitle,
   financeSourceDetailsOpen,
   financeCashFlowTotals,
+  financeTrCardBalance,
   financeCashFlowMonth,
   financeCashFlowOpeningDraft,
+  financeTrCardBalanceDraft,
   financeCashFlowRevenues,
   financeCashFlowExpenses,
   financeCashFlowDetails,
@@ -3467,6 +3481,10 @@ const financeSectionCtx = asCtx({
   financeWildberriesSyncStatus,
   financeOzonSyncResult,
   financeOzonSyncStatus,
+  financeTrCardBalanceLoaded,
+  financeTrCardBalanceLoading,
+  financeTrCardBalanceSaving,
+  financeTrCardBalanceError,
   loadFinanceEntries,
   createFinanceEntry,
   deleteFinanceEntry,
@@ -3491,6 +3509,8 @@ const financeSectionCtx = asCtx({
   clearFinanceCashFlowDetails,
   resetFinanceCashFlowDetailsPeriod,
   saveFinanceCashFlowOpeningBalance,
+  loadFinanceTrCardBalance,
+  saveFinanceTrCardBalance,
   syncFinanceYandexMarket,
   syncFinanceWildberries,
   syncFinanceOzon,

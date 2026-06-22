@@ -70,6 +70,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeSourceDetails = ref([])
   const financeSourceDetailsTotals = reactive({
     revenue: 0,
+    purchase_cost: 0,
     direct_expense: 0,
     indirect_expense: 0,
     gross_profit: 0,
@@ -85,8 +86,20 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     opening_balance: 0,
     current_balance: 0,
   })
+  const financeTrCardBalance = reactive({
+    card_code: 'TR',
+    region_code: 'TR',
+    currency: 'TRY',
+    snapshot_balance: 0,
+    spent_after_snapshot: 0,
+    current_balance: 0,
+    snapshot_at: '',
+    snapshot_manual: false,
+    comment: '',
+  })
   const financeCashFlowMonth = ref(currentMonth)
   const financeCashFlowOpeningDraft = ref('')
+  const financeTrCardBalanceDraft = ref('')
   const financeCashFlowRevenues = ref([])
   const financeCashFlowExpenses = ref([])
   const financeCashFlowDetails = ref([])
@@ -128,10 +141,13 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeCatalogsLoaded = ref(false)
   const financeLoaded = ref(false)
   const financeCashFlowLoaded = ref(false)
+  const financeTrCardBalanceLoaded = ref(false)
   const financeEntriesLoaded = ref(false)
   const financeLoading = ref(false)
   const financeCashFlowLoading = ref(false)
   const financeCashFlowOpeningSaving = ref(false)
+  const financeTrCardBalanceLoading = ref(false)
+  const financeTrCardBalanceSaving = ref(false)
   const financeCashFlowDetailsLoading = ref(false)
   const financeEntriesLoading = ref(false)
   const financeEntrySaving = ref(false)
@@ -152,6 +168,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeCatalogOk = ref('')
   const financeEntryOk = ref('')
   const financeCashFlowOpeningOk = ref('')
+  const financeTrCardBalanceError = ref(null)
   const financeYandexSyncError = ref(null)
   const financeYandexSyncOk = ref('')
   const financeWildberriesSyncError = ref(null)
@@ -227,6 +244,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     // Закрываем расшифровку и сбрасываем суммы, чтобы не показывать старую строку отчета.
     financeSourceDetails.value = []
     financeSourceDetailsTotals.revenue = 0
+    financeSourceDetailsTotals.purchase_cost = 0
     financeSourceDetailsTotals.direct_expense = 0
     financeSourceDetailsTotals.indirect_expense = 0
     financeSourceDetailsTotals.gross_profit = 0
@@ -267,6 +285,26 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeCashFlowRevenues.value = []
     financeCashFlowExpenses.value = []
     clearFinanceCashFlowDetails()
+  }
+
+  const applyFinanceTrCardBalance = (data) => {
+    // Перекладываем ответ API в реактивный объект и готовим поле ручной установки.
+    financeTrCardBalance.card_code = String(data?.card_code || 'TR')
+    financeTrCardBalance.region_code = String(data?.region_code || 'TR')
+    financeTrCardBalance.currency = String(data?.currency || 'TRY')
+    financeTrCardBalance.snapshot_balance = Number(data?.snapshot_balance || 0)
+    financeTrCardBalance.spent_after_snapshot = Number(data?.spent_after_snapshot || 0)
+    financeTrCardBalance.current_balance = Number(data?.current_balance || 0)
+    financeTrCardBalance.snapshot_at = String(data?.snapshot_at || '')
+    financeTrCardBalance.snapshot_manual = Boolean(data?.snapshot_manual)
+    financeTrCardBalance.comment = String(data?.comment || '')
+    financeTrCardBalanceDraft.value = String(data?.current_balance ?? '')
+  }
+
+  const clearFinanceTrCardBalance = () => {
+    // Сбрасываем виджет карты TR, чтобы после ошибки не оставался старый расчет.
+    applyFinanceTrCardBalance({})
+    financeTrCardBalanceLoaded.value = false
   }
 
   const loadFinanceBootstrap = async () => {
@@ -450,6 +488,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       const data = await apiGet(`/finance/reports/sources/details${query ? `?${query}` : ''}`, { token: auth.state.token })
       financeSourceDetails.value = Array.isArray(data?.items) ? data.items : []
       financeSourceDetailsTotals.revenue = Number(data?.totals?.revenue || 0)
+      financeSourceDetailsTotals.purchase_cost = Number(data?.totals?.purchase_cost || 0)
       financeSourceDetailsTotals.direct_expense = Number(data?.totals?.direct_expense || 0)
       financeSourceDetailsTotals.indirect_expense = Number(data?.totals?.indirect_expense || 0)
       financeSourceDetailsTotals.gross_profit = Number(data?.totals?.gross_profit || 0)
@@ -560,6 +599,49 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       return false
     } finally {
       financeCashFlowOpeningSaving.value = false
+    }
+  }
+
+  const loadFinanceTrCardBalance = async () => {
+    // Загружаем расчетный остаток TR-карты от последнего ручного снимка.
+    financeTrCardBalanceError.value = null
+    financeTrCardBalanceLoading.value = true
+    try {
+      const data = await apiGet('/finance/card-balances/tr', { token: auth.state.token })
+      applyFinanceTrCardBalance(data)
+      financeTrCardBalanceLoaded.value = true
+      return true
+    } catch (e) {
+      clearFinanceTrCardBalance()
+      financeTrCardBalanceError.value = mapApiError(e?.message)
+      return false
+    } finally {
+      financeTrCardBalanceLoading.value = false
+    }
+  }
+
+  const saveFinanceTrCardBalance = async () => {
+    // Сохраняем фактический остаток карты сейчас и сразу перечитываем расчет списаний.
+    financeTrCardBalanceError.value = null
+    const amount = Number(financeTrCardBalanceDraft.value)
+    if (!Number.isFinite(amount)) {
+      financeTrCardBalanceError.value = 'Укажите баланс TR-карты'
+      return false
+    }
+    financeTrCardBalanceSaving.value = true
+    try {
+      const data = await apiPut('/finance/card-balances/tr', {
+        amount,
+        comment: 'Ручная установка фактического баланса',
+      }, { token: auth.state.token })
+      applyFinanceTrCardBalance(data)
+      financeTrCardBalanceLoaded.value = true
+      return true
+    } catch (e) {
+      financeTrCardBalanceError.value = mapApiError(e?.message)
+      return false
+    } finally {
+      financeTrCardBalanceSaving.value = false
     }
   }
 
@@ -1114,8 +1196,10 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeSourceDetailsTitle,
     financeSourceDetailsOpen,
     financeCashFlowTotals,
+    financeTrCardBalance,
     financeCashFlowMonth,
     financeCashFlowOpeningDraft,
+    financeTrCardBalanceDraft,
     financeCashFlowRevenues,
     financeCashFlowExpenses,
     financeCashFlowDetails,
@@ -1131,10 +1215,13 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeCatalogsLoaded,
     financeLoaded,
     financeCashFlowLoaded,
+    financeTrCardBalanceLoaded,
     financeEntriesLoaded,
     financeLoading,
     financeCashFlowLoading,
     financeCashFlowOpeningSaving,
+    financeTrCardBalanceLoading,
+    financeTrCardBalanceSaving,
     financeCashFlowDetailsLoading,
     financeEntriesLoading,
     financeEntrySaving,
@@ -1155,6 +1242,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeCatalogOk,
     financeEntryOk,
     financeCashFlowOpeningOk,
+    financeTrCardBalanceError,
     financeYandexSyncError,
     financeYandexSyncOk,
     financeWildberriesSyncError,
@@ -1185,6 +1273,8 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     clearFinanceCashFlowDetails,
     resetFinanceCashFlowDetailsPeriod,
     saveFinanceCashFlowOpeningBalance,
+    loadFinanceTrCardBalance,
+    saveFinanceTrCardBalance,
     syncFinanceYandexMarket,
     syncFinanceWildberries,
     syncFinanceOzon,

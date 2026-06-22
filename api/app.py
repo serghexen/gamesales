@@ -112,6 +112,22 @@ def ensure_analytics_schema():
                 )
                 """,
             )
+            exec1(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS finance.card_balance_snapshots (
+                  snapshot_id bigserial PRIMARY KEY,
+                  card_code text NOT NULL,
+                  region_code text NOT NULL,
+                  currency text NOT NULL DEFAULT 'TRY',
+                  amount numeric(14,2) NOT NULL DEFAULT 0,
+                  comment text,
+                  created_by text NOT NULL DEFAULT '',
+                  created_at timestamptz NOT NULL DEFAULT now()
+                )
+                """,
+            )
+            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_card_balance_snapshots_card_created ON finance.card_balance_snapshots(card_code, created_at DESC, snapshot_id DESC)")
             # Новая логика подписок считает занятость по типу слота/емкости, поэтому
             # глобальный unique по subscription_term_id больше не нужен.
             exec1(conn, "DROP INDEX IF EXISTS app.uq_slot_assignments_active_subscription_term")

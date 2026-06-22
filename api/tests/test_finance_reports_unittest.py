@@ -172,6 +172,7 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         body = res.json()
         self.assertEqual(body["totals"]["revenue"], "5810.00")
+        self.assertEqual(body["totals"]["purchase_cost"], "1660.00")
         self.assertEqual(body["totals"]["direct_expense"], "4150.00")
         self.assertEqual(body["totals"]["operating_profit"], "1660.00")
         self.assertEqual(body["items"][0]["deal_id"], 16308)
@@ -384,6 +385,67 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(body["month"], "2026-07-01")
         self.assertEqual(body["amount"], "12345.67")
         self.assertTrue(any("finance.cash_flow_opening_balances" in sql for sql in sql_collector))
+
+    # Баланс TR-карты считается от последнего ручного снимка и закупок завершенных TR-продаж.
+    def test_finance_tr_card_balance_report_success(self):
+        snapshot_at = datetime(2026, 6, 22, 10, 0, 0)
+        script = [
+            {"one": ("TR", "TR", "TRY", 25000.0, "fact", "admin", snapshot_at)},
+            {"one": (6000.0,)},
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/finance/card-balances/tr",
+                    headers=self._auth_headers(role="manager"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["card_code"], "TR")
+        self.assertEqual(body["currency"], "TRY")
+        self.assertEqual(body["snapshot_balance"], "25000.00")
+        self.assertEqual(body["spent_after_snapshot"], "6000.00")
+        self.assertEqual(body["current_balance"], "19000.00")
+        self.assertEqual(body["snapshot_manual"], True)
+        self.assertTrue(any("upper(COALESCE(rd.code, '')) = %s" in sql for sql in sql_collector))
+        self.assertTrue(any("di.purchase_cost * di.qty" in sql for sql in sql_collector))
+        self.assertTrue(any("d.completed_at > %s" in sql for sql in sql_collector))
+        self.assertFalse(any("purchase_cost_rate" in sql for sql in sql_collector))
+
+    # Установка фактического баланса TR создает новый снимок и возвращает пересчитанный остаток.
+    def test_finance_tr_card_balance_set_snapshot(self):
+        snapshot_at = datetime(2026, 6, 22, 12, 0, 0)
+        script = [
+            {"one": None},
+            {"one": ("TR", "TR", "TRY", 3456.78, "Ручная установка фактического баланса", "admin", snapshot_at)},
+            {"one": (0.0,)},
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.put(
+                    "/finance/card-balances/tr",
+                    json={"amount": "3456.78", "comment": "Ручная установка фактического баланса"},
+                    headers=self._auth_headers(role="admin"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["snapshot_balance"], "3456.78")
+        self.assertEqual(body["current_balance"], "3456.78")
+        self.assertTrue(any("INSERT INTO finance.card_balance_snapshots" in sql for sql in sql_collector))
 
     # Смена типа операции должна пересобрать postings, чтобы отчеты не жили со старой классификацией.
     def test_finance_update_operation_rebuilds_entry_postings_on_type_change(self):
