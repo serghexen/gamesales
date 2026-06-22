@@ -574,7 +574,7 @@
                                       readonly
                                     />
                                     <button
-                                      v-if="!isSharingReserveUsed('edit')"
+                                      v-if="canCopySharingReserve('edit')"
                                       class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
                                       type="button"
                                       :aria-label="getSharingFieldCopyLabel('edit', 'reserve')"
@@ -1387,7 +1387,7 @@
                                   <div class="input--select-wrap">
                                     <input class="input input--with-copy" :value="getSharingReserveDisplayValue('new')" readonly />
                                     <button
-                                      v-if="!isSharingReserveUsed('new')"
+                                      v-if="canCopySharingReserve('new')"
                                       class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
                                       type="button"
                                       :aria-label="getSharingFieldCopyLabel('new', 'reserve')"
@@ -2654,6 +2654,17 @@ function isSharingReserveUsed(target) {
   return getUsedReserveKeysByAccount(accountId, null).has(reserveKey)
 }
 
+// Разрешает копировать резерв своей уже сохраненной сделки, но не свободную выдачу чужого used-резерва.
+function canCopySharingReserve(target) {
+  const isEditTarget = target === 'edit'
+  const deal = isEditTarget ? editDeal.value : newDeal.value
+  const accountId = Number(deal?.account_id || 0)
+  const reserveKey = normalizeReserveKey(deal?.reserve_key)
+  if (!accountId || !reserveKey) return false
+  if (isEditTarget && Number(deal?.deal_id || 0)) return true
+  return !isSharingReserveUsed(target)
+}
+
 // Показывает выбранный резерв, а запрет копирования держим отдельно через кнопку и обработчик.
 function getSharingReserveDisplayValue(target) {
   const isEditTarget = target === 'edit'
@@ -2675,7 +2686,7 @@ function getSharingFieldCopyValue(target, field) {
     return isCopyPlaceholderValue(password) ? '' : password
   }
   if (field === 'reserve') {
-    if (isSharingReserveUsed(target)) return ''
+    if (!canCopySharingReserve(target)) return ''
     const reserveLabel = isEditTarget
       ? getDealReserveLabel(accountId, deal?.reserve_key, deal?.deal_id, { allowFallback: dealEditMode.value === 'edit', emptyLabel: '— не назначен' })
       : getDealReserveLabel(accountId, deal?.reserve_key, null, { allowFallback: true })
@@ -2697,15 +2708,17 @@ async function copySharingField(target, field) {
   let claimToken = ''
   try {
     if (field === 'reserve') {
-      if (!accountId || !reserveKey || isSharingReserveUsed(target)) return
-      const claim = await claimAccountReserve.value?.(accountId, reserveKey)
-      claimToken = String(claim?.claim_token || '').trim()
-      if (!claimToken) return
-      deal.reserve_claim_token = claimToken
-      const cacheKey = getReserveUsageCacheKey(accountId, isEditTarget ? deal?.deal_id : null)
-      accountReserveUsage.value = {
-        ...(accountReserveUsage.value || {}),
-        [cacheKey]: Array.from(new Set([...(accountReserveUsage.value?.[cacheKey] || []), reserveKey])),
+      if (!accountId || !reserveKey || !canCopySharingReserve(target)) return
+      if (!(isEditTarget && Number(deal?.deal_id || 0))) {
+        const claim = await claimAccountReserve.value?.(accountId, reserveKey)
+        claimToken = String(claim?.claim_token || '').trim()
+        if (!claimToken) return
+        deal.reserve_claim_token = claimToken
+        const cacheKey = getReserveUsageCacheKey(accountId, null)
+        accountReserveUsage.value = {
+          ...(accountReserveUsage.value || {}),
+          [cacheKey]: Array.from(new Set([...(accountReserveUsage.value?.[cacheKey] || []), reserveKey])),
+        }
       }
     }
     await copyTextToClipboard(value)
