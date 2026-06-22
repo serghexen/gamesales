@@ -1849,6 +1849,7 @@ async function reloadFinanceCatalogs() {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-bottom: 18px;
 }
 
 .finance-mode-row .profile-admin-links {
@@ -2080,6 +2081,8 @@ async function reloadFinanceCatalogs() {
 @media (max-width: 1100px) {
   .finance-mode-row {
     flex-direction: column;
+    align-items: stretch;
+    margin-bottom: 20px;
   }
 
   .finance-catalog-grid,
