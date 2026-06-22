@@ -1352,10 +1352,8 @@ watch(
     if (!financeLoaded.value) {
       await loadFinanceProjectsReport()
     }
-    if (!financeTrCardBalanceLoaded.value) {
-      // Подгружаем виджет TR-карты вместе с finance-вкладкой, чтобы справа сразу был актуальный остаток.
-      await loadFinanceTrCardBalance()
-    }
+    // Баланс TR-карты перечитываем при каждом входе на вкладку, чтобы видеть новые проведенные сделки.
+    await loadFinanceTrCardBalance()
   },
 )
 const slotTypes = ref([])
