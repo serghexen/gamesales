@@ -319,6 +319,8 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('Интеграции')
     expect(wrapper.text()).toContain('Отчет по источникам')
     expect(wrapper.text()).toContain('Cash Flow')
+    expect(wrapper.text()).not.toContain('Магазин')
+    expect(wrapper.text()).not.toContain('ASAT - wb')
     expect(wrapper.text()).toContain('Комментарий')
     expect(wrapper.text()).toContain('Продажа')
   })

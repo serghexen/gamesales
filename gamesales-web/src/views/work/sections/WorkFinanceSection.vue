@@ -191,13 +191,6 @@
 
             <div class="analytics-filters">
               <label class="field">
-                <span class="label">Магазин</span>
-                <select v-model="ctx.financeWildberriesSync.store_code" class="input input--select">
-                  <option value="asat">ASAT - wb</option>
-                  <option value="sps">SPS - wb</option>
-                </select>
-              </label>
-              <label class="field">
                 <span class="label">Дата</span>
                 <input v-model="ctx.financeNewEntry.biz_date" class="input" type="date" :max="ctx.maxDate" />
               </label>
