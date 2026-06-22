@@ -1109,12 +1109,14 @@ def mount_accounts_routes(
                 active_play_assignments AS (
                   SELECT
                     asa.account_id,
-                    asa.slot_type_code,
                     COUNT(*) AS active_count,
                     MIN(COALESCE(asa.assigned_at, now())) AS first_assigned_at
                   FROM app.account_slot_assignments asa
+                  JOIN app.slot_types st_active ON st_active.code = asa.slot_type_code
                   WHERE asa.released_at IS NULL
-                  GROUP BY asa.account_id, asa.slot_type_code
+                    AND asa.subscription_term_id IS NULL
+                    AND st_active.mode = 'activate'
+                  GROUP BY asa.account_id
                 ),
                 recent_duplicate_locks AS (
                   SELECT
@@ -1164,7 +1166,6 @@ def mount_accounts_routes(
                     JOIN app.slot_types st_gate ON st_gate.code = ss.slot_type_code
                     LEFT JOIN active_play_assignments apa
                       ON apa.account_id = ss.account_id
-                     AND apa.slot_type_code = ss.slot_type_code
                     LEFT JOIN recent_duplicate_locks rdl
                       ON rdl.account_id = ss.account_id
                      AND rdl.slot_type_code = ss.slot_type_code
@@ -1270,12 +1271,14 @@ def mount_accounts_routes(
                 active_play_assignments AS (
                   SELECT
                     asa.account_id,
-                    asa.slot_type_code,
                     COUNT(*) AS active_count,
                     MIN(COALESCE(asa.assigned_at, now())) AS first_assigned_at
                   FROM app.account_slot_assignments asa
+                  JOIN app.slot_types st_active ON st_active.code = asa.slot_type_code
                   WHERE asa.released_at IS NULL
-                  GROUP BY asa.account_id, asa.slot_type_code
+                    AND asa.subscription_term_id IS NULL
+                    AND st_active.mode = 'activate'
+                  GROUP BY asa.account_id
                 ),
                 recent_duplicate_locks AS (
                   SELECT
@@ -1332,7 +1335,7 @@ def mount_accounts_routes(
                 LEFT JOIN app.v_account_slot_status ss
                   ON ss.account_id = ba.account_id AND ss.slot_type_code = st.code
                 LEFT JOIN active_play_assignments apa
-                  ON apa.account_id = ba.account_id AND apa.slot_type_code = st.code
+                  ON apa.account_id = ba.account_id
                 LEFT JOIN recent_duplicate_locks rdl
                   ON rdl.account_id = ba.account_id AND rdl.slot_type_code = st.code
                 GROUP BY st.code

@@ -627,7 +627,6 @@ def mount_deals_routes(
         conn,
         *,
         account_id: int,
-        slot_type_code: str,
         slot_type,
         current_deal_item_id: Optional[int] = None,
     ) -> None:
@@ -639,16 +638,20 @@ def mount_deals_routes(
             conn,
             """
             SELECT COUNT(*), MIN(COALESCE(assigned_at, now()))
-            FROM app.account_slot_assignments
-            WHERE account_id=%s
-              AND slot_type_code=%s
-              AND released_at IS NULL
-              AND (%s::bigint IS NULL OR deal_item_id <> %s)
+            FROM app.account_slot_assignments asa
+            JOIN app.slot_types st ON st.code = asa.slot_type_code
+            WHERE asa.account_id=%s
+              AND asa.released_at IS NULL
+              AND asa.subscription_term_id IS NULL
+              AND st.mode='activate'
+              AND (%s::bigint IS NULL OR asa.deal_item_id <> %s)
             """,
-            (account_id, slot_type_code, current_deal_item_id, current_deal_item_id),
+            (account_id, current_deal_item_id, current_deal_item_id),
         )
         active_count = int((row[0] if row else 0) or 0)
         first_assigned_at = row[1] if row and len(row) > 1 else None
+        if active_count >= 2:
+            raise HTTPException(409, "Not enough free slots for selected slot type")
         if active_count != 1 or first_assigned_at is None:
             return
         is_open_row = q1(
@@ -709,7 +712,6 @@ def mount_deals_routes(
                 ensure_game_second_p2_slot_is_open(
                     conn,
                     account_id=payload.account_id,
-                    slot_type_code=payload.slot_type_code,
                     slot_type=slot_type,
                 )
                 free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
@@ -877,7 +879,6 @@ def mount_deals_routes(
                         ensure_game_second_p2_slot_is_open(
                             conn,
                             account_id=payload.account_id,
-                            slot_type_code=payload.slot_type_code,
                             slot_type=slot_type,
                         )
                     free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
@@ -1405,7 +1406,6 @@ def mount_deals_routes(
                         ensure_game_second_p2_slot_is_open(
                             conn,
                             account_id=new_account_id,
-                            slot_type_code=new_slot_type_code,
                             slot_type=checked_slot_type,
                             current_deal_item_id=deal_item_id,
                         )
