@@ -27,6 +27,39 @@ def mount_catalogs_routes(
     MessengerIn,
     MessengerUpdate,
 ):
+    def _sync_finance_region(conn, *, app_region_id: int, code: str, name: str, is_active: bool) -> None:
+        # Держим finance-справочник регионов в связке с основным справочником, чтобы отчеты не теряли регион.
+        normalized_code = (code or "").strip().upper()
+        normalized_name = (name or "").strip()
+        exec1(
+            conn,
+            """
+            UPDATE finance.dim_regions
+            SET code=%s,
+                name=%s,
+                is_active=%s,
+                updated_at=now()
+            WHERE app_region_id=%s
+            """,
+            (normalized_code, normalized_name, is_active, app_region_id),
+        )
+        exec1(
+            conn,
+            """
+            INSERT INTO finance.dim_regions(code, name, app_region_id, is_active)
+            SELECT %s, %s, %s, %s
+            WHERE NOT EXISTS (
+                SELECT 1 FROM finance.dim_regions WHERE app_region_id=%s
+            )
+            ON CONFLICT (code) DO UPDATE
+            SET name=excluded.name,
+                app_region_id=excluded.app_region_id,
+                is_active=excluded.is_active,
+                updated_at=now()
+            """,
+            (normalized_code, normalized_name, app_region_id, is_active, app_region_id),
+        )
+
     @app.get("/platforms", response_model=list[PlatformOut])
     def list_platforms(user: UserOut = Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
@@ -89,16 +122,20 @@ def mount_catalogs_routes(
         if not code or not name:
             raise HTTPException(400, "Region code and name are required")
         with psycopg.connect(DB_DSN) as conn:
-            exec1(
+            row = q1(
                 conn,
                 """
                 INSERT INTO app.regions(code, name, purchase_cost_rate, is_archived)
                 VALUES (%s, %s, %s, false)
                 ON CONFLICT (code)
                 DO UPDATE SET name=excluded.name, purchase_cost_rate=excluded.purchase_cost_rate, is_archived=false
+                RETURNING region_id
                 """,
                 (code, name, rate),
             )
+            if not row:
+                raise HTTPException(500, "Failed to save region")
+            _sync_finance_region(conn, app_region_id=int(row[0]), code=code, name=name, is_active=True)
             conn.commit()
         return RegionOut(code=code, name=name, purchase_cost_rate=rate)
 
@@ -109,22 +146,24 @@ def mount_catalogs_routes(
         if name is not None and not name:
             raise HTTPException(400, "Name is required")
         with psycopg.connect(DB_DSN) as conn:
-            row = q1(conn, "SELECT name, purchase_cost_rate FROM app.regions WHERE code=%s AND is_archived IS NOT TRUE", (code,))
+            row = q1(conn, "SELECT region_id, name, purchase_cost_rate FROM app.regions WHERE code=%s AND is_archived IS NOT TRUE", (code,))
             if not row:
                 raise HTTPException(404, "Region not found")
-            new_name = name if name is not None else row[0]
-            new_rate = float(rate) if rate is not None else float(row[1] or 1.0)
+            new_name = name if name is not None else row[1]
+            new_rate = float(rate) if rate is not None else float(row[2] or 1.0)
             exec1(conn, "UPDATE app.regions SET name=%s, purchase_cost_rate=%s WHERE code=%s", (new_name, new_rate, code))
+            _sync_finance_region(conn, app_region_id=int(row[0]), code=code, name=new_name, is_active=True)
             conn.commit()
         return RegionOut(code=code, name=new_name, purchase_cost_rate=new_rate)
 
     @app.delete("/regions/{code}")
     def delete_region(code: str, user: UserOut = Depends(require_role("admin", "owner"))):
         with psycopg.connect(DB_DSN) as conn:
-            row = q1(conn, "SELECT 1 FROM app.regions WHERE code=%s", (code,))
+            row = q1(conn, "SELECT region_id, name FROM app.regions WHERE code=%s", (code,))
             if not row:
                 raise HTTPException(404, "Region not found")
             exec1(conn, "UPDATE app.regions SET is_archived=true WHERE code=%s", (code,))
+            _sync_finance_region(conn, app_region_id=int(row[0]), code=code, name=str(row[1] or ""), is_active=False)
             conn.commit()
         return {"ok": True}
 

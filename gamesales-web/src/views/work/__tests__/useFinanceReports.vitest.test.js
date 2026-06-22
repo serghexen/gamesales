@@ -103,6 +103,48 @@ describe('useFinanceReports', () => {
     expect(h.finance.financeSourceDetails.value[0]?.deal_id).toBe(16308)
   })
 
+  it('passes operation and region code to source report details', async () => {
+    const h = createHarness()
+    h.finance.financeFilters.date_from = '2026-06-21'
+    h.finance.financeFilters.date_to = '2026-06-21'
+    h.apiGet.mockResolvedValueOnce({
+      totals: { revenue: '0.00', purchase_cost: '0.00', direct_expense: '0.00', operating_profit: '0.00', margin: '0.0000' },
+      items: [],
+    })
+
+    const ok = await h.finance.loadFinanceSourceDetails(
+      { source_id: null, region_id: null, region_code: 'USA', operation_code: 'sale' },
+      'Услуга / USA',
+    )
+
+    expect(ok).toBe(true)
+    expect(h.apiGet).toHaveBeenCalledWith(
+      '/finance/reports/sources/details?date_from=2026-06-21&date_to=2026-06-21&source_empty=1&region_code=USA&operation_code=sale',
+      { token: 'token-1' },
+    )
+  })
+
+  it('passes source code to source report details when finance source id is missing', async () => {
+    const h = createHarness()
+    h.finance.financeFilters.date_from = '2026-06-21'
+    h.finance.financeFilters.date_to = '2026-06-21'
+    h.apiGet.mockResolvedValueOnce({
+      totals: { revenue: '0.00', purchase_cost: '0.00', direct_expense: '0.00', operating_profit: '0.00', margin: '0.0000' },
+      items: [],
+    })
+
+    const ok = await h.finance.loadFinanceSourceDetails(
+      { source_id: null, source_code: 'manual', region_id: null, region_code: 'USA', operation_code: 'sale' },
+      'Manual / USA',
+    )
+
+    expect(ok).toBe(true)
+    expect(h.apiGet).toHaveBeenCalledWith(
+      '/finance/reports/sources/details?date_from=2026-06-21&date_to=2026-06-21&source_code=manual&region_code=USA&operation_code=sale',
+      { token: 'token-1' },
+    )
+  })
+
   it('builds cash flow report query and fills line totals', async () => {
     const h = createHarness()
     h.finance.financeCashFlowMonth.value = '2026-06'

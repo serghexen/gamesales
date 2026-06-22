@@ -2887,6 +2887,16 @@ def mount_finance_routes(
                       CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id,
                       CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.code, rd.code) END AS region_code,
                       CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.name, rd.name, 'Без региона') END AS region_name,
+                      CASE
+                        WHEN fds.source_id IS NOT NULL THEN 'source'
+                        WHEN d.deal_type_code = 'rental' THEN 'rental'
+                        ELSE 'sale'
+                      END AS operation_code,
+                      CASE
+                        WHEN fds.source_id IS NOT NULL THEN COALESCE(fds.name, src.name, 'Без источника')
+                        WHEN d.deal_type_code = 'rental' THEN 'Шеринг'
+                        ELSE 'Услуга'
+                      END AS operation_name,
                       (di.price * di.qty) AS revenue,
                       CASE
                         WHEN d.deal_type_code = 'sale'
@@ -2923,6 +2933,8 @@ def mount_finance_routes(
                       CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE r.region_id END AS region_id,
                       CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE r.code END AS region_code,
                       CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE COALESCE(r.name, 'Без региона') END AS region_name,
+                      CASE WHEN src.source_id IS NOT NULL THEN 'source' ELSE 'entry' END AS operation_code,
+                      CASE WHEN src.source_id IS NOT NULL THEN COALESCE(src.name, 'Без источника') ELSE o.name END AS operation_name,
                       CASE WHEN p.metric_code = 'revenue' THEN p.amount ELSE 0 END AS revenue,
                       CASE WHEN p.metric_code = 'direct_expense' THEN p.amount ELSE 0 END AS direct_expense,
                       src.source_id IS NOT NULL AS ignore_region_filter,
@@ -2949,12 +2961,14 @@ def mount_finance_routes(
                   region_id,
                   region_code,
                   region_name,
+                  operation_code,
+                  operation_name,
                   COALESCE(SUM(revenue), 0) AS revenue,
                   COALESCE(SUM(direct_expense), 0) AS direct_expense,
                   COUNT(DISTINCT row_ref_key) AS deals_count
                 FROM report_rows
                 WHERE {where_sql}
-                GROUP BY source_id, source_code, source_name, region_id, region_code, region_name
+                GROUP BY source_id, source_code, source_name, region_id, region_code, region_name, operation_code, operation_name
                 HAVING COALESCE(SUM(revenue), 0) <> 0
                     OR COALESCE(SUM(direct_expense), 0) <> 0
                 ORDER BY source_name, region_code NULLS LAST
@@ -2966,8 +2980,8 @@ def mount_finance_routes(
         revenue_total = Decimal("0")
         direct_total = Decimal("0")
         for row in rows:
-            row_revenue = _round_money(Decimal(row[6] or 0))
-            row_direct = _round_money(Decimal(row[7] or 0))
+            row_revenue = _round_money(Decimal(row[8] or 0))
+            row_direct = _round_money(Decimal(row[9] or 0))
             row_cash_flow = _round_money(row_revenue - row_direct)
             revenue_total += row_revenue
             direct_total += row_direct
@@ -2979,10 +2993,12 @@ def mount_finance_routes(
                     region_id=int(row[3]) if row[3] is not None else None,
                     region_code=str(row[4]) if row[4] is not None else None,
                     region_name=str(row[5]) if row[5] is not None else None,
+                    operation_code=str(row[6]) if row[6] is not None else None,
+                    operation_name=str(row[7]) if row[7] is not None else None,
                     revenue=row_revenue,
                     direct_expense=row_direct,
                     cash_flow=row_cash_flow,
-                    deals_count=int(row[8] or 0),
+                    deals_count=int(row[10] or 0),
                 )
             )
 
@@ -3008,8 +3024,11 @@ def mount_finance_routes(
         date_to: Optional[date] = None,
         source_id: Optional[int] = None,
         source_empty: bool = False,
+        source_code: Optional[str] = None,
         region_id: Optional[int] = None,
         region_empty: bool = False,
+        region_code: Optional[str] = None,
+        operation_code: Optional[str] = None,
         user=Depends(get_current_user),
     ):
         # Отдаем расшифровку выбранной строки отчета по источникам без ручных SQL-запросов.
@@ -3021,8 +3040,28 @@ def mount_finance_routes(
         if date_to is not None:
             filters.append("activity_date <= %s")
             params.append(date_to)
-        _append_nullable_id_filter(filters, params, "source_id", source_id, source_empty)
-        _append_nullable_id_filter(filters, params, "region_id", region_id, region_empty)
+        normalized_source_code = _normalize_code(source_code)
+        if source_id is not None:
+            _append_nullable_id_filter(filters, params, "source_id", source_id, False)
+        elif normalized_source_code:
+            filters.append("source_code = %s")
+            params.append(normalized_source_code)
+        else:
+            _append_nullable_id_filter(filters, params, "source_id", source_id, source_empty)
+        normalized_region_code = _normalize_code(region_code, upper=True)
+        if region_id is not None:
+            _append_nullable_id_filter(filters, params, "region_id", region_id, False)
+        elif normalized_region_code:
+            filters.append("region_code = %s")
+            params.append(normalized_region_code)
+        else:
+            _append_nullable_id_filter(filters, params, "region_id", region_id, region_empty)
+            if region_empty:
+                filters.append("NULLIF(region_code, '') IS NULL")
+        normalized_operation_code = _normalize_code(operation_code)
+        if normalized_operation_code:
+            filters.append("operation_code = %s")
+            params.append(normalized_operation_code)
         where_sql = " AND ".join(filters)
 
         with psycopg.connect(DB_DSN) as conn:
@@ -3043,7 +3082,16 @@ def mount_finance_routes(
                     CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id,
                     CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.code, rd.code) END AS region_code,
                     CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE COALESCE(fdr.name, rd.name, 'Без региона') END AS region_name,
-                    CASE WHEN d.deal_type_code = 'rental' THEN 'Шеринг' ELSE 'Услуга' END AS operation_name,
+                    CASE
+                      WHEN fds.source_id IS NOT NULL THEN 'source'
+                      WHEN d.deal_type_code = 'rental' THEN 'rental'
+                      ELSE 'sale'
+                    END AS operation_code,
+                    CASE
+                      WHEN fds.source_id IS NOT NULL THEN COALESCE(fds.name, src.name, 'Без источника')
+                      WHEN d.deal_type_code = 'rental' THEN 'Шеринг'
+                      ELSE 'Услуга'
+                    END AS operation_name,
                     STRING_AGG(COALESCE(NULLIF(p.title, ''), 'item-' || di.deal_item_id::text), '; ' ORDER BY di.deal_item_id) AS item_title,
                     COALESCE(SUM(di.qty), 0) AS qty,
                     COALESCE(SUM(di.price * di.qty), 0) AS revenue,
@@ -3107,6 +3155,7 @@ def mount_finance_routes(
                     CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE r.region_id END AS region_id,
                     CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE r.code END AS region_code,
                     CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE COALESCE(r.name, 'Без региона') END AS region_name,
+                    CASE WHEN src.source_id IS NOT NULL THEN 'source' ELSE 'entry' END AS operation_code,
                     o.name AS operation_name,
                     COALESCE(NULLIF(e.comment, ''), o.name) AS item_title,
                     e.qty,

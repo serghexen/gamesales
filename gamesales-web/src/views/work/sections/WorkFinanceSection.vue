@@ -1399,6 +1399,8 @@ function formatSourceReportLabel(row) {
   const sourceCode = String(row?.source_code || '').trim()
   const hasRealSource = Boolean(row?.source_id || sourceCode || (sourceName && sourceName !== 'Без источника'))
   if (!hasRealSource) {
+    const operationName = String(row?.operation_name || '').trim()
+    if (operationName) return operationName
     return row?.region_code ? 'Услуга' : 'Шеринг'
   }
   return formatSourceLabel({ name: row?.source_name, code: row?.source_code })

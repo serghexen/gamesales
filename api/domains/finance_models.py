@@ -391,6 +391,8 @@ class FinanceSourcesReportRowOut(BaseModel):
     region_id: Optional[int] = None
     region_code: Optional[str] = None
     region_name: Optional[str] = None
+    operation_code: Optional[str] = None
+    operation_name: Optional[str] = None
     revenue: Decimal = Decimal("0")
     direct_expense: Decimal = Decimal("0")
     cash_flow: Decimal = Decimal("0")

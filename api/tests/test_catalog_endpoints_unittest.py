@@ -66,6 +66,7 @@ class CatalogEndpointsTests(unittest.TestCase):
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
+            patch.object(app_module, "q1", return_value=(9,)),
             patch.object(app_module, "exec1", return_value=1) as exec1_mock,
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -172,6 +173,7 @@ class CatalogEndpointsTests(unittest.TestCase):
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
+            patch.object(app_module, "q1", return_value=(9,)),
             patch.object(app_module, "exec1", return_value=1) as exec1_mock,
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -185,6 +187,7 @@ class CatalogEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"code": "RU", "name": "Russia", "purchase_cost_rate": 1.1})
             self.assertTrue(exec1_mock.called)
+            self.assertGreaterEqual(exec1_mock.call_count, 2)
 
     # Менеджер не должен иметь доступ к созданию региона.
     def test_create_region_forbidden_for_manager(self):

@@ -75,7 +75,7 @@ class FinanceReportsTests(unittest.TestCase):
         script = [
             {
                 "all": [
-                    (99, "asat", "ASAT", 10, "TR", "Turkey", 10000.0, 7000.0, 2),
+                    (99, "asat", "ASAT", 10, "TR", "Turkey", "source", "ASAT", 10000.0, 7000.0, 2),
                 ],
             },
         ]
@@ -98,6 +98,8 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(body["totals"]["direct_expense"], "7000.00")
         self.assertEqual(body["totals"]["operating_profit"], "3000.00")
         self.assertEqual(body["items"][0]["cash_flow"], "3000.00")
+        self.assertEqual(body["items"][0]["operation_code"], "source")
+        self.assertEqual(body["items"][0]["operation_name"], "ASAT")
         self.assertTrue(any("d.deal_type_code = 'sale'" in sql for sql in sql_collector))
         self.assertTrue(any("d.deal_type_code = 'rental' AND COALESCE(di.price, 0) > 0" in sql for sql in sql_collector))
         self.assertTrue(any("CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id" in sql for sql in sql_collector))
@@ -191,6 +193,68 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertTrue(any("COALESCE(revenue, 0) <> 0" in sql for sql in sql_collector))
         self.assertTrue(any("COALESCE(purchase_cost, 0) <> 0" in sql for sql in sql_collector))
         self.assertTrue(any("COALESCE(direct_expense, 0) <> 0" in sql for sql in sql_collector))
+
+    # Детализация строки без finance-region должна дополнительно фильтроваться по операции и коду региона.
+    def test_finance_sources_report_details_filters_by_operation_and_region_code(self):
+        script = [{"all": []}]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/finance/reports/sources/details?date_from=2026-06-21&date_to=2026-06-21&source_empty=1&region_code=USA&operation_code=sale",
+                    headers=self._auth_headers(role="manager"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(any("region_code = %s" in sql for sql in sql_collector))
+        self.assertTrue(any("operation_code = %s" in sql for sql in sql_collector))
+
+    # Детализация строки с app-source без finance-source должна фильтроваться по коду источника.
+    def test_finance_sources_report_details_filters_by_source_code(self):
+        script = [{"all": []}]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/finance/reports/sources/details?date_from=2026-06-21&date_to=2026-06-21&source_code=manual&region_code=USA&operation_code=sale",
+                    headers=self._auth_headers(role="manager"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(any("source_code = %s" in sql for sql in sql_collector))
+        self.assertTrue(any("region_code = %s" in sql for sql in sql_collector))
+        self.assertTrue(any("operation_code = %s" in sql for sql in sql_collector))
+
+    # Пустой регион в детализации должен означать именно отсутствие кода, а не несинхронизированный app-регион.
+    def test_finance_sources_report_details_empty_region_excludes_region_code(self):
+        script = [{"all": []}]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/finance/reports/sources/details?date_from=2026-06-21&date_to=2026-06-21&source_empty=1&region_empty=1&operation_code=rental",
+                    headers=self._auth_headers(role="manager"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(any("region_id IS NULL" in sql for sql in sql_collector))
+        self.assertTrue(any("NULLIF(region_code, '') IS NULL" in sql for sql in sql_collector))
+        self.assertTrue(any("operation_code = %s" in sql for sql in sql_collector))
 
     # Cash Flow должен отдавать поступления/расходы отдельными строками и считать остатки.
     def test_finance_cash_flow_report_success(self):

@@ -473,17 +473,25 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       if (financeFilters.date_from) params.set('date_from', financeFilters.date_from)
       if (financeFilters.date_to) params.set('date_to', financeFilters.date_to)
       const sourceId = Number(row?.source_id || 0)
+      const sourceCode = String(row?.source_code || '').trim()
       const regionId = Number(row?.region_id || 0)
+      const regionCode = String(row?.region_code || '').trim()
+      const operationCode = String(row?.operation_code || '').trim()
       if (sourceId > 0) {
         params.set('source_id', String(sourceId))
+      } else if (sourceCode) {
+        params.set('source_code', sourceCode)
       } else {
         params.set('source_empty', '1')
       }
       if (regionId > 0) {
         params.set('region_id', String(regionId))
+      } else if (regionCode) {
+        params.set('region_code', regionCode)
       } else {
         params.set('region_empty', '1')
       }
+      if (operationCode) params.set('operation_code', operationCode)
       const query = params.toString()
       const data = await apiGet(`/finance/reports/sources/details${query ? `?${query}` : ''}`, { token: auth.state.token })
       financeSourceDetails.value = Array.isArray(data?.items) ? data.items : []
