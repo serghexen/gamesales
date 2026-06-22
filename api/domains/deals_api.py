@@ -589,6 +589,8 @@ def mount_deals_routes(
             raise HTTPException(400, "Unknown slot_type_code")
         slot_mode = str(slot_row[0] or "").strip().lower()
         slot_capacity = int(slot_row[1] or 0)
+        if slot_mode == "activate":
+            slot_capacity = 1
         if slot_capacity <= 0:
             return 0
 
@@ -619,6 +621,43 @@ def mount_deals_routes(
             )
         occupied = int((occupied_row[0] if occupied_row else 0) or 0)
         return max(slot_capacity - occupied, 0)
+
+    # Блокирует второй игровой П2, пока первому активному назначению нет 2 месяцев.
+    def ensure_game_second_p2_slot_is_open(
+        conn,
+        *,
+        account_id: int,
+        slot_type_code: str,
+        slot_type,
+        current_deal_item_id: Optional[int] = None,
+    ) -> None:
+        slot_mode = str(slot_type[2] if len(slot_type) > 2 else "").strip().lower()
+        slot_capacity = int((slot_type[3] if len(slot_type) > 3 else 0) or 0)
+        if slot_mode != "activate" or slot_capacity < 2:
+            return
+        row = q1(
+            conn,
+            """
+            SELECT COUNT(*), MIN(COALESCE(assigned_at, now()))
+            FROM app.account_slot_assignments
+            WHERE account_id=%s
+              AND slot_type_code=%s
+              AND released_at IS NULL
+              AND (%s::bigint IS NULL OR deal_item_id <> %s)
+            """,
+            (account_id, slot_type_code, current_deal_item_id, current_deal_item_id),
+        )
+        active_count = int((row[0] if row else 0) or 0)
+        first_assigned_at = row[1] if row and len(row) > 1 else None
+        if active_count != 1 or first_assigned_at is None:
+            return
+        is_open_row = q1(
+            conn,
+            "SELECT %s::timestamptz <= (now() - INTERVAL '2 months')",
+            (first_assigned_at,),
+        )
+        if not bool(is_open_row[0] if is_open_row else False):
+            raise HTTPException(409, "Second P2 game slot is available only after 2 months")
 
     @app.post("/rentals")
     def create_rental(payload: RentalCreate, user=Depends(get_current_user)):
@@ -667,6 +706,12 @@ def mount_deals_routes(
                     slot_type_code=payload.slot_type_code,
                 )
             else:
+                ensure_game_second_p2_slot_is_open(
+                    conn,
+                    account_id=payload.account_id,
+                    slot_type_code=payload.slot_type_code,
+                    slot_type=slot_type,
+                )
                 free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
             if free < 1:
                 raise HTTPException(409, "Not enough free slots for selected slot type")
@@ -828,6 +873,13 @@ def mount_deals_routes(
                         slot_type_code=payload.slot_type_code,
                     )
                 else:
+                    if not duplicate_assignment_to_release:
+                        ensure_game_second_p2_slot_is_open(
+                            conn,
+                            account_id=payload.account_id,
+                            slot_type_code=payload.slot_type_code,
+                            slot_type=slot_type,
+                        )
                     free = get_account_slot_free(conn, payload.account_id, payload.slot_type_code)
                 # Для принудительного дубля учитываем, что один слот будет снят в этой же транзакции сохранения.
                 free_adjusted = free + (1 if duplicate_assignment_to_release else 0)
@@ -1328,7 +1380,7 @@ def mount_deals_routes(
                 ensure_account_exists(conn, new_account_id)
                 # Проверяем, что аккаунт действительно поддерживает выбранный тип слота.
                 # Это универсальная проверка и для игр, и для подписок.
-                ensure_account_allows_slot_type(conn, new_account_id, new_slot_type_code)
+                checked_slot_type = ensure_account_allows_slot_type(conn, new_account_id, new_slot_type_code)
                 row_assign = q1(
                     conn,
                     """
@@ -1349,6 +1401,14 @@ def mount_deals_routes(
                     same_term = row_assign and row_assign[2] is not None and int(row_assign[2]) == int(new_subscription_term_id)
                     free_adjusted = free + (1 if (same_assignment and same_term) else 0)
                 else:
+                    if not same_assignment and not duplicate_assignment_to_release:
+                        ensure_game_second_p2_slot_is_open(
+                            conn,
+                            account_id=new_account_id,
+                            slot_type_code=new_slot_type_code,
+                            slot_type=checked_slot_type,
+                            current_deal_item_id=deal_item_id,
+                        )
                     free = get_account_slot_free(conn, new_account_id, new_slot_type_code)
                     free_adjusted = free + (1 if same_assignment else 0)
                 # Принудительный дубль дает +1 к свободе: выбранный слот снимем в этой же транзакции.

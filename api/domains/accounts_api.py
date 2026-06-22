@@ -1113,9 +1113,7 @@ def mount_accounts_routes(
                     COUNT(*) AS active_count,
                     MIN(COALESCE(asa.assigned_at, now())) AS first_assigned_at
                   FROM app.account_slot_assignments asa
-                  JOIN app.slot_types st ON st.code = asa.slot_type_code
                   WHERE asa.released_at IS NULL
-                    AND st.mode = 'play'
                   GROUP BY asa.account_id, asa.slot_type_code
                 ),
                 recent_duplicate_locks AS (
@@ -1177,7 +1175,7 @@ def mount_accounts_routes(
                           WHEN COALESCE(ss.capacity, 0) >= 2
                             AND rdl.last_duplicate_assigned_at IS NOT NULL
                           THEN 0
-                          -- Для П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
+                          -- Для игрового П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
                           WHEN st_gate.name ILIKE 'П2%%'
                             AND COALESCE(ss.capacity, 0) >= 2
                             AND COALESCE(apa.active_count, 0) = 1
@@ -1276,9 +1274,7 @@ def mount_accounts_routes(
                     COUNT(*) AS active_count,
                     MIN(COALESCE(asa.assigned_at, now())) AS first_assigned_at
                   FROM app.account_slot_assignments asa
-                  JOIN app.slot_types stp ON stp.code = asa.slot_type_code
                   WHERE asa.released_at IS NULL
-                    AND stp.mode = 'play'
                   GROUP BY asa.account_id, asa.slot_type_code
                 ),
                 recent_duplicate_locks AS (
@@ -1319,7 +1315,7 @@ def mount_accounts_routes(
                         WHEN COALESCE(ss.capacity, 0) >= 2
                           AND rdl.last_duplicate_assigned_at IS NOT NULL
                         THEN 0
-                        -- Для П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
+                        -- Для игрового П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
                         WHEN st.name ILIKE 'П2%%'
                           AND COALESCE(ss.capacity, 0) >= 2
                           AND COALESCE(apa.active_count, 0) = 1

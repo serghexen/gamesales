@@ -514,6 +514,40 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"deal_id": 33})
 
+    # Второй игровой П2 нельзя выдать, пока первому активному назначению нет 2 месяцев.
+    def test_create_deal_rental_blocks_second_game_p2_before_two_months(self):
+        script = [
+            {"one": ("game", False)},  # product lookup
+            {"one": (1,)},  # ensure_account_exists
+            {"one": (1,)},  # ensure_messenger_exists
+            {"one": ("activate_ps5", "ps5", "activate", 2)},  # get_slot_type
+            {"one": (2,)},  # get_platform_id
+            {"one": (7,)},  # region from account
+            {"one": (1, datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc))},  # active P2 usage
+            {"one": (False,)},  # first P2 is younger than the 2-month threshold
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/deals",
+                    headers=self._auth_headers(role="manager"),
+                    json={
+                        "deal_type_code": "rental",
+                        "account_id": 7,
+                        "product_id": 55,
+                        "slot_type_code": "activate_ps5",
+                        "messenger_id": 1,
+                        "price": 500,
+                    },
+                )
+            self.assertEqual(res.status_code, 409)
+            self.assertIn("Second P2 game slot", res.text)
+
     # Если фронт прислал занятый резерв, backend должен выбрать следующий свободный и сохранить сделку.
     def test_create_deal_rental_replaces_used_reserve(self):
         script = [
@@ -706,6 +740,41 @@ class DealsEndpointsTests(unittest.TestCase):
                         "account_id": 7,
                         "product_id": 55,
                         "slot_type_code": "ps5_p1",
+                        "messenger_id": 1,
+                        "subscription_term_id": 901,
+                        "price": 500,
+                    },
+                )
+            self.assertEqual(res.status_code, 409)
+
+    # Подписочный П2 остается одноместным, даже если игровой П2 имеет capacity=2.
+    def test_create_deal_rental_subscription_activate_slot_allows_only_one_place(self):
+        script = [
+            {"one": ("subscription", False)},  # product lookup
+            {"one": (1,)},  # ensure_account_exists
+            {"one": (1,)},  # ensure_messenger_exists
+            {"one": ("activate_ps5", "ps5", "activate", 2)},  # get_slot_type
+            {"one": (2,)},  # get_platform_id
+            {"one": (7,)},  # region from account
+            {"one": (55, 7, False)},  # subscription term lookup
+            {"one": ("activate", 2)},  # target slot type now has game capacity=2
+            {"one": (1,)},  # one activate assignment already fills subscription term
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/deals",
+                    headers=self._auth_headers(role="manager"),
+                    json={
+                        "deal_type_code": "rental",
+                        "account_id": 7,
+                        "product_id": 55,
+                        "slot_type_code": "activate_ps5",
                         "messenger_id": 1,
                         "subscription_term_id": 901,
                         "price": 500,
