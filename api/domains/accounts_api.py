@@ -1591,11 +1591,8 @@ def mount_accounts_routes(
                 conn,
                 """
                 SELECT
-                  asa.assignment_id,
-                  asa.subscription_term_id,
-                  p.type_code
+                  asa.assignment_id
                 FROM app.account_slot_assignments asa
-                LEFT JOIN app.products p ON p.product_id = asa.product_id
                 WHERE asa.assignment_id=%s
                   AND asa.released_at IS NULL
                 """,
@@ -1603,11 +1600,6 @@ def mount_accounts_routes(
             )
             if not row:
                 return {"ok": True}
-            # Подписочные назначения не снимаем вручную: это ломает логику сроков подписки.
-            subscription_term_id = row[1]
-            product_type_code = str(row[2] or "").strip().lower()
-            if subscription_term_id is not None or product_type_code == "subscription":
-                raise HTTPException(409, "subscription slot release is not allowed")
             exec1(
                 conn,
                 "UPDATE app.account_slot_assignments SET released_at=now(), released_by=%s WHERE assignment_id=%s",
@@ -1626,22 +1618,14 @@ def mount_accounts_routes(
                   asa.assignment_id,
                   asa.account_id,
                   asa.slot_type_code,
-                  asa.released_at,
-                  asa.subscription_term_id,
-                  p.type_code
+                  asa.released_at
                 FROM app.account_slot_assignments asa
-                LEFT JOIN app.products p ON p.product_id = asa.product_id
                 WHERE asa.assignment_id=%s
                 """,
                 (assignment_id,),
             )
             if not row:
                 return {"ok": True}
-            # Для подписочных слотов восстановление вручную запрещаем: оно ломает сроковую модель.
-            subscription_term_id = row[4]
-            product_type_code = str(row[5] or "").strip().lower()
-            if subscription_term_id is not None or product_type_code == "subscription":
-                raise HTTPException(409, "subscription slot restore is not allowed")
             # Если слот уже активен, операция идемпотентна.
             if row[3] is None:
                 return {"ok": True}

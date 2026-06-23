@@ -1228,10 +1228,11 @@ class AccountsEndpointsTests(unittest.TestCase):
                 res = client.post("/slot-assignments/900/release", headers=self._auth_headers(role="manager"))
             self.assertEqual(res.status_code, 403)
 
-    # Ручное снятие подписочного назначения слота должно быть запрещено.
-    def test_release_slot_assignment_blocks_subscription_assignment(self):
+    # Ручное снятие подписочного назначения слота доступно admin/owner.
+    def test_release_slot_assignment_allows_subscription_assignment(self):
         script = [
-            {"one": (901, 777, "subscription")},
+            {"one": (901,)},
+            {"rowcount": 1},
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
@@ -1241,7 +1242,8 @@ class AccountsEndpointsTests(unittest.TestCase):
         ):
             with self._client() as client:
                 res = client.post("/slot-assignments/901/release", headers=self._auth_headers(role="admin"))
-            self.assertEqual(res.status_code, 409)
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
 
     # Ручное восстановление игрового назначения слота доступно только admin/owner.
     def test_restore_slot_assignment_allows_game_assignment(self):
@@ -1288,10 +1290,12 @@ class AccountsEndpointsTests(unittest.TestCase):
                 res = client.post("/slot-assignments/911/restore", headers=self._auth_headers(role="admin"))
             self.assertEqual(res.status_code, 409)
 
-    # Восстановление подписочного назначения вручную должно быть запрещено.
-    def test_restore_slot_assignment_blocks_subscription_assignment(self):
+    # Восстановление подписочного назначения вручную доступно admin/owner.
+    def test_restore_slot_assignment_allows_subscription_assignment(self):
         script = [
-            {"one": (912, 7, "ps5_p1", "2026-05-10T10:00:00Z", 777, "subscription")},
+            {"one": (912, 7, "ps5_p1", "2026-05-10T10:00:00Z")},
+            {"one": (1,)},
+            {"rowcount": 1},
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
@@ -1301,7 +1305,8 @@ class AccountsEndpointsTests(unittest.TestCase):
         ):
             with self._client() as client:
                 res = client.post("/slot-assignments/912/restore", headers=self._auth_headers(role="admin"))
-            self.assertEqual(res.status_code, 409)
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"ok": True})
 
 
 if __name__ == "__main__":
