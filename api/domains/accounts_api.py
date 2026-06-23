@@ -1172,6 +1172,11 @@ def mount_accounts_routes(
                     WHERE ss.account_id = a.account_id
                       AND (
                         CASE
+                          -- Если игровых П2 уже два, платформенный остаток 1/2 не должен снова открывать П2.
+                          WHEN st_gate.name ILIKE 'П2%%'
+                            AND COALESCE(ss.capacity, 0) >= 2
+                            AND COALESCE(apa.active_count, 0) >= 2
+                          THEN 0
                           -- Если дубль по этому методу был менее 2 месяцев назад, новый дубль временно блокируем.
                           WHEN COALESCE(ss.capacity, 0) >= 2
                             AND rdl.last_duplicate_assigned_at IS NOT NULL
@@ -1314,6 +1319,11 @@ def mount_accounts_routes(
                   BOOL_OR(
                     (
                       CASE
+                        -- Если игровых П2 уже два, платформенный остаток 1/2 не должен снова открывать П2.
+                        WHEN st.name ILIKE 'П2%%'
+                          AND COALESCE(ss.capacity, 0) >= 2
+                          AND COALESCE(apa.active_count, 0) >= 2
+                        THEN 0
                         -- Если дубль по этому методу был менее 2 месяцев назад, новый дубль временно блокируем.
                         WHEN COALESCE(ss.capacity, 0) >= 2
                           AND rdl.last_duplicate_assigned_at IS NOT NULL

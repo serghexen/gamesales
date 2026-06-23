@@ -68,6 +68,15 @@ describe('WorkTopBar', () => {
     expect(wrapper.text()).not.toContain('Менеджер 5')
   })
 
+  it('renders brand logo near navigation tabs', () => {
+    const wrapper = mountTopBar(buildCtx())
+    const logo = wrapper.find('.logo img')
+
+    expect(logo.exists()).toBe(true)
+    expect(logo.attributes('alt')).toBe('Логотип')
+    expect(wrapper.html().indexOf('class="logo"')).toBeLessThan(wrapper.html().indexOf('class="tabs"'))
+  })
+
   it('marks only online users with blinking dot class', () => {
     const wrapper = mountTopBar(buildCtx({
       managersLoadItems: [

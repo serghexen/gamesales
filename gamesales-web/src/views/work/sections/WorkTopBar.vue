@@ -2,7 +2,7 @@
   <header class="top">
     <div class="brand">
       <div class="logo">
-        <img src="../../../assets/logo.jpg" alt="Логотип" />
+        <img :src="brandLogoSrc" alt="Логотип" />
       </div>
     </div>
 
@@ -102,6 +102,8 @@
 
 <script setup>
 import { computed, unref } from 'vue'
+import defaultLogoSrc from '../../../assets/logo.jpg'
+import stagingLogoSrc from '../../../assets/logo-staging.jpg'
 import WorkTrCardBalanceWidget from './WorkTrCardBalanceWidget.vue'
 
 // Контекст верхней панели (табы, пользователь, выход).
@@ -114,6 +116,11 @@ const props = defineProps({
 
 const activeTab = computed(() => unref(props.ctx.activeTab))
 const routeQuery = computed(() => unref(props.ctx.routeQuery) || {})
+// Для тестового стенда показываем отдельный логотип, не меняя production-сборку.
+const brandLogoSrc = computed(() => {
+  const appEnv = String(import.meta.env.VITE_APP_ENV || '').trim().toLowerCase()
+  return appEnv === 'staging' ? stagingLogoSrc : defaultLogoSrc
+})
 const canViewDealsSection = computed(() => unref(props.ctx.canViewDealsSection))
 const canViewAccountsSection = computed(() => unref(props.ctx.canViewAccountsSection))
 const canViewProductsSection = computed(() => unref(props.ctx.canViewProductsSection))
