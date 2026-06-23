@@ -1293,7 +1293,8 @@ class AccountsEndpointsTests(unittest.TestCase):
     # Восстановление подписочного назначения вручную доступно admin/owner.
     def test_restore_slot_assignment_allows_subscription_assignment(self):
         script = [
-            {"one": (912, 7, "ps5_p1", "2026-05-10T10:00:00Z")},
+            {"one": (912, 7, "play_ps5", "2026-05-10T10:00:00Z", 777)},
+            {"one": ("play", 2)},
             {"one": (1,)},
             {"rowcount": 1},
         ]
@@ -1307,6 +1308,23 @@ class AccountsEndpointsTests(unittest.TestCase):
                 res = client.post("/slot-assignments/912/restore", headers=self._auth_headers(role="admin"))
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
+
+    # Восстановление подписочного П2 не должно переполнять срок подписки.
+    def test_restore_slot_assignment_blocks_full_subscription_activate_term(self):
+        script = [
+            {"one": (913, 7, "activate_ps5", "2026-05-10T10:00:00Z", 778)},
+            {"one": ("activate", 2)},
+            {"one": (1,)},
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post("/slot-assignments/913/restore", headers=self._auth_headers(role="admin"))
+            self.assertEqual(res.status_code, 409)
 
 
 if __name__ == "__main__":

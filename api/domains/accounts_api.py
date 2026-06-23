@@ -1618,7 +1618,8 @@ def mount_accounts_routes(
                   asa.assignment_id,
                   asa.account_id,
                   asa.slot_type_code,
-                  asa.released_at
+                  asa.released_at,
+                  asa.subscription_term_id
                 FROM app.account_slot_assignments asa
                 WHERE asa.assignment_id=%s
                 """,
@@ -1632,16 +1633,51 @@ def mount_accounts_routes(
 
             account_id = int(row[1] or 0)
             slot_type_code = str(row[2] or "").strip()
-            slot_row = q1(
-                conn,
-                """
-                SELECT free
-                FROM app.v_account_slot_status
-                WHERE account_id=%s AND slot_type_code=%s
-                """,
-                (account_id, slot_type_code),
-            )
-            free_slots = int((slot_row[0] if slot_row else 0) or 0)
+            subscription_term_id = row[4] if len(row) > 4 else None
+            if subscription_term_id is not None:
+                # Для подписок проверяем свободное место внутри выбранного срока, а не всего аккаунта.
+                slot_meta = q1(conn, "SELECT mode, capacity FROM app.slot_types WHERE code=%s", (slot_type_code,))
+                slot_mode = str((slot_meta[0] if slot_meta else "") or "").strip().lower()
+                slot_capacity = int((slot_meta[1] if slot_meta and len(slot_meta) > 1 else 0) or 0)
+                if slot_mode == "activate":
+                    slot_capacity = 1
+                    occupied_row = q1(
+                        conn,
+                        """
+                        SELECT COUNT(*)
+                        FROM app.account_slot_assignments asa
+                        JOIN app.slot_types st ON st.code = asa.slot_type_code
+                        WHERE asa.subscription_term_id=%s
+                          AND asa.released_at IS NULL
+                          AND st.mode='activate'
+                        """,
+                        (subscription_term_id,),
+                    )
+                else:
+                    occupied_row = q1(
+                        conn,
+                        """
+                        SELECT COUNT(*)
+                        FROM app.account_slot_assignments
+                        WHERE subscription_term_id=%s
+                          AND slot_type_code=%s
+                          AND released_at IS NULL
+                        """,
+                        (subscription_term_id, slot_type_code),
+                    )
+                occupied_slots = int((occupied_row[0] if occupied_row else 0) or 0)
+                free_slots = max(slot_capacity - occupied_slots, 0)
+            else:
+                slot_row = q1(
+                    conn,
+                    """
+                    SELECT free
+                    FROM app.v_account_slot_status
+                    WHERE account_id=%s AND slot_type_code=%s
+                    """,
+                    (account_id, slot_type_code),
+                )
+                free_slots = int((slot_row[0] if slot_row else 0) or 0)
             if free_slots <= 0:
                 raise HTTPException(409, "Not enough free slots for selected slot type")
 
