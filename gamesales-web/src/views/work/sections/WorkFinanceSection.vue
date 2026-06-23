@@ -514,6 +514,15 @@
               <span class="label">Период по</span>
               <input v-model="ctx.financeFilters.date_to" class="input" type="date" :min="ctx.financeFilters.date_from || ctx.minDate" :max="ctx.maxDate" />
             </label>
+            <label class="field">
+              <span class="label">Тип</span>
+              <select v-model="ctx.financeFilters.operation_code" class="input input--select">
+                <option value="">Все</option>
+                <option value="sale">Услуги</option>
+                <option value="rental">Шеринг</option>
+                <option value="source">Маркеты</option>
+              </select>
+            </label>
             <div class="field">
               <span class="label">Регион</span>
               <div

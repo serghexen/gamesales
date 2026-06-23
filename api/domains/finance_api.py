@@ -2855,6 +2855,7 @@ def mount_finance_routes(
         date_to: Optional[date] = None,
         region_id: Optional[list[int]] = Query(None),
         source_id: Optional[list[int]] = Query(None),
+        operation_code: Optional[str] = None,
         user=Depends(get_current_user),
     ):
         # Строим cash flow по источникам из сделок app и ручных finance-проводок.
@@ -2866,11 +2867,19 @@ def mount_finance_routes(
         if date_to is not None:
             filters.append("activity_date <= %s")
             params.append(date_to)
+        normalized_operation_code = _normalize_code(operation_code)
+        if normalized_operation_code:
+            if normalized_operation_code not in {"sale", "rental", "source"}:
+                raise HTTPException(400, "operation_code must be sale, rental or source")
+            filters.append("operation_code = %s")
+            params.append(normalized_operation_code)
         region_ids = [int(value) for value in (region_id or []) if value is not None]
-        if region_ids:
-            # Расходы с источником берутся из одного кошелька источника, поэтому фильтр региона их не дробит и не скрывает.
-            filters.append("(region_id = ANY(%s) OR ignore_region_filter IS TRUE)")
+        if region_ids and normalized_operation_code in {"", "sale"}:
+            # Регион применяем только к услугам, чтобы шеринг и маркетплейсы не пропадали из своих отдельных режимов.
+            filters.append("region_id = ANY(%s)")
             params.append(region_ids)
+            if not normalized_operation_code:
+                filters.append("operation_code = 'sale'")
         _append_multi_id_filter(filters, params, "source_id", source_id)
         where_sql = " AND ".join(filters)
 
@@ -2905,7 +2914,6 @@ def mount_finance_routes(
                         THEN di.purchase_cost * di.qty
                         ELSE 0
                       END AS direct_expense,
-                      fds.source_id IS NOT NULL AS ignore_region_filter,
                       ('deal-' || d.deal_id::text) AS row_ref_key
                     FROM app.deal_items di
                     JOIN app.deals d ON d.deal_id = di.deal_id
@@ -2937,7 +2945,6 @@ def mount_finance_routes(
                       CASE WHEN src.source_id IS NOT NULL THEN COALESCE(src.name, 'Без источника') ELSE o.name END AS operation_name,
                       CASE WHEN p.metric_code = 'revenue' THEN p.amount ELSE 0 END AS revenue,
                       CASE WHEN p.metric_code = 'direct_expense' THEN p.amount ELSE 0 END AS direct_expense,
-                      src.source_id IS NOT NULL AS ignore_region_filter,
                       ('entry-' || e.entry_id::text) AS row_ref_key
                     FROM finance.entry_postings p
                     JOIN finance.entries e

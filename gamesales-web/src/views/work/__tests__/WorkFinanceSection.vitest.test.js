@@ -52,6 +52,7 @@ function buildCtx(overrides = {}) {
       project_id: '',
       region_id: [],
       source_id: [],
+      operation_code: '',
       split_by_source: false,
     },
     financeNewEntry: {
@@ -557,6 +558,7 @@ describe('WorkFinanceSection', () => {
         project_id: '',
         region_id: [10],
         source_id: [99],
+        operation_code: 'rental',
         split_by_source: true,
       },
     })
@@ -575,6 +577,8 @@ describe('WorkFinanceSection', () => {
 
     await wrapper.find('[data-test="finance-mode-report"]').trigger('click')
     expect(ctx.financeMode).toBe('report')
+    expect(wrapper.find('select').text()).toContain('Шеринг')
+    expect(ctx.financeFilters.operation_code).toBe('rental')
     expect(wrapper.find('[data-test="finance-report-regions"]').text()).toContain('Turkey')
     expect(wrapper.find('[data-test="finance-report-sources"]').text()).toContain('ASAT - ym')
     await wrapper.find('[data-test="finance-report-regions"] button').trigger('click')

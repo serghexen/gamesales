@@ -8,6 +8,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     date_to: today,
     region_id: [],
     source_id: [],
+    operation_code: '',
     project_id: '',
     split_by_source: false,
   })
@@ -441,6 +442,10 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       if (financeFilters.date_to) params.set('date_to', financeFilters.date_to)
       appendFilterIds('region_id', financeFilters.region_id)
       appendFilterIds('source_id', financeFilters.source_id)
+      if (financeFilters.operation_code) {
+        // Передаем тип строки, чтобы можно было отдельно смотреть услуги, шеринг или маркетплейсы.
+        params.set('operation_code', String(financeFilters.operation_code))
+      }
 
       const query = params.toString()
       const data = await apiGet(`/finance/reports/sources${query ? `?${query}` : ''}`, { token: auth.state.token })

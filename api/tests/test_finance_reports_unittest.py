@@ -75,7 +75,7 @@ class FinanceReportsTests(unittest.TestCase):
         script = [
             {
                 "all": [
-                    (99, "asat", "ASAT", 10, "TR", "Turkey", "source", "ASAT", 10000.0, 7000.0, 2),
+                    (99, "asat", "ASAT", None, None, None, "source", "ASAT", 10000.0, 7000.0, 2),
                 ],
             },
         ]
@@ -88,7 +88,7 @@ class FinanceReportsTests(unittest.TestCase):
         ):
             with self._client() as client:
                 res = client.get(
-                    "/finance/reports/sources?date_from=2026-06-01&date_to=2026-06-30&region_id=10&region_id=11&source_id=99&source_id=100",
+                    "/finance/reports/sources?date_from=2026-06-01&date_to=2026-06-30&source_id=99&source_id=100",
                     headers=self._auth_headers(role="manager"),
                 )
 
@@ -100,6 +100,7 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(body["items"][0]["cash_flow"], "3000.00")
         self.assertEqual(body["items"][0]["operation_code"], "source")
         self.assertEqual(body["items"][0]["operation_name"], "ASAT")
+        self.assertIsNone(body["items"][0]["region_id"])
         self.assertTrue(any("d.deal_type_code = 'sale'" in sql for sql in sql_collector))
         self.assertTrue(any("d.deal_type_code = 'rental' AND COALESCE(di.price, 0) > 0" in sql for sql in sql_collector))
         self.assertTrue(any("CASE WHEN fds.source_id IS NOT NULL OR d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id" in sql for sql in sql_collector))
@@ -115,12 +116,71 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertFalse(any("p.metric_code IN ('revenue', 'direct_expense')" in sql for sql in sql_collector))
         self.assertFalse(any("p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')" in sql for sql in sql_collector))
         self.assertTrue(any("CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE r.region_id END AS region_id" in sql for sql in sql_collector))
-        self.assertTrue(any("fds.source_id IS NOT NULL AS ignore_region_filter" in sql for sql in sql_collector))
-        self.assertTrue(any("src.source_id IS NOT NULL AS ignore_region_filter" in sql for sql in sql_collector))
-        self.assertTrue(any("OR ignore_region_filter IS TRUE" in sql for sql in sql_collector))
-        self.assertTrue(any("region_id = ANY(%s)" in sql for sql in sql_collector))
+        self.assertFalse(any("ignore_region_filter" in sql for sql in sql_collector))
+        self.assertFalse(any("filter_region_id" in sql for sql in sql_collector))
+        self.assertFalse(any("source_region_filter_bypass" in sql for sql in sql_collector))
         self.assertTrue(any("source_id = ANY(%s)" in sql for sql in sql_collector))
         self.assertTrue(any("HAVING COALESCE(SUM(revenue), 0) <> 0" in sql for sql in sql_collector))
+
+    # При фильтре региона отчет должен показывать только региональные услуги, без маркетплейсов с прочерком.
+    def test_finance_sources_report_region_filter_limits_to_service_rows(self):
+        script = [
+            {
+                "all": [
+                    (None, None, "Без источника", 10, "TR", "Turkey", "sale", "Услуга", 5000.0, 1500.0, 1),
+                ],
+            },
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/finance/reports/sources?date_from=2026-06-01&date_to=2026-06-30&region_id=10",
+                    headers=self._auth_headers(role="manager"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["items"][0]["operation_code"], "sale")
+        self.assertEqual(body["items"][0]["region_code"], "TR")
+        self.assertTrue(any("region_id = ANY(%s)" in sql for sql in sql_collector))
+        self.assertTrue(any("operation_code = 'sale'" in sql for sql in sql_collector))
+        self.assertFalse(any("OR ignore_region_filter IS TRUE" in sql for sql in sql_collector))
+        self.assertFalse(any("source_region_filter_bypass" in sql for sql in sql_collector))
+
+    # Фильтр типа "Шеринг" должен работать отдельно от региона, потому что шеринг не имеет региональной строки.
+    def test_finance_sources_report_operation_filter_allows_rental_rows(self):
+        script = [
+            {
+                "all": [
+                    (None, None, "Без источника", None, None, None, "rental", "Шеринг", 1500.0, 0.0, 1),
+                ],
+            },
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/finance/reports/sources?date_from=2026-06-01&date_to=2026-06-30&region_id=10&operation_code=rental",
+                    headers=self._auth_headers(role="manager"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["items"][0]["operation_code"], "rental")
+        self.assertEqual(body["items"][0]["operation_name"], "Шеринг")
+        self.assertTrue(any("operation_code = %s" in sql for sql in sql_collector))
+        self.assertFalse(any("region_id = ANY(%s)" in sql for sql in sql_collector))
 
     # Детализация строки отчета должна возвращать сделки/проводки с теми же фильтрами, что и агрегат.
     def test_finance_sources_report_details_success(self):
@@ -189,7 +249,7 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertTrue(any("st.code = 'direct_expense' AND p.metric_code = 'direct_expense'" in sql for sql in sql_collector))
         self.assertFalse(any("p.metric_code IN ('revenue', 'direct_expense')" in sql for sql in sql_collector))
         self.assertFalse(any("p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')" in sql for sql in sql_collector))
-        self.assertTrue(any("CASE WHEN src.source_id IS NOT NULL THEN NULL ELSE r.region_id END AS region_id" in sql for sql in sql_collector))
+        self.assertTrue(any("r.region_id" in sql for sql in sql_collector))
         self.assertTrue(any("COALESCE(revenue, 0) <> 0" in sql for sql in sql_collector))
         self.assertTrue(any("COALESCE(purchase_cost, 0) <> 0" in sql for sql in sql_collector))
         self.assertTrue(any("COALESCE(direct_expense, 0) <> 0" in sql for sql in sql_collector))

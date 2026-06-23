@@ -74,6 +74,25 @@ describe('useFinanceReports', () => {
     expect(h.finance.financeReportItems.value).toHaveLength(1)
   })
 
+  it('passes selected source report row type to query', async () => {
+    const h = createHarness()
+    h.finance.financeFilters.date_from = '2026-05-01'
+    h.finance.financeFilters.date_to = '2026-05-31'
+    h.finance.financeFilters.operation_code = 'rental'
+    h.apiGet.mockResolvedValueOnce({
+      totals: { revenue: '150.00', direct_expense: '0.00', operating_profit: '150.00', margin: '1.0000' },
+      items: [{ source_id: null, source_name: 'Без источника', operation_code: 'rental', operation_name: 'Шеринг', cash_flow: '150.00' }],
+    })
+
+    await h.finance.loadFinanceProjectsReport()
+
+    expect(h.apiGet).toHaveBeenCalledWith(
+      '/finance/reports/sources?date_from=2026-05-01&date_to=2026-05-31&operation_code=rental',
+      { token: 'token-1' },
+    )
+    expect(h.finance.financeReportItems.value[0]?.operation_code).toBe('rental')
+  })
+
   it('loads source report detail rows for selected table line', async () => {
     const h = createHarness()
     h.finance.financeFilters.date_from = '2026-06-02'
