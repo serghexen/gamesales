@@ -25,6 +25,16 @@ export function useSlotHelpers({
     return slotTypes.value.find((t) => t.code === code)?.name || code
   }
 
+  // Для П2 показываем емкость в разрезе платформы: один слот на PS4/PS5, хотя бизнес-лимит общий.
+  const getSlotDisplayCapacity = (slot) => {
+    if (!slot) return 0
+    const mode = String(slot?.mode || '').trim().toLowerCase()
+    if (mode === 'activate') return 1
+    const type = slotTypes.value.find((t) => t.code === slot.slot_type_code)
+    if (String(type?.mode || '').trim().toLowerCase() === 'activate') return 1
+    return Number(slot?.capacity || 0)
+  }
+
   // Ищем слоты аккаунта по конкретной платформе.
   const getAccountPlatformSlots = (account, platformCode) => {
     if (!account?.platform_slots || !platformCode) return null
@@ -36,7 +46,7 @@ export function useSlotHelpers({
   const getAccountSlotsText = (account) => {
     const list = Array.isArray(account?.slot_status) ? account.slot_status : []
     if (list.length) {
-      return list.map((s) => `${getSlotTypeLabel(s.slot_type_code)} ${s.occupied || 0}/${s.capacity || 0}`).join(' · ')
+      return list.map((s) => `${getSlotTypeLabel(s.slot_type_code)} ${s.occupied || 0}/${getSlotDisplayCapacity(s)}`).join(' · ')
     }
     const ps4 = getAccountPlatformSlots(account, 'ps4')
     const ps5 = getAccountPlatformSlots(account, 'ps5')
@@ -48,7 +58,7 @@ export function useSlotHelpers({
   // Строка статуса для одного типа слота.
   const formatAccountSlotStatusLine = (slot) => {
     if (!slot) return '—'
-    return `${getSlotTypeLabel(slot.slot_type_code)} - ${slot.occupied || 0}/${slot.capacity || 0}`
+    return `${getSlotTypeLabel(slot.slot_type_code)} - ${slot.occupied || 0}/${getSlotDisplayCapacity(slot)}`
   }
 
   // Сортировка слотов в стабильном порядке: режим -> платформа -> код.
