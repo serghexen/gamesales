@@ -738,11 +738,11 @@ class AccountsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 200)
             self.assertTrue(any("active_play_assignments" in sql for sql in sql_collector))
-            self.assertTrue(any("recent_duplicate_locks" in sql for sql in sql_collector))
             self.assertTrue(any("asa.released_at IS NULL" in sql for sql in sql_collector))
             self.assertTrue(any("INTERVAL '2 months'" in sql for sql in sql_collector))
             self.assertTrue(any("ILIKE 'П2%%'" in sql for sql in sql_collector))
             self.assertTrue(any("COALESCE(apa.active_count, 0) >= 2" in sql for sql in sql_collector))
+            self.assertFalse(any("recent_duplicate_locks" in sql for sql in sql_collector))
 
     # Для подписки список аккаунтов для шеринга тоже должен возвращаться.
     def test_list_accounts_for_deal_supports_subscription_product(self):
@@ -823,11 +823,11 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json()[0]["slot_type_code"], "play_ps5")
             self.assertTrue(any("active_play_assignments" in sql for sql in sql_collector))
-            self.assertTrue(any("recent_duplicate_locks" in sql for sql in sql_collector))
             self.assertTrue(any("asa.released_at IS NULL" in sql for sql in sql_collector))
             self.assertTrue(any("INTERVAL '2 months'" in sql for sql in sql_collector))
             self.assertTrue(any("ILIKE 'П2%%'" in sql for sql in sql_collector))
             self.assertTrue(any("COALESCE(apa.active_count, 0) >= 2" in sql for sql in sql_collector))
+            self.assertFalse(any("recent_duplicate_locks" in sql for sql in sql_collector))
 
     # Новый endpoint по товару должен возвращать назначения слотов с product-полями.
     def test_list_product_slot_assignments_success(self):

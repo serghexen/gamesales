@@ -1118,26 +1118,6 @@ def mount_accounts_routes(
                     AND st_active.mode = 'activate'
                   GROUP BY asa.account_id
                 ),
-                recent_duplicate_locks AS (
-                  SELECT
-                    asa.account_id,
-                    asa.slot_type_code,
-                    MAX(COALESCE(asa.assigned_at, now())) AS last_duplicate_assigned_at
-                  FROM app.account_slot_assignments asa
-                  JOIN app.slot_types st_dup ON st_dup.code = asa.slot_type_code
-                  WHERE st_dup.mode = 'play'
-                    AND asa.released_at IS NULL
-                    AND COALESCE(asa.assigned_at, now()) > (now() - INTERVAL '2 months')
-                    AND EXISTS (
-                      SELECT 1
-                      FROM app.account_slot_assignments prev
-                      WHERE prev.account_id = asa.account_id
-                        AND prev.slot_type_code = asa.slot_type_code
-                        AND COALESCE(prev.assigned_at, now()) < COALESCE(asa.assigned_at, now())
-                        AND COALESCE(prev.released_at, 'infinity'::timestamptz) > COALESCE(asa.assigned_at, now())
-                    )
-                  GROUP BY asa.account_id, asa.slot_type_code
-                ),
                 base AS (
                   SELECT
                     a.account_id,
@@ -1166,9 +1146,6 @@ def mount_accounts_routes(
                     JOIN app.slot_types st_gate ON st_gate.code = ss.slot_type_code
                     LEFT JOIN active_play_assignments apa
                       ON apa.account_id = ss.account_id
-                    LEFT JOIN recent_duplicate_locks rdl
-                      ON rdl.account_id = ss.account_id
-                     AND rdl.slot_type_code = ss.slot_type_code
                     WHERE ss.account_id = a.account_id
                       AND (
                         CASE
@@ -1176,10 +1153,6 @@ def mount_accounts_routes(
                           WHEN st_gate.name ILIKE 'П2%%'
                             AND COALESCE(ss.capacity, 0) >= 2
                             AND COALESCE(apa.active_count, 0) >= 2
-                          THEN 0
-                          -- Если дубль по этому методу был менее 2 месяцев назад, новый дубль временно блокируем.
-                          WHEN COALESCE(ss.capacity, 0) >= 2
-                            AND rdl.last_duplicate_assigned_at IS NOT NULL
                           THEN 0
                           -- Для игрового П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
                           WHEN st_gate.name ILIKE 'П2%%'
@@ -1285,26 +1258,6 @@ def mount_accounts_routes(
                     AND st_active.mode = 'activate'
                   GROUP BY asa.account_id
                 ),
-                recent_duplicate_locks AS (
-                  SELECT
-                    asa.account_id,
-                    asa.slot_type_code,
-                    MAX(COALESCE(asa.assigned_at, now())) AS last_duplicate_assigned_at
-                  FROM app.account_slot_assignments asa
-                  JOIN app.slot_types st_dup ON st_dup.code = asa.slot_type_code
-                  WHERE st_dup.mode = 'play'
-                    AND asa.released_at IS NULL
-                    AND COALESCE(asa.assigned_at, now()) > (now() - INTERVAL '2 months')
-                    AND EXISTS (
-                      SELECT 1
-                      FROM app.account_slot_assignments prev
-                      WHERE prev.account_id = asa.account_id
-                        AND prev.slot_type_code = asa.slot_type_code
-                        AND COALESCE(prev.assigned_at, now()) < COALESCE(asa.assigned_at, now())
-                        AND COALESCE(prev.released_at, 'infinity'::timestamptz) > COALESCE(asa.assigned_at, now())
-                    )
-                  GROUP BY asa.account_id, asa.slot_type_code
-                ),
                 base_accounts AS (
                   SELECT a.account_id
                   FROM app.accounts a
@@ -1324,10 +1277,6 @@ def mount_accounts_routes(
                           AND COALESCE(ss.capacity, 0) >= 2
                           AND COALESCE(apa.active_count, 0) >= 2
                         THEN 0
-                        -- Если дубль по этому методу был менее 2 месяцев назад, новый дубль временно блокируем.
-                        WHEN COALESCE(ss.capacity, 0) >= 2
-                          AND rdl.last_duplicate_assigned_at IS NOT NULL
-                        THEN 0
                         -- Для игрового П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
                         WHEN st.name ILIKE 'П2%%'
                           AND COALESCE(ss.capacity, 0) >= 2
@@ -1346,8 +1295,6 @@ def mount_accounts_routes(
                   ON ss.account_id = ba.account_id AND ss.slot_type_code = st.code
                 LEFT JOIN active_play_assignments apa
                   ON apa.account_id = ba.account_id
-                LEFT JOIN recent_duplicate_locks rdl
-                  ON rdl.account_id = ba.account_id AND rdl.slot_type_code = st.code
                 GROUP BY st.code
                 ORDER BY st.code
                 """,
