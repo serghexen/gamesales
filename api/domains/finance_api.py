@@ -2855,7 +2855,7 @@ def mount_finance_routes(
         date_to: Optional[date] = None,
         region_id: Optional[list[int]] = Query(None),
         source_id: Optional[list[int]] = Query(None),
-        operation_code: Optional[str] = None,
+        operation_code: Optional[list[str]] = Query(None),
         user=Depends(get_current_user),
     ):
         # Строим cash flow по источникам из сделок app и ручных finance-проводок.
@@ -2867,19 +2867,37 @@ def mount_finance_routes(
         if date_to is not None:
             filters.append("activity_date <= %s")
             params.append(date_to)
-        normalized_operation_code = _normalize_code(operation_code)
-        if normalized_operation_code:
-            if normalized_operation_code not in {"sale", "rental", "source"}:
+        normalized_operation_codes: list[str] = []
+        for raw_code in operation_code or []:
+            # Собираем мультивыбор типа и сохраняем порядок без дублей для SQL-фильтра.
+            normalized_code = _normalize_code(raw_code)
+            if not normalized_code:
+                continue
+            if normalized_code not in {"sale", "rental", "source"}:
                 raise HTTPException(400, "operation_code must be sale, rental or source")
-            filters.append("operation_code = %s")
-            params.append(normalized_operation_code)
+            if normalized_code not in normalized_operation_codes:
+                normalized_operation_codes.append(normalized_code)
         region_ids = [int(value) for value in (region_id or []) if value is not None]
-        if region_ids and normalized_operation_code in {"", "sale"}:
-            # Регион применяем только к услугам, чтобы шеринг и маркетплейсы не пропадали из своих отдельных режимов.
+        if normalized_operation_codes:
+            if region_ids and "sale" in normalized_operation_codes:
+                # Регион ограничивает только услуги, а шеринг/маркеты остаются без региональной строки.
+                non_region_codes = [code for code in normalized_operation_codes if code != "sale"]
+                if non_region_codes:
+                    filters.append("(operation_code = ANY(%s) OR (operation_code = 'sale' AND region_id = ANY(%s)))")
+                    params.append(non_region_codes)
+                    params.append(region_ids)
+                else:
+                    filters.append("operation_code = 'sale'")
+                    filters.append("region_id = ANY(%s)")
+                    params.append(region_ids)
+            else:
+                filters.append("operation_code = ANY(%s)")
+                params.append(normalized_operation_codes)
+        elif region_ids:
+            # Без выбранного типа региональный фильтр строит только услуги.
             filters.append("region_id = ANY(%s)")
             params.append(region_ids)
-            if not normalized_operation_code:
-                filters.append("operation_code = 'sale'")
+            filters.append("operation_code = 'sale'")
         _append_multi_id_filter(filters, params, "source_id", source_id)
         where_sql = " AND ".join(filters)
 
@@ -3398,11 +3416,23 @@ def mount_finance_routes(
     @app.get("/finance/reports/cash-flow", response_model=FinanceCashFlowReportOut)
     def finance_report_cash_flow(
         month: Optional[str] = None,
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None,
         user=Depends(get_current_user),
     ):
-        # Строим месячный Cash Flow и остатки от ближайшего ручного начального баланса.
-        month_start = _parse_month(month)
-        next_month_start = _next_month_start(month_start)
+        # Строим Cash Flow за период и остатки от ближайшего ручного начального баланса.
+        if date_from or date_to:
+            date_from_value = date_from or date_to
+            date_to_value = date_to or date_from_value
+        elif month:
+            month_start = _parse_month(month)
+            date_from_value = month_start
+            date_to_value = _next_month_start(month_start) - timedelta(days=1)
+        else:
+            date_from_value = date.today()
+            date_to_value = date_from_value
+        if date_to_value < date_from_value:
+            raise HTTPException(400, "date_to must be greater than or equal to date_from")
 
         cash_flow_rows_sql = """
             SELECT
@@ -3414,6 +3444,7 @@ def mount_finance_routes(
                 WHEN d.deal_type_code = 'rental' THEN 'Продажа Шеринг'
                 ELSE CONCAT('Продажа ', COALESCE(fdr.code, rd.code, 'Без региона'))
               END AS line_name,
+              NULL::text AS expense_kind,
               (di.price * di.qty) AS amount
             FROM app.deal_items di
             JOIN app.deals d ON d.deal_id = di.deal_id
@@ -3440,6 +3471,7 @@ def mount_finance_routes(
               NULL AS region_id,
               'expense' AS line_type,
               'Закуп Шеринг' AS line_name,
+              'direct'::text AS expense_kind,
               (di.purchase_cost * di.qty) AS amount
             FROM app.deal_items di
             JOIN app.deals d ON d.deal_id = di.deal_id
@@ -3462,6 +3494,7 @@ def mount_finance_routes(
               fdr.region_id,
               'expense' AS line_type,
               CONCAT('Закуп ', COALESCE(fdr.code, rd.code, 'Без региона')) AS line_name,
+              'direct'::text AS expense_kind,
               (di.purchase_cost * di.qty * COALESCE(rd.purchase_cost_rate, 1.0)) AS amount
             FROM app.deal_items di
             JOIN app.deals d ON d.deal_id = di.deal_id
@@ -3485,6 +3518,19 @@ def mount_finance_routes(
               e.region_id,
               CASE WHEN p.metric_code = 'revenue' THEN 'revenue' ELSE 'expense' END AS line_type,
               COALESCE(op.name, 'Ручная операция') AS line_name,
+              CASE
+                WHEN p.metric_code = 'direct_expense' THEN 'direct'
+                WHEN p.metric_code = 'indirect_expense'
+                 AND (lower(COALESCE(op.code, '')) LIKE '%%tax%%'
+                   OR lower(COALESCE(op.name, '')) LIKE '%%tax%%'
+                   OR lower(COALESCE(op.name, '')) LIKE '%%налог%%') THEN 'tax'
+                WHEN p.metric_code = 'indirect_expense' THEN 'indirect'
+                WHEN p.metric_code = 'other'
+                 AND (lower(COALESCE(op.code, '')) LIKE '%%tax%%'
+                   OR lower(COALESCE(op.name, '')) LIKE '%%tax%%'
+                   OR lower(COALESCE(op.name, '')) LIKE '%%налог%%') THEN 'tax'
+                ELSE NULL
+              END AS expense_kind,
               p.amount AS amount
             FROM finance.entry_postings p
             JOIN finance.entries e
@@ -3493,7 +3539,15 @@ def mount_finance_routes(
             LEFT JOIN finance.operations op ON op.operation_id = e.operation_id
             WHERE e.status_code = 'confirmed'
               AND e.input_channel IN ('manual', 'api', 'import')
-              AND p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')
+              AND (
+                p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')
+                OR (
+                  p.metric_code = 'other'
+                  AND (lower(COALESCE(op.code, '')) LIKE '%%tax%%'
+                    OR lower(COALESCE(op.name, '')) LIKE '%%tax%%'
+                    OR lower(COALESCE(op.name, '')) LIKE '%%налог%%')
+                )
+              )
               AND COALESCE(p.amount, 0) <> 0
         """
 
@@ -3507,15 +3561,16 @@ def mount_finance_routes(
                 SELECT
                   line_type,
                   line_name,
+                  expense_kind,
                   COALESCE(SUM(amount), 0) AS amount
                 FROM cash_flow_rows
                 WHERE activity_date >= %s
-                  AND activity_date < %s
-                GROUP BY line_type, line_name
+                  AND activity_date <= %s
+                GROUP BY line_type, line_name, expense_kind
                 HAVING COALESCE(SUM(amount), 0) <> 0
-                ORDER BY line_type DESC, line_name
+                ORDER BY line_type DESC, expense_kind NULLS FIRST, line_name
                 """,
-                (month_start, next_month_start),
+                (date_from_value, date_to_value),
             )
             manual_opening_row = q1(
                 conn,
@@ -3526,11 +3581,11 @@ def mount_finance_routes(
                 ORDER BY balance_month DESC
                 LIMIT 1
                 """,
-                (month_start,),
+                (date_from_value,),
             )
             opening_balance_month = manual_opening_row[0] if manual_opening_row else None
             opening_balance = _round_money(Decimal((manual_opening_row or [None, 0])[1] or 0))
-            if opening_balance_month is not None and opening_balance_month < month_start:
+            if opening_balance_month is not None and opening_balance_month < date_from_value:
                 accumulated_row = q1(
                     conn,
                     f"""
@@ -3544,7 +3599,7 @@ def mount_finance_routes(
                     WHERE activity_date >= %s
                       AND activity_date < %s
                     """,
-                    (opening_balance_month, month_start),
+                    (opening_balance_month, date_from_value),
                 ) or (Decimal("0"),)
                 opening_balance = _round_money(opening_balance + Decimal(accumulated_row[0] or 0))
 
@@ -3552,19 +3607,35 @@ def mount_finance_routes(
         expenses: list[FinanceCashFlowLineOut] = []
         revenue_total = Decimal("0")
         expense_total = Decimal("0")
+        direct_total = Decimal("0")
+        indirect_total = Decimal("0")
+        tax_total = Decimal("0")
         for row in rows:
-            line_amount = _round_money(Decimal(row[2] or 0))
-            line = FinanceCashFlowLineOut(name=str(row[1] or "Без названия"), amount=line_amount)
+            line_amount = _round_money(Decimal(row[3] or 0))
+            expense_kind = str(row[2] or "").strip().lower() or None
+            line = FinanceCashFlowLineOut(name=str(row[1] or "Без названия"), amount=line_amount, expense_kind=expense_kind)
             if row[0] == "revenue":
                 revenues.append(line)
                 revenue_total += line_amount
             else:
                 expenses.append(line)
                 expense_total += line_amount
+                if expense_kind == "indirect":
+                    indirect_total += line_amount
+                elif expense_kind == "tax":
+                    tax_total += line_amount
+                else:
+                    direct_total += line_amount
 
         revenue_total = _round_money(revenue_total)
         expense_total = _round_money(expense_total)
+        direct_total = _round_money(direct_total)
+        indirect_total = _round_money(indirect_total)
+        tax_total = _round_money(tax_total)
         cash_flow_total = _round_money(revenue_total - expense_total)
+        gross_profit = _round_money(revenue_total - direct_total)
+        operating_profit = _round_money(gross_profit - indirect_total)
+        net_profit = _round_money(operating_profit - tax_total)
         current_balance = _round_money(opening_balance + cash_flow_total)
 
         return FinanceCashFlowReportOut(
@@ -3572,10 +3643,16 @@ def mount_finance_routes(
                 revenue=revenue_total,
                 expense=expense_total,
                 cash_flow=cash_flow_total,
+                direct_expense=direct_total,
+                indirect_expense=indirect_total,
+                tax_expense=tax_total,
+                gross_profit=gross_profit,
+                operating_profit=operating_profit,
+                net_profit=net_profit,
                 opening_balance=opening_balance,
                 current_balance=current_balance,
                 opening_balance_month=opening_balance_month,
-                opening_balance_manual=bool(opening_balance_month == month_start),
+                opening_balance_manual=bool(opening_balance_month == date_from_value),
             ),
             revenues=revenues,
             expenses=expenses,
@@ -3587,6 +3664,7 @@ def mount_finance_routes(
         date_to: Optional[date] = None,
         line_type: Optional[str] = None,
         line_name: Optional[str] = None,
+        source_id: Optional[list[int]] = Query(None),
         user=Depends(get_current_user),
     ):
         # Отдаем строки Cash Flow на уровне сделок и finance-проводок для проверки суммы за период.
@@ -3608,6 +3686,10 @@ def mount_finance_routes(
         if normalized_line_name:
             filters.append("line_name = %s")
             params.append(normalized_line_name)
+        source_ids = [int(item) for item in (source_id or []) if int(item) > 0]
+        if source_ids:
+            filters.append("source_id = ANY(%s)")
+            params.append(source_ids)
         where_sql = " AND ".join(filters)
 
         with psycopg.connect(DB_DSN) as conn:
@@ -3822,7 +3904,15 @@ def mount_finance_routes(
                   LEFT JOIN app.users author ON lower(author.username) = lower(e.created_by)
                   WHERE e.status_code = 'confirmed'
                     AND e.input_channel IN ('manual', 'api', 'import')
-                    AND p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')
+                    AND (
+                      p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')
+                      OR (
+                        p.metric_code = 'other'
+                        AND (lower(COALESCE(op.code, '')) LIKE '%%tax%%'
+                          OR lower(COALESCE(op.name, '')) LIKE '%%tax%%'
+                          OR lower(COALESCE(op.name, '')) LIKE '%%налог%%')
+                      )
+                    )
                     AND COALESCE(p.amount, 0) <> 0
                 )
                 SELECT

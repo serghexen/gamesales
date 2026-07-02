@@ -15,6 +15,7 @@ function buildCtx(overrides = {}) {
     financeMode: 'entry',
     financeLoading: false,
     financeCashFlowLoading: false,
+    financePlLoading: false,
     financeTrCardBalanceLoading: false,
     financeTrCardBalanceSaving: false,
     financeEntriesLoading: false,
@@ -52,7 +53,7 @@ function buildCtx(overrides = {}) {
       project_id: '',
       region_id: [],
       source_id: [],
-      operation_code: '',
+      operation_code: [],
       split_by_source: false,
     },
     financeNewEntry: {
@@ -116,7 +117,10 @@ function buildCtx(overrides = {}) {
     financeSections: [{ section_id: 20, type_id: 2, type_code: 'direct_expense', kind: 'direct_expense', code: 'direct', name: 'Прямые расходы' }],
     financeProjects: [{ project_id: 1, code: 'core', name: 'Core' }],
     financeRegions: [{ region_id: 10, code: 'TR', name: 'Turkey' }],
-    financeSources: [{ source_id: 99, code: 'ym', name: 'ASAT' }],
+    financeSources: [
+      { source_id: 99, code: 'ym', name: 'ASAT' },
+      { source_id: 100, code: 'wb', name: 'SPS' },
+    ],
     financeStatuses: [{ code: 'confirmed', name: 'Подтверждено' }],
     financeEntries: [{ entry_id: 1, biz_date: '2026-05-30', operation_id: 7, project_id: 1, region_id: 10, source_id: 99, qty: '1.00', amount: '100.00', comment: 'Ручная корректировка', status_code: 'confirmed', created_by: 'qa' }],
     financeReportTotals: {
@@ -215,6 +219,7 @@ function buildCtx(overrides = {}) {
     financeSourceDetailsOpen: false,
     financeSourceDetailsLoading: false,
     financeCashFlowLoaded: true,
+    financePlLoaded: true,
     financeTrCardBalanceLoaded: true,
     financeCashFlowTotals: {
       revenue: 20000,
@@ -226,6 +231,14 @@ function buildCtx(overrides = {}) {
       opening_balance_manual: true,
     },
     financeCashFlowMonth: '2026-05',
+    financeCashFlowFilters: {
+      date_from: '2026-05-01',
+      date_to: '2026-05-31',
+    },
+    financePlFilters: {
+      date_from: '2026-05-01',
+      date_to: '2026-05-31',
+    },
     financeCashFlowOpeningDraft: '3000',
     financeTrCardBalance: {
       card_code: 'TR',
@@ -250,9 +263,32 @@ function buildCtx(overrides = {}) {
       { name: 'Закуп TR', amount: 6000 },
       { name: 'Маркетинг', amount: 1000 },
     ],
+    financePlTotals: {
+      revenue: 20000,
+      direct_expense: 6000,
+      indirect_expense: 800,
+      tax_expense: 200,
+      gross_profit: 14000,
+      operating_profit: 13200,
+      net_profit: 13000,
+    },
+    financePlRevenues: [
+      { name: 'Продажа TR', amount: 15000 },
+      { name: 'Шеринг TR', amount: 5000 },
+    ],
+    financePlDirectExpenses: [
+      { name: 'Закуп TR', amount: 6000, expense_kind: 'direct' },
+    ],
+    financePlIndirectExpenses: [
+      { name: 'Маркетинг', amount: 800, expense_kind: 'indirect' },
+    ],
+    financePlTaxExpenses: [
+      { name: 'Налог УСН', amount: 200, expense_kind: 'tax' },
+    ],
     financeCashFlowDetailsFilters: {
       date_from: '2026-05-01',
       date_to: '2026-05-31',
+      source_id: [],
     },
     financeCashFlowDetails: [
       {
@@ -290,6 +326,7 @@ function buildCtx(overrides = {}) {
     clearFinanceSourceDetails: vi.fn(),
     openFinanceDetailDeal: vi.fn(),
     loadFinanceCashFlowReport: vi.fn(),
+    loadFinancePlReport: vi.fn(),
     loadFinanceCashFlowDetails: vi.fn(),
     clearFinanceCashFlowDetails: vi.fn(),
     resetFinanceCashFlowDetailsPeriod: vi.fn(),
@@ -317,7 +354,7 @@ function buildCtx(overrides = {}) {
     maxDate: '2026-05-31',
     minDate: '2020-01-01',
     formatPrice: (v) => String(v),
-    formatPercent: (v) => String(v),
+    formatPercent: (v) => (Number.isFinite(Number(v)) ? `${Number(v) * 100} %` : '—'),
     ...overrides,
   }
 }
@@ -345,6 +382,7 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('Интеграции')
     expect(wrapper.text()).toContain('Отчет по источникам')
     expect(wrapper.text()).toContain('Cash Flow')
+    expect(wrapper.text()).toContain('Отчет PL')
     expect(wrapper.text()).not.toContain('Магазин')
     expect(wrapper.text()).not.toContain('ASAT - wb')
     expect(wrapper.text()).toContain('Комментарий')
@@ -377,7 +415,8 @@ describe('WorkFinanceSection', () => {
     await wrapper.find('[data-test="finance-apply-report"]').trigger('click')
     await wrapper.find('[data-test="finance-mode-cash-flow"]').trigger('click')
     await wrapper.find('[data-test="finance-apply-cash-flow"]').trigger('click')
-    await wrapper.find('[data-test="finance-save-cash-flow-opening"]').trigger('click')
+    await wrapper.find('[data-test="finance-mode-pl"]').trigger('click')
+    await wrapper.find('[data-test="finance-apply-pl"]').trigger('click')
     await wrapper.find('[data-test="finance-mode-catalogs"]').trigger('click')
     await wrapper.find('[data-test="finance-open-create-type"]').trigger('click')
     await wrapper.find('[data-test="finance-create-type"]').trigger('click')
@@ -391,7 +430,7 @@ describe('WorkFinanceSection', () => {
     expect(ctx.syncFinanceOzon).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceProjectsReport).toHaveBeenCalledTimes(1)
     expect(ctx.loadFinanceCashFlowReport).toHaveBeenCalledTimes(1)
-    expect(ctx.saveFinanceCashFlowOpeningBalance).toHaveBeenCalledTimes(1)
+    expect(ctx.loadFinancePlReport).toHaveBeenCalledTimes(1)
     expect(ctx.createFinanceType).toHaveBeenCalledTimes(1)
     expect(ctx.createFinanceOperation).toHaveBeenCalledTimes(1)
   })
@@ -558,7 +597,7 @@ describe('WorkFinanceSection', () => {
         project_id: '',
         region_id: [10],
         source_id: [99],
-        operation_code: 'rental',
+        operation_code: ['sale', 'rental'],
         split_by_source: true,
       },
     })
@@ -577,8 +616,13 @@ describe('WorkFinanceSection', () => {
 
     await wrapper.find('[data-test="finance-mode-report"]').trigger('click')
     expect(ctx.financeMode).toBe('report')
-    expect(wrapper.find('select').text()).toContain('Шеринг')
-    expect(ctx.financeFilters.operation_code).toBe('rental')
+    expect(wrapper.find('[data-test="finance-report-types"]').text()).toContain('2 выбрано')
+    expect(ctx.financeFilters.operation_code).toEqual(['sale', 'rental'])
+    await wrapper.find('[data-test="finance-report-types"] button').trigger('click')
+    const typeCheckboxes = wrapper.findAll('[data-test="finance-report-types"] input[type="checkbox"]')
+    expect(typeCheckboxes).toHaveLength(4)
+    await typeCheckboxes[2].setValue(false)
+    expect(ctx.financeFilters.operation_code).toEqual(['sale'])
     expect(wrapper.find('[data-test="finance-report-regions"]').text()).toContain('Turkey')
     expect(wrapper.find('[data-test="finance-report-sources"]').text()).toContain('ASAT - ym')
     await wrapper.find('[data-test="finance-report-regions"] button').trigger('click')
@@ -623,8 +667,9 @@ describe('WorkFinanceSection', () => {
     })
 
     await wrapper.find('[data-test="finance-mode-report"]').trigger('click')
-    const buttons = wrapper.findAll('[data-test^="finance-source-details-"]')
-    await buttons[1].trigger('click')
+    const rows = wrapper.findAll('[data-test^="finance-source-details-"]')
+    expect(wrapper.text()).not.toContain('Расшифровать')
+    await rows[1].trigger('click')
 
     expect(ctx.loadFinanceSourceDetails).toHaveBeenCalledWith(
       expect.objectContaining({ source_id: null, region_id: 10 }),
@@ -634,6 +679,7 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('Себестоимость')
     expect(wrapper.text()).toContain('1660')
     expect(wrapper.text()).toContain('Сделка #16308')
+    expect(wrapper.find('.finance-details-table-wrap .finance-details-table').exists()).toBe(true)
     await wrapper.find('[data-test="finance-detail-open-deal-16308"]').trigger('click')
     expect(ctx.openFinanceDetailDeal).toHaveBeenCalledWith(16308, 'report')
     expect(wrapper.text()).toContain('LifeGuard58')
@@ -667,13 +713,59 @@ describe('WorkFinanceSection', () => {
 
     expect(wrapper.text()).toContain('Поступления')
     expect(wrapper.text()).toContain('Расходы')
-    expect(wrapper.text()).toContain('Остаток прошлый')
-    expect(wrapper.text()).toContain('Остаток текущий')
-    expect(wrapper.text()).toContain('ручной остаток месяца')
+    expect(wrapper.text()).toContain('Cash Flow')
+    expect(wrapper.text()).not.toContain('Остаток прошлый')
+    expect(wrapper.text()).not.toContain('Остаток текущий')
+    expect(wrapper.text()).not.toContain('ручной остаток месяца')
     expect(wrapper.text()).toContain('Продажа TR')
     expect(wrapper.text()).toContain('Шеринг TR')
     expect(wrapper.text()).toContain('Закуп TR')
     expect(wrapper.text()).toContain('Маркетинг')
+    expect(wrapper.text()).not.toContain('Расшифровать')
+    expect(wrapper.text()).not.toContain('Начальный остаток')
+    expect(wrapper.find('[data-test="finance-save-cash-flow-opening"]').exists()).toBe(false)
+  })
+
+  it('shows PL report cards and opens details with PL dates', async () => {
+    const ctx = buildCtx()
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-pl"]').trigger('click')
+
+    expect(wrapper.find('.finance-pl-cards').exists()).toBe(true)
+    expect(wrapper.findAll('.finance-pl-cards .mini')).toHaveLength(7)
+    const plCardsText = wrapper.find('.finance-pl-cards').text()
+    expect(plCardsText).not.toContain('от поступлений')
+    expect(plCardsText).not.toContain('100 %')
+    expect(plCardsText).toContain('30 %')
+    expect(plCardsText).toContain('65 %')
+    expect(wrapper.text()).toContain('Валовая прибыль')
+    expect(wrapper.text()).toContain('Операционная прибыль')
+    expect(wrapper.text()).toContain('Чистая прибыль')
+    expect(wrapper.text()).toContain('Прямые расходы')
+    expect(wrapper.text()).toContain('Косвенные расходы')
+    expect(wrapper.text()).toContain('Налоги')
+    expect(wrapper.text()).toContain('Налог УСН')
+
+    await wrapper.find('[data-test="finance-pl-details-tax-0"]').trigger('click')
+
+    expect(ctx.financeCashFlowDetailsFilters.date_from).toBe('2026-05-01')
+    expect(ctx.financeCashFlowDetailsFilters.date_to).toBe('2026-05-31')
+    expect(ctx.loadFinanceCashFlowDetails).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Налог УСН', line_type: 'expense' }),
+      'Расход: Налог УСН',
+    )
   })
 
   it('opens cash flow detail modal and applies date interval', async () => {
@@ -705,6 +797,13 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('ASAT - ym')
     expect(wrapper.text()).toContain('Кто внес')
     expect(wrapper.text()).toContain('Анатолий')
+    expect(wrapper.find('[data-test="finance-cash-flow-details-sources"]').exists()).toBe(false)
+    expect(wrapper.find('.finance-details-table-wrap .finance-details-table--cash-flow').exists()).toBe(true)
+    const detailsCardsText = wrapper.find('.finance-details-cards').text()
+    expect(detailsCardsText).toContain('Поступления')
+    expect(detailsCardsText).toContain('Расходы')
+    expect(detailsCardsText).toContain('Строк')
+    expect(detailsCardsText).not.toContain('Cash Flow')
     expect(wrapper.text()).not.toContain('Строка Cash Flow')
     expect(wrapper.text()).not.toContain('Товар / комментарий')
     expect(wrapper.text()).not.toContain('Кол-во')
@@ -715,6 +814,41 @@ describe('WorkFinanceSection', () => {
 
     await wrapper.find('[data-test="finance-apply-cash-flow-details"]').trigger('click')
     expect(ctx.loadFinanceCashFlowDetails).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows source filter only for marketplace API cash flow details', async () => {
+    const ctx = buildCtx({
+      financeCashFlowDetailsOpen: true,
+      financeCashFlowRevenues: [{ name: 'Продажи маркетплейсов (API)', amount: 12000 }],
+      financeCashFlowDetailsTitle: 'Поступление: Продажи маркетплейсов (API)',
+    })
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-cash-flow"]').trigger('click')
+    await wrapper.find('[data-test="finance-cash-flow-details-revenue-0"]').trigger('click')
+
+    expect(wrapper.find('[data-test="finance-cash-flow-details-sources"]').exists()).toBe(true)
+    await wrapper.find('[data-test="finance-cash-flow-details-sources"] button').trigger('click')
+    const sourceInputs = wrapper.findAll('[data-test="finance-cash-flow-details-sources"] input')
+    await sourceInputs[1].setValue(true)
+    expect(ctx.financeCashFlowDetailsFilters.source_id).toEqual([99])
+
+    await wrapper.find('[data-test="finance-apply-cash-flow-details"]').trigger('click')
+    expect(ctx.loadFinanceCashFlowDetails).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: 'Продажи маркетплейсов (API)', line_type: 'revenue' }),
+      'Поступление: Продажи маркетплейсов (API)',
+    )
   })
 
   it('keeps cash flow apply button enabled when only source report is loading', async () => {

@@ -179,8 +179,35 @@ class FinanceReportsTests(unittest.TestCase):
         body = res.json()
         self.assertEqual(body["items"][0]["operation_code"], "rental")
         self.assertEqual(body["items"][0]["operation_name"], "Шеринг")
-        self.assertTrue(any("operation_code = %s" in sql for sql in sql_collector))
+        self.assertTrue(any("operation_code = ANY(%s)" in sql for sql in sql_collector))
         self.assertFalse(any("region_id = ANY(%s)" in sql for sql in sql_collector))
+
+    # Мультивыбор типов должен оставлять шеринг рядом с региональными услугами.
+    def test_finance_sources_report_operation_filter_allows_sale_and_rental_rows(self):
+        script = [
+            {
+                "all": [
+                    (None, None, "Без источника", None, None, None, "rental", "Шеринг", 1500.0, 0.0, 1),
+                ],
+            },
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/finance/reports/sources?date_from=2026-06-01&date_to=2026-06-30&region_id=10&operation_code=sale&operation_code=rental",
+                    headers=self._auth_headers(role="manager"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["items"][0]["operation_code"], "rental")
+        self.assertTrue(any("operation_code = ANY(%s) OR (operation_code = 'sale' AND region_id = ANY(%s))" in sql for sql in sql_collector))
 
     # Детализация строки отчета должна возвращать сделки/проводки с теми же фильтрами, что и агрегат.
     def test_finance_sources_report_details_success(self):
@@ -321,10 +348,11 @@ class FinanceReportsTests(unittest.TestCase):
         script = [
             {
                 "all": [
-                    ("revenue", "Продажа TR", 15000.0),
-                    ("revenue", "Продажа Шеринг", 5000.0),
-                    ("expense", "Закуп TR", 6000.0),
-                    ("expense", "Маркетинг", 1000.0),
+                    ("revenue", "Продажа TR", None, 15000.0),
+                    ("revenue", "Продажа Шеринг", None, 5000.0),
+                    ("expense", "Закуп TR", "direct", 6000.0),
+                    ("expense", "Маркетинг", "indirect", 800.0),
+                    ("expense", "Налог УСН", "tax", 200.0),
                 ],
             },
             {"one": (date(2026, 6, 1), 3000.0)},
@@ -338,7 +366,7 @@ class FinanceReportsTests(unittest.TestCase):
         ):
             with self._client() as client:
                 res = client.get(
-                    "/finance/reports/cash-flow?month=2026-06",
+                    "/finance/reports/cash-flow?date_from=2026-06-01&date_to=2026-06-30",
                     headers=self._auth_headers(role="manager"),
                 )
 
@@ -347,12 +375,19 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(body["totals"]["revenue"], "20000.00")
         self.assertEqual(body["totals"]["expense"], "7000.00")
         self.assertEqual(body["totals"]["cash_flow"], "13000.00")
+        self.assertEqual(body["totals"]["direct_expense"], "6000.00")
+        self.assertEqual(body["totals"]["indirect_expense"], "800.00")
+        self.assertEqual(body["totals"]["tax_expense"], "200.00")
+        self.assertEqual(body["totals"]["gross_profit"], "14000.00")
+        self.assertEqual(body["totals"]["operating_profit"], "13200.00")
+        self.assertEqual(body["totals"]["net_profit"], "13000.00")
         self.assertEqual(body["totals"]["opening_balance"], "3000.00")
         self.assertEqual(body["totals"]["current_balance"], "16000.00")
         self.assertEqual(body["totals"]["opening_balance_month"], "2026-06-01")
         self.assertEqual(body["totals"]["opening_balance_manual"], True)
         self.assertEqual(body["revenues"][0]["name"], "Продажа TR")
         self.assertEqual(body["expenses"][0]["name"], "Закуп TR")
+        self.assertEqual(body["expenses"][0]["expense_kind"], "direct")
         self.assertTrue(any("d.deal_type_code = 'rental' AND COALESCE(di.price, 0) > 0" in sql for sql in sql_collector))
         self.assertTrue(any("WHEN d.deal_type_code = 'rental' THEN 'Продажа Шеринг'" in sql for sql in sql_collector))
         self.assertTrue(any("'Закуп Шеринг' AS line_name" in sql for sql in sql_collector))
@@ -430,7 +465,7 @@ class FinanceReportsTests(unittest.TestCase):
         ):
             with self._client() as client:
                 res = client.get(
-                    "/finance/reports/cash-flow/details?date_from=2026-06-01&date_to=2026-06-30&line_type=revenue&line_name=%D0%9F%D1%80%D0%BE%D0%B4%D0%B0%D0%B6%D0%B0%20TR",
+                    "/finance/reports/cash-flow/details?date_from=2026-06-01&date_to=2026-06-30&line_type=revenue&line_name=%D0%9F%D1%80%D0%BE%D0%B4%D0%B0%D0%B6%D0%B0%20TR&source_id=99&source_id=100",
                     headers=self._auth_headers(role="manager"),
                 )
 
@@ -451,6 +486,7 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(body["items"][1]["reason"], "Ручная проводка finance")
         self.assertTrue(any("line_type = %s" in sql for sql in sql_collector))
         self.assertTrue(any("line_name = %s" in sql for sql in sql_collector))
+        self.assertTrue(any("source_id = ANY(%s)" in sql for sql in sql_collector))
         self.assertTrue(any("WITH completed_deal_authors AS" in sql for sql in sql_collector))
         self.assertTrue(any("a.new_data->>'flow_status_code' = 'completed'" in sql for sql in sql_collector))
         self.assertTrue(any("d.completed_at::date AS activity_date" in sql for sql in sql_collector))
@@ -462,7 +498,7 @@ class FinanceReportsTests(unittest.TestCase):
     # Если у месяца нет ручного остатка, берем ближайший прошлый и добавляем накопленный cash flow.
     def test_finance_cash_flow_report_uses_previous_opening_balance(self):
         script = [
-            {"all": [("revenue", "Продажа TR", 1000.0)]},
+            {"all": [("revenue", "Продажа TR", None, 1000.0)]},
             {"one": (date(2026, 5, 1), 5000.0)},
             {"one": (700.0,)},
         ]

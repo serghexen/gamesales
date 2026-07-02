@@ -8,7 +8,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     date_to: today,
     region_id: [],
     source_id: [],
-    operation_code: '',
+    operation_code: [],
     project_id: '',
     split_by_source: false,
   })
@@ -34,6 +34,15 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeCashFlowDetailsFilters = reactive({
     date_from: '',
     date_to: '',
+    source_id: [],
+  })
+  const financeCashFlowFilters = reactive({
+    date_from: today,
+    date_to: today,
+  })
+  const financePlFilters = reactive({
+    date_from: today,
+    date_to: today,
   })
   const financeYandexSync = reactive({
     store_code: 'asat',
@@ -87,6 +96,15 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     opening_balance: 0,
     current_balance: 0,
   })
+  const financePlTotals = reactive({
+    revenue: 0,
+    direct_expense: 0,
+    indirect_expense: 0,
+    tax_expense: 0,
+    gross_profit: 0,
+    operating_profit: 0,
+    net_profit: 0,
+  })
   const financeTrCardBalance = reactive({
     card_code: 'TR',
     region_code: 'TR',
@@ -103,6 +121,10 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeTrCardBalanceDraft = ref('')
   const financeCashFlowRevenues = ref([])
   const financeCashFlowExpenses = ref([])
+  const financePlRevenues = ref([])
+  const financePlDirectExpenses = ref([])
+  const financePlIndirectExpenses = ref([])
+  const financePlTaxExpenses = ref([])
   const financeCashFlowDetails = ref([])
   const financeCashFlowDetailsTotals = reactive({
     revenue: 0,
@@ -142,10 +164,12 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   const financeCatalogsLoaded = ref(false)
   const financeLoaded = ref(false)
   const financeCashFlowLoaded = ref(false)
+  const financePlLoaded = ref(false)
   const financeTrCardBalanceLoaded = ref(false)
   const financeEntriesLoaded = ref(false)
   const financeLoading = ref(false)
   const financeCashFlowLoading = ref(false)
+  const financePlLoading = ref(false)
   const financeCashFlowOpeningSaving = ref(false)
   const financeTrCardBalanceLoading = ref(false)
   const financeTrCardBalanceSaving = ref(false)
@@ -179,17 +203,27 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   let financeWildberriesCooldownTimer = null
   let financeOzonCooldownTimer = null
 
-  const getFinanceCashFlowMonthRange = (monthValue = financeCashFlowMonth.value) => {
-    // Строим границы месяца для фильтра расшифровки, чтобы дата проводки совпадала с отчетным месяцем.
-    const raw = String(monthValue || currentMonth).trim()
-    const match = raw.match(/^(\d{4})-(\d{2})$/)
-    const normalized = match ? raw : currentMonth
-    const [year, month] = normalized.split('-').map((part) => Number(part))
-    const lastDay = new Date(year, month, 0).getDate()
+  const getFinanceCashFlowReportRange = () => {
+    // Берем период отчета как источник дат для расшифровки, чтобы строки совпадали с общей суммой.
     return {
-      date_from: `${normalized}-01`,
-      date_to: `${normalized}-${String(lastDay).padStart(2, '0')}`,
+      date_from: String(financeCashFlowFilters.date_from || today),
+      date_to: String(financeCashFlowFilters.date_to || financeCashFlowFilters.date_from || today),
     }
+  }
+
+  const resolveFinancePlExpenseKind = (line) => {
+    // Определяем группу расхода для PL: backend отдает kind, а старые ответы добираем по названию.
+    const kind = String(line?.expense_kind || '').trim().toLowerCase()
+    if (kind === 'tax' || kind === 'indirect' || kind === 'direct') return kind
+    const name = String(line?.name || '').trim().toLowerCase()
+    if (name.includes('налог') || name.includes('tax')) return 'tax'
+    if (name.includes('косвен')) return 'indirect'
+    return 'direct'
+  }
+
+  const sumFinancePlLines = (lines) => {
+    // Складываем строки отчета, чтобы корректно посчитать PL даже со старым backend без новых totals.
+    return (Array.isArray(lines) ? lines : []).reduce((sum, line) => sum + Number(line?.amount || 0), 0)
   }
 
   const startFinanceWildberriesCooldown = (seconds, storeCode = 'asat') => {
@@ -286,6 +320,21 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeCashFlowRevenues.value = []
     financeCashFlowExpenses.value = []
     clearFinanceCashFlowDetails()
+  }
+
+  const clearFinancePlReport = () => {
+    // Сбрасываем PL отдельно от Cash Flow, чтобы вкладки не показывали старые агрегаты.
+    financePlTotals.revenue = 0
+    financePlTotals.direct_expense = 0
+    financePlTotals.indirect_expense = 0
+    financePlTotals.tax_expense = 0
+    financePlTotals.gross_profit = 0
+    financePlTotals.operating_profit = 0
+    financePlTotals.net_profit = 0
+    financePlRevenues.value = []
+    financePlDirectExpenses.value = []
+    financePlIndirectExpenses.value = []
+    financePlTaxExpenses.value = []
   }
 
   const applyFinanceTrCardBalance = (data) => {
@@ -395,6 +444,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       financeNewEntry.comment = ''
       const refreshTasks = [loadFinanceEntries(), loadFinanceProjectsReport()]
       if (financeCashFlowLoaded.value) refreshTasks.push(loadFinanceCashFlowReport())
+      if (financePlLoaded.value) refreshTasks.push(loadFinancePlReport())
       await Promise.all(refreshTasks)
       return true
     } catch (e) {
@@ -414,6 +464,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       await apiDelete(`/finance/entries/${Number(entryId)}`, { token: auth.state.token })
       const refreshTasks = [loadFinanceEntries(), loadFinanceProjectsReport()]
       if (financeCashFlowLoaded.value) refreshTasks.push(loadFinanceCashFlowReport())
+      if (financePlLoaded.value) refreshTasks.push(loadFinancePlReport())
       await Promise.all(refreshTasks)
       return true
     } catch (e) {
@@ -438,14 +489,20 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
           .filter((item) => Number.isFinite(item) && item > 0)
           .forEach((item) => params.append(key, String(item)))
       }
+      const appendFilterCodes = (key, value, allowedCodes) => {
+        // Передаем выбранные типы повторяющимися параметрами и отсекаем неизвестные коды.
+        const values = Array.isArray(value) ? value : (value ? [value] : [])
+        const allowed = new Set(allowedCodes)
+        values
+          .map((item) => String(item || '').trim().toLowerCase())
+          .filter((item) => allowed.has(item))
+          .forEach((item) => params.append(key, item))
+      }
       if (financeFilters.date_from) params.set('date_from', financeFilters.date_from)
       if (financeFilters.date_to) params.set('date_to', financeFilters.date_to)
       appendFilterIds('region_id', financeFilters.region_id)
       appendFilterIds('source_id', financeFilters.source_id)
-      if (financeFilters.operation_code) {
-        // Передаем тип строки, чтобы можно было отдельно смотреть услуги, шеринг или маркетплейсы.
-        params.set('operation_code', String(financeFilters.operation_code))
-      }
+      appendFilterCodes('operation_code', financeFilters.operation_code, ['sale', 'rental', 'source'])
 
       const query = params.toString()
       const data = await apiGet(`/finance/reports/sources${query ? `?${query}` : ''}`, { token: auth.state.token })
@@ -523,7 +580,22 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeCashFlowLoading.value = true
     try {
       const params = new URLSearchParams()
-      if (financeCashFlowMonth.value) params.set('month', String(financeCashFlowMonth.value))
+      const dateFrom = String(financeCashFlowFilters.date_from || '').trim()
+      const dateTo = String(financeCashFlowFilters.date_to || '').trim()
+      if (!dateFrom || !dateTo) {
+        financeError.value = 'Выберите период Cash Flow'
+        clearFinanceCashFlowReport()
+        financeCashFlowLoaded.value = false
+        return false
+      }
+      if (dateTo < dateFrom) {
+        financeError.value = 'Дата окончания должна быть не раньше даты начала'
+        clearFinanceCashFlowReport()
+        financeCashFlowLoaded.value = false
+        return false
+      }
+      params.set('date_from', dateFrom)
+      params.set('date_to', dateTo)
 
       const query = params.toString()
       const data = await apiGet(`/finance/reports/cash-flow${query ? `?${query}` : ''}`, { token: auth.state.token })
@@ -537,20 +609,84 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       financeCashFlowRevenues.value = Array.isArray(data?.revenues) ? data.revenues : []
       financeCashFlowExpenses.value = Array.isArray(data?.expenses) ? data.expenses : []
       financeCashFlowLoaded.value = true
+      return true
     } catch (e) {
       clearFinanceCashFlowReport()
       financeCashFlowLoaded.value = false
       financeError.value = mapApiError(e?.message)
+      return false
     } finally {
       financeCashFlowLoading.value = false
     }
   }
 
+  const loadFinancePlReport = async () => {
+    // Загружаем PL за период через cash-flow endpoint и раскладываем строки по группам прибыли.
+    financeError.value = null
+    financePlLoading.value = true
+    try {
+      const params = new URLSearchParams()
+      const dateFrom = String(financePlFilters.date_from || '').trim()
+      const dateTo = String(financePlFilters.date_to || '').trim()
+      if (!dateFrom || !dateTo) {
+        financeError.value = 'Выберите период PL'
+        clearFinancePlReport()
+        financePlLoaded.value = false
+        return false
+      }
+      if (dateTo < dateFrom) {
+        financeError.value = 'Дата окончания должна быть не раньше даты начала'
+        clearFinancePlReport()
+        financePlLoaded.value = false
+        return false
+      }
+      params.set('date_from', dateFrom)
+      params.set('date_to', dateTo)
+
+      const query = params.toString()
+      const data = await apiGet(`/finance/reports/cash-flow${query ? `?${query}` : ''}`, { token: auth.state.token })
+      const revenues = Array.isArray(data?.revenues) ? data.revenues : []
+      const expenses = Array.isArray(data?.expenses) ? data.expenses : []
+      const directExpenses = expenses.filter((line) => resolveFinancePlExpenseKind(line) === 'direct')
+      const indirectExpenses = expenses.filter((line) => resolveFinancePlExpenseKind(line) === 'indirect')
+      const taxExpenses = expenses.filter((line) => resolveFinancePlExpenseKind(line) === 'tax')
+      const revenue = Number(data?.totals?.revenue ?? sumFinancePlLines(revenues))
+      const directExpense = Number(data?.totals?.direct_expense ?? sumFinancePlLines(directExpenses))
+      const indirectExpense = Number(data?.totals?.indirect_expense ?? sumFinancePlLines(indirectExpenses))
+      const taxExpense = Number(data?.totals?.tax_expense ?? sumFinancePlLines(taxExpenses))
+      const grossProfit = Number(data?.totals?.gross_profit ?? (revenue - directExpense))
+      const operatingProfit = Number(data?.totals?.operating_profit ?? (grossProfit - indirectExpense))
+      const netProfit = Number(data?.totals?.net_profit ?? (operatingProfit - taxExpense))
+
+      financePlTotals.revenue = revenue
+      financePlTotals.direct_expense = directExpense
+      financePlTotals.indirect_expense = indirectExpense
+      financePlTotals.tax_expense = taxExpense
+      financePlTotals.gross_profit = grossProfit
+      financePlTotals.operating_profit = operatingProfit
+      financePlTotals.net_profit = netProfit
+      financePlRevenues.value = revenues
+      financePlDirectExpenses.value = directExpenses
+      financePlIndirectExpenses.value = indirectExpenses
+      financePlTaxExpenses.value = taxExpenses
+      financePlLoaded.value = true
+      return true
+    } catch (e) {
+      clearFinancePlReport()
+      financePlLoaded.value = false
+      financeError.value = mapApiError(e?.message)
+      return false
+    } finally {
+      financePlLoading.value = false
+    }
+  }
+
   const resetFinanceCashFlowDetailsPeriod = () => {
-    // Возвращаем фильтр расшифровки к полному выбранному месяцу Cash Flow.
-    const range = getFinanceCashFlowMonthRange()
+    // Возвращаем фильтры расшифровки к периоду текущего Cash Flow и снимаем прошлый источник.
+    const range = getFinanceCashFlowReportRange()
     financeCashFlowDetailsFilters.date_from = range.date_from
     financeCashFlowDetailsFilters.date_to = range.date_to
+    financeCashFlowDetailsFilters.source_id = []
   }
 
   const loadFinanceCashFlowDetails = async (line, title = '') => {
@@ -568,6 +704,13 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       if (financeCashFlowDetailsFilters.date_to) params.set('date_to', financeCashFlowDetailsFilters.date_to)
       if (line?.line_type) params.set('line_type', String(line.line_type))
       if (line?.name) params.set('line_name', String(line.name))
+      const sourceIds = Array.isArray(financeCashFlowDetailsFilters.source_id)
+        ? financeCashFlowDetailsFilters.source_id
+        : (financeCashFlowDetailsFilters.source_id ? [financeCashFlowDetailsFilters.source_id] : [])
+      sourceIds
+        .map((item) => Number(item))
+        .filter((item) => Number.isFinite(item) && item > 0)
+        .forEach((item) => params.append('source_id', String(item)))
       const query = params.toString()
       const data = await apiGet(`/finance/reports/cash-flow/details${query ? `?${query}` : ''}`, { token: auth.state.token })
       financeCashFlowDetails.value = Array.isArray(data?.items) ? data.items : []
@@ -705,6 +848,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       financeYandexSyncOk.value = `Yandex: дней добавлено ${created}, дней обновлено ${updated}, дней пропущено ${skipped}, ошибок ${failed}`
       const refreshTasks = [loadFinanceEntries(), loadFinanceProjectsReport()]
       if (financeCashFlowLoaded.value) refreshTasks.push(loadFinanceCashFlowReport())
+      if (financePlLoaded.value) refreshTasks.push(loadFinancePlReport())
       await Promise.all(refreshTasks)
       return failed === 0
     } catch (e) {
@@ -766,6 +910,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       financeWildberriesSyncOk.value = `Wildberries: дней добавлено ${created}, дней обновлено ${updated}, дней пропущено ${skipped}, ошибок ${failed}`
       const refreshTasks = [loadFinanceEntries(), loadFinanceProjectsReport()]
       if (financeCashFlowLoaded.value) refreshTasks.push(loadFinanceCashFlowReport())
+      if (financePlLoaded.value) refreshTasks.push(loadFinancePlReport())
       await Promise.all(refreshTasks)
       return failed === 0
     } catch (e) {
@@ -831,6 +976,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       financeOzonSyncOk.value = `Ozon: дней добавлено ${created}, дней обновлено ${updated}, дней пропущено ${skipped}, ошибок ${failed}`
       const refreshTasks = [loadFinanceEntries(), loadFinanceProjectsReport()]
       if (financeCashFlowLoaded.value) refreshTasks.push(loadFinanceCashFlowReport())
+      if (financePlLoaded.value) refreshTasks.push(loadFinancePlReport())
       await Promise.all(refreshTasks)
       return failed === 0
     } catch (e) {
@@ -1186,6 +1332,8 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeNewEntry,
     financeEntryFilters,
     financeCashFlowDetailsFilters,
+    financeCashFlowFilters,
+    financePlFilters,
     financeYandexSync,
     financeWildberriesSync,
     financeOzonSync,
@@ -1209,12 +1357,17 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeSourceDetailsTitle,
     financeSourceDetailsOpen,
     financeCashFlowTotals,
+    financePlTotals,
     financeTrCardBalance,
     financeCashFlowMonth,
     financeCashFlowOpeningDraft,
     financeTrCardBalanceDraft,
     financeCashFlowRevenues,
     financeCashFlowExpenses,
+    financePlRevenues,
+    financePlDirectExpenses,
+    financePlIndirectExpenses,
+    financePlTaxExpenses,
     financeCashFlowDetails,
     financeCashFlowDetailsTotals,
     financeCashFlowDetailsTitle,
@@ -1228,10 +1381,12 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     financeCatalogsLoaded,
     financeLoaded,
     financeCashFlowLoaded,
+    financePlLoaded,
     financeTrCardBalanceLoaded,
     financeEntriesLoaded,
     financeLoading,
     financeCashFlowLoading,
+    financePlLoading,
     financeCashFlowOpeningSaving,
     financeTrCardBalanceLoading,
     financeTrCardBalanceSaving,
@@ -1282,6 +1437,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
     loadFinanceSourceDetails,
     clearFinanceSourceDetails,
     loadFinanceCashFlowReport,
+    loadFinancePlReport,
     loadFinanceCashFlowDetails,
     clearFinanceCashFlowDetails,
     resetFinanceCashFlowDetailsPeriod,

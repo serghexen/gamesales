@@ -21,6 +21,8 @@ describe('useFinanceReports', () => {
 
     expect(h.finance.financeFilters.date_from).toBe(today)
     expect(h.finance.financeFilters.date_to).toBe(today)
+    expect(h.finance.financePlFilters.date_from).toBe(today)
+    expect(h.finance.financePlFilters.date_to).toBe(today)
   })
 
   it('loads bootstrap catalogs for filters', async () => {
@@ -74,11 +76,11 @@ describe('useFinanceReports', () => {
     expect(h.finance.financeReportItems.value).toHaveLength(1)
   })
 
-  it('passes selected source report row type to query', async () => {
+  it('passes selected source report row types to query', async () => {
     const h = createHarness()
     h.finance.financeFilters.date_from = '2026-05-01'
     h.finance.financeFilters.date_to = '2026-05-31'
-    h.finance.financeFilters.operation_code = 'rental'
+    h.finance.financeFilters.operation_code = ['sale', 'rental']
     h.apiGet.mockResolvedValueOnce({
       totals: { revenue: '150.00', direct_expense: '0.00', operating_profit: '150.00', margin: '1.0000' },
       items: [{ source_id: null, source_name: 'Без источника', operation_code: 'rental', operation_name: 'Шеринг', cash_flow: '150.00' }],
@@ -87,7 +89,7 @@ describe('useFinanceReports', () => {
     await h.finance.loadFinanceProjectsReport()
 
     expect(h.apiGet).toHaveBeenCalledWith(
-      '/finance/reports/sources?date_from=2026-05-01&date_to=2026-05-31&operation_code=rental',
+      '/finance/reports/sources?date_from=2026-05-01&date_to=2026-05-31&operation_code=sale&operation_code=rental',
       { token: 'token-1' },
     )
     expect(h.finance.financeReportItems.value[0]?.operation_code).toBe('rental')
@@ -166,7 +168,8 @@ describe('useFinanceReports', () => {
 
   it('builds cash flow report query and fills line totals', async () => {
     const h = createHarness()
-    h.finance.financeCashFlowMonth.value = '2026-06'
+    h.finance.financeCashFlowFilters.date_from = '2026-06-10'
+    h.finance.financeCashFlowFilters.date_to = '2026-06-20'
     h.apiGet.mockResolvedValueOnce({
       totals: {
         revenue: '20000.00',
@@ -184,7 +187,7 @@ describe('useFinanceReports', () => {
     await h.finance.loadFinanceCashFlowReport()
 
     expect(h.apiGet).toHaveBeenCalledWith(
-      '/finance/reports/cash-flow?month=2026-06',
+      '/finance/reports/cash-flow?date_from=2026-06-10&date_to=2026-06-20',
       { token: 'token-1' },
     )
     expect(h.finance.financeCashFlowLoaded.value).toBe(true)
@@ -199,7 +202,6 @@ describe('useFinanceReports', () => {
 
   it('loads cash flow details with date interval and selected line', async () => {
     const h = createHarness()
-    h.finance.financeCashFlowMonth.value = '2026-06'
     h.finance.financeCashFlowDetailsFilters.date_from = '2026-06-10'
     h.finance.financeCashFlowDetailsFilters.date_to = '2026-06-20'
     h.apiGet.mockResolvedValueOnce({
@@ -224,6 +226,28 @@ describe('useFinanceReports', () => {
     expect(h.finance.financeCashFlowDetails.value[0]?.deal_id).toBe(16308)
   })
 
+  it('passes selected source ids to marketplace cash flow details', async () => {
+    const h = createHarness()
+    h.finance.financeCashFlowDetailsFilters.date_from = '2026-06-10'
+    h.finance.financeCashFlowDetailsFilters.date_to = '2026-06-20'
+    h.finance.financeCashFlowDetailsFilters.source_id = [99, 100]
+    h.apiGet.mockResolvedValueOnce({
+      totals: { revenue: '100.00', expense: '0.00', cash_flow: '100.00' },
+      items: [],
+    })
+
+    const ok = await h.finance.loadFinanceCashFlowDetails(
+      { line_type: 'revenue', name: 'Продажи маркетплейсов (API)' },
+      'Поступление: Продажи маркетплейсов (API)',
+    )
+
+    expect(ok).toBe(true)
+    expect(h.apiGet).toHaveBeenCalledWith(
+      '/finance/reports/cash-flow/details?date_from=2026-06-10&date_to=2026-06-20&line_type=revenue&line_name=%D0%9F%D1%80%D0%BE%D0%B4%D0%B0%D0%B6%D0%B8+%D0%BC%D0%B0%D1%80%D0%BA%D0%B5%D1%82%D0%BF%D0%BB%D0%B5%D0%B9%D1%81%D0%BE%D0%B2+%28API%29&source_id=99&source_id=100',
+      { token: 'token-1' },
+    )
+  })
+
   it('allows cash flow report to be loaded repeatedly', async () => {
     const h = createHarness()
     h.apiGet
@@ -238,9 +262,49 @@ describe('useFinanceReports', () => {
     expect(h.finance.financeCashFlowTotals.cash_flow).toBe(200)
   })
 
+  it('builds PL report from cash flow lines and grouped totals', async () => {
+    const h = createHarness()
+    h.finance.financePlFilters.date_from = '2026-06-10'
+    h.finance.financePlFilters.date_to = '2026-06-20'
+    h.apiGet.mockResolvedValueOnce({
+      totals: {
+        revenue: '20000.00',
+        direct_expense: '6000.00',
+        indirect_expense: '800.00',
+        tax_expense: '200.00',
+        gross_profit: '14000.00',
+        operating_profit: '13200.00',
+        net_profit: '13000.00',
+      },
+      revenues: [{ name: 'Продажа TR', amount: '20000.00' }],
+      expenses: [
+        { name: 'Закуп TR', amount: '6000.00', expense_kind: 'direct' },
+        { name: 'Маркетинг', amount: '800.00', expense_kind: 'indirect' },
+        { name: 'Налог УСН', amount: '200.00', expense_kind: 'tax' },
+      ],
+    })
+
+    const ok = await h.finance.loadFinancePlReport()
+
+    expect(ok).toBe(true)
+    expect(h.apiGet).toHaveBeenCalledWith(
+      '/finance/reports/cash-flow?date_from=2026-06-10&date_to=2026-06-20',
+      { token: 'token-1' },
+    )
+    expect(h.finance.financePlLoaded.value).toBe(true)
+    expect(h.finance.financePlTotals.gross_profit).toBe(14000)
+    expect(h.finance.financePlTotals.operating_profit).toBe(13200)
+    expect(h.finance.financePlTotals.net_profit).toBe(13000)
+    expect(h.finance.financePlDirectExpenses.value[0]?.name).toBe('Закуп TR')
+    expect(h.finance.financePlIndirectExpenses.value[0]?.name).toBe('Маркетинг')
+    expect(h.finance.financePlTaxExpenses.value[0]?.name).toBe('Налог УСН')
+  })
+
   it('saves cash flow opening balance and reloads report', async () => {
     const h = createHarness()
     h.finance.financeCashFlowMonth.value = '2026-07'
+    h.finance.financeCashFlowFilters.date_from = '2026-07-01'
+    h.finance.financeCashFlowFilters.date_to = '2026-07-31'
     h.finance.financeCashFlowOpeningDraft.value = '12345.67'
     h.apiPut.mockResolvedValueOnce({ month: '2026-07-01', amount: '12345.67' })
     h.apiGet.mockResolvedValueOnce({ totals: { opening_balance: '12345.67' }, revenues: [], expenses: [] })
@@ -253,7 +317,7 @@ describe('useFinanceReports', () => {
       { month: '2026-07', amount: 12345.67 },
       { token: 'token-1' },
     )
-    expect(h.apiGet).toHaveBeenCalledWith('/finance/reports/cash-flow?month=2026-07', { token: 'token-1' })
+    expect(h.apiGet).toHaveBeenCalledWith('/finance/reports/cash-flow?date_from=2026-07-01&date_to=2026-07-31', { token: 'token-1' })
     expect(h.finance.financeCashFlowOpeningOk.value).toBe('Начальный остаток сохранен')
   })
 

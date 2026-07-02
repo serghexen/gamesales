@@ -446,6 +446,7 @@ class FinanceSourcesReportDetailsOut(BaseModel):
 class FinanceCashFlowLineOut(BaseModel):
     name: str
     amount: Decimal = Decimal("0")
+    expense_kind: Optional[str] = None
 
 
 class FinanceCashFlowDetailRowOut(BaseModel):
@@ -480,6 +481,12 @@ class FinanceCashFlowTotalsOut(BaseModel):
     revenue: Decimal = Decimal("0")
     expense: Decimal = Decimal("0")
     cash_flow: Decimal = Decimal("0")
+    direct_expense: Decimal = Decimal("0")
+    indirect_expense: Decimal = Decimal("0")
+    tax_expense: Decimal = Decimal("0")
+    gross_profit: Decimal = Decimal("0")
+    operating_profit: Decimal = Decimal("0")
+    net_profit: Decimal = Decimal("0")
     opening_balance: Decimal = Decimal("0")
     current_balance: Decimal = Decimal("0")
     opening_balance_month: Optional[date] = None
