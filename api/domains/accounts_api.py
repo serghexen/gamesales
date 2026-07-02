@@ -1110,7 +1110,8 @@ def mount_accounts_routes(
                   SELECT
                     asa.account_id,
                     COUNT(*) AS active_count,
-                    MIN(COALESCE(asa.assigned_at, now())) AS first_assigned_at
+                    MIN(COALESCE(asa.assigned_at, now())) AS first_assigned_at,
+                    COALESCE(array_agg(DISTINCT asa.slot_type_code ORDER BY asa.slot_type_code), '{}'::text[]) AS active_slot_type_codes
                   FROM app.account_slot_assignments asa
                   JOIN app.slot_types st_active ON st_active.code = asa.slot_type_code
                   WHERE asa.released_at IS NULL
@@ -1149,6 +1150,11 @@ def mount_accounts_routes(
                     WHERE ss.account_id = a.account_id
                       AND (
                         CASE
+                          -- Игровой П2 нельзя занимать второй раз на той же платформе.
+                          WHEN st_gate.name ILIKE 'П2%%'
+                            AND COALESCE(ss.capacity, 0) >= 2
+                            AND st_gate.code = ANY(COALESCE(apa.active_slot_type_codes, '{}'::text[]))
+                          THEN 0
                           -- Если игровых П2 уже два, платформенный остаток 1/2 не должен снова открывать П2.
                           WHEN st_gate.name ILIKE 'П2%%'
                             AND COALESCE(ss.capacity, 0) >= 2
@@ -1250,7 +1256,8 @@ def mount_accounts_routes(
                   SELECT
                     asa.account_id,
                     COUNT(*) AS active_count,
-                    MIN(COALESCE(asa.assigned_at, now())) AS first_assigned_at
+                    MIN(COALESCE(asa.assigned_at, now())) AS first_assigned_at,
+                    COALESCE(array_agg(DISTINCT asa.slot_type_code ORDER BY asa.slot_type_code), '{}'::text[]) AS active_slot_type_codes
                   FROM app.account_slot_assignments asa
                   JOIN app.slot_types st_active ON st_active.code = asa.slot_type_code
                   WHERE asa.released_at IS NULL
@@ -1272,6 +1279,11 @@ def mount_accounts_routes(
                   BOOL_OR(
                     (
                       CASE
+                        -- Игровой П2 нельзя занимать второй раз на той же платформе.
+                        WHEN st.name ILIKE 'П2%%'
+                          AND COALESCE(ss.capacity, 0) >= 2
+                          AND st.code = ANY(COALESCE(apa.active_slot_type_codes, '{}'::text[]))
+                        THEN 0
                         -- Если игровых П2 уже два, платформенный остаток 1/2 не должен снова открывать П2.
                         WHEN st.name ILIKE 'П2%%'
                           AND COALESCE(ss.capacity, 0) >= 2

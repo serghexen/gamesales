@@ -634,10 +634,14 @@ def mount_deals_routes(
         slot_capacity = int((slot_type[3] if len(slot_type) > 3 else 0) or 0)
         if slot_mode != "activate" or slot_capacity < 2:
             return
+        selected_slot_type_code = str(slot_type[0] if len(slot_type) > 0 else "").strip()
         row = q1(
             conn,
             """
-            SELECT COUNT(*), MIN(COALESCE(assigned_at, now()))
+            SELECT
+              COUNT(*),
+              MIN(COALESCE(asa.assigned_at, now())),
+              COUNT(*) FILTER (WHERE asa.slot_type_code=%s)
             FROM app.account_slot_assignments asa
             JOIN app.slot_types st ON st.code = asa.slot_type_code
             WHERE asa.account_id=%s
@@ -646,10 +650,13 @@ def mount_deals_routes(
               AND st.mode='activate'
               AND (%s::bigint IS NULL OR asa.deal_item_id <> %s)
             """,
-            (account_id, current_deal_item_id, current_deal_item_id),
+            (selected_slot_type_code, account_id, current_deal_item_id, current_deal_item_id),
         )
         active_count = int((row[0] if row else 0) or 0)
         first_assigned_at = row[1] if row and len(row) > 1 else None
+        active_same_slot_count = int((row[2] if row and len(row) > 2 else 0) or 0)
+        if active_same_slot_count > 0:
+            raise HTTPException(409, "Not enough free slots for selected slot type")
         if active_count >= 2:
             raise HTTPException(409, "Not enough free slots for selected slot type")
         if active_count != 1 or first_assigned_at is None:

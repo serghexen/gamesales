@@ -548,6 +548,39 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 409)
             self.assertIn("Second P2 game slot", res.text)
 
+    # Игровой П2 нельзя занять повторно на той же платформе, даже если прошло 2 месяца.
+    def test_create_deal_rental_blocks_same_game_p2_platform(self):
+        script = [
+            {"one": ("game", False)},  # product lookup
+            {"one": (1,)},  # ensure_account_exists
+            {"one": (1,)},  # ensure_messenger_exists
+            {"one": ("activate_ps4", "ps4", "activate", 2)},  # get_slot_type
+            {"one": (1,)},  # get_platform_id
+            {"one": (7,)},  # region from account
+            {"one": (1, datetime(2026, 4, 30, 0, 0, tzinfo=timezone.utc), 1)},  # same P2 platform is already active
+        ]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/deals",
+                    headers=self._auth_headers(role="manager"),
+                    json={
+                        "deal_type_code": "rental",
+                        "account_id": 7,
+                        "product_id": 55,
+                        "slot_type_code": "activate_ps4",
+                        "messenger_id": 1,
+                        "price": 500,
+                    },
+                )
+            self.assertEqual(res.status_code, 409)
+            self.assertIn("Not enough free slots", res.text)
+
     # Если фронт прислал занятый резерв, backend должен выбрать следующий свободный и сохранить сделку.
     def test_create_deal_rental_replaces_used_reserve(self):
         script = [

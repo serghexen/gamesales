@@ -742,6 +742,8 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertTrue(any("INTERVAL '2 months'" in sql for sql in sql_collector))
             self.assertTrue(any("ILIKE 'П2%%'" in sql for sql in sql_collector))
             self.assertTrue(any("COALESCE(apa.active_count, 0) >= 2" in sql for sql in sql_collector))
+            self.assertTrue(any("active_slot_type_codes" in sql for sql in sql_collector))
+            self.assertTrue(any("ANY(COALESCE(apa.active_slot_type_codes" in sql for sql in sql_collector))
             self.assertFalse(any("recent_duplicate_locks" in sql for sql in sql_collector))
 
     # Для подписки список аккаунтов для шеринга тоже должен возвращаться.
@@ -827,6 +829,8 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertTrue(any("INTERVAL '2 months'" in sql for sql in sql_collector))
             self.assertTrue(any("ILIKE 'П2%%'" in sql for sql in sql_collector))
             self.assertTrue(any("COALESCE(apa.active_count, 0) >= 2" in sql for sql in sql_collector))
+            self.assertTrue(any("active_slot_type_codes" in sql for sql in sql_collector))
+            self.assertTrue(any("ANY(COALESCE(apa.active_slot_type_codes" in sql for sql in sql_collector))
             self.assertFalse(any("recent_duplicate_locks" in sql for sql in sql_collector))
 
     # Новый endpoint по товару должен возвращать назначения слотов с product-полями.
