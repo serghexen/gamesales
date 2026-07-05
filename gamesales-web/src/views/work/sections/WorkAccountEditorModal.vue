@@ -772,24 +772,24 @@ const props = defineProps([
   'setAccountProductType',
 ])
 
-const canShowReflectSlots = computed(() => props.canReflectSlots !== false)
-const canShowReflectDeals = computed(() => props.canReflectDeals !== false)
-const canCreateAccountModal = computed(() => props.canCreateAccount !== false)
-const canEditAccountModal = computed(() => props.canEditAccount !== false)
-const canDeleteAccountModal = computed(() => props.canDeleteAccount !== false)
-const canReflectEmail = computed(() => props.canReflectEmail !== false)
-const canReflectDate = computed(() => props.canReflectDate !== false)
-const canReflectRegion = computed(() => props.canReflectRegion !== false)
-const canReflectAccountPassword = computed(() => props.canReflectAccountPassword !== false)
-const canReflectEmailPassword = computed(() => props.canReflectEmailPassword !== false)
-const canReflectAuthCode = computed(() => props.canReflectAuthCode !== false)
-const canReflectReserves = computed(() => props.canReflectReserves !== false)
+const canShowReflectSlots = computed(() => props.canReflectSlots === true)
+const canShowReflectDeals = computed(() => props.canReflectDeals === true)
+const canCreateAccountModal = computed(() => props.canCreateAccount === true)
+const canEditAccountModal = computed(() => props.canEditAccount === true)
+const canDeleteAccountModal = computed(() => props.canDeleteAccount === true)
+const canReflectEmail = computed(() => props.canReflectEmail === true)
+const canReflectDate = computed(() => props.canReflectDate === true)
+const canReflectRegion = computed(() => props.canReflectRegion === true)
+const canReflectAccountPassword = computed(() => props.canReflectAccountPassword === true)
+const canReflectEmailPassword = computed(() => props.canReflectEmailPassword === true)
+const canReflectAuthCode = computed(() => props.canReflectAuthCode === true)
+const canReflectReserves = computed(() => props.canReflectReserves === true)
 
 // Галочку деактивации показываем только тем ролям, которым разрешено менять этот флаг.
 const showDeactivationToggle = computed(() => {
   return props.accountModalMode === 'edit'
     && props.accountEditMode === 'edit'
-    && props.canToggleDeactivation !== false
+    && props.canToggleDeactivation === true
 })
 
 const editAccountProductSearchModel = computed({
@@ -801,7 +801,7 @@ const editAccountProductSearchModel = computed({
 const accountBusy = computed(() => Boolean(props.accountsLoading || props.accountSaving))
 
 // Ручное снятие и возврат слотов доступны только административным ролям.
-const canManageSlotAssignments = computed(() => props.canManageAccountSlotAssignments !== false)
+const canManageSlotAssignments = computed(() => props.canManageAccountSlotAssignments === true)
 
 // Обновляет текущую карточку аккаунта с сервера, чтобы подтянуть изменения из других вкладок.
 const refreshOpenAccountFromDb = () => {

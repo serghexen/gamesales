@@ -57,6 +57,7 @@ describe('useWorkSectionContexts', () => {
     expect(ctx.dealEditorModalBodyCtx.quickBusyLabel).toBe('Создаем товар…')
     expect(ctx.dealEditorFormCtx.responsibleUserOptions).toEqual(['manager1'])
     expect(ctx.dealEditorFormCtx.allowCompletedDealEdit).toBe(true)
+    expect(ctx.dealEditorFormCtx.canDoAction('deals_active.discount')).toBe(true)
 
     editDeal.flow_status_code = 'draft'
     expect(ctx.dealEditorModalShellCtx.showSaveDraft).toBe(false)

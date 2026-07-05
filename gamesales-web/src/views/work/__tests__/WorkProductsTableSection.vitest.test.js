@@ -29,6 +29,8 @@ function buildProps(overrides = {}) {
     resetProductFilter: () => {},
     formatProductPlatforms: (platforms) => (platforms || []).join(', '),
     openProductAccounts: () => {},
+    canViewGames: true,
+    canOpenProductAccounts: true,
     ...overrides,
   }
 }

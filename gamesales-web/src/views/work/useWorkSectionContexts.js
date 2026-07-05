@@ -642,6 +642,7 @@ export function useWorkSectionContexts({
     newDealCommentOpen,
     editDealCommentOpen,
     getCompactNotesRows,
+    canDoAction,
   })
 
   // Контекст вкладки "Справочники".

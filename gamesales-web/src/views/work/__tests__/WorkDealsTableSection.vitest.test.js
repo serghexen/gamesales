@@ -43,6 +43,7 @@ function buildProps(overrides = {}) {
     dealSaving: false,
     dealCompletingId: null,
     realtimeAnimationTick: 0,
+    canDoAction: () => true,
     ...overrides,
   }
 }

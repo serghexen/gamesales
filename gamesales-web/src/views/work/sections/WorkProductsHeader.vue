@@ -92,7 +92,7 @@
 defineProps({
   productFilters: { type: Object, required: true },
   applyProductSearch: { type: Function, required: true },
-  canCreateProducts: { type: Boolean, default: true },
+  canCreateProducts: { type: Boolean, default: false },
   openCreateGameProductModal: { type: Function, required: true },
   openCreateSubscriptionProductModal: { type: Function, required: true },
   openProductImport: { type: Function, required: true },

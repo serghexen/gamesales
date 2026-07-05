@@ -120,7 +120,7 @@
 defineProps({
   accountFilters: { type: Object, required: true },
   applyAccountSearch: { type: Function, required: true },
-  canCreateAccount: { type: Boolean, default: true },
+  canCreateAccount: { type: Boolean, default: false },
   openCreateAccountModal: { type: Function, required: true },
   openAccountImport: { type: Function, required: true },
   openSlotImport: { type: Function, required: true },

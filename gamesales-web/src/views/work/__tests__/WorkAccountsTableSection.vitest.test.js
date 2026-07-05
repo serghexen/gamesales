@@ -23,6 +23,11 @@ function buildProps(overrides = {}) {
     getReserveSecretEntries: vi.fn(() => []),
     ensureAccountSecretsLoaded: vi.fn().mockResolvedValue(undefined),
     loadAccountUsedReserveKeys: vi.fn().mockResolvedValue([]),
+    canViewEmail: true,
+    canViewGames: true,
+    canViewSlots: true,
+    canViewReserves: true,
+    canEditAccount: true,
     ...overrides,
   }
 }

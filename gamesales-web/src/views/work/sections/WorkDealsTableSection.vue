@@ -461,7 +461,7 @@ const props = defineProps({
   showDealWarning: { type: Function, default: null },
   formatDateTimeMinutes: { type: Function, required: true },
   dealShowCompleted: { type: Boolean, required: true },
-  canDoAction: { type: Function, default: () => true },
+  canDoAction: { type: Function, default: () => false },
   markDealCompleted: { type: Function, required: true },
   markDealReturned: { type: Function, required: true },
   dealSaving: { type: Boolean, required: true },

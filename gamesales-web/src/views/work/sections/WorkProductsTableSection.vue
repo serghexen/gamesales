@@ -202,8 +202,8 @@ const props = defineProps({
   resetProductFilter: { type: Function, required: true },
   formatProductPlatforms: { type: Function, required: true },
   openProductAccounts: { type: Function, required: true },
-  canViewGames: { type: Boolean, default: true },
-  canOpenProductAccounts: { type: Boolean, default: true },
+  canViewGames: { type: Boolean, default: false },
+  canOpenProductAccounts: { type: Boolean, default: false },
 })
 
 // Открывает карточку товара только при праве видеть связанные аккаунты товара.
