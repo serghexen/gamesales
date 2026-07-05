@@ -23,5 +23,5 @@ COMMENT ON COLUMN app.users.role_code IS 'Роль пользователя';
 COMMENT ON COLUMN app.users.created_at IS 'Дата создания пользователя';
 
 INSERT INTO app.user_roles(code, name)
-VALUES ('admin','Администратор'),('manager','Менеджер'),('operator','Оператор'),('owner','Владелец')
+VALUES ('admin','Администратор'),('manager','Менеджер'),('operator','Оператор'),('owner','Управляющий')
 ON CONFLICT (code) DO NOTHING;

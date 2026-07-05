@@ -86,21 +86,53 @@
               </div>
             </div>
             <p v-if="ctx.rolePermissionsLoading" class="muted">Загрузка доступов…</p>
-            <div v-else class="check-list check-list--compact check-list--role-permissions">
-              <label
-                v-for="item in (ctx.rolePermissionsItems || [])"
-                :key="`section-permission-${item.section_code}`"
-                class="check-item"
+            <div v-else class="role-access-matrix">
+              <section class="role-access-group role-access-group--sections">
+                <div class="role-access-group__head">
+                  <h3>Разделы</h3>
+                </div>
+                <div class="check-list check-list--compact check-list--role-permissions">
+                  <label
+                    v-for="item in (ctx.rolePermissionsItems || [])"
+                    :key="`section-permission-${item.section_code}`"
+                    class="check-item"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="item.can_view"
+                      :disabled="ctx.rolePermissionsLoading || ctx.rolePermissionsSaving"
+                      @change="ctx.setRolePermissionItem(item.section_code, $event.target.checked)"
+                    />
+                    <span>{{ item.section_name }}</span>
+                  </label>
+                  <p v-if="!(ctx.rolePermissionsItems || []).length" class="muted">Для выбранной роли пока нет настроек.</p>
+                </div>
+              </section>
+              <section
+                v-for="group in groupedActionPermissions"
+                :key="`action-permission-group-${group.code}`"
+                class="role-access-group"
               >
-                <input
-                  type="checkbox"
-                  :checked="item.can_view"
-                  :disabled="ctx.rolePermissionsLoading || ctx.rolePermissionsSaving"
-                  @change="ctx.setRolePermissionItem(item.section_code, $event.target.checked)"
-                />
-                <span>{{ item.section_name }}</span>
-              </label>
-              <p v-if="!(ctx.rolePermissionsItems || []).length" class="muted">Для выбранной роли пока нет настроек.</p>
+                <div class="role-access-group__head">
+                  <h3>{{ group.name }}</h3>
+                  <span>{{ group.description }}</span>
+                </div>
+                <div class="check-list check-list--compact check-list--role-permissions">
+                  <label
+                    v-for="item in group.items"
+                    :key="`action-permission-${item.action_code}`"
+                    class="check-item"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="item.can_do"
+                      :disabled="ctx.rolePermissionsLoading || ctx.rolePermissionsSaving"
+                      @change="ctx.setRoleActionPermissionItem(item.action_code, $event.target.checked)"
+                    />
+                    <span>{{ item.action_name }}</span>
+                  </label>
+                </div>
+              </section>
             </div>
             <p v-if="ctx.rolePermissionsError" class="bad">{{ ctx.rolePermissionsError }}</p>
             <p v-if="ctx.rolePermissionsOk" class="ok">{{ ctx.rolePermissionsOk }}</p>
@@ -131,6 +163,28 @@ const showAdminTabs = computed(() => Boolean(
 // Сохраняем текущие query-параметры при переходе в аналитику из профиля.
 const routeQuery = computed(() => unref(props.ctx.routeQuery) || {})
 const accessPanelRequested = computed(() => String(routeQuery.value?.admin_panel || '').trim().toLowerCase() === 'access')
+const groupedActionPermissions = computed(() => {
+  // Группируем action-права так же, как их отдает backend, чтобы матрица была читаемой по блокам.
+  const groups = []
+  const index = new Map()
+  const items = Array.isArray(props.ctx.roleActionPermissionsItems) ? props.ctx.roleActionPermissionsItems : []
+  for (const item of items) {
+    const code = String(item?.group_code || '').trim()
+    if (!code) continue
+    if (!index.has(code)) {
+      const group = {
+        code,
+        name: String(item?.group_name || code),
+        description: String(item?.group_description || ''),
+        items: [],
+      }
+      index.set(code, group)
+      groups.push(group)
+    }
+    index.get(code).items.push(item)
+  }
+  return groups
+})
 
 // Открывает форму управления доступами как отдельную вкладку без toggle-поведения.
 const openRolePermissionsForm = async () => {

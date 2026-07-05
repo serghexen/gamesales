@@ -3,7 +3,7 @@
     <div class="account-head-primary">
       <div class="account-head-row">
         <div class="toolbar-actions toolbar-actions--account-create">
-          <button class="deal-create-btn" type="button" @click="openCreateAccountModal" aria-label="Новый аккаунт" title="Новый аккаунт">
+          <button v-if="canCreateAccount" class="deal-create-btn" type="button" @click="openCreateAccountModal" aria-label="Новый аккаунт" title="Новый аккаунт">
             <span class="deal-create-btn__text">Аккаунт</span>
             <span class="deal-create-btn__icon">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
@@ -120,6 +120,7 @@
 defineProps({
   accountFilters: { type: Object, required: true },
   applyAccountSearch: { type: Function, required: true },
+  canCreateAccount: { type: Boolean, default: true },
   openCreateAccountModal: { type: Function, required: true },
   openAccountImport: { type: Function, required: true },
   openSlotImport: { type: Function, required: true },

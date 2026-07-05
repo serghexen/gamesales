@@ -296,16 +296,66 @@
 .work-page .check-list.check-list--role-permissions {
   max-height: none;
   overflow: visible;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  column-gap: 12px;
-  row-gap: 4px;
-  padding: 6px 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding: 10px;
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .work-page .check-list.check-list--role-permissions .check-item {
   min-height: 22px;
   gap: 6px;
   font-size: 12px;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.work-page .check-list.check-list--role-permissions .check-item span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.work-page .check-list.check-list--role-permissions input[type="checkbox"] {
+  flex: 0 0 auto;
+  accent-color: #2688ff;
+}
+
+.work-page .role-access-matrix {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.work-page .role-access-group {
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(10, 16, 32, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.work-page .role-access-group__head {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.work-page .role-access-group__head h3 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.work-page .role-access-group__head span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .work-page .profile-role-permissions .field--align-end {

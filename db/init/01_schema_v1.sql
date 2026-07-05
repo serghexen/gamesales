@@ -678,7 +678,7 @@ CREATE TABLE IF NOT EXISTS app.users (
 );
 
 INSERT INTO app.user_roles(code, name)
-VALUES ('operator','Оператор'),('owner','Владелец'),('admin','Администратор'),('manager','Менеджер')
+VALUES ('operator','Оператор'),('owner','Управляющий'),('admin','Администратор'),('manager','Менеджер')
 ON CONFLICT (code) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS app.ui_sections (

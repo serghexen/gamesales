@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
@@ -104,5 +104,26 @@ describe('WorkProductsTableSection', () => {
     expect(colWidths[0]).toContain('25%')
     expect(colWidths[1]).toContain('55')
     expect(colWidths[2]).toContain('20%')
+  })
+
+  it('hides products list and blocks account opening by action permissions', async () => {
+    const openProductAccounts = vi.fn()
+    const wrapper = mount(WorkProductsTableSection, {
+      props: buildProps({
+        sortedProducts: [{ product_id: 1, title: 'EA FC 26' }],
+        pagedProducts: [{ product_id: 1, title: 'EA FC 26', type_code: 'game', platform_codes: ['ps5'] }],
+        openProductAccounts,
+        canViewGames: false,
+      }),
+    })
+
+    expect(wrapper.find('.products-table-wrap').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Нет доступа к просмотру товаров.')
+
+    await wrapper.setProps({ canViewGames: true, canOpenProductAccounts: false })
+    await wrapper.find('tbody tr').trigger('click')
+
+    expect(wrapper.find('tbody tr').classes()).not.toContain('clickable-row')
+    expect(openProductAccounts).not.toHaveBeenCalled()
   })
 })

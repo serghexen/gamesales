@@ -1,6 +1,6 @@
 import { computed, ref, watch } from 'vue'
 
-export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilter, dealFilters, dealShowCompleted }) {
+export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilter, dealFilters, dealShowCompleted, canDoAction }) {
   // Данные таблицы сделок + состояние списка.
   const dealItems = ref([])
   const dealListError = ref(null)
@@ -86,7 +86,19 @@ export function useDeals({ auth, apiGet, mapApiError, resolveDealFlowStatusFilte
       if (dealFilters.customer_q) params.set('customer_q', dealFilters.customer_q)
       if (dealFilters.responsible_q) params.set('responsible_q', dealFilters.responsible_q)
       if (dealFilters.region_q) params.set('region_q', dealFilters.region_q)
-      params.set('flow_status_q', resolveDealFlowStatusFilter(dealFilters.status_q, dealShowCompleted.value))
+      const canViewCompletedDeals = typeof canDoAction === 'function' ? canDoAction('deals_completed.view') : true
+      const effectiveShowCompleted = Boolean(dealShowCompleted.value && canViewCompletedDeals)
+      const flowStatusFilter = resolveDealFlowStatusFilter(dealFilters.status_q, effectiveShowCompleted)
+      const canViewDraftDeals = typeof canDoAction === 'function' ? canDoAction('deals_draft.view') : true
+      // Убираем из запроса статусы, которые роль не должна видеть по action-правам.
+      const allowedFlowStatusFilter = flowStatusFilter
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .filter((item) => item !== 'draft' || canViewDraftDeals)
+        .filter((item) => item !== 'completed' || canViewCompletedDeals)
+        .join(',')
+      params.set('flow_status_q', allowedFlowStatusFilter || '__no_status__')
       if (dealFilters.purchase_from) params.set('purchase_from', dealFilters.purchase_from)
       if (dealFilters.purchase_to) params.set('purchase_to', dealFilters.purchase_to)
       params.set('sort_key', String(dealSort.value?.key || 'date'))

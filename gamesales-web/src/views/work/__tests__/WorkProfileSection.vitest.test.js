@@ -18,6 +18,7 @@ function buildCtx(overrides = {}) {
     rolePermissionsRoles: [],
     rolePermissionsRoleCode: '',
     rolePermissionsItems: [],
+    roleActionPermissionsItems: [],
     rolePermissionsLoading: false,
     rolePermissionsSaving: false,
     rolePermissionsError: '',
@@ -25,6 +26,7 @@ function buildCtx(overrides = {}) {
     ensureRolePermissionsFormDataLoaded: vi.fn().mockResolvedValue(undefined),
     setRolePermissionsRoleCode: vi.fn(),
     setRolePermissionItem: vi.fn(),
+    setRoleActionPermissionItem: vi.fn(),
     saveRolePermissions: vi.fn(),
     openPwdModal: vi.fn(),
     showPwdForm: false,
@@ -113,6 +115,16 @@ describe('WorkProfileSection', () => {
             { section_code: 'deals', section_name: 'Сделки', can_view: true },
             { section_code: 'finance', section_name: 'Финансы', can_view: false },
           ],
+          roleActionPermissionsItems: [
+            {
+              group_code: 'deals_active',
+              group_name: 'Активные сделки',
+              group_description: 'Что можно делать в активных сделках',
+              action_code: 'deals_active.create',
+              action_name: 'Создание',
+              can_do: true,
+            },
+          ],
         }),
       },
       global: {
@@ -136,5 +148,7 @@ describe('WorkProfileSection', () => {
     expect(wrapper.find('button[aria-label="Сохранить права"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('Сделки')
     expect(wrapper.text()).toContain('Финансы')
+    expect(wrapper.text()).toContain('Активные сделки')
+    expect(wrapper.text()).toContain('Создание')
   })
 })

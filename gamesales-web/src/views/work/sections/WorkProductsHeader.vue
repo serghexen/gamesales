@@ -2,7 +2,7 @@
   <div class="panel__head">
     <div>
       <div class="toolbar-actions">
-        <button class="deal-create-btn" type="button" @click="openCreateGameProductModal" aria-label="Добавить игру" title="Добавить игру">
+        <button v-if="canCreateProducts" class="deal-create-btn" type="button" @click="openCreateGameProductModal" aria-label="Добавить игру" title="Добавить игру">
           <span class="deal-create-btn__text">Игра</span>
           <span class="deal-create-btn__icon">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
@@ -11,7 +11,7 @@
             </svg>
           </span>
         </button>
-        <button class="deal-create-btn deal-create-btn--sharing" type="button" @click="openCreateSubscriptionProductModal" aria-label="Добавить подписку" title="Добавить подписку">
+        <button v-if="canCreateProducts" class="deal-create-btn deal-create-btn--sharing" type="button" @click="openCreateSubscriptionProductModal" aria-label="Добавить подписку" title="Добавить подписку">
           <span class="deal-create-btn__text">Подписка</span>
           <span class="deal-create-btn__icon">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
@@ -92,6 +92,7 @@
 defineProps({
   productFilters: { type: Object, required: true },
   applyProductSearch: { type: Function, required: true },
+  canCreateProducts: { type: Boolean, default: true },
   openCreateGameProductModal: { type: Function, required: true },
   openCreateSubscriptionProductModal: { type: Function, required: true },
   openProductImport: { type: Function, required: true },

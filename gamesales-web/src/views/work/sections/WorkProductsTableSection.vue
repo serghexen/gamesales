@@ -1,5 +1,5 @@
 <template>
-  <div v-if="sortedProducts.length" class="products-table-wrap">
+  <div v-if="sortedProducts.length && canViewGames" class="products-table-wrap">
     <table ref="tableEl" class="table table--compact products-table">
       <colgroup>
         <col :style="getColumnStyle('type')" />
@@ -149,7 +149,12 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="g in pagedProducts" :key="g.product_id" class="clickable-row" @click="openProductAccounts(g)">
+        <tr
+          v-for="g in pagedProducts"
+          :key="g.product_id"
+          :class="{ 'clickable-row': canOpenProductAccounts }"
+          @click="onProductRowClick(g)"
+        >
           <td class="product-col-type">{{ formatTypeLabel(g.type_code) }}</td>
           <td class="product-col-title">{{ g.title }}</td>
           <td class="product-col-platform">{{ formatProductPlatforms(g.platform_codes) }}</td>
@@ -157,6 +162,7 @@
       </tbody>
     </table>
   </div>
+  <p v-else-if="sortedProducts.length" class="muted">Нет доступа к просмотру товаров.</p>
   <p v-else class="muted">Пока нет товаров.</p>
 </template>
 
@@ -183,7 +189,7 @@ function formatTypeLabel(typeCode) {
   return typeCode || '—'
 }
 
-defineProps({
+const props = defineProps({
   sortedProducts: { type: Array, required: true },
   pagedProducts: { type: Array, required: true },
   productFilters: { type: Object, required: true },
@@ -196,5 +202,13 @@ defineProps({
   resetProductFilter: { type: Function, required: true },
   formatProductPlatforms: { type: Function, required: true },
   openProductAccounts: { type: Function, required: true },
+  canViewGames: { type: Boolean, default: true },
+  canOpenProductAccounts: { type: Boolean, default: true },
 })
+
+// Открывает карточку товара только при праве видеть связанные аккаунты товара.
+function onProductRowClick(product) {
+  if (!props.canOpenProductAccounts) return
+  props.openProductAccounts(product)
+}
 </script>

@@ -3,6 +3,7 @@
     <WorkProductsHeader
       :product-filters="ctx.productFilters"
       :apply-product-search="ctx.applyProductSearch"
+      :can-create-products="canDoAction('products.create_games')"
       :open-create-game-product-modal="ctx.openCreateGameProductModal"
       :open-create-subscription-product-modal="ctx.openCreateSubscriptionProductModal"
       :open-product-import="ctx.openProductImport"
@@ -74,6 +75,8 @@
         :reset-product-filter="ctx.resetProductFilter"
         :format-product-platforms="ctx.formatProductPlatforms"
         :open-product-accounts="ctx.openProductAccounts"
+        :can-view-games="canDoAction('products.view_games')"
+        :can-open-product-accounts="canDoAction('products.reflect_accounts')"
       />
 
       <WorkProductsPager
@@ -106,10 +109,15 @@ import WorkProductsPager from './WorkProductsPager.vue'
 import WorkProductEditorModal from './WorkProductEditorModal.vue'
 
 // Контекст секции товаров: фильтры, таблица, пагинация, импорт и модалка.
-defineProps({
+const props = defineProps({
   ctx: {
     type: Object,
     required: true,
   },
 })
+function canDoAction(actionCode) {
+  // Старые тестовые контексты без action-RBAC считаем разрешенными, чтобы сохранить прежний UI.
+  if (typeof props.ctx.canDoAction !== 'function') return true
+  return props.ctx.canDoAction(actionCode)
+}
 </script>

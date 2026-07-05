@@ -29,6 +29,7 @@ from .accounts_models import (
     AccountProductOut,
     AccountSlotAssignmentOut,
 )
+from .rbac_permissions import require_action_permission, user_can_action
 
 
 def mount_accounts_routes(
@@ -50,6 +51,32 @@ def mount_accounts_routes(
     require_role,
     get_current_user,
 ):
+    # Связывает технические ключи секретов аккаунта с action-правами матрицы.
+    def account_secret_action_code(secret_key: str) -> str:
+        key = str(secret_key or "").strip().lower()
+        if key == "account_password":
+            return "accounts.reflect_account_password"
+        if key == "email_password":
+            return "accounts.reflect_email_password"
+        if key == "auth_code":
+            return "accounts.reflect_auth_code"
+        if key.startswith("reserve"):
+            return "accounts.reflect_reserves"
+        return "accounts.reflect_email"
+
+    # Проверяет доступ к конкретному секрету аккаунта.
+    def require_account_secret_permission(conn, user, secret_key: str) -> None:
+        require_action_permission(conn, q1, user, account_secret_action_code(secret_key))
+
+    # Оставляет в выдаче только те секреты, которые разрешены текущей роли.
+    def filter_account_secret_rows(conn, user, rows):
+        result = []
+        for row in rows:
+            secret_key = row[0] if len(row) == 3 else row[1]
+            if user_can_action(conn, q1, user, account_secret_action_code(secret_key)):
+                result.append(row)
+        return result
+
     # Безопасно читает значение из SQL-строки по индексу, даже если тест дает укороченный кортеж.
     def row_value(row, idx, default=None):
         return row[idx] if row is not None and len(row) > idx else default
@@ -461,6 +488,7 @@ def mount_accounts_routes(
             raise HTTPException(400, f"required fields are missing: {', '.join(missing_fields)}")
         validate_date_not_future(payload.account_date, "account_date")
         with psycopg.connect(DB_DSN) as conn:
+            require_action_permission(conn, q1, user, "accounts.create")
             region_id = get_region_id(conn, payload.region_code) if payload.region_code else None
             domain_id = get_domain_id(conn, payload.domain_code)
 
@@ -517,6 +545,7 @@ def mount_accounts_routes(
     ):
         validate_date_not_future(payload.account_date, "account_date")
         with psycopg.connect(DB_DSN) as conn:
+            require_action_permission(conn, q1, user, "accounts.edit")
             current = q1(
                 conn,
                 """
@@ -556,6 +585,10 @@ def mount_accounts_routes(
                 requested_is_deactivated = bool(payload.is_deactivated)
                 if requested_is_deactivated != current_is_deactivated:
                     raise HTTPException(403, "Operator cannot change account deactivation flag")
+            if payload.account_date is not None and payload.account_date != current_account_date:
+                require_action_permission(conn, q1, user, "accounts.reflect_date")
+            if payload.region_code is not None and region_id != current_region_id:
+                require_action_permission(conn, q1, user, "accounts.reflect_region")
 
             # Обновляем деактивацию с правилом повторной активации не раньше чем через 183 дня.
             requested_is_deactivated = current_is_deactivated if payload.is_deactivated is None else bool(payload.is_deactivated)
@@ -650,6 +683,7 @@ def mount_accounts_routes(
     @app.delete("/accounts/{account_id}")
     def archive_account(account_id: int, user=Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
+            require_action_permission(conn, q1, user, "accounts.delete")
             row = q1(conn, "SELECT 1 FROM app.accounts WHERE account_id=%s", (account_id,))
             if not row:
                 raise HTTPException(404, "Account not found")
@@ -670,6 +704,7 @@ def mount_accounts_routes(
                 """,
                 (account_id,),
             )
+            rows = filter_account_secret_rows(conn, user, rows)
         return [AccountSecretOut(secret_key=r0, secret_value_b64=r1, created_at=r2) for (r0, r1, r2) in rows]
 
     @app.get("/accounts/{account_id}/reserve-usage", response_model=AccountReserveUsageOut)
@@ -810,6 +845,7 @@ def mount_accounts_routes(
                 """,
                 (account_ids,),
             )
+            rows = filter_account_secret_rows(conn, user, rows)
         out_map = {aid: [] for aid in account_ids}
         for account_id, secret_key, secret_value, created_at in rows:
             out_map.setdefault(account_id, []).append(
@@ -829,6 +865,7 @@ def mount_accounts_routes(
     ):
         value_b64 = b64_encode(payload.secret_value)
         with psycopg.connect(DB_DSN) as conn:
+            require_account_secret_permission(conn, user, payload.secret_key)
             q1(
                 conn,
                 """
@@ -866,7 +903,10 @@ def mount_accounts_routes(
                 key = str(item.secret_key or "").strip()
                 if not key:
                     raise HTTPException(400, "secret_key is required")
+                require_account_secret_permission(conn, user, key)
                 upserts_map[key] = b64_encode(item.secret_value)
+            for key in delete_keys:
+                require_account_secret_permission(conn, user, key)
 
             if upserts_map:
                 rows = [(account_id, key, value_b64) for key, value_b64 in upserts_map.items()]
@@ -902,6 +942,7 @@ def mount_accounts_routes(
         user=Depends(require_role("admin", "owner", "manager", "operator")),
     ):
         with psycopg.connect(DB_DSN) as conn:
+            require_account_secret_permission(conn, user, secret_key)
             exec1(
                 conn,
                 "DELETE FROM app.account_secrets WHERE account_id=%s AND secret_key=%s",
@@ -1027,6 +1068,7 @@ def mount_accounts_routes(
     @app.get("/accounts/{account_id}/slot-assignments", response_model=List[AccountSlotAssignmentOut])
     def list_account_slot_assignments(account_id: int, user=Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
+            require_action_permission(conn, q1, user, "accounts.reflect_slots")
             ensure_account_exists(conn, account_id)
             # Для slot-назначений отдаем только product-first записи.
             rows = qall(
@@ -1344,6 +1386,7 @@ def mount_accounts_routes(
     @app.get("/products/{product_id}/accounts", response_model=List[ProductAccountOut])
     def list_product_accounts(product_id: int, user=Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
+            require_action_permission(conn, q1, user, "products.reflect_deals")
             row = q1(
                 conn,
                 "SELECT 1 FROM app.products WHERE product_id=%s AND is_archived IS NOT TRUE",
@@ -1387,6 +1430,7 @@ def mount_accounts_routes(
     @app.get("/products/{product_id}/linked-accounts", response_model=List[ProductLinkedAccountOut])
     def list_product_linked_accounts(product_id: int, user=Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
+            require_action_permission(conn, q1, user, "products.reflect_accounts")
             row = q1(
                 conn,
                 "SELECT 1 FROM app.products WHERE product_id=%s AND is_archived IS NOT TRUE",
@@ -1430,6 +1474,7 @@ def mount_accounts_routes(
         if normalized_type not in ("game", "subscription"):
             raise HTTPException(400, "type_code must be game or subscription")
         with psycopg.connect(DB_DSN) as conn:
+            require_action_permission(conn, q1, user, "products.reflect_accounts")
             if normalized_type == "subscription":
                 # Для подписок показываем только полностью "пустые" аккаунты
                 # (без привязок game/subscription) + текущие привязки этого товара.
@@ -1494,6 +1539,7 @@ def mount_accounts_routes(
     @app.get("/products/{product_id}/slot-assignments", response_model=List[AccountSlotAssignmentOut])
     def list_product_slot_assignments(product_id: int, user=Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
+            require_action_permission(conn, q1, user, "products.reflect_slots")
             row = q1(
                 conn,
                 "SELECT 1 FROM app.products WHERE product_id=%s AND is_archived IS NOT TRUE",

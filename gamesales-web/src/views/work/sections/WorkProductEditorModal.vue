@@ -15,7 +15,7 @@
           <h3>{{ editProduct.open ? editProductTitle : createProductTitle }}</h3>
           <div class="toolbar-actions">
             <button
-              v-if="editProduct.open && productEditMode === 'edit'"
+              v-if="editProduct.open && productEditMode === 'edit' && canEditProduct"
               class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
               @click="updateProduct"
               :disabled="productLoading"
@@ -29,7 +29,7 @@
               </svg>
             </button>
             <button
-              v-if="!editProduct.open"
+              v-if="!editProduct.open && canCreateProduct"
               class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
               @click="createProduct"
               :disabled="productLoading"
@@ -43,7 +43,7 @@
               </svg>
             </button>
             <button
-              v-if="editProduct.open"
+              v-if="editProduct.open && canEditProduct"
               class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--edit"
               type="button"
               aria-label="Редактировать"
@@ -56,7 +56,7 @@
               </svg>
             </button>
             <button
-              v-if="editProduct.open"
+              v-if="editProduct.open && canDeleteProduct"
               class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--delete"
               type="button"
               aria-label="Удалить"
@@ -179,7 +179,7 @@
                   </select>
                 </label>
               </div>
-              <div class="field field--full">
+              <div v-if="canReflectProductAccounts" class="field field--full">
                 <span class="label account-products-title">Аккаунты</span>
                 <div v-if="productEditMode === 'view'" class="pill-list">
                   <span v-for="title in editProductAccountTitles" :key="`product-edit-account-pill-${title}`" class="pill">{{ title }}</span>
@@ -198,7 +198,7 @@
                   </div>
                 </div>
               </div>
-              <div v-if="productEditMode !== 'view'" class="quick-create quick-create--account">
+              <div v-if="productEditMode !== 'view' && canReflectProductAccounts" class="quick-create quick-create--account">
                 <div class="quick-create__header">
                   <button class="comment-toggle" type="button" @click="editQuickAccountOpen = !editQuickAccountOpen">
                     {{ editQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
@@ -233,7 +233,7 @@
                   <span v-if="quickEditProductAccountError" class="bad">{{ quickEditProductAccountError }}</span>
                 </template>
               </div>
-              <div class="field field--full">
+              <div v-if="canReflectProductAccounts" class="field field--full">
                 <span class="label">Платформа</span>
                 <div class="check-list check-list--compact">
                   <label v-for="p in platforms" :key="p.code" class="check-item">
@@ -481,7 +481,7 @@
                 :readonly="productEditMode === 'view'"
               />
             </div>
-            <div v-if="isEditGameType" class="field field--full">
+            <div v-if="isEditGameType && canReflectProductDeals" class="field field--full">
               <button
                 class="section-toggle"
                 type="button"
@@ -628,7 +628,7 @@
                 </div>
               </template>
             </div>
-            <div v-if="isEditGameType" class="field field--full">
+            <div v-if="isEditGameType && canReflectProductSlots" class="field field--full">
               <button
                 class="section-toggle"
                 type="button"
@@ -919,7 +919,7 @@
                   </label>
                 </div>
               </div>
-              <div class="quick-create quick-create--account">
+              <div v-if="canReflectProductAccounts" class="quick-create quick-create--account">
                 <div class="quick-create__header">
                   <button class="comment-toggle" type="button" @click="newQuickAccountOpen = !newQuickAccountOpen">
                     {{ newQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
@@ -1089,6 +1089,17 @@ const createProductTitle = computed(() => (
 ))
 
 const isEditGameType = computed(() => (editProduct.value?.type_code || PRODUCT_TYPE_PRIMARY) === PRODUCT_TYPE_PRIMARY)
+const hasProductAction = (actionCode) => {
+  // Проверяем action-право из контекста; старые тестовые контексты без функции считаем разрешенными.
+  if (typeof ctx.canDoAction !== 'function') return true
+  return ctx.canDoAction(actionCode)
+}
+const canCreateProduct = computed(() => hasProductAction('products.create_games'))
+const canEditProduct = computed(() => hasProductAction('products.edit'))
+const canDeleteProduct = computed(() => hasProductAction('products.delete'))
+const canReflectProductAccounts = computed(() => hasProductAction('products.reflect_accounts'))
+const canReflectProductDeals = computed(() => hasProductAction('products.reflect_deals'))
+const canReflectProductSlots = computed(() => hasProductAction('products.reflect_slots'))
 
 // В заголовке редактирования показываем тип товара и текущее название.
 const editProductTitle = computed(() => {

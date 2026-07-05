@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from fastapi import Body, Depends, HTTPException
 
+from .rbac_permissions import require_action_permission, user_can_action
+
 
 def mount_products_routes(
     app,
@@ -605,6 +607,9 @@ def mount_products_routes(
         where_sql = f"WHERE {' AND '.join(filters)}"
 
         with psycopg.connect(DB_DSN) as conn:
+            # Просмотр списка товаров привязан к action-праву, чтобы таблица и API вели себя одинаково.
+            if not user_can_action(conn, q1, user, "products.view_games"):
+                return {"total": 0, "items": []}
             rows = qall(
                 conn,
                 f"""
@@ -736,6 +741,7 @@ def mount_products_routes(
             raise HTTPException(400, "title is required")
 
         with psycopg.connect(DB_DSN) as conn:
+            require_action_permission(conn, q1, user, "products.create_games")
             type_row = q1(
                 conn,
                 "SELECT 1 FROM app.product_types WHERE code=%s AND is_archived IS NOT TRUE",
@@ -848,6 +854,7 @@ def mount_products_routes(
     # Обновляем товар и синхронизируем связанные игровые/подписочные атрибуты.
     def update_product(product_id: int, payload: ProductUpdate = Body(...), user: UserOut = Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
+            require_action_permission(conn, q1, user, "products.edit")
             row = q1(
                 conn,
                 """
@@ -961,6 +968,7 @@ def mount_products_routes(
     def archive_product(product_id: int, user: UserOut = Depends(get_current_user)):
         # Архивируем товар.
         with psycopg.connect(DB_DSN) as conn:
+            require_action_permission(conn, q1, user, "products.delete")
             row = q1(
                 conn,
                 """

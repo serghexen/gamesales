@@ -103,4 +103,38 @@ describe('WorkAccountsTableSection', () => {
 
     expect(wrapper.text()).toContain('AAA111 BBB222')
   })
+
+  it('hides account columns and blocks row opening by action permissions', async () => {
+    const startEditAccount = vi.fn()
+    const ensureAccountSecretsLoaded = vi.fn().mockResolvedValue(undefined)
+    const wrapper = mount(WorkAccountsTableSection, {
+      props: buildProps({
+        sortedAccounts: [
+          {
+            account_id: 5,
+            login_full: 'a@mail.com',
+            products_line: 'Game',
+            slot_status_line: 'P1 свободен',
+          },
+        ],
+        startEditAccount,
+        ensureAccountSecretsLoaded,
+        canViewEmail: false,
+        canViewGames: false,
+        canViewSlots: false,
+        canViewReserves: false,
+        canEditAccount: false,
+      }),
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Нет доступных колонок аккаунтов.')
+    expect(wrapper.text()).not.toContain('a@mail.com')
+    expect(wrapper.text()).not.toContain('Game')
+    expect(wrapper.find('.clickable-row').exists()).toBe(false)
+    expect(ensureAccountSecretsLoaded).not.toHaveBeenCalled()
+    expect(wrapper.find('tbody tr').exists()).toBe(false)
+    expect(startEditAccount).not.toHaveBeenCalled()
+  })
 })

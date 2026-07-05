@@ -3,7 +3,7 @@
     <div class="panel__head-col">
       <div class="deal-head-row">
         <div class="toolbar-actions toolbar-actions--deal-create">
-          <button class="deal-create-btn" type="button" @click="openCreateSaleModal" aria-label="Новая услуга" title="Новая услуга">
+          <button v-if="canCreateDeals" class="deal-create-btn" type="button" @click="openCreateSaleModal" aria-label="Новая услуга" title="Новая услуга">
             <span class="deal-create-btn__text">Услуга</span>
             <span class="deal-create-btn__icon">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
@@ -12,7 +12,7 @@
               </svg>
             </span>
           </button>
-          <button class="deal-create-btn deal-create-btn--sharing" type="button" @click="openCreateSharingModal" aria-label="Новый шеринг" title="Новый шеринг">
+          <button v-if="canCreateDeals" class="deal-create-btn deal-create-btn--sharing" type="button" @click="openCreateSharingModal" aria-label="Новый шеринг" title="Новый шеринг">
             <span class="deal-create-btn__text">Шеринг</span>
             <span class="deal-create-btn__icon">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke="currentColor" fill="none" class="deal-create-btn__svg" aria-hidden="true">
@@ -43,7 +43,7 @@
       </div>
     </div>
     <div class="toolbar-actions">
-      <div class="switch-wrap">
+      <div v-if="canViewCompletedDeals" class="switch-wrap">
         <label class="switch">
           <input v-model="dealShowCompletedModel" type="checkbox" @change="loadDeals(1)" />
           <div class="slider">
@@ -86,6 +86,8 @@ const props = defineProps({
   dealsRealtimeStatus: { type: String, default: 'offline' },
   dealFilters: { type: Object, required: true },
   applyDealSearch: { type: Function, required: true },
+  canCreateDeals: { type: Boolean, default: true },
+  canViewCompletedDeals: { type: Boolean, default: true },
   openCreateSaleModal: { type: Function, required: true },
   openCreateSharingModal: { type: Function, required: true },
   dealShowCompleted: { type: Boolean, required: true },

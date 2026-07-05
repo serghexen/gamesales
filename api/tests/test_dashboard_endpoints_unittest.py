@@ -158,7 +158,39 @@ class DashboardEndpointsTests(unittest.TestCase):
         self.assertTrue(body["items"][0]["is_online"])
         self.assertTrue(sql_collector, "SQL query was not executed")
         sql_text = sql_collector[0][0]
-        self.assertIn("lower(u.role_code) IN ('manager', 'operator', 'owner')", sql_text)
+        self.assertIn("lower(u.role_code) IN ('manager', 'operator', 'admin', 'owner')", sql_text)
+
+    # Админ считается рабочим пользователем и должен попадать в блок нагрузки.
+    def test_managers_load_includes_admin_role(self):
+        app = FastAPI()
+        fake_redis = _FakeRedis()
+        sql_collector = []
+
+        def fake_qall(_conn, sql, params=None):
+            sql_collector.append((sql, params))
+            return [("admin1", "Админ", 5)]
+
+        with patch("domains.dashboard_api.redis.Redis.from_url", return_value=fake_redis):
+            mount_dashboard_routes(
+                app,
+                DB_DSN="postgresql://test",
+                psycopg=_FakePsycopg(),
+                qall=fake_qall,
+                get_current_user=lambda: SimpleNamespace(username="admin1", role="admin"),
+                redis_url="redis://local",
+            )
+
+            with TestClient(app) as client:
+                res = client.get("/dashboard/managers-load")
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["online_count"], 1)
+        self.assertEqual(body["items"][0]["username"], "admin1")
+        self.assertEqual(body["items"][0]["pending_count"], 5)
+        self.assertTrue(body["items"][0]["is_online"])
+        sql_text = sql_collector[0][0]
+        self.assertIn("lower(match_u.role_code) IN ('manager', 'operator', 'admin', 'owner')", sql_text)
 
     # В ответе должны быть и офлайн менеджеры/операторы, онлайн отмечаем отдельным флагом.
     def test_managers_load_returns_all_roles_with_online_flag(self):

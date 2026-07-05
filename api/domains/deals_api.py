@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import Depends, HTTPException
 
 from .deals_models import RentalCreate, DealCreate, DealUpdate, DealListItem, DealListOut
+from .rbac_permissions import require_action_permission, user_can_action
 
 
 def mount_deals_routes(
@@ -201,6 +202,47 @@ def mount_deals_routes(
         role = (getattr(user, "role", "") or "").strip().lower()
         username = (getattr(user, "username", "") or "").strip().lower()
         return role in {"admin", "owner"} or username in {"admin", "owner"}
+
+    # Возвращает группу action-прав по текущему статусу сделки.
+    def deal_action_group(flow_status_code: str) -> str:
+        status = str(flow_status_code or "").strip().lower()
+        if status == "draft":
+            return "deals_draft"
+        if status == "completed":
+            return "deals_completed"
+        return "deals_active"
+
+    def deal_payload_changes_business_fields(payload: DealUpdate) -> bool:
+        # Определяет, меняет ли update обычные поля сделки, а не только статус или системные даты.
+        business_fields = (
+            "deal_type_code",
+            "account_id",
+            "product_id",
+            "customer_nickname",
+            "order_number",
+            "responsible_username",
+            "source_id",
+            "messenger_id",
+            "login",
+            "password",
+            "region_code",
+            "platform_code",
+            "slot_type_code",
+            "subscription_term_id",
+            "reserve_key",
+            "reserve_claim_token",
+            "duplicate_assignment_id",
+            "price",
+            "purchase_cost",
+            "product_link",
+            "purchase_at",
+            "start_at",
+            "end_at",
+            "slots_used",
+            "notes",
+            "is_refund",
+        )
+        return any(getattr(payload, field, None) is not None for field in business_fields)
 
     # Превращает SQL-строку сделки в общий DTO, чтобы список и карточка по id отдавали один формат.
     def build_deal_list_item(r) -> DealListItem:
@@ -811,6 +853,9 @@ def mount_deals_routes(
         validate_date_range(payload.start_at, payload.end_at, "end_at")
     
         with psycopg.connect(DB_DSN) as conn:
+            require_action_permission(conn, q1, user, "deals_active.create")
+            if new_flow_status == "draft":
+                require_action_permission(conn, q1, user, "deals_active.draft")
             # Нормализуем поля "номер заказа" и "ответственный", чтобы не хранить служебные значения.
             order_number = (payload.order_number or "").strip() or None
             responsible_username = (payload.responsible_username or "").strip() or None
@@ -1166,16 +1211,16 @@ def mount_deals_routes(
                 expected_lock_version = int(current_lock_version or 1)
             if int(expected_lock_version) != int(current_lock_version or 0):
                 raise HTTPException(409, "deal was modified by another user")
-            user_role = (getattr(user, "role", "") or "").strip().lower()
-            can_edit_completed = has_completed_deal_access(user)
-            # Завершенные сделки редактируют только admin/owner; для возврата есть отдельный endpoint.
-            if str(flow_status_code or "").strip().lower() == "completed" and not can_edit_completed:
-                raise HTTPException(403, "editing completed deal is allowed only for admin/owner")
-            # Ручные правки системных дат разрешаем только для admin/owner у завершенной сделки.
-            has_manual_system_dates = payload.created_at is not None or payload.completed_at is not None
-            # Для admin/owner ручные даты теперь доступны в любом статусе сделки.
-            if has_manual_system_dates and not can_edit_completed:
-                raise HTTPException(403, "editing completed deal is allowed only for admin/owner")
+            action_group = deal_action_group(flow_status_code)
+            require_action_permission(conn, q1, user, f"{action_group}.edit")
+            require_action_permission(conn, q1, user, f"{action_group}.save")
+            if action_group == "deals_active" and deal_payload_changes_business_fields(payload):
+                require_action_permission(conn, q1, user, "deals_active.fill_fields")
+            # Ручные правки системных дат разрешаем только при отдельном action-праве.
+            if payload.created_at is not None:
+                require_action_permission(conn, q1, user, f"{action_group}.change_deal_date")
+            if payload.completed_at is not None:
+                require_action_permission(conn, q1, user, f"{action_group}.change_completed_date")
             # Защищаем ручные системные даты от инверсии: завершение не может быть раньше создания.
             if payload.created_at is not None and payload.completed_at is not None and payload.completed_at < payload.created_at:
                 raise HTTPException(400, "completed_at must be >= created_at")
@@ -1195,6 +1240,8 @@ def mount_deals_routes(
                 row = q1(conn, "SELECT 1 FROM app.deal_flow_statuses WHERE code=%s", (payload.flow_status_code,))
                 if not row:
                     raise HTTPException(400, "Unknown flow_status_code")
+                if str(payload.flow_status_code or "").strip().lower() != str(flow_status_code or "").strip().lower():
+                    require_action_permission(conn, q1, user, f"{action_group}.change_status")
             # Черновик нельзя переводить сразу в completed из формы редактирования.
             if str(flow_status_code or "").strip().lower() == "draft" and str(new_flow_status or "").strip().lower() == "completed":
                 raise HTTPException(400, "draft deal cannot be completed directly")
@@ -1261,6 +1308,8 @@ def mount_deals_routes(
     
             new_price = payload.price if payload.price is not None else price
             new_purchase_cost = payload.purchase_cost if payload.purchase_cost is not None else purchase_cost
+            if action_group == "deals_active" and payload.price is not None and float(new_price or 0) != float(price or 0):
+                require_action_permission(conn, q1, user, "deals_active.discount")
             new_purchase_at = payload.purchase_at if payload.purchase_at is not None else purchase_at
             new_start_at = payload.start_at if payload.start_at is not None else start_at
             new_end_at = payload.end_at if payload.end_at is not None else end_at
@@ -1307,16 +1356,20 @@ def mount_deals_routes(
             current_is_refund = returned_at is not None
             new_is_refund = current_is_refund if payload.is_refund is None else bool(payload.is_refund)
             is_refund_changed = new_is_refund != current_is_refund
-            # Признак возврата можно менять в pending для всех, а в completed только для admin/owner.
-            allow_refund_change = flow_status_code == "pending" or (flow_status_code == "completed" and can_edit_completed)
+            # Признак возврата можно менять в pending для всех, а в completed только при праве на возврат.
+            allow_refund_change = flow_status_code == "pending" or (
+                flow_status_code == "completed"
+                and user_can_action(conn, q1, user, "deals_completed.process_return")
+            )
             if is_refund_changed and not allow_refund_change:
                 raise HTTPException(400, "is_refund can be changed only for pending deals")
             if payload.is_refund and deal_type not in {"sale", "rental"}:
                 raise HTTPException(400, "is_refund is allowed only for sale or rental deals")
-            # Проведение возврата в completed разрешено только владельцу или администратору.
+            # Проведение возврата в completed разрешаем только роли с отдельным action-правом.
             is_completing_now = flow_status_code != "completed" and new_flow_status == "completed"
-            if is_completing_now and new_is_refund and user_role not in {"admin", "owner"}:
-                raise HTTPException(403, "не достаточно прав для проведения возврата")
+            if is_completing_now and new_is_refund:
+                if not user_can_action(conn, q1, user, "deals_active.approve_return"):
+                    raise HTTPException(403, "не достаточно прав для проведения возврата")
             # Храним признак возврата через returned_at: timestamp при включении и null при выключении.
             new_returned_at = returned_at
             if is_refund_changed:
@@ -1710,6 +1763,7 @@ def mount_deals_routes(
                 raise HTTPException(400, "return is allowed only for completed deals")
             if returned_at is not None:
                 raise HTTPException(400, "deal is already marked as refund")
+            require_action_permission(conn, q1, user, "deals_completed.press_return")
 
             owner_responsible = resolve_owner_responsible_name(conn)
             returned_at_value = now_utc()
@@ -1762,6 +1816,7 @@ def mount_deals_routes(
                 raise HTTPException(404, "Deal not found")
             if row[0] != "draft":
                 raise HTTPException(400, "delete is allowed only for draft deals")
+            require_action_permission(conn, q1, user, f"{deal_action_group(row[0])}.delete")
             exec1(conn, "UPDATE app.deals SET status_code='cancelled' WHERE deal_id=%s", (deal_id,))
             conn.commit()
             if publish_deal_event:
@@ -1823,6 +1878,8 @@ def mount_deals_routes(
         sort_expr = sort_map.get(sort_key, sort_map["date"])
     
         with psycopg.connect(DB_DSN) as conn:
+            if account_id is not None:
+                require_action_permission(conn, q1, user, "accounts.reflect_deals")
             where_sql, params = build_deals_filters(
                 account_id,
                 platform_code,
@@ -1854,6 +1911,11 @@ def mount_deals_routes(
                 where_sql = f"{where_sql} AND d.status_code <> 'cancelled'"
             else:
                 where_sql = "WHERE d.status_code <> 'cancelled'"
+            # Action-права просмотра статусов применяем и на API, чтобы прямой запрос не обходил UI.
+            if not user_can_action(conn, q1, user, "deals_draft.view"):
+                where_sql = f"{where_sql} AND d.flow_status_code <> 'draft'"
+            if not user_can_action(conn, q1, user, "deals_completed.view"):
+                where_sql = f"{where_sql} AND d.flow_status_code <> 'completed'"
             # Возвратные сделки в списке видят только admin/owner.
             can_view_refunds = has_completed_deal_access(user)
             if not can_view_refunds:

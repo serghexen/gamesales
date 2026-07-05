@@ -728,9 +728,11 @@ const roleSectionDefaults = {
 }
 
 const mySectionPermissionsMap = ref({})
+const myActionPermissionsMap = ref({})
 const rolePermissionsRoles = ref([])
 const rolePermissionsRoleCode = ref('')
 const rolePermissionsItems = ref([])
+const roleActionPermissionsItems = ref([])
 const rolePermissionsLoading = ref(false)
 const rolePermissionsSaving = ref(false)
 const rolePermissionsError = ref('')
@@ -754,6 +756,15 @@ function canViewSection(sectionCode) {
   return defaultSectionVisibilityByRole(code, auth.state.role)
 }
 
+// Проверяет action-право текущей роли; если backend еще не отдал карту, не ломаем старое поведение.
+function canDoAction(actionCode) {
+  const code = String(actionCode || '').trim()
+  if (!code) return false
+  const map = myActionPermissionsMap.value || {}
+  if (Object.prototype.hasOwnProperty.call(map, code)) return Boolean(map[code])
+  return true
+}
+
 const canViewDealsSection = computed(() => canViewSection('deals'))
 const canViewAccountsSection = computed(() => canViewSection('accounts'))
 const canViewProductsSection = computed(() => canViewSection('products'))
@@ -770,6 +781,9 @@ const canViewDashboardSection = computed(() => canViewSection('dashboard'))
 // Берем предзагруженные права из auth-store, чтобы не показывать лишние вкладки до первого запроса.
 mySectionPermissionsMap.value = {
   ...(auth.state.sections && typeof auth.state.sections === 'object' ? auth.state.sections : {}),
+}
+myActionPermissionsMap.value = {
+  ...(auth.state.actions && typeof auth.state.actions === 'object' ? auth.state.actions : {}),
 }
 
 // Возвращает список вкладок, которые реально доступны пользователю в текущем UI.
@@ -809,11 +823,17 @@ async function loadMySectionPermissions() {
     mySectionPermissionsMap.value = {
       ...(loaded && typeof loaded === 'object' ? loaded : {}),
     }
+    myActionPermissionsMap.value = {
+      ...(auth.state.actions && typeof auth.state.actions === 'object' ? auth.state.actions : {}),
+    }
     return
   }
   // Fallback для совместимости со старым store без метода loadMySections.
   mySectionPermissionsMap.value = {
     ...(auth.state.sections && typeof auth.state.sections === 'object' ? auth.state.sections : {}),
+  }
+  myActionPermissionsMap.value = {
+    ...(auth.state.actions && typeof auth.state.actions === 'object' ? auth.state.actions : {}),
   }
 }
 
@@ -834,8 +854,19 @@ async function loadRolePermissionsRoles() {
       rolePermissionsRoleCode.value = hasCurrentRole ? roleCode : firstRole
     }
   } catch (e) {
-    rolePermissionsError.value = mapApiError(e?.message)
+    rolePermissionsError.value = mapRolePermissionsError(e?.message, 'load')
   }
+}
+
+// Показывает ошибки матрицы доступов без текста про импорт файлов.
+function mapRolePermissionsError(message, mode = 'load') {
+  const text = String(message || '')
+  if (text.includes('Load failed') || text.includes('Failed to fetch')) {
+    return mode === 'save'
+      ? 'Не удалось сохранить права роли. Проверьте доступность API'
+      : 'Не удалось загрузить права роли. Проверьте доступность API'
+  }
+  return mapApiError(text)
 }
 
 // Загружает права выбранной роли для редактирования в профиле.
@@ -843,25 +874,57 @@ async function loadRolePermissionsByRole(roleCode) {
   const code = String(roleCode || '').trim()
   if (!showRolePermissionsPanel.value || !code || !auth.state.token) {
     rolePermissionsItems.value = []
+    roleActionPermissionsItems.value = []
     return
   }
   rolePermissionsLoading.value = true
   rolePermissionsError.value = ''
   try {
-    const res = await apiGet(`/rbac/roles/${encodeURIComponent(code)}/sections`, { token: auth.state.token })
-    rolePermissionsItems.value = Array.isArray(res?.items)
-      ? res.items.map((item) => ({
+    // Раздельно принимаем ответы, чтобы сбой матрицы действий не очищал уже загруженные разделы.
+    const [sectionsResult, actionsResult] = await Promise.allSettled([
+      apiGet(`/rbac/roles/${encodeURIComponent(code)}/sections`, { token: auth.state.token }),
+      apiGet(`/rbac/roles/${encodeURIComponent(code)}/actions`, { token: auth.state.token }),
+    ])
+    const sectionsRes = sectionsResult.status === 'fulfilled' ? sectionsResult.value : null
+    const actionsRes = actionsResult.status === 'fulfilled' ? actionsResult.value : null
+    rolePermissionsItems.value = Array.isArray(sectionsRes?.items)
+      ? sectionsRes.items.map((item) => ({
           section_code: String(item?.section_code || ''),
           section_name: String(item?.section_name || ''),
           can_view: Boolean(item?.can_view),
         }))
       : []
+    roleActionPermissionsItems.value = Array.isArray(actionsRes?.items)
+      ? actionsRes.items.map((item) => ({
+          group_code: String(item?.group_code || ''),
+          group_name: String(item?.group_name || ''),
+          group_description: String(item?.group_description || ''),
+          action_code: String(item?.action_code || ''),
+          action_name: String(item?.action_name || ''),
+          can_do: Boolean(item?.can_do),
+        }))
+      : []
+    if (sectionsResult.status === 'rejected' || actionsResult.status === 'rejected') {
+      const reason = sectionsResult.status === 'rejected' ? sectionsResult.reason : actionsResult.reason
+      rolePermissionsError.value = mapRolePermissionsError(reason?.message, 'load')
+    }
   } catch (e) {
     rolePermissionsItems.value = []
-    rolePermissionsError.value = mapApiError(e?.message)
+    roleActionPermissionsItems.value = []
+    rolePermissionsError.value = mapRolePermissionsError(e?.message, 'load')
   } finally {
     rolePermissionsLoading.value = false
   }
+}
+
+// Обновляет локальный чекбокс действия в матрице выбранной роли.
+function setRoleActionPermissionItem(actionCode, canDo) {
+  const code = String(actionCode || '').trim()
+  if (!code) return
+  roleActionPermissionsItems.value = roleActionPermissionsItems.value.map((item) => {
+    if (item.action_code !== code) return item
+    return { ...item, can_do: Boolean(canDo) }
+  })
 }
 
 // Меняет активную роль в форме ролевой модели и перезагружает настройки.
@@ -896,12 +959,30 @@ async function saveRolePermissions() {
         can_view: Boolean(item.can_view),
       })),
     }
-    const res = await apiPut(`/rbac/roles/${encodeURIComponent(code)}/sections`, payload, { token: auth.state.token })
-    const savedItems = Array.isArray(res?.items) ? res.items : []
+    const actionPayload = {
+      items: roleActionPermissionsItems.value.map((item) => ({
+        action_code: String(item.action_code || ''),
+        can_do: Boolean(item.can_do),
+      })),
+    }
+    const [sectionsRes, actionsRes] = await Promise.all([
+      apiPut(`/rbac/roles/${encodeURIComponent(code)}/sections`, payload, { token: auth.state.token }),
+      apiPut(`/rbac/roles/${encodeURIComponent(code)}/actions`, actionPayload, { token: auth.state.token }),
+    ])
+    const savedItems = Array.isArray(sectionsRes?.items) ? sectionsRes.items : []
     rolePermissionsItems.value = savedItems.map((item) => ({
       section_code: String(item?.section_code || ''),
       section_name: String(item?.section_name || ''),
       can_view: Boolean(item?.can_view),
+    }))
+    const savedActionItems = Array.isArray(actionsRes?.items) ? actionsRes.items : []
+    roleActionPermissionsItems.value = savedActionItems.map((item) => ({
+      group_code: String(item?.group_code || ''),
+      group_name: String(item?.group_name || ''),
+      group_description: String(item?.group_description || ''),
+      action_code: String(item?.action_code || ''),
+      action_name: String(item?.action_name || ''),
+      can_do: Boolean(item?.can_do),
     }))
     rolePermissionsOk.value = 'Права роли сохранены'
     if (normalizeRole(code) === normalizeRole(auth.state.role)) {
@@ -909,7 +990,7 @@ async function saveRolePermissions() {
       ensureAllowedActiveTab()
     }
   } catch (e) {
-    rolePermissionsError.value = mapApiError(e?.message)
+    rolePermissionsError.value = mapRolePermissionsError(e?.message, 'save')
   } finally {
     rolePermissionsSaving.value = false
   }
@@ -1033,8 +1114,10 @@ watch(
     // После входа подгружаем права секций и держим активную вкладку в допустимом диапазоне.
     if (!token) {
       mySectionPermissionsMap.value = {}
+      myActionPermissionsMap.value = {}
       rolePermissionsRoles.value = []
       rolePermissionsItems.value = []
+      roleActionPermissionsItems.value = []
       rolePermissionsRoleCode.value = ''
       return
     }
@@ -1544,6 +1627,7 @@ const {
   resolveDealFlowStatusFilter,
   dealFilters,
   dealShowCompleted,
+  canDoAction,
 })
 
 // Возвращает тип товара по id для валидации шеринга при сохранении сделки.
@@ -2826,6 +2910,7 @@ loadProductSlotAssignmentsDeferred.set(loadProductSlotAssignmentsFromActions)
 // Контекст вкладки аккаунтов: фильтры, таблица, пагинация и модалки.
 const accountsSectionCtx = asCtx({
   accountFilters,
+  canDoAction,
   applyAccountSearch,
   openCreateAccountModal,
   openAccountImport,
@@ -3109,6 +3194,7 @@ const {
   canViewCatalogsSection,
   canViewFinanceSection,
   canManageRolePermissions,
+  canDoAction,
   dealsRealtimeStatus,
   dealEditingByDealId,
   dealsRealtimeAnimationTick,
@@ -3304,6 +3390,7 @@ const {
 // Контекст вкладки товаров: фильтры, таблица, пагинация, импорт и модалка.
 const productsSectionCtx = asCtx({
   productFilters,
+  canDoAction,
   applyProductSearch,
   openCreateGameProductModal,
   openCreateSubscriptionProductModal,
@@ -3615,6 +3702,7 @@ const profileSectionCtx = asCtx({
   rolePermissionsRoles,
   rolePermissionsRoleCode,
   rolePermissionsItems,
+  roleActionPermissionsItems,
   rolePermissionsLoading,
   rolePermissionsSaving,
   rolePermissionsError,
@@ -3622,7 +3710,9 @@ const profileSectionCtx = asCtx({
   ensureRolePermissionsFormDataLoaded,
   setRolePermissionsRoleCode,
   setRolePermissionItem,
+  setRoleActionPermissionItem,
   saveRolePermissions,
+  canDoAction,
 })
 
 useWorkLifecycle({

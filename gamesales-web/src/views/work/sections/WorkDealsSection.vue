@@ -5,6 +5,8 @@
       :deals-realtime-status="ctx.dealsRealtimeStatus"
       :deal-filters="ctx.dealFilters"
       :apply-deal-search="ctx.applyDealSearch"
+      :can-create-deals="canDoAction('deals_active.create')"
+      :can-view-completed-deals="canDoAction('deals_completed.view')"
       :open-create-sale-modal="ctx.openCreateSaleModal"
       :open-create-sharing-modal="ctx.openCreateSharingModal"
       :deal-show-completed="ctx.dealShowCompleted"
@@ -49,6 +51,7 @@
         :show-deal-warning="ctx.showDealWarning"
         :format-date-time-minutes="ctx.formatDateTimeMinutes"
         :deal-show-completed="ctx.dealShowCompleted"
+        :can-do-action="ctx.canDoAction"
         :mark-deal-completed="ctx.markDealCompleted"
         :mark-deal-returned="ctx.markDealReturned"
         :deal-saving="ctx.dealSaving"
@@ -100,4 +103,9 @@ const props = defineProps({
   ctx: { type: Object, required: true },
 })
 const { ctx } = props
+function canDoAction(actionCode) {
+  // Старые тестовые контексты без action-RBAC считаем разрешенными, чтобы не ломать совместимость.
+  if (typeof ctx.canDoAction !== 'function') return true
+  return ctx.canDoAction(actionCode)
+}
 </script>

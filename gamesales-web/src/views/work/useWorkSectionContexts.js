@@ -99,6 +99,7 @@ export function useWorkSectionContexts({
   canViewCatalogsSection,
   canViewFinanceSection,
   canManageRolePermissions,
+  canDoAction,
   dealsRealtimeStatus,
   dealEditingByDealId,
   dealsRealtimeAnimationTick,
@@ -307,6 +308,7 @@ export function useWorkSectionContexts({
   const productEditorModalCtx = proxyRefs({
     editProduct,
     showProductForm,
+    canDoAction,
     closeProductModal,
     modalRef,
     modalStyle,
@@ -414,6 +416,7 @@ export function useWorkSectionContexts({
     currentUsername,
     responsibleNameByUsername,
     showDealWarning,
+    canDoAction,
     dealFilters,
     applyDealSearch,
     openCreateSaleModal,

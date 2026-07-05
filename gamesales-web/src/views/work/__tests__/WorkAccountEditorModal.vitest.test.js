@@ -532,4 +532,28 @@ describe('WorkAccountEditorModal', () => {
     await wrapper.setProps({ editAccountProductSearch: 'PS Plus Deluxe' })
     expect(quickEditAccountProduct.title).toBe('PS Plus Deluxe')
   })
+
+  it('hides account modal blocks and actions without action permissions', async () => {
+    const wrapper = mount(WorkAccountEditorModal, {
+      props: buildProps({
+        accountModalMode: 'edit',
+        accountEditMode: 'edit',
+        canEditAccount: false,
+        canDeleteAccount: false,
+        canViewGames: false,
+        canReflectSlots: false,
+        canReflectDeals: false,
+        accountDeals: [{ deal_id: 123, product_id: 77, customer_nickname: 'buyer' }],
+        accountSlotAssignments: [{ assignment_id: 1, slot_type_code: 'primary' }],
+      }),
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(wrapper.find('button[title="Сохранить изменения"]').exists()).toBe(false)
+    expect(wrapper.find('button[title="Редактировать"]').exists()).toBe(false)
+    expect(wrapper.find('button[title="Удалить"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Товары')
+    expect(wrapper.text()).not.toContain('Слоты аккаунта')
+    expect(wrapper.text()).not.toContain('Пользователи по сделкам')
+  })
 })

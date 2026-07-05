@@ -169,4 +169,35 @@ describe('useDeals', () => {
     expect(secondSortUrl).toContain('sort_dir=asc')
     expect(secondSortUrl).toContain('page=1')
   })
+
+  it('filters draft and completed statuses by action permissions', async () => {
+    const dealFilters = reactive({
+      search_q: '',
+      type_q: '',
+      customer_q: '',
+      responsible_q: '',
+      region_q: '',
+      status_q: '',
+      purchase_from: '',
+      purchase_to: '',
+    })
+    const dealShowCompleted = ref(true)
+    const apiGet = vi.fn().mockResolvedValue({ items: [], total: 0 })
+
+    const h = useDeals({
+      auth: { state: { token: 't' } },
+      apiGet,
+      mapApiError: (v) => v,
+      resolveDealFlowStatusFilter: () => 'active,draft,completed',
+      dealFilters,
+      dealShowCompleted,
+      canDoAction: (actionCode) => !['deals_draft.view', 'deals_completed.view'].includes(actionCode),
+    })
+
+    await h.loadDeals(1)
+
+    const calledUrl = String(apiGet.mock.calls[0]?.[0] || '')
+    const params = new URLSearchParams(calledUrl.split('?')[1] || '')
+    expect(params.get('flow_status_q')).toBe('active')
+  })
 })

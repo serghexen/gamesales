@@ -43,7 +43,7 @@
                     </div>
                     <div class="toolbar-actions">
                       <button
-                        v-if="accountModalMode === 'edit' && accountEditMode === 'edit'"
+                        v-if="accountModalMode === 'edit' && accountEditMode === 'edit' && canEditAccountModal"
                         class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
                         @click="updateAccount"
                         :disabled="accountBusy"
@@ -57,7 +57,7 @@
                         </svg>
                       </button>
                       <button
-                        v-if="accountModalMode === 'create'"
+                        v-if="accountModalMode === 'create' && canCreateAccountModal"
                         class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
                         @click="createAccount"
                         :disabled="accountBusy"
@@ -71,7 +71,7 @@
                         </svg>
                       </button>
                       <button
-                        v-if="accountModalMode === 'edit'"
+                        v-if="accountModalMode === 'edit' && canEditAccountModal"
                         class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--edit"
                         type="button"
                         aria-label="Редактировать"
@@ -84,7 +84,7 @@
                         </svg>
                       </button>
                       <button
-                        v-if="accountModalMode === 'edit'"
+                        v-if="accountModalMode === 'edit' && canDeleteAccountModal"
                         class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--delete"
                         type="button"
                         aria-label="Удалить"
@@ -304,7 +304,7 @@
                           </div>
                         </div>
                       </div>
-                      <div class="field field--full">
+                      <div v-if="canShowReflectSlots" class="field field--full">
                         <span class="label account-products-title">Товары</span>
                         <div v-if="accountEditMode === 'view'" class="pill-list">
                           <span v-for="t in accountProductTitles" :key="t" class="pill">{{ t }}</span>
@@ -365,7 +365,7 @@
                           </div>
                         </div>
                       </div>
-                      <div class="field field--full">
+                      <div v-if="canShowReflectDeals" class="field field--full">
                         <span class="label">Слоты аккаунта</span>
                         <p v-if="accountSlotAssignmentsError" class="bad">{{ accountSlotAssignmentsError }}</p>
                         <div v-if="accountSlotAssignmentsLoading" class="loader-wrap loader-wrap--compact">
@@ -435,7 +435,7 @@
                         </table>
                         <p v-else class="muted">Слотов по аккаунту пока нет.</p>
                       </div>
-                      <div class="field field--full">
+                      <div v-if="canViewAccountGames" class="field field--full">
                         <span class="label">Пользователи по сделкам</span>
                         <p v-if="accountDealsError" class="bad">{{ accountDealsError }}</p>
                         <div v-if="accountDealsLoading" class="loader-wrap loader-wrap--compact">
@@ -595,7 +595,7 @@
                           placeholder="mkn4N5 6uGjMm ..."
                         />
                       </div>
-                      <div class="field field--full">
+                      <div v-if="canViewAccountGames" class="field field--full">
                         <span class="label account-products-title">Товары</span>
                         <div class="account-product-filters field--full">
                           <label class="field">
@@ -693,6 +693,12 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 const props = defineProps([
   'editAccount',
   'canToggleDeactivation',
+  'canCreateAccount',
+  'canEditAccount',
+  'canDeleteAccount',
+  'canViewGames',
+  'canReflectSlots',
+  'canReflectDeals',
   'cancelEditAccount',
   'modalRef',
   'modalStyle',
@@ -758,6 +764,13 @@ const props = defineProps([
   'setEditAccountProductType',
   'setAccountProductType',
 ])
+
+const canShowReflectSlots = computed(() => props.canReflectSlots !== false)
+const canShowReflectDeals = computed(() => props.canReflectDeals !== false)
+const canCreateAccountModal = computed(() => props.canCreateAccount !== false)
+const canEditAccountModal = computed(() => props.canEditAccount !== false)
+const canDeleteAccountModal = computed(() => props.canDeleteAccount !== false)
+const canViewAccountGames = computed(() => props.canViewGames !== false)
 
 // Галочку деактивации показываем только тем ролям, которым разрешено менять этот флаг.
 const showDeactivationToggle = computed(() => {

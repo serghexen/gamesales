@@ -3,6 +3,7 @@
     <WorkAccountsHeader
       :account-filters="ctx.accountFilters"
       :apply-account-search="ctx.applyAccountSearch"
+      :can-create-account="canDoAction('accounts.create')"
       :open-create-account-modal="ctx.openCreateAccountModal"
       :open-account-import="ctx.openAccountImport"
       :open-slot-import="ctx.openSlotImport"
@@ -82,6 +83,11 @@
         :apply-account-filter="ctx.applyAccountFilter"
         :reset-account-filter="ctx.resetAccountFilter"
         :start-edit-account="ctx.startEditAccount"
+        :can-view-email="canDoAction('accounts.view_email')"
+        :can-view-games="canDoAction('accounts.view_games')"
+        :can-view-slots="canDoAction('accounts.view_slots')"
+        :can-view-reserves="canDoAction('accounts.view_reserves')"
+        :can-edit-account="canDoAction('accounts.edit')"
         :format-account-products-line="ctx.formatAccountProductsLine"
         :get-account-slot-status-list="ctx.getAccountSlotStatusList"
         :format-account-slot-status-line="ctx.formatAccountSlotStatusLine"
@@ -133,6 +139,12 @@
       <WorkAccountEditorModal
         :edit-account="ctx.editAccount"
         :can-toggle-deactivation="ctx.canToggleAccountDeactivation"
+        :can-create-account="canDoAction('accounts.create')"
+        :can-edit-account="canDoAction('accounts.edit')"
+        :can-delete-account="canDoAction('accounts.delete')"
+        :can-view-games="canDoAction('accounts.view_games')"
+        :can-reflect-slots="canDoAction('accounts.reflect_slots')"
+        :can-reflect-deals="canDoAction('accounts.reflect_deals')"
         :cancel-edit-account="ctx.cancelEditAccount"
         :modal-ref="ctx.modalRef"
         :modal-style="ctx.modalStyle"
@@ -239,10 +251,15 @@ import WorkAccountEditorModal from './WorkAccountEditorModal.vue'
 import WorkSlotImportModal from './WorkSlotImportModal.vue'
 
 // Контекст секции аккаунтов: таблица, фильтры, пагинация и модалки.
-defineProps({
+const props = defineProps({
   ctx: {
     type: Object,
     required: true,
   },
 })
+function canDoAction(actionCode) {
+  // Старые тестовые контексты без action-RBAC считаем разрешенными, чтобы сохранить прежний UI.
+  if (typeof props.ctx.canDoAction !== 'function') return true
+  return props.ctx.canDoAction(actionCode)
+}
 </script>

@@ -333,4 +333,35 @@ describe('WorkProductEditorModal', () => {
     expect(wrapper.text()).not.toContain('Добавить срок подписки')
     expect(wrapper.text()).not.toContain('Быстрое создание аккаунта')
   })
+
+  it('hides product modal blocks and actions without action permissions', async () => {
+    const wrapper = mount(WorkProductEditorModal, {
+      props: {
+        ctx: buildCtx({
+          productEditMode: 'edit',
+          canDoAction: (actionCode) => ![
+            'products.edit',
+            'products.delete',
+            'products.reflect_accounts',
+            'products.reflect_deals',
+            'products.reflect_slots',
+          ].includes(actionCode),
+          productAccounts: [
+            { account_id: 1, login_full: 'acc@test.com' },
+          ],
+          productSlotAssignments: [
+            { assignment_id: 1, account_login: 'acc@test.com', slot_type_code: 'primary' },
+          ],
+        }),
+      },
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(wrapper.find('button[title="Сохранить изменения"]').exists()).toBe(false)
+    expect(wrapper.find('button[title="Редактировать"]').exists()).toBe(false)
+    expect(wrapper.find('button[title="Удалить"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Аккаунты')
+    expect(wrapper.text()).not.toContain('Сделок (')
+    expect(wrapper.text()).not.toContain('Слоты по товару')
+  })
 })

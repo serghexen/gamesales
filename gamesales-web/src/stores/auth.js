@@ -2,10 +2,23 @@ import { reactive } from 'vue'
 import { apiGet, apiPost } from '../api/http'
 
 const AUTH_SECTIONS_KEY = 'auth_sections'
+const AUTH_ACTIONS_KEY = 'auth_actions'
 const readStoredSections = () => {
   // Читаем кеш прав из localStorage, чтобы после логина не показывать лишние вкладки до первого запроса.
   try {
     const raw = localStorage.getItem(AUTH_SECTIONS_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return parsed
+  } catch {
+    return {}
+  }
+}
+const readStoredActions = () => {
+  // Читаем кеш action-прав, чтобы UI не мигал лишними действиями до ответа API.
+  try {
+    const raw = localStorage.getItem(AUTH_ACTIONS_KEY)
     if (!raw) return {}
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
@@ -20,6 +33,7 @@ const state = reactive({
   user: localStorage.getItem('auth_user') || null,
   role: localStorage.getItem('auth_role') || null,
   sections: readStoredSections(),
+  actions: readStoredActions(),
 })
 const DEAL_FILTERS_SESSION_KEY_PREFIX = 'gamesales:deal-filters:'
 
@@ -31,26 +45,43 @@ export function useAuth() {
     localStorage.setItem(AUTH_SECTIONS_KEY, JSON.stringify(safeMap))
   }
 
+  function saveActions(actionsMap) {
+    // Сохраняем action-права рядом с секциями, чтобы все guards читали один auth-store.
+    const safeMap = actionsMap && typeof actionsMap === 'object' && !Array.isArray(actionsMap) ? actionsMap : {}
+    state.actions = safeMap
+    localStorage.setItem(AUTH_ACTIONS_KEY, JSON.stringify(safeMap))
+  }
+
   async function loadMySections() {
-    // Загружаем права UI-секций для текущего пользователя сразу после авторизации.
+    // Загружаем права UI-секций и действий для текущего пользователя сразу после авторизации.
     if (!state.token) {
       saveSections({})
+      saveActions({})
       return {}
     }
     try {
-      const res = await apiGet('/rbac/my-sections', { token: state.token })
+      const res = await apiGet('/rbac/my-permissions', { token: state.token })
       const map = {}
-      const items = Array.isArray(res?.items) ? res.items : []
+      const actions = {}
+      const items = Array.isArray(res?.sections) ? res.sections : []
       for (const item of items) {
         const code = String(item?.section_code || '').trim()
         if (!code) continue
         map[code] = Boolean(item?.can_view)
       }
+      const actionItems = Array.isArray(res?.actions) ? res.actions : []
+      for (const item of actionItems) {
+        const code = String(item?.action_code || '').trim()
+        if (!code) continue
+        actions[code] = Boolean(item?.can_do)
+      }
       saveSections(map)
+      saveActions(actions)
       return map
     } catch {
       // Если RBAC недоступен, не ломаем вход и используем fallback по роли.
       saveSections({})
+      saveActions({})
       return {}
     }
   }
@@ -108,10 +139,12 @@ export function useAuth() {
     state.user = null
     state.role = null
     state.sections = {}
+    state.actions = {}
     localStorage.removeItem('auth_token')
     localStorage.removeItem('auth_user')
     localStorage.removeItem('auth_role')
     localStorage.removeItem(AUTH_SECTIONS_KEY)
+    localStorage.removeItem(AUTH_ACTIONS_KEY)
   }
 
   function isAuthed() {

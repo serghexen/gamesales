@@ -368,7 +368,7 @@
             {{ getDealLockLabel(d.deal_id) }}
           </span>
           <button
-            v-else-if="!dealShowCompleted && String(d.flow_status_code || '').toLowerCase() !== 'draft'"
+            v-else-if="!dealShowCompleted && String(d.flow_status_code || '').toLowerCase() !== 'draft' && canCompleteDeal"
             class="mini-btn mini-btn--complete"
             type="button"
             @click.stop="onMarkDealCompletedClick($event, d)"
@@ -378,7 +378,7 @@
             {{ dealSaving && dealCompletingId === d.deal_id ? 'Завершаем...' : 'Завершить' }}
           </button>
           <button
-            v-else-if="dealShowCompleted && (d.deal_type_code === 'sale' || d.deal_type_code === 'rental') && !d.is_refund"
+            v-else-if="dealShowCompleted && canPressReturn && (d.deal_type_code === 'sale' || d.deal_type_code === 'rental') && !d.is_refund"
             class="mini-btn mini-btn--danger"
             type="button"
             @click.stop="markDealReturned(d)"
@@ -461,6 +461,7 @@ const props = defineProps({
   showDealWarning: { type: Function, default: null },
   formatDateTimeMinutes: { type: Function, required: true },
   dealShowCompleted: { type: Boolean, required: true },
+  canDoAction: { type: Function, default: () => true },
   markDealCompleted: { type: Function, required: true },
   markDealReturned: { type: Function, required: true },
   dealSaving: { type: Boolean, required: true },
@@ -469,6 +470,8 @@ const props = defineProps({
 })
 
 const emptyColspan = computed(() => 7)
+const canCompleteDeal = computed(() => props.canDoAction('deals_active.change_status'))
+const canPressReturn = computed(() => props.canDoAction('deals_completed.press_return'))
 const animatedDeals = computed(() => {
   const base = Array.isArray(props.sortedDeals) ? props.sortedDeals : []
   if (!removingDeals.value.length) return base

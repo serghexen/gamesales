@@ -1,15 +1,15 @@
 <template>
-  <div v-if="sortedAccounts.length" class="accounts-table-wrap">
+  <div v-if="sortedAccounts.length && hasVisibleColumns" class="accounts-table-wrap">
     <table ref="tableEl" class="table table--compact accounts-table">
       <colgroup>
-        <col :style="getColumnStyle('login')" />
-        <col :style="getColumnStyle('products')" />
-        <col :style="getColumnStyle('slots')" />
-        <col :style="getColumnStyle('reserve')" />
+        <col v-if="canViewEmail" :style="getColumnStyle('login')" />
+        <col v-if="canViewGames" :style="getColumnStyle('products')" />
+        <col v-if="canViewSlots" :style="getColumnStyle('slots')" />
+        <col v-if="canViewReserves" :style="getColumnStyle('reserve')" />
       </colgroup>
       <thead>
         <tr>
-          <th class="cell--account">
+          <th v-if="canViewEmail" class="cell--account">
           <span class="th-title th-title--filter">
             Почта
             <span class="th-actions">
@@ -56,7 +56,7 @@
             @mousedown.stop.prevent="startResize($event, 'login')"
           />
           </th>
-          <th class="account-col-products">
+          <th v-if="canViewGames" class="account-col-products">
           <span class="th-title th-title--filter">
             Товары
             <span class="th-actions">
@@ -103,7 +103,7 @@
             @mousedown.stop.prevent="startResize($event, 'products')"
           />
           </th>
-          <th class="account-col-slots">
+          <th v-if="canViewSlots" class="account-col-slots">
             Слоты
             <button
               class="table-col-resizer"
@@ -113,20 +113,26 @@
               @mousedown.stop.prevent="startResize($event, 'slots')"
             />
           </th>
-          <th class="account-col-reserve">Резерв</th>
+          <th v-if="canViewReserves" class="account-col-reserve">Резерв</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="a in sortedAccounts" :key="a.account_id" class="clickable-row" @click="startEditAccount(a)">
-          <td class="cell--account">{{ a.login_full || '—' }}</td>
-          <td class="account-col-products">{{ formatAccountProductsLine(a) }}</td>
-          <td class="cell--slots account-col-slots">
+        <tr
+          v-for="a in sortedAccounts"
+          :key="a.account_id"
+          :class="{ 'clickable-row': canEditAccount }"
+          @click="onAccountRowClick(a)"
+        >
+          <td v-if="canViewEmail" class="cell--account">{{ a.login_full || '—' }}</td>
+          <td v-if="canViewGames" class="account-col-products">{{ formatAccountProductsLine(a) }}</td>
+          <td v-if="canViewSlots" class="cell--slots account-col-slots">
             <span v-if="!getAccountSlotStatusList(a).length" class="slot-line">—</span>
             <span v-for="s in getAccountSlotStatusList(a)" :key="s.slot_type_code" class="slot-line">
               {{ formatAccountSlotStatusLine(s) }}
             </span>
           </td>
           <td
+            v-if="canViewReserves"
             class="cell--selectable account-col-reserve"
             @click.stop
             @mouseenter="preloadAccountReserveData(a.account_id)"
@@ -137,11 +143,12 @@
       </tbody>
     </table>
   </div>
+  <p v-else-if="sortedAccounts.length" class="muted">Нет доступных колонок аккаунтов.</p>
   <p v-else class="muted">Пока нет аккаунтов.</p>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { useResizableTableColumns } from '../useResizableTableColumns'
 
@@ -168,6 +175,11 @@ const props = defineProps({
   applyAccountFilter: { type: Function, required: true },
   resetAccountFilter: { type: Function, required: true },
   startEditAccount: { type: Function, required: true },
+  canViewEmail: { type: Boolean, default: true },
+  canViewGames: { type: Boolean, default: true },
+  canViewSlots: { type: Boolean, default: true },
+  canViewReserves: { type: Boolean, default: true },
+  canEditAccount: { type: Boolean, default: true },
   formatAccountProductsLine: { type: Function, required: true },
   getAccountSlotStatusList: { type: Function, required: true },
   formatAccountSlotStatusLine: { type: Function, required: true },
@@ -179,6 +191,13 @@ const props = defineProps({
 })
 
 const accountUsedReserveKeys = ref({})
+const hasVisibleColumns = computed(() => props.canViewEmail || props.canViewGames || props.canViewSlots || props.canViewReserves)
+
+// Открывает карточку аккаунта только если роль может редактировать аккаунты.
+function onAccountRowClick(account) {
+  if (!props.canEditAccount) return
+  props.startEditAccount(account)
+}
 
 // Нормализует ключ резерва к формату reserveN для надежного сравнения в таблице.
 function normalizeReserveKey(value) {
@@ -212,6 +231,7 @@ function getMaskedReserveSecrets(accountId) {
 
 // Догружает данные для видимых аккаунтов сразу после рендера таблицы, чтобы колонка "Резерв" не зависела от hover.
 function preloadVisibleAccountSecrets(list) {
+  if (!props.canViewReserves) return
   const ids = [...new Set((Array.isArray(list) ? list : [])
     .map((item) => Number(item?.account_id || 0))
     .filter((id) => id > 0))]
