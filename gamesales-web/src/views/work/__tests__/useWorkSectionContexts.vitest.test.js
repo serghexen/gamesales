@@ -27,6 +27,7 @@ describe('useWorkSectionContexts', () => {
       dealQuickProductBusy,
       canEditCompletedDeal,
       responsibleUserOptions,
+      canDoAction: () => true,
       closeDealModal: () => {},
       dealModalTitle: ref('Title'),
       updateDeal,

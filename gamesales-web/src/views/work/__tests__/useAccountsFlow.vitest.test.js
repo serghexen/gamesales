@@ -67,6 +67,7 @@ function createHarness() {
     requestUnsavedConfirm: vi.fn(),
     requestDealConfirm: vi.fn(),
     showDealWarning: vi.fn(),
+    canDoAction: () => true,
   }
   const flow = useAccountsFlow(h)
   return { ...h, ...flow }

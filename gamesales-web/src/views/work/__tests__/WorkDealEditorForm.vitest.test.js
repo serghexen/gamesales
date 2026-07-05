@@ -1,6 +1,132 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { mount } from '@vue/test-utils'
+
+import WorkDealEditorForm from '../sections/WorkDealEditorForm.vue'
+
+function buildDealFormCtx(overrides = {}) {
+  const noop = () => {}
+  return {
+    editDeal: { open: false, deal_type_code: 'sale', product_link: '' },
+    dealEditMode: 'edit',
+    allowCompletedDealEdit: false,
+    dealAccountsForProductLoading: false,
+    isDealSlotTypeUnsupported: () => false,
+    dealAccountsForEdit: [],
+    getSlotTypeLabel: (code) => code || '',
+    dealSlotAvailabilityLoadingEdit: false,
+    getDealSlotTypeOptions: () => [],
+    getDealSlotTypeLabel: (code) => code || '',
+    getAccountLabelById: (id) => String(id || ''),
+    getAccountSecret: () => '',
+    getReserveSecretEntries: () => [],
+    loadAccountUsedReserveKeys: noop,
+    claimAccountReserve: noop,
+    releaseAccountReserveClaim: noop,
+    accountsAll: [],
+    accountSecrets: {},
+    ensureAccountSecretsLoaded: noop,
+    loadAccountsAll: noop,
+    sortedDeals: [],
+    hasFreeDealSlots: () => true,
+    hasAnyProductAssignmentsEdit: false,
+    dealGameAssignmentsLoadingEdit: false,
+    dealProductAssignmentsForSelectedSlotEdit: [],
+    hasAnyProductAssignmentsNew: false,
+    dealGameAssignmentsLoadingNew: false,
+    dealProductAssignmentsForSelectedSlotNew: [],
+    releaseSlotFromDeal: noop,
+    quickEditAccount: {},
+    domains: [],
+    platforms: [],
+    quickEditAccountLoading: false,
+    createQuickAccount: noop,
+    quickEditAccountError: '',
+    quickEditSubscriptionTerm: {},
+    quickEditSubscriptionTermLoading: false,
+    quickEditSubscriptionTermError: '',
+    createQuickSubscriptionTerm: noop,
+    slotTypes: [],
+    formatDateTimeMinutes: (value) => String(value || ''),
+    getRegionLabel: (code) => code || '',
+    regions: [],
+    getSourceLabelById: (id) => String(id || ''),
+    getMessengerLabelById: (id) => String(id || ''),
+    sourcesByCode: [],
+    messengersByCode: [],
+    maxPrice: 999999,
+    clampPrice: (value) => value,
+    getFlowStatusLabel: (code) => code || '',
+    dealFlowStatusOptions: [],
+    editDealProductSearch: '',
+    onEditDealProductSearch: noop,
+    filteredEditDealProducts: [],
+    subscriptionTermsEdit: [],
+    subscriptionTermsLoadingEdit: false,
+    subscriptionAvailableItemsEdit: [],
+    subscriptionAvailableItemsLoadingEdit: false,
+    syncEditDealProductSearch: noop,
+    getProductLabelById: (id) => String(id || ''),
+    editDealProductNoMatches: false,
+    clearEditDealProduct: noop,
+    quickEditProduct: {},
+    quickEditProductLoading: false,
+    createQuickProduct: noop,
+    quickEditProductError: '',
+    dealLoading: false,
+    dealError: '',
+    dealOk: '',
+    newDeal: {
+      deal_type_code: 'sale',
+      messenger_id: '',
+      source_id: '',
+      order_number: '',
+      customer_nickname: '',
+      login: '',
+      password: '',
+      product_link: '',
+      region_code: '',
+      purchase_cost: 0,
+      price: 0,
+      notes: '',
+      account_id: '',
+      product_id: '',
+      slot_type_code: '',
+      subscription_term_id: '',
+    },
+    responsibleUserOptions: [],
+    newDealResponsible: '',
+    editDealResponsible: '',
+    newDealProductSearch: '',
+    onNewDealProductSearch: noop,
+    filteredNewDealProducts: [],
+    subscriptionTermsNew: [],
+    subscriptionTermsLoadingNew: false,
+    subscriptionAvailableItemsNew: [],
+    subscriptionAvailableItemsLoadingNew: false,
+    newDealProductNoMatches: false,
+    syncNewDealProductSearch: noop,
+    clearNewDealProduct: noop,
+    quickNewProduct: {},
+    quickNewProductLoading: false,
+    quickNewProductError: '',
+    dealSlotAvailabilityLoadingNew: false,
+    dealAccountsForNew: [],
+    quickNewAccount: { platform_codes: [] },
+    quickNewAccountLoading: false,
+    quickNewAccountError: '',
+    quickNewSubscriptionTerm: {},
+    quickNewSubscriptionTermLoading: false,
+    quickNewSubscriptionTermError: '',
+    newDealCommentOpen: false,
+    editDealCommentOpen: false,
+    showDealWarning: noop,
+    getCompactNotesRows: () => 2,
+    canDoAction: () => true,
+    ...overrides,
+  }
+}
 
 describe('WorkDealEditorForm template', () => {
   function readTemplateSource() {
@@ -293,5 +419,18 @@ describe('WorkDealEditorForm template', () => {
     expect(newRentalMain).toContain('<span class="label">Ответственный</span>')
     expect(editRentalMain).toContain('<span class="label">Номер заказа</span>')
     expect(editRentalMain).toContain('<span class="label">Сумма продажи</span>')
+  })
+
+  it('does not render discount field when deal discount action is disabled', () => {
+    const wrapper = mount(WorkDealEditorForm, {
+      props: {
+        ctx: buildDealFormCtx({
+          canDoAction: (actionCode) => actionCode !== 'deals_active.discount',
+        }),
+      },
+    })
+
+    expect(wrapper.text()).toContain('Метод оплаты')
+    expect(wrapper.text()).not.toContain('Скидка')
   })
 })

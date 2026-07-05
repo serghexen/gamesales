@@ -101,6 +101,7 @@ function createHarness() {
     requestUnsavedConfirm: vi.fn(async () => true),
     requestDealConfirm: vi.fn(async () => true),
     loadAccountsAll: vi.fn(async () => undefined),
+    canDoAction: () => true,
     quickNewProductAccount: reactive({ login_name: '', domain_code: '', platform_codes: [] }),
     quickNewProductAccountLoading: ref(false),
     quickNewProductAccountError: ref(''),

@@ -53,9 +53,10 @@ export function useProductsFlow({
   quickEditProductAccountLoading,
   quickEditProductAccountError,
 }) {
-  // Проверяет action-право для товаров; старые тесты без action-RBAC оставляем совместимыми.
+  // Проверяет action-право для товаров перед сохранением и связанными операциями.
   const canUseProductAction = (actionCode) => {
-    if (typeof canDoAction !== 'function') return true
+    // Без action-checker не выполняем действие, чтобы не обходить матрицу.
+    if (typeof canDoAction !== 'function') return false
     return canDoAction(actionCode)
   }
 

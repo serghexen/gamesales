@@ -1090,8 +1090,8 @@ const createProductTitle = computed(() => (
 
 const isEditGameType = computed(() => (editProduct.value?.type_code || PRODUCT_TYPE_PRIMARY) === PRODUCT_TYPE_PRIMARY)
 const hasProductAction = (actionCode) => {
-  // Проверяем action-право из контекста; старые тестовые контексты без функции считаем разрешенными.
-  if (typeof ctx.canDoAction !== 'function') return true
+  // Если action-RBAC не передан, закрываем действие, чтобы UI не обходил матрицу.
+  if (typeof ctx.canDoAction !== 'function') return false
   return ctx.canDoAction(actionCode)
 }
 const canCreateProduct = computed(() => hasProductAction('products.create_games'))

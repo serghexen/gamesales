@@ -84,6 +84,7 @@ function buildCtx(overrides = {}) {
     productSubscriptionTermsLoading: false,
     productSubscriptionTermsError: '',
     createQuickProductSubscriptionTerm: vi.fn(),
+    canDoAction: () => true,
     ...overrides,
   }
 }

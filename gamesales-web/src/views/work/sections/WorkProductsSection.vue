@@ -116,8 +116,8 @@ const props = defineProps({
   },
 })
 function canDoAction(actionCode) {
-  // Старые тестовые контексты без action-RBAC считаем разрешенными, чтобы сохранить прежний UI.
-  if (typeof props.ctx.canDoAction !== 'function') return true
+  // Если action-RBAC не передан, закрываем действие, чтобы UI не обходил матрицу.
+  if (typeof props.ctx.canDoAction !== 'function') return false
   return props.ctx.canDoAction(actionCode)
 }
 </script>

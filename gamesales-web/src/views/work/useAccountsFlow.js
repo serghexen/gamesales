@@ -51,9 +51,10 @@ export function useAccountsFlow({
   quickEditAccountProductError,
   loadProductsAll,
 }) {
-  // Проверяет action-право для аккаунтов; в старых тестах без функции считаем действие разрешенным.
+  // Проверяет action-право для аккаунтов перед сохранением и связанными операциями.
   const canUseAccountAction = (actionCode) => {
-    if (typeof canDoAction !== 'function') return true
+    // Без action-checker не выполняем действие, чтобы не обходить матрицу.
+    if (typeof canDoAction !== 'function') return false
     return canDoAction(actionCode)
   }
 

@@ -299,8 +299,8 @@ export function useWorkSectionContexts({
   const isDraftDeal = computed(() => String(editDeal.flow_status_code || '').trim().toLowerCase() === 'draft')
 
   const hasDealAction = (actionCode) => {
-    // Проверяем action-RBAC для кнопок сделки; старые тестовые контексты без функции считаем разрешенными.
-    if (typeof canDoAction !== 'function') return true
+    // Если action-RBAC не передан, закрываем кнопку, чтобы матрица оставалась источником прав.
+    if (typeof canDoAction !== 'function') return false
     return canDoAction(actionCode)
   }
 

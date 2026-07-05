@@ -745,6 +745,48 @@ function defaultSectionVisibilityByRole(sectionCode, roleCode) {
   return !roleSectionDefaults.privileged_only.has(String(sectionCode || '').trim())
 }
 
+const defaultFalseActions = new Set([
+  'deals_active.discount',
+  'deals_draft.delete',
+  'deals_draft.change_deal_date',
+  'deals_draft.change_completed_date',
+  'deals_completed.edit',
+  'deals_completed.save',
+  'deals_completed.change_status',
+  'deals_completed.change_deal_date',
+  'deals_completed.change_completed_date',
+  'deals_completed.process_return',
+  'accounts.reflect_date',
+  'accounts.reflect_region',
+  'accounts.reflect_email_password',
+  'accounts.reflect_auth_code',
+  'accounts.reflect_reserves',
+  'accounts.reflect_slots',
+  'accounts.edit',
+  'accounts.delete',
+  'products.reflect_slots',
+  'products.edit',
+  'products.delete',
+])
+
+const adminDefaultFalseActions = new Set([
+  'deals_draft.change_deal_date',
+  'deals_draft.change_completed_date',
+  'deals_completed.change_deal_date',
+  'deals_completed.change_completed_date',
+])
+
+function defaultActionAllowedByRole(actionCode, roleCode) {
+  // Повторяем backend-defaults, чтобы старый кеш прав не открывал выключенные поля.
+  const role = normalizeRole(roleCode)
+  const code = String(actionCode || '').trim()
+  if (!code) return false
+  if (role === 'owner') return true
+  if (role === 'admin') return !adminDefaultFalseActions.has(code)
+  if (role === 'manager' || role === 'operator') return !defaultFalseActions.has(code)
+  return !defaultFalseActions.has(code)
+}
+
 // Проверяет доступ к разделу с учетом явной настройки роли и fallback по умолчанию.
 function canViewSection(sectionCode) {
   const code = String(sectionCode || '').trim()
@@ -756,13 +798,13 @@ function canViewSection(sectionCode) {
   return defaultSectionVisibilityByRole(code, auth.state.role)
 }
 
-// Проверяет action-право текущей роли; если backend еще не отдал карту, не ломаем старое поведение.
+// Проверяет action-право текущей роли; при неполной карте используем такой же default, как backend.
 function canDoAction(actionCode) {
   const code = String(actionCode || '').trim()
   if (!code) return false
   const map = myActionPermissionsMap.value || {}
   if (Object.prototype.hasOwnProperty.call(map, code)) return Boolean(map[code])
-  return true
+  return defaultActionAllowedByRole(code, auth.state.role)
 }
 
 const canViewDealsSection = computed(() => canViewSection('deals'))

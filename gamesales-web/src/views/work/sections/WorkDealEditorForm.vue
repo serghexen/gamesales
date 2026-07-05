@@ -2608,7 +2608,7 @@ const canEditCompletedDate = computed(() => {
 
 const canViewDiscountField = computed(() => {
   // Поле скидки показываем только ролям с разрешенным действием скидки.
-  if (typeof ctx.canDoAction !== 'function') return true
+  if (typeof ctx.canDoAction !== 'function') return false
   return ctx.canDoAction('deals_active.discount')
 })
 
