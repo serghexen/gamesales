@@ -42,6 +42,7 @@ export function useAccountsFlow({
   requestUnsavedConfirm,
   requestDealConfirm,
   showDealWarning,
+  canDoAction,
   quickNewAccountProduct,
   quickNewAccountProductLoading,
   quickNewAccountProductError,
@@ -50,6 +51,12 @@ export function useAccountsFlow({
   quickEditAccountProductError,
   loadProductsAll,
 }) {
+  // Проверяет action-право для аккаунтов; в старых тестах без функции считаем действие разрешенным.
+  const canUseAccountAction = (actionCode) => {
+    if (typeof canDoAction !== 'function') return true
+    return canDoAction(actionCode)
+  }
+
   // Возвращает дефолтную дату срока подписки: сегодня + 1 год.
   function getDefaultSubscriptionTermDate() {
     const nextYearDate = new Date()
@@ -67,9 +74,9 @@ export function useAccountsFlow({
     if (!String(newAccount.domain_code || '').trim()) missing.push('Домен')
     if (!String(newAccount.region_code || '').trim()) missing.push('Регион')
     if (!String(newAccount.account_date || '').trim()) missing.push('Дата')
-    if (!String(newAccount.account_password || '').trim()) missing.push('Пароль аккаунта')
-    if (!String(newAccount.email_password || '').trim()) missing.push('Пароль почты')
-    if (!String(newAccount.auth_code || '').trim()) missing.push('Код аутентификатора')
+    if (canUseAccountAction('accounts.reflect_account_password') && !String(newAccount.account_password || '').trim()) missing.push('Пароль аккаунта')
+    if (canUseAccountAction('accounts.reflect_email_password') && !String(newAccount.email_password || '').trim()) missing.push('Пароль почты')
+    if (canUseAccountAction('accounts.reflect_auth_code') && !String(newAccount.auth_code || '').trim()) missing.push('Код аутентификатора')
     return missing
   }
 
@@ -705,22 +712,24 @@ export function useAccountsFlow({
 
       // Готовим пачку секретов и сохраняем ее атомарно одним запросом.
       const secretUpserts = []
-      if (newAccount.email_password) {
+      if (canUseAccountAction('accounts.reflect_email_password') && newAccount.email_password) {
         secretUpserts.push({ secret_key: 'email_password', secret_value: newAccount.email_password })
       }
-      if (newAccount.account_password) {
+      if (canUseAccountAction('accounts.reflect_account_password') && newAccount.account_password) {
         secretUpserts.push({ secret_key: 'account_password', secret_value: newAccount.account_password })
       }
-      if (newAccount.auth_code) {
+      if (canUseAccountAction('accounts.reflect_auth_code') && newAccount.auth_code) {
         secretUpserts.push({ secret_key: 'auth_code', secret_value: newAccount.auth_code })
       }
-      const reserveValues = (newAccount.reserve_text || '')
-        .split(/\s+/)
-        .map((v) => v.trim())
-        .filter(Boolean)
-      reserveValues.forEach((val, idx) => {
-        secretUpserts.push({ secret_key: `reserve${idx + 1}`, secret_value: val })
-      })
+      if (canUseAccountAction('accounts.reflect_reserves')) {
+        const reserveValues = (newAccount.reserve_text || '')
+          .split(/\s+/)
+          .map((v) => v.trim())
+          .filter(Boolean)
+        reserveValues.forEach((val, idx) => {
+          secretUpserts.push({ secret_key: `reserve${idx + 1}`, secret_value: val })
+        })
+      }
       if (secretUpserts.length) {
         await apiPut(
           `/accounts/${created.account_id}/secrets`,
@@ -729,14 +738,14 @@ export function useAccountsFlow({
         )
       }
 
-      if (newAccount.product_ids.length) {
+      if (canUseAccountAction('accounts.reflect_slots') && newAccount.product_ids.length) {
         await apiPut(
           `/accounts/${created.account_id}/products`,
           { product_ids: newAccount.product_ids },
           { token: auth.state.token }
         )
       }
-      if (isCreateSubscriptionMode && subscriptionProductId && subscriptionValidUntil) {
+      if (canUseAccountAction('accounts.reflect_slots') && isCreateSubscriptionMode && subscriptionProductId && subscriptionValidUntil) {
         try {
           await apiPost(
             `/products/subscriptions/${encodeURIComponent(subscriptionProductId)}/terms`,
@@ -822,69 +831,71 @@ export function useAccountsFlow({
       // Секреты сохраняем одной операцией, чтобы исключить частичное обновление при сетевой ошибке.
       const secretUpserts = []
       const secretDeleteKeys = []
-      if (editAccount.email_password) {
+      if (canUseAccountAction('accounts.reflect_email_password') && editAccount.email_password) {
         secretUpserts.push({
           secret_key: editAccount.email_key || 'email_password',
           secret_value: editAccount.email_password,
         })
-      } else if (editAccount.has_email) {
+      } else if (canUseAccountAction('accounts.reflect_email_password') && editAccount.has_email) {
         secretDeleteKeys.push(editAccount.email_key || 'email_password')
       }
 
-      if (editAccount.account_password) {
+      if (canUseAccountAction('accounts.reflect_account_password') && editAccount.account_password) {
         secretUpserts.push({
           secret_key: editAccount.account_key || 'account_password',
           secret_value: editAccount.account_password,
         })
-      } else if (editAccount.has_account) {
+      } else if (canUseAccountAction('accounts.reflect_account_password') && editAccount.has_account) {
         secretDeleteKeys.push(editAccount.account_key || 'account_password')
       }
 
-      if (editAccount.auth_code) {
+      if (canUseAccountAction('accounts.reflect_auth_code') && editAccount.auth_code) {
         secretUpserts.push({
           secret_key: editAccount.auth_key || 'auth_code',
           secret_value: editAccount.auth_code,
         })
-      } else if (editAccount.has_auth) {
+      } else if (canUseAccountAction('accounts.reflect_auth_code') && editAccount.has_auth) {
         secretDeleteKeys.push(editAccount.auth_key || 'auth_code')
       }
 
-      const reserveValues = (editAccount.reserve_text || '')
-        .split(/\s+/)
-        .map((v) => v.trim())
-        .filter(Boolean)
+      if (canUseAccountAction('accounts.reflect_reserves')) {
+        const reserveValues = (editAccount.reserve_text || '')
+          .split(/\s+/)
+          .map((v) => v.trim())
+          .filter(Boolean)
 
-      // Сохраняем существующие ключи резервов, чтобы редактирование не сбивало их нумерацию.
-      const existingReserveKeys = Array.from(
-        new Set(
-          (Array.isArray(editAccount.existing_reserve_keys) ? editAccount.existing_reserve_keys : [])
-            .map((key) => normalizeReserveKey(key))
-            .filter(Boolean)
-        )
-      ).sort(compareReserveKeys)
+        // Сохраняем существующие ключи резервов, чтобы редактирование не сбивало их нумерацию.
+        const existingReserveKeys = Array.from(
+          new Set(
+            (Array.isArray(editAccount.existing_reserve_keys) ? editAccount.existing_reserve_keys : [])
+              .map((key) => normalizeReserveKey(key))
+              .filter(Boolean)
+          )
+        ).sort(compareReserveKeys)
 
-      // Для новых значений подбираем ближайший свободный reserveN без конфликтов.
-      const takeNextFreeReserveKey = (usedKeys) => {
-        for (let idx = 1; idx <= 50; idx += 1) {
-          const key = `reserve${idx}`
-          if (!usedKeys.has(key)) return key
+        // Для новых значений подбираем ближайший свободный reserveN без конфликтов.
+        const takeNextFreeReserveKey = (usedKeys) => {
+          for (let idx = 1; idx <= 50; idx += 1) {
+            const key = `reserve${idx}`
+            if (!usedKeys.has(key)) return key
+          }
+          return `reserve${usedKeys.size + 1}`
         }
-        return `reserve${usedKeys.size + 1}`
-      }
 
-      const keepKeys = []
-      const usedKeys = new Set(existingReserveKeys)
-      reserveValues.forEach((val, idx) => {
-        const key = existingReserveKeys[idx] || takeNextFreeReserveKey(usedKeys)
-        usedKeys.add(key)
-        keepKeys.push(key)
-        secretUpserts.push({ secret_key: key, secret_value: val })
-      })
-      existingReserveKeys
-        .filter((k) => !keepKeys.includes(k))
-        .forEach((k) => {
-          secretDeleteKeys.push(k)
+        const keepKeys = []
+        const usedKeys = new Set(existingReserveKeys)
+        reserveValues.forEach((val, idx) => {
+          const key = existingReserveKeys[idx] || takeNextFreeReserveKey(usedKeys)
+          usedKeys.add(key)
+          keepKeys.push(key)
+          secretUpserts.push({ secret_key: key, secret_value: val })
         })
+        existingReserveKeys
+          .filter((k) => !keepKeys.includes(k))
+          .forEach((k) => {
+            secretDeleteKeys.push(k)
+          })
+      }
 
       if (secretUpserts.length || secretDeleteKeys.length) {
         await apiPut(
@@ -896,11 +907,13 @@ export function useAccountsFlow({
       // Принудительно обновляем кеш секретов, чтобы сразу показать актуальные резервы без ручного refresh.
       await ensureAccountSecretsLoaded(editAccount.account_id, true)
 
-      await apiPut(
-        `/accounts/${editAccount.account_id}/products`,
-        { product_ids: editAccount.product_ids || [] },
-        { token: auth.state.token }
-      )
+      if (canUseAccountAction('accounts.reflect_slots')) {
+        await apiPut(
+          `/accounts/${editAccount.account_id}/products`,
+          { product_ids: editAccount.product_ids || [] },
+          { token: auth.state.token }
+        )
+      }
 
       accountsOk.value = 'Аккаунт обновлён'
       // После успешного сохранения закрываем модалку без повторного confirm о несохраненных правках.

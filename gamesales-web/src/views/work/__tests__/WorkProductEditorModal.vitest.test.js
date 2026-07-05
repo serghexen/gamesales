@@ -364,4 +364,20 @@ describe('WorkProductEditorModal', () => {
     expect(wrapper.text()).not.toContain('Сделок (')
     expect(wrapper.text()).not.toContain('Слоты по товару')
   })
+
+  it('hides account binding block in create form without reflect accounts permission', async () => {
+    const wrapper = mount(WorkProductEditorModal, {
+      props: {
+        ctx: buildCtx({
+          editProduct: reactive({ open: false }),
+          showProductForm: true,
+          canDoAction: (actionCode) => actionCode !== 'products.reflect_accounts',
+        }),
+      },
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(wrapper.text()).not.toContain('Аккаунты')
+    expect(wrapper.text()).not.toContain('Быстрое создание аккаунта')
+  })
 })

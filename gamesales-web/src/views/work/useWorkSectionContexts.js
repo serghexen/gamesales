@@ -298,6 +298,34 @@ export function useWorkSectionContexts({
 
   const isDraftDeal = computed(() => String(editDeal.flow_status_code || '').trim().toLowerCase() === 'draft')
 
+  const hasDealAction = (actionCode) => {
+    // Проверяем action-RBAC для кнопок сделки; старые тестовые контексты без функции считаем разрешенными.
+    if (typeof canDoAction !== 'function') return true
+    return canDoAction(actionCode)
+  }
+
+  const currentDealActionGroup = computed(() => {
+    // Выбирает группу прав по текущему статусу сделки, как это делает backend.
+    const status = String(editDeal.flow_status_code || '').trim().toLowerCase()
+    if (status === 'draft') return 'deals_draft'
+    if (status === 'completed') return 'deals_completed'
+    return 'deals_active'
+  })
+
+  const canEditCurrentDeal = computed(() => hasDealAction(`${currentDealActionGroup.value}.edit`))
+  const canSaveCurrentDeal = computed(() => hasDealAction(`${currentDealActionGroup.value}.save`))
+  const canCreateActiveDeal = computed(() => hasDealAction('deals_active.create'))
+  const canCreateDealDraft = computed(() => canCreateActiveDeal.value && hasDealAction('deals_active.draft'))
+  const canSaveCurrentDealAsDraft = computed(() => {
+    return currentDealActionGroup.value === 'deals_active'
+      && hasDealAction('deals_active.draft')
+      && canEditCurrentDeal.value
+      && canSaveCurrentDeal.value
+  })
+  const canDeleteCurrentDeal = computed(() => {
+    return currentDealActionGroup.value === 'deals_draft' && hasDealAction('deals_draft.delete')
+  })
+
   async function saveEditDeal() {
     // Кнопка сохранения в режиме редактирования всегда выполняет обычное сохранение,
     // чтобы черновик можно было перевести в рабочую сделку.
@@ -470,17 +498,17 @@ export function useWorkSectionContexts({
     modalStyle,
     startModalDrag,
     title: dealModalTitle,
-    showSaveEdit: computed(() => editDeal.open && dealEditMode.value === 'edit'),
+    showSaveEdit: computed(() => editDeal.open && dealEditMode.value === 'edit' && canEditCurrentDeal.value && canSaveCurrentDeal.value),
     // Для черновика показываем только одну кнопку сохранения.
-    showSaveDraft: computed(() => editDeal.open && dealEditMode.value === 'edit' && !isDraftDeal.value),
-    showCreate: computed(() => !editDeal.open),
-    showCreateDraft: computed(() => !editDeal.open),
+    showSaveDraft: computed(() => editDeal.open && dealEditMode.value === 'edit' && !isDraftDeal.value && canSaveCurrentDealAsDraft.value),
+    showCreate: computed(() => !editDeal.open && canCreateActiveDeal.value),
+    showCreateDraft: computed(() => !editDeal.open && canCreateDealDraft.value),
     // Кнопку удаления показываем только для черновика, чтобы не удалять рабочие сделки.
-    showDelete: computed(() => editDeal.open && editDeal.flow_status_code === 'draft'),
-    // Для завершенных сделок даем режим редактирования только admin/owner.
-    showEdit: computed(() => editDeal.open && (editDeal.flow_status_code !== 'completed' || allowCompletedDealEdit.value)),
+    showDelete: computed(() => editDeal.open && canDeleteCurrentDeal.value),
+    // Режим редактирования открываем только если текущий статус разрешает edit.
+    showEdit: computed(() => editDeal.open && canEditCurrentDeal.value),
     // Кнопка редактирования теперь работает как переключатель режимов view/edit.
-    editDisabled: computed(() => dealLoading.value || (editDeal.flow_status_code === 'completed' && !allowCompletedDealEdit.value)),
+    editDisabled: computed(() => dealLoading.value || !canEditCurrentDeal.value),
     onSaveEdit: saveEditDeal,
     onSaveDraft: updateDealDraft,
     onCreate: createDeal,

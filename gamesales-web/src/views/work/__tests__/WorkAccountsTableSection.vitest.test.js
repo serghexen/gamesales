@@ -104,7 +104,7 @@ describe('WorkAccountsTableSection', () => {
     expect(wrapper.text()).toContain('AAA111 BBB222')
   })
 
-  it('hides account columns and blocks row opening by action permissions', async () => {
+  it('hides account columns and blocks row opening when no account columns are visible', async () => {
     const startEditAccount = vi.fn()
     const ensureAccountSecretsLoaded = vi.fn().mockResolvedValue(undefined)
     const wrapper = mount(WorkAccountsTableSection, {
@@ -136,5 +136,32 @@ describe('WorkAccountsTableSection', () => {
     expect(ensureAccountSecretsLoaded).not.toHaveBeenCalled()
     expect(wrapper.find('tbody tr').exists()).toBe(false)
     expect(startEditAccount).not.toHaveBeenCalled()
+  })
+
+  it('opens account card for viewing even when edit permission is disabled', async () => {
+    const startEditAccount = vi.fn()
+    const account = {
+      account_id: 5,
+      login_full: 'a@mail.com',
+      products_line: 'Game',
+      slot_status_line: 'P1 свободен',
+    }
+    const wrapper = mount(WorkAccountsTableSection, {
+      props: buildProps({
+        sortedAccounts: [account],
+        startEditAccount,
+        canViewEmail: true,
+        canViewGames: true,
+        canViewSlots: true,
+        canViewReserves: false,
+        canEditAccount: false,
+      }),
+    })
+
+    await wrapper.find('tbody tr').trigger('click')
+
+    expect(wrapper.find('tbody tr').classes()).toContain('clickable-row')
+    expect(startEditAccount).toHaveBeenCalledTimes(1)
+    expect(startEditAccount).toHaveBeenCalledWith(account)
   })
 })

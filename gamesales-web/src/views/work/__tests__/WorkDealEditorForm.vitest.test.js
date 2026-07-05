@@ -224,7 +224,11 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain("editDeal.deal_type_code === 'sale' && !isEditDealPendingFlow")
     expect(source).toContain("const isEditDealPendingFlow = computed(() => {")
     expect(source).toContain("return status === 'pending' || status === 'draft'")
-    expect(source).toContain("return Boolean(allowCompletedDealEdit?.value)")
+    expect(source).toContain("ctx.canDoAction('deals_completed.process_return')")
+    expect(source).toContain('const canEditDealDate = computed(() => {')
+    expect(source).toContain('const canEditCompletedDate = computed(() => {')
+    expect(source).toContain("ctx.canDoAction(`${editDealActionGroup.value}.change_deal_date`)")
+    expect(source).toContain("ctx.canDoAction(`${editDealActionGroup.value}.change_completed_date`)")
   })
 
   it('renders messenger and new sale field order', () => {
@@ -242,7 +246,7 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('deal-form__sale-group deal-form__sale-group--source')
     expect(source).toContain('deal-form__sale-group deal-form__sale-group--price')
     expect(source).toContain('<span class="label">Метод оплаты</span>')
-    expect(source).toContain('<span class="label">Скидка</span>')
+    expect(source).toContain('v-if="canViewDiscountField" class="field"')
     expect(source).toContain('deal-form__input--locked')
     expect(source).toContain('input--with-copy')
     expect(source).toContain("v-for=\"(linkValue, linkIndex) in editSaleProductLinks\"")
@@ -267,15 +271,19 @@ describe('WorkDealEditorForm template', () => {
     }
   })
 
-  it('renders sharing layout with locked payment and discount fields', () => {
+  it('renders sharing layout with locked payment and permission-gated discount fields', () => {
     const source = readTemplateSource()
     const newRentalMain = source.match(/<div class="deal-form__rental-main">[\s\S]*?<div class="deal-form__rental-side">/)?.[0] || ''
     const editRentalMain = source.match(/<div class="deal-form__rental-main">[\s\S]*?<div class="deal-form__rental-side">/)?.[0] || ''
+    const discountLabels = source.match(/<label v-if="canViewDiscountField" class="field">\s*<span class="label">Скидка<\/span>/g) || []
 
     expect(source).toContain('<span class="label">Номер заказа</span>')
     expect(source).toContain('<span class="label">Сумма продажи</span>')
     expect(source).toContain('<span class="label">Метод оплаты</span>')
     expect(source).toContain('<span class="label">Скидка</span>')
+    expect(source).toContain('const canViewDiscountField = computed(() => {')
+    expect(source).toContain("ctx.canDoAction('deals_active.discount')")
+    expect(discountLabels).toHaveLength(4)
     expect(source).toContain('deal-form__input--locked')
     expect(source).toContain('Аккаунт')
     expect(source).toContain('+ Комментарий')

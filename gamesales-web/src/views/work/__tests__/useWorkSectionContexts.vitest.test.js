@@ -63,4 +63,40 @@ describe('useWorkSectionContexts', () => {
     expect(updateDeal).toHaveBeenCalledTimes(1)
     expect(updateDealDraft).toHaveBeenCalledTimes(0)
   })
+
+  it('gates deal modal actions by action permissions', () => {
+    const editDeal = reactive({ open: true, flow_status_code: 'draft' })
+    const showDealForm = ref(false)
+    const dealEditMode = ref('edit')
+    const blocked = new Set(['deals_draft.edit', 'deals_draft.save', 'deals_draft.delete', 'deals_active.draft'])
+    const ctx = useWorkSectionContexts({
+      editDeal,
+      newDeal: reactive({ deal_type_code: 'sale' }),
+      showDealForm,
+      dealEditMode,
+      dealLoading: ref(false),
+      dealQuickAccountBusy: ref(false),
+      dealQuickProductBusy: ref(false),
+      canEditCompletedDeal: ref(true),
+      responsibleUserOptions: ref([]),
+      canDoAction: (actionCode) => !blocked.has(actionCode),
+      closeDealModal: () => {},
+      dealModalTitle: ref('Title'),
+      updateDeal: vi.fn(),
+      updateDealDraft: vi.fn(),
+      createDeal: vi.fn(),
+      createDealDraft: vi.fn(),
+      deleteDeal: vi.fn(),
+      toggleDealEditMode: vi.fn(),
+    })
+
+    expect(ctx.dealEditorModalShellCtx.showSaveEdit).toBe(false)
+    expect(ctx.dealEditorModalShellCtx.showDelete).toBe(false)
+    expect(ctx.dealEditorModalShellCtx.showEdit).toBe(false)
+
+    editDeal.open = false
+    showDealForm.value = true
+    expect(ctx.dealEditorModalShellCtx.showCreate).toBe(true)
+    expect(ctx.dealEditorModalShellCtx.showCreateDraft).toBe(false)
+  })
 })

@@ -541,6 +541,13 @@ describe('WorkAccountEditorModal', () => {
         canEditAccount: false,
         canDeleteAccount: false,
         canViewGames: false,
+        canReflectEmail: false,
+        canReflectDate: false,
+        canReflectRegion: false,
+        canReflectAccountPassword: false,
+        canReflectEmailPassword: false,
+        canReflectAuthCode: false,
+        canReflectReserves: false,
         canReflectSlots: false,
         canReflectDeals: false,
         accountDeals: [{ deal_id: 123, product_id: 77, customer_nickname: 'buyer' }],
@@ -552,6 +559,15 @@ describe('WorkAccountEditorModal', () => {
     expect(wrapper.find('button[title="Сохранить изменения"]').exists()).toBe(false)
     expect(wrapper.find('button[title="Редактировать"]').exists()).toBe(false)
     expect(wrapper.find('button[title="Удалить"]').exists()).toBe(false)
+    expect(wrapper.find('.account-modal-title').text()).toBe('АККАУНТ')
+    expect(wrapper.text()).not.toContain('Логин (без домена)')
+    expect(wrapper.text()).not.toContain('Домен')
+    expect(wrapper.text()).not.toContain('Регион')
+    expect(wrapper.text()).not.toContain('Дата')
+    expect(wrapper.text()).not.toContain('Пароль аккаунт')
+    expect(wrapper.text()).not.toContain('Пароль почта')
+    expect(wrapper.text()).not.toContain('Код аутентификатора')
+    expect(wrapper.text()).not.toContain('Резерв')
     expect(wrapper.text()).not.toContain('Товары')
     expect(wrapper.text()).not.toContain('Слоты аккаунта')
     expect(wrapper.text()).not.toContain('Пользователи по сделкам')

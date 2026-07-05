@@ -120,7 +120,7 @@
         <tr
           v-for="a in sortedAccounts"
           :key="a.account_id"
-          :class="{ 'clickable-row': canEditAccount }"
+          :class="{ 'clickable-row': canOpenAccountCard }"
           @click="onAccountRowClick(a)"
         >
           <td v-if="canViewEmail" class="cell--account">{{ a.login_full || '—' }}</td>
@@ -192,10 +192,11 @@ const props = defineProps({
 
 const accountUsedReserveKeys = ref({})
 const hasVisibleColumns = computed(() => props.canViewEmail || props.canViewGames || props.canViewSlots || props.canViewReserves)
+const canOpenAccountCard = computed(() => hasVisibleColumns.value)
 
-// Открывает карточку аккаунта только если роль может редактировать аккаунты.
+// Открывает карточку аккаунта на просмотр, даже если редактирование роли запрещено.
 function onAccountRowClick(account) {
-  if (!props.canEditAccount) return
+  if (!canOpenAccountCard.value) return
   props.startEditAccount(account)
 }
 

@@ -44,6 +44,7 @@ export function useProductsFlow({
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
   requestDealConfirm,
+  canDoAction,
   loadAccountsAll,
   quickNewProductAccount,
   quickNewProductAccountLoading,
@@ -52,6 +53,12 @@ export function useProductsFlow({
   quickEditProductAccountLoading,
   quickEditProductAccountError,
 }) {
+  // Проверяет action-право для товаров; старые тесты без action-RBAC оставляем совместимыми.
+  const canUseProductAction = (actionCode) => {
+    if (typeof canDoAction !== 'function') return true
+    return canDoAction(actionCode)
+  }
+
   let initialEditProductSnapshot = null
   let initialCreateProductSnapshot = null
   let productsRequestSeq = 0
@@ -560,7 +567,7 @@ export function useProductsFlow({
       )
       // Для игры дополнительно сохраняем выбранные привязки к аккаунтам.
       const createdProductId = Number(created?.product_id || 0)
-      if (typeCode === PRODUCT_TYPE_PRIMARY && createdProductId) {
+      if (typeCode === PRODUCT_TYPE_PRIMARY && createdProductId && canUseProductAction('products.reflect_accounts')) {
         await syncProductAccountBindings(createdProductId, newProduct.account_ids)
       }
       const createdTitle = newProduct.title
@@ -619,7 +626,7 @@ export function useProductsFlow({
         { token: auth.state.token }
       )
       // При редактировании игры добавляем связи с выбранными аккаунтами.
-      if (typeCode === PRODUCT_TYPE_PRIMARY) {
+      if (typeCode === PRODUCT_TYPE_PRIMARY && canUseProductAction('products.reflect_accounts')) {
         await syncProductAccountBindings(editProduct.product_id, editProduct.account_ids)
       }
       productOk.value = 'Товар обновлен'

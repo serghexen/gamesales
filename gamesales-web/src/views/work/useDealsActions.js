@@ -23,16 +23,37 @@ export function useDealsActions({
   showDealWarning,
   requestDealConfirm,
   resolveProductTypeCode,
+  canDoAction,
 }) {
-  // Проверяет, может ли текущий пользователь проводить возврат (admin/owner).
+  // Проверяет action-право сделки; без action-RBAC оставляем старое поведение для тестовых контекстов.
+  function hasDealAction(actionCode) {
+    if (typeof canDoAction !== 'function') return canCompleteRefund()
+    return canDoAction(actionCode)
+  }
+
+  // Проверяет, может ли текущий пользователь проводить возврат.
   function canCompleteRefund() {
+    if (typeof canDoAction === 'function') return canDoAction('deals_completed.process_return')
     const role = String(auth?.state?.role || '').trim().toLowerCase()
     return role === 'admin' || role === 'owner'
   }
 
-  // Для ручной правки системных дат используем те же привилегии, что и для completed-операций.
-  function canEditSystemDates() {
-    return canCompleteRefund()
+  // Выбирает группу action-RBAC по текущему статусу сделки.
+  function getDealActionGroup(deal) {
+    const status = String(deal?.flow_status_code || '').trim().toLowerCase()
+    if (status === 'draft') return 'deals_draft'
+    if (status === 'completed') return 'deals_completed'
+    return 'deals_active'
+  }
+
+  // Дату создания отправляем только при отдельном праве на этот статус сделки.
+  function canEditDealDate(deal) {
+    return hasDealAction(`${getDealActionGroup(deal)}.change_deal_date`)
+  }
+
+  // Дату завершения отправляем только при отдельном праве на этот статус сделки.
+  function canEditCompletedDate(deal) {
+    return hasDealAction(`${getDealActionGroup(deal)}.change_completed_date`)
   }
 
   // Приводит поле ответственного к значению, которое понимает API.
@@ -101,7 +122,7 @@ export function useDealsActions({
 
   // Проверяет системные даты при ручном редактировании: completed_at не должен быть раньше created_at.
   function validateManualSystemDates(deal) {
-    if (!deal?.deal_id || !canEditSystemDates()) return null
+    if (!deal?.deal_id || !canEditDealDate(deal) || !canEditCompletedDate(deal)) return null
     const createdAt = normalizeOptionalDateTime(deal.created_at)
     const completedAt = normalizeOptionalDateTime(deal.completed_at)
     if (!createdAt || !completedAt) return null
@@ -152,9 +173,11 @@ export function useDealsActions({
         ? (allowRefundForSaleAndRental ? Boolean(deal.is_refund) : false)
         : null,
     }
-    // Для admin/owner передаем системные даты в любом статусе, если сделка уже существует.
-    if (deal?.deal_id && canEditSystemDates()) {
+    // Системные даты отправляем независимо: у каждой даты своя галочка в матрице.
+    if (deal?.deal_id && canEditDealDate(deal)) {
       payload.created_at = normalizeOptionalDateTime(deal.created_at)
+    }
+    if (deal?.deal_id && canEditCompletedDate(deal)) {
       payload.completed_at = normalizeOptionalDateTime(deal.completed_at)
     }
     if (deal?.deal_id) {

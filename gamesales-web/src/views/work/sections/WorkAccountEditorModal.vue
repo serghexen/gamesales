@@ -8,7 +8,7 @@
                       <div class="account-modal-title-wrap">
                         <h3 class="account-modal-title">{{ accountModalTitle }}</h3>
                         <button
-                          v-if="accountModalMode === 'edit'"
+                          v-if="accountModalMode === 'edit' && canReflectEmail"
                           class="btn btn--icon-plain btn--icon-clear"
                           type="button"
                           :aria-label="getAccountFieldCopyLabel('email')"
@@ -167,7 +167,7 @@
                       </div>
                     </div>
                     <div v-else-if="accountModalMode === 'edit'" class="form form--stack form--compact">
-                      <div class="deal-form__double field--full">
+                      <div v-if="canReflectEmail" class="deal-form__double field--full">
                         <label class="field">
                           <span class="label">Логин (без домена)</span>
                           <input v-model.trim="editAccount.login_name" class="input" placeholder="user" :readonly="accountEditMode === 'view'" />
@@ -188,8 +188,8 @@
                           </select>
                         </label>
                       </div>
-                      <div class="deal-form__double field--full">
-                        <label class="field">
+                      <div v-if="canReflectRegion || canReflectDate" class="deal-form__double field--full">
+                        <label v-if="canReflectRegion" class="field">
                           <span class="label">Регион</span>
                           <input
                             v-if="accountEditMode === 'view'"
@@ -204,13 +204,13 @@
                             </option>
                           </select>
                         </label>
-                        <label class="field">
+                        <label v-if="canReflectDate" class="field">
                           <span class="label">Дата</span>
                           <input v-model="editAccount.account_date" class="input" type="date" :max="maxDate" :readonly="accountEditMode === 'view'" />
                         </label>
                       </div>
-                      <div class="deal-form__double field--full">
-                        <label class="field">
+                      <div v-if="canReflectAccountPassword || canReflectEmailPassword" class="deal-form__double field--full">
+                        <label v-if="canReflectAccountPassword" class="field">
                           <span class="label">Пароль аккаунт</span>
                           <div class="input--select-wrap">
                             <input v-model.trim="editAccount.account_password" class="input input--with-copy" autocomplete="new-password" :readonly="accountEditMode === 'view'" />
@@ -229,7 +229,7 @@
                             </button>
                           </div>
                         </label>
-                        <label class="field">
+                        <label v-if="canReflectEmailPassword" class="field">
                           <span class="label">Пароль почта</span>
                           <div class="input--select-wrap">
                             <input v-model.trim="editAccount.email_password" class="input input--with-copy" autocomplete="new-password" :readonly="accountEditMode === 'view'" />
@@ -249,11 +249,11 @@
                           </div>
                         </label>
                       </div>
-                      <label class="field field--full">
+                      <label v-if="canReflectAuthCode" class="field field--full">
                         <span class="label">Код аутентификатора</span>
                         <input v-model.trim="editAccount.auth_code" class="input" placeholder="код" :readonly="accountEditMode === 'view'" />
                       </label>
-                      <div class="field field--comment-collapsible field--full">
+                      <div v-if="canReflectReserves" class="field field--comment-collapsible field--full">
                         <button class="comment-toggle" type="button" @click="editAccountReserveOpen = !editAccountReserveOpen" :disabled="accountEditMode === 'view'">
                           {{ editAccountReserveOpen || editAccount.reserve_text ? 'Резерв' : '+ Резерв' }}
                         </button>
@@ -365,7 +365,7 @@
                           </div>
                         </div>
                       </div>
-                      <div v-if="canShowReflectDeals" class="field field--full">
+                      <div v-if="canShowReflectSlots" class="field field--full">
                         <span class="label">Слоты аккаунта</span>
                         <p v-if="accountSlotAssignmentsError" class="bad">{{ accountSlotAssignmentsError }}</p>
                         <div v-if="accountSlotAssignmentsLoading" class="loader-wrap loader-wrap--compact">
@@ -435,7 +435,7 @@
                         </table>
                         <p v-else class="muted">Слотов по аккаунту пока нет.</p>
                       </div>
-                      <div v-if="canViewAccountGames" class="field field--full">
+                      <div v-if="canShowReflectDeals" class="field field--full">
                         <span class="label">Пользователи по сделкам</span>
                         <p v-if="accountDealsError" class="bad">{{ accountDealsError }}</p>
                         <div v-if="accountDealsLoading" class="loader-wrap loader-wrap--compact">
@@ -539,8 +539,8 @@
                           <input v-model="newAccount.account_date" class="input" type="date" :max="maxDate" />
                         </label>
                       </div>
-                      <div class="deal-form__double field--full">
-                        <label class="field">
+                      <div v-if="canReflectAccountPassword || canReflectEmailPassword" class="deal-form__double field--full">
+                        <label v-if="canReflectAccountPassword" class="field">
                           <span class="label">Пароль аккаунт</span>
                           <div class="input--select-wrap">
                             <input v-model.trim="newAccount.account_password" class="input input--with-copy" autocomplete="new-password" />
@@ -559,7 +559,7 @@
                             </button>
                           </div>
                         </label>
-                        <label class="field">
+                        <label v-if="canReflectEmailPassword" class="field">
                           <span class="label">Пароль почта</span>
                           <div class="input--select-wrap">
                             <input v-model.trim="newAccount.email_password" class="input input--with-copy" autocomplete="new-password" />
@@ -579,11 +579,11 @@
                           </div>
                         </label>
                       </div>
-                      <label class="field field--full">
+                      <label v-if="canReflectAuthCode" class="field field--full">
                         <span class="label">Код аутентификатора</span>
                         <input v-model.trim="newAccount.auth_code" class="input" placeholder="код" />
                       </label>
-                      <div class="field field--comment-collapsible field--full">
+                      <div v-if="canReflectReserves" class="field field--comment-collapsible field--full">
                         <button class="comment-toggle" type="button" @click="newAccountReserveOpen = !newAccountReserveOpen">
                           {{ newAccountReserveOpen || newAccount.reserve_text ? 'Резерв' : '+ Резерв' }}
                         </button>
@@ -595,7 +595,7 @@
                           placeholder="mkn4N5 6uGjMm ..."
                         />
                       </div>
-                      <div v-if="canViewAccountGames" class="field field--full">
+                      <div v-if="canShowReflectSlots" class="field field--full">
                         <span class="label account-products-title">Товары</span>
                         <div class="account-product-filters field--full">
                           <label class="field">
@@ -697,6 +697,13 @@ const props = defineProps([
   'canEditAccount',
   'canDeleteAccount',
   'canViewGames',
+  'canReflectEmail',
+  'canReflectDate',
+  'canReflectRegion',
+  'canReflectAccountPassword',
+  'canReflectEmailPassword',
+  'canReflectAuthCode',
+  'canReflectReserves',
   'canReflectSlots',
   'canReflectDeals',
   'cancelEditAccount',
@@ -770,7 +777,13 @@ const canShowReflectDeals = computed(() => props.canReflectDeals !== false)
 const canCreateAccountModal = computed(() => props.canCreateAccount !== false)
 const canEditAccountModal = computed(() => props.canEditAccount !== false)
 const canDeleteAccountModal = computed(() => props.canDeleteAccount !== false)
-const canViewAccountGames = computed(() => props.canViewGames !== false)
+const canReflectEmail = computed(() => props.canReflectEmail !== false)
+const canReflectDate = computed(() => props.canReflectDate !== false)
+const canReflectRegion = computed(() => props.canReflectRegion !== false)
+const canReflectAccountPassword = computed(() => props.canReflectAccountPassword !== false)
+const canReflectEmailPassword = computed(() => props.canReflectEmailPassword !== false)
+const canReflectAuthCode = computed(() => props.canReflectAuthCode !== false)
+const canReflectReserves = computed(() => props.canReflectReserves !== false)
 
 // Галочку деактивации показываем только тем ролям, которым разрешено менять этот флаг.
 const showDeactivationToggle = computed(() => {
@@ -882,6 +895,8 @@ const deactivationViewLabel = computed(() => {
 // Формирует заголовок модалки аккаунта в нужном формате.
 const accountModalTitle = computed(() => {
   if (props.accountModalMode === 'create') return 'Новый аккаунт'
+  // Если почта роли скрыта, не выводим login/domain даже в заголовке карточки.
+  if (!canReflectEmail.value) return 'АККАУНТ'
   const login = String(props.editAccount?.login_name || '').trim()
   const domain = String(props.editAccount?.domain_code || '').trim()
   if (!login && !domain) return 'АККАУНТ'
@@ -960,6 +975,11 @@ const getAccountEmailForCopy = () => {
 
 // Возвращает значение поля аккаунта для копирования.
 const getAccountFieldCopyValue = (field, reserveItem = null) => {
+  // Копирование читает те же флаги, что и видимость полей, чтобы скрытое право не обходилось кнопкой.
+  if (field === 'email' && !canReflectEmail.value) return ''
+  if ((field === 'account_password' || field === 'account_password_new') && !canReflectAccountPassword.value) return ''
+  if ((field === 'email_password' || field === 'email_password_new') && !canReflectEmailPassword.value) return ''
+  if (field === 'reserve' && !canReflectReserves.value) return ''
   if (field === 'email') return getAccountEmailForCopy()
   if (field === 'account_password') return String(props.editAccount?.account_password || '').trim()
   if (field === 'email_password') return String(props.editAccount?.email_password || '').trim()

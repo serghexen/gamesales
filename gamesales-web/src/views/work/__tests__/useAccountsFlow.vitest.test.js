@@ -185,6 +185,40 @@ describe('useAccountsFlow', () => {
     )
   })
 
+  it('createAccount saves only allowed secret fields and skips product links without slot permission', async () => {
+    const h = createHarness()
+    h.canDoAction = (actionCode) => ![
+      'accounts.reflect_email_password',
+      'accounts.reflect_auth_code',
+      'accounts.reflect_reserves',
+      'accounts.reflect_slots',
+    ].includes(actionCode)
+    const flow = useAccountsFlow(h)
+    h.openCreateAccountModal = flow.openCreateAccountModal
+    h.createAccount = flow.createAccount
+    h.openCreateAccountModal()
+    h.newAccount.login_name = 'limited'
+    h.newAccount.domain_code = 'mail.com'
+    h.newAccount.region_code = 'RU'
+    h.newAccount.account_date = '2026-03-26'
+    h.newAccount.account_password = 'acc-pass'
+    h.newAccount.email_password = 'mail-pass'
+    h.newAccount.auth_code = 'auth-code'
+    h.newAccount.reserve_text = 'AAA111'
+    h.newAccount.product_ids = [77]
+    h.apiPost.mockResolvedValueOnce({ account_id: 9 })
+    h.apiPut.mockResolvedValue({})
+
+    await h.createAccount()
+
+    expect(h.apiPut).toHaveBeenCalledTimes(1)
+    expect(h.apiPut).toHaveBeenCalledWith(
+      '/accounts/9/secrets',
+      { upserts: [{ secret_key: 'account_password', secret_value: 'acc-pass' }], delete_keys: [] },
+      { token: 'token-1' }
+    )
+  })
+
   it('createQuickAccountProduct supports edit target and links product to edited account', async () => {
     const h = createHarness()
     h.quickEditAccountProduct.title = 'EA FC 26'

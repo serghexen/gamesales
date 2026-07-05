@@ -1663,6 +1663,7 @@ const { createDeal, createDealDraft, updateDeal, updateDealDraft, deleteDeal, ma
   showDealWarning,
   requestDealConfirm,
   resolveProductTypeCode,
+  canDoAction,
 })
 const usersSort = ref({ key: 'created_at', dir: 'desc' })
 const domainsSortAsc = ref(true)
@@ -1885,6 +1886,7 @@ const {
   suppressUnsavedConfirm,
   requestUnsavedConfirm,
   requestDealConfirm,
+  canDoAction,
   loadAccountsAll,
   quickNewProductAccount,
   quickNewProductAccountLoading,
@@ -2201,6 +2203,7 @@ const {
   requestUnsavedConfirm,
   requestDealConfirm,
   showDealWarning,
+  canDoAction,
   quickNewAccountProduct,
   quickNewAccountProductLoading,
   quickNewAccountProductError,

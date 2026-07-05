@@ -371,6 +371,22 @@ describe('useDealsActions', () => {
     expect(deps.apiPut.mock.calls[0][1].completed_at).toContain('2026-02-09T')
   })
 
+  it('updateDeal sends only manual dates allowed by action permissions', async () => {
+    const deps = createDeps({
+      canDoAction: (actionCode) => actionCode !== 'deals_completed.change_completed_date',
+    })
+    deps.editDeal.flow_status_code = 'completed'
+    deps.editDeal.created_at = '2026-02-09T10:00'
+    deps.editDeal.completed_at = '2026-02-09T11:30'
+    const { updateDeal } = useDealsActions(deps)
+
+    await updateDeal()
+
+    expect(deps.apiPut).toHaveBeenCalledTimes(1)
+    expect(deps.apiPut.mock.calls[0][1].created_at).toContain('2026-02-09T')
+    expect(deps.apiPut.mock.calls[0][1].completed_at).toBeUndefined()
+  })
+
   it('updateDeal sends manual system dates for admin even in non-completed status', async () => {
     const deps = createDeps()
     deps.editDeal.flow_status_code = 'draft'

@@ -241,6 +241,21 @@ describe('useProductsFlow', () => {
     )
   })
 
+  it('createProduct skips account binding without reflect accounts permission', async () => {
+    const h = createHarness()
+    h.deps.canDoAction = (actionCode) => actionCode !== 'products.reflect_accounts'
+    h.flow = useProductsFlow(h.deps)
+    h.newProduct.type_code = 'game'
+    h.newProduct.title = 'GTA V'
+    h.newProduct.account_ids = [15]
+    h.apiPost.mockResolvedValueOnce({ product_id: 88 })
+    h.apiGet.mockResolvedValue({ items: [], total: 0 })
+
+    await h.flow.createProduct()
+
+    expect(h.deps.apiPut).not.toHaveBeenCalled()
+  })
+
   it('loadProductAccounts requests product endpoint', async () => {
     const h = createHarness()
     h.apiGet.mockResolvedValueOnce([])

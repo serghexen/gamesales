@@ -5,7 +5,7 @@
                           <label class="field">
                             <span class="label">Дата создания</span>
                             <input
-                              v-if="dealEditMode !== 'view' && canEditSystemDates"
+                              v-if="dealEditMode !== 'view' && canEditDealDate"
                               v-model="editDeal.created_at"
                               class="input"
                               type="datetime-local"
@@ -20,7 +20,7 @@
                           <label class="field">
                             <span class="label">Дата завершения</span>
                             <input
-                              v-if="dealEditMode !== 'view' && canEditSystemDates"
+                              v-if="dealEditMode !== 'view' && canEditCompletedDate"
                               v-model="editDeal.completed_at"
                               class="input"
                               type="datetime-local"
@@ -149,7 +149,7 @@
                                   <option value="">— скоро будет —</option>
                                 </select>
                               </label>
-                              <label class="field">
+                              <label v-if="canViewDiscountField" class="field">
                                 <span class="label">Скидка</span>
                                 <select class="input input--select deal-form__input--locked" disabled>
                                   <option value="">— скоро будет —</option>
@@ -664,7 +664,7 @@
                           <label class="field">
                             <span class="label">Дата создания</span>
                             <input
-                              v-if="dealEditMode !== 'view' && canEditSystemDates"
+                              v-if="dealEditMode !== 'view' && canEditDealDate"
                               v-model="editDeal.created_at"
                               class="input"
                               type="datetime-local"
@@ -679,7 +679,7 @@
                           <label class="field">
                             <span class="label">Дата завершения</span>
                             <input
-                              v-if="dealEditMode !== 'view' && canEditSystemDates"
+                              v-if="dealEditMode !== 'view' && canEditCompletedDate"
                               v-model="editDeal.completed_at"
                               class="input"
                               type="datetime-local"
@@ -908,7 +908,7 @@
                                     <option value="">— скоро будет —</option>
                                   </select>
                                 </label>
-                                <label class="field">
+                                <label v-if="canViewDiscountField" class="field">
                                   <span class="label">Скидка</span>
                                   <select class="input input--select deal-form__input--locked" disabled>
                                     <option value="">— скоро будет —</option>
@@ -1002,7 +1002,7 @@
                                   <option value="">— скоро будет —</option>
                                 </select>
                               </label>
-                              <label class="field">
+                              <label v-if="canViewDiscountField" class="field">
                                 <span class="label">Скидка</span>
                                 <select class="input input--select deal-form__input--locked" disabled>
                                   <option value="">— скоро будет —</option>
@@ -1627,7 +1627,7 @@
                                     <option value="">— скоро будет —</option>
                                   </select>
                                 </label>
-                                <label class="field">
+                                <label v-if="canViewDiscountField" class="field">
                                   <span class="label">Скидка</span>
                                   <select class="input input--select deal-form__input--locked" disabled>
                                     <option value="">— скоро будет —</option>
@@ -2579,14 +2579,37 @@ const isEditDealPendingFlow = computed(() => {
 })
 
 const canEditRefundFlag = computed(() => {
-  // Возврат в форме меняем только у завершенных сделок для admin/owner.
+  // Возврат в форме меняем только у завершенных сделок с правом провести возврат.
   const status = String(editDeal.value?.flow_status_code || '').trim().toLowerCase()
-  return status === 'completed' && Boolean(allowCompletedDealEdit?.value)
+  if (status !== 'completed') return false
+  if (typeof ctx.canDoAction !== 'function') return Boolean(allowCompletedDealEdit?.value)
+  return ctx.canDoAction('deals_completed.process_return')
 })
 
-const canEditSystemDates = computed(() => {
-  // Даты создания/завершения даем редактировать admin/owner независимо от статуса.
-  return Boolean(allowCompletedDealEdit?.value)
+const editDealActionGroup = computed(() => {
+  // Подбирает группу прав по статусу сделки так же, как backend.
+  const status = String(editDeal.value?.flow_status_code || '').trim().toLowerCase()
+  if (status === 'draft') return 'deals_draft'
+  if (status === 'completed') return 'deals_completed'
+  return 'deals_active'
+})
+
+const canEditDealDate = computed(() => {
+  // Дату создания показываем на редактирование только при отдельном праве.
+  if (typeof ctx.canDoAction !== 'function') return Boolean(allowCompletedDealEdit?.value)
+  return ctx.canDoAction(`${editDealActionGroup.value}.change_deal_date`)
+})
+
+const canEditCompletedDate = computed(() => {
+  // Дату завершения показываем на редактирование только при отдельном праве.
+  if (typeof ctx.canDoAction !== 'function') return Boolean(allowCompletedDealEdit?.value)
+  return ctx.canDoAction(`${editDealActionGroup.value}.change_completed_date`)
+})
+
+const canViewDiscountField = computed(() => {
+  // Поле скидки показываем только ролям с разрешенным действием скидки.
+  if (typeof ctx.canDoAction !== 'function') return true
+  return ctx.canDoAction('deals_active.discount')
 })
 
 const refundEditBlockedReason = computed(() => {

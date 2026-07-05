@@ -906,7 +906,7 @@
                   </select>
                 </label>
               </div>
-              <div class="field field--full">
+              <div v-if="canReflectProductAccounts" class="field field--full">
                 <span class="label account-products-title">Аккаунты</span>
                 <label class="field">
                   <span class="label">Поиск</span>

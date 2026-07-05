@@ -587,6 +587,12 @@ def mount_accounts_routes(
                     raise HTTPException(403, "Operator cannot change account deactivation flag")
             if payload.account_date is not None and payload.account_date != current_account_date:
                 require_action_permission(conn, q1, user, "accounts.reflect_date")
+            # Логин и домен вместе образуют почту аккаунта, поэтому проверяем право на ее отражение.
+            if (
+                (payload.login_name is not None and payload.login_name != current_login)
+                or (payload.domain_code is not None and domain_id != current_domain_id)
+            ):
+                require_action_permission(conn, q1, user, "accounts.reflect_email")
             if payload.region_code is not None and region_id != current_region_id:
                 require_action_permission(conn, q1, user, "accounts.reflect_region")
 
