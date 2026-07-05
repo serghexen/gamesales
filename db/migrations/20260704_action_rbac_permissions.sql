@@ -203,7 +203,13 @@ SELECT
   r.code,
   a.action_code,
   CASE
-    WHEN lower(r.code) IN ('admin', 'owner') THEN true
+    WHEN lower(r.code) = 'owner' THEN true
+    WHEN lower(r.code) = 'admin' AND a.action_code IN (
+      'deals_draft.change_deal_date',
+      'deals_draft.change_completed_date',
+      'deals_completed.change_deal_date',
+      'deals_completed.change_completed_date'
+    ) THEN false
     WHEN lower(r.code) IN ('manager', 'operator') AND a.action_code IN (
       'deals_active.discount',
       'deals_draft.delete',

@@ -1687,7 +1687,7 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.json(), {"ok": True})
 
     # Для completed сделки admin/owner могут вручную править даты создания и завершения.
-    def test_update_deal_completed_allows_manual_system_dates_for_admin(self):
+    def test_update_deal_completed_allows_manual_system_dates_for_owner(self):
         current_row = (
             "sale",
             "confirmed",
@@ -1727,7 +1727,7 @@ class DealsEndpointsTests(unittest.TestCase):
             with self._client() as client:
                 res = client.put(
                     "/deals/77",
-                    headers=self._auth_headers(role="admin", username="admin"),
+                    headers=self._auth_headers(role="owner", username="owner"),
                     json={
                         "messenger_id": 1,
                         "created_at": "2026-02-01T10:30:00Z",

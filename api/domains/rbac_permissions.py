@@ -89,11 +89,21 @@ DEFAULT_FALSE_ACTIONS = {
 }
 
 
+ADMIN_DEFAULT_FALSE_ACTIONS = {
+    "deals_draft.change_deal_date",
+    "deals_draft.change_completed_date",
+    "deals_completed.change_deal_date",
+    "deals_completed.change_completed_date",
+}
+
+
 def default_action_allowed(role_code: str, action_code: str) -> bool:
     role = str(role_code or "").strip().lower()
     action = str(action_code or "").strip()
-    if role in {"admin", "owner"}:
+    if role == "owner":
         return True
+    if role == "admin":
+        return action not in ADMIN_DEFAULT_FALSE_ACTIONS
     if role in {"manager", "operator"}:
         return action not in DEFAULT_FALSE_ACTIONS
     return True

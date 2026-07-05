@@ -28,8 +28,16 @@ REFERENCE_DISABLED_ACTIONS = {
 }
 
 
+ADMIN_REFERENCE_DISABLED_ACTIONS = {
+    "deals_draft.change_deal_date",
+    "deals_draft.change_completed_date",
+    "deals_completed.change_deal_date",
+    "deals_completed.change_completed_date",
+}
+
+
 class RbacPermissionsTests(unittest.TestCase):
-    # Проверяет инверсию бизнес-референса: галочка в таблице означает запрет действия.
+    # На сайте галочка означает включено, поэтому из референса берем пустые клетки как can_do=true.
     def test_manager_operator_defaults_match_disabled_checkmarks(self):
         action_codes = {action_code for action_code, *_ in ACTION_PERMISSIONS}
 
@@ -39,12 +47,18 @@ class RbacPermissionsTests(unittest.TestCase):
                     expected = action_code not in REFERENCE_DISABLED_ACTIONS
                     self.assertEqual(default_action_allowed(role, action_code), expected)
 
-    # Админ и управляющий в референсе пустые, значит все действия по умолчанию включены.
-    def test_admin_owner_defaults_allow_all_actions(self):
-        for role in ("admin", "owner"):
-            for action_code, *_ in ACTION_PERMISSIONS:
-                with self.subTest(role=role, action_code=action_code):
-                    self.assertTrue(default_action_allowed(role, action_code))
+    # Админ повторяет свой столбец референса: выключены только отмеченные там даты.
+    def test_admin_defaults_match_disabled_checkmarks(self):
+        for action_code, *_ in ACTION_PERMISSIONS:
+            with self.subTest(action_code=action_code):
+                expected = action_code not in ADMIN_REFERENCE_DISABLED_ACTIONS
+                self.assertEqual(default_action_allowed("admin", action_code), expected)
+
+    # У управляющего в референсе пусто, значит все действия по умолчанию включены.
+    def test_owner_defaults_allow_all_actions(self):
+        for action_code, *_ in ACTION_PERMISSIONS:
+            with self.subTest(action_code=action_code):
+                self.assertTrue(default_action_allowed("owner", action_code))
 
     # Проверяет конкретные спорные действия, которые легко перепутать при чтении таблицы.
     def test_reference_empty_cells_are_enabled(self):
@@ -52,6 +66,7 @@ class RbacPermissionsTests(unittest.TestCase):
         self.assertTrue(default_action_allowed("operator", "deals_completed.press_return"))
         self.assertTrue(default_action_allowed("manager", "accounts.reflect_deals"))
         self.assertTrue(default_action_allowed("operator", "products.reflect_deals"))
+        self.assertFalse(default_action_allowed("admin", "deals_draft.change_deal_date"))
 
 
 if __name__ == "__main__":
