@@ -65,7 +65,8 @@ ACTION_PERMISSIONS = [
 
 
 DEFAULT_FALSE_ACTIONS = {
-    "deals_active.approve_return",
+    "deals_active.discount",
+    "deals_draft.delete",
     "deals_draft.change_deal_date",
     "deals_draft.change_completed_date",
     "deals_completed.edit",
@@ -74,11 +75,17 @@ DEFAULT_FALSE_ACTIONS = {
     "deals_completed.change_deal_date",
     "deals_completed.change_completed_date",
     "deals_completed.process_return",
-}
-
-
-OPERATOR_DEFAULT_FALSE_ACTIONS = {
     "accounts.reflect_date",
+    "accounts.reflect_region",
+    "accounts.reflect_email_password",
+    "accounts.reflect_auth_code",
+    "accounts.reflect_reserves",
+    "accounts.reflect_slots",
+    "accounts.edit",
+    "accounts.delete",
+    "products.reflect_slots",
+    "products.edit",
+    "products.delete",
 }
 
 
@@ -87,9 +94,9 @@ def default_action_allowed(role_code: str, action_code: str) -> bool:
     action = str(action_code or "").strip()
     if role in {"admin", "owner"}:
         return True
-    if role == "operator" and action in OPERATOR_DEFAULT_FALSE_ACTIONS:
-        return False
-    return action not in DEFAULT_FALSE_ACTIONS
+    if role in {"manager", "operator"}:
+        return action not in DEFAULT_FALSE_ACTIONS
+    return True
 
 
 def ensure_action_rbac_schema_and_defaults(conn) -> None:

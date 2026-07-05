@@ -1493,12 +1493,12 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
 
-    # Завершение возврата должно быть доступно только admin/owner.
-    def test_update_deal_refund_completion_forbidden_for_manager(self):
+    # Менеджеру запрещены правки завершенной сделки по action-RBAC.
+    def test_update_completed_refund_forbidden_for_manager_by_action_rbac(self):
         current_row = (
             "sale",
             "confirmed",
-            "pending",
+            "completed",
             10,
             5,
             500.0,
@@ -1537,7 +1537,7 @@ class DealsEndpointsTests(unittest.TestCase):
                     json={"flow_status_code": "completed", "messenger_id": 1},
                 )
             self.assertEqual(res.status_code, 403)
-            self.assertIn("не достаточно прав для проведения возврата", res.text)
+            self.assertIn("deals_completed.edit", res.text)
 
     # Повторное сохранение возвратного шеринга не должно занимать слот обратно.
     def test_update_refunded_rental_completion_does_not_recreate_slot_assignment(self):
@@ -2120,7 +2120,7 @@ class DealsEndpointsTests(unittest.TestCase):
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
             with self._client() as client:
-                res = client.delete("/deals/77", headers=self._auth_headers(role="manager"))
+                res = client.delete("/deals/77", headers=self._auth_headers(role="admin"))
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), {"ok": True})
 

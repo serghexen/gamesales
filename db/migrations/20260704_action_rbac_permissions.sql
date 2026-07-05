@@ -204,9 +204,9 @@ SELECT
   a.action_code,
   CASE
     WHEN lower(r.code) IN ('admin', 'owner') THEN true
-    WHEN lower(r.code) = 'operator' AND a.action_code IN ('accounts.reflect_date') THEN false
-    WHEN a.action_code IN (
-      'deals_active.approve_return',
+    WHEN lower(r.code) IN ('manager', 'operator') AND a.action_code IN (
+      'deals_active.discount',
+      'deals_draft.delete',
       'deals_draft.change_deal_date',
       'deals_draft.change_completed_date',
       'deals_completed.edit',
@@ -214,11 +214,26 @@ SELECT
       'deals_completed.change_status',
       'deals_completed.change_deal_date',
       'deals_completed.change_completed_date',
-      'deals_completed.process_return'
+      'deals_completed.process_return',
+      'accounts.reflect_date',
+      'accounts.reflect_region',
+      'accounts.reflect_email_password',
+      'accounts.reflect_auth_code',
+      'accounts.reflect_reserves',
+      'accounts.reflect_slots',
+      'accounts.edit',
+      'accounts.delete',
+      'products.reflect_slots',
+      'products.edit',
+      'products.delete'
     ) THEN false
     ELSE true
   END AS can_do,
   'system'
 FROM app.user_roles r
 CROSS JOIN app.rbac_actions a
-ON CONFLICT (role_code, action_code) DO NOTHING;
+WHERE lower(r.code) IN ('admin', 'owner', 'manager', 'operator')
+ON CONFLICT (role_code, action_code) DO UPDATE
+  SET can_do = EXCLUDED.can_do,
+      updated_at = now(),
+      updated_by = EXCLUDED.updated_by;

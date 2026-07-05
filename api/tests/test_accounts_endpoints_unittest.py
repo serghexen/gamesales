@@ -262,8 +262,8 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(body["status"], "active")
             self.assertEqual(body["login_full"], "acc1@gmail.com")
 
-    # Обновление аккаунта доступно менеджеру.
-    def test_update_account_allowed_for_manager(self):
+    # Обновление аккаунта доступно админу, у менеджера это выключено матрицей RBAC.
+    def test_update_account_allowed_for_admin(self):
         script = [
             {"one": ("login1", 3, 2, "active", "2024-01-10", "old")},  # current
             {"rowcount": 1},  # update
@@ -278,7 +278,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
             with self._client() as client:
-                res = client.put("/accounts/5", headers=self._auth_headers(role="manager"), json={"notes": "x"})
+                res = client.put("/accounts/5", headers=self._auth_headers(role="admin"), json={"notes": "x"})
             self.assertEqual(res.status_code, 200)
 
     # Менеджер не может менять статус аккаунта.
@@ -347,7 +347,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             with self._client() as client:
                 res = client.put(
                     "/accounts/5",
-                    headers=self._auth_headers(role="manager"),
+                    headers=self._auth_headers(role="admin"),
                     json={"notes": "updated", "is_deactivated": True},
                 )
             self.assertEqual(res.status_code, 200)
@@ -375,7 +375,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             with self._client() as client:
                 res = client.put(
                     "/accounts/5",
-                    headers=self._auth_headers(role="manager"),
+                    headers=self._auth_headers(role="admin"),
                     json={"is_deactivated": False},
                 )
             self.assertEqual(res.status_code, 200)
@@ -384,7 +384,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(body["deactivated_at"], None)
             self.assertEqual(body["next_activation_at"], None)
 
-    # Оператору запрещено менять флаг деактивации аккаунта.
+    # Оператору запрещено редактировать аккаунт по action-RBAC.
     def test_update_account_operator_cannot_change_deactivation_flag(self):
         script = [
             {"one": ("login1", 3, 2, "active", "2024-01-10", "old", False, None, None)},
@@ -402,7 +402,7 @@ class AccountsEndpointsTests(unittest.TestCase):
                     json={"is_deactivated": True},
                 )
             self.assertEqual(res.status_code, 403)
-            self.assertIn("deactivation", str(res.json().get("detail", "")).lower())
+            self.assertIn("accounts.edit", str(res.json().get("detail", "")).lower())
 
     # Архивирование несуществующего аккаунта должно вернуть 404.
     def test_archive_account_not_found(self):
@@ -414,7 +414,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
             with self._client() as client:
-                res = client.delete("/accounts/999", headers=self._auth_headers(role="manager"))
+                res = client.delete("/accounts/999", headers=self._auth_headers(role="admin"))
             self.assertEqual(res.status_code, 404)
 
     # Секрет должен сохраняться в base64 и возвращаться в ответе.
@@ -544,7 +544,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             with self._client() as client:
                 res = client.put(
                     "/accounts/7/secrets",
-                    headers=self._auth_headers(role="manager"),
+                    headers=self._auth_headers(role="admin"),
                     json={
                         "upserts": [
                             {"secret_key": "account_password", "secret_value": "abc"},
@@ -868,7 +868,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             with self._client() as client:
                 res = client.get(
                     "/products/55/slot-assignments",
-                    headers=self._auth_headers(role="manager"),
+                    headers=self._auth_headers(role="admin"),
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(len(res.json()), 1)
@@ -890,7 +890,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             with self._client() as client:
                 res = client.get(
                     "/products/55/slot-assignments",
-                    headers=self._auth_headers(role="manager"),
+                    headers=self._auth_headers(role="admin"),
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), [])
@@ -911,7 +911,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             with self._client() as client:
                 res = client.get(
                     "/products/55/slot-assignments",
-                    headers=self._auth_headers(role="manager"),
+                    headers=self._auth_headers(role="admin"),
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), [])
@@ -1057,7 +1057,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             with self._client() as client:
                 res = client.get(
                     "/accounts/7/slot-assignments",
-                    headers=self._auth_headers(role="manager"),
+                    headers=self._auth_headers(role="admin"),
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(len(res.json()), 1)
@@ -1079,7 +1079,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             with self._client() as client:
                 res = client.get(
                     "/accounts/7/slot-assignments",
-                    headers=self._auth_headers(role="manager"),
+                    headers=self._auth_headers(role="admin"),
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json(), [])

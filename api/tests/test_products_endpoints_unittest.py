@@ -330,7 +330,7 @@ class ProductsEndpointsTests(unittest.TestCase):
             with self._client() as client:
                 res = client.put(
                     "/products/77",
-                    headers=self._auth_headers(role="manager"),
+                    headers=self._auth_headers(role="admin"),
                     json={"platform_codes": ["ps5"]},
                 )
             self.assertEqual(res.status_code, 200)
