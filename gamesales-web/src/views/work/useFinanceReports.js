@@ -703,11 +703,16 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       if (financeCashFlowDetailsFilters.date_from) params.set('date_from', financeCashFlowDetailsFilters.date_from)
       if (financeCashFlowDetailsFilters.date_to) params.set('date_to', financeCashFlowDetailsFilters.date_to)
       if (line?.line_type) params.set('line_type', String(line.line_type))
-      if (line?.name) params.set('line_name', String(line.name))
+      // Отображаемое имя может включать источник, а backend фильтрует по исходной статье.
+      const detailLineName = String(line?.line_name || line?.name || '').trim()
+      if (detailLineName) params.set('line_name', detailLineName)
       const sourceIds = Array.isArray(financeCashFlowDetailsFilters.source_id)
         ? financeCashFlowDetailsFilters.source_id
         : (financeCashFlowDetailsFilters.source_id ? [financeCashFlowDetailsFilters.source_id] : [])
-      sourceIds
+      const lineSourceId = Number(line?.source_id || 0)
+      const detailSourceIds = new Set(sourceIds)
+      if (Number.isFinite(lineSourceId) && lineSourceId > 0) detailSourceIds.add(lineSourceId)
+      Array.from(detailSourceIds)
         .map((item) => Number(item))
         .filter((item) => Number.isFinite(item) && item > 0)
         .forEach((item) => params.append('source_id', String(item)))

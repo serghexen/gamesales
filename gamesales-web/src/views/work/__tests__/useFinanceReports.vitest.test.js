@@ -226,6 +226,27 @@ describe('useFinanceReports', () => {
     expect(h.finance.financeCashFlowDetails.value[0]?.deal_id).toBe(16308)
   })
 
+  it('loads source grouped cash flow expense details by original line name', async () => {
+    const h = createHarness()
+    h.finance.financeCashFlowDetailsFilters.date_from = '2026-07-01'
+    h.finance.financeCashFlowDetailsFilters.date_to = '2026-07-05'
+    h.apiGet.mockResolvedValueOnce({
+      totals: { revenue: '0.00', expense: '2500.00', cash_flow: '-2500.00' },
+      items: [{ row_type: 'deal', line_type: 'expense', line_name: 'Закуп TR', source_id: 99, amount: '2500.00' }],
+    })
+
+    const ok = await h.finance.loadFinanceCashFlowDetails(
+      { line_type: 'expense', name: 'ASAT Закуп', line_name: 'Закуп', source_id: 99 },
+      'Расход: ASAT Закуп',
+    )
+
+    expect(ok).toBe(true)
+    expect(h.apiGet).toHaveBeenCalledWith(
+      '/finance/reports/cash-flow/details?date_from=2026-07-01&date_to=2026-07-05&line_type=expense&line_name=%D0%97%D0%B0%D0%BA%D1%83%D0%BF&source_id=99',
+      { token: 'token-1' },
+    )
+  })
+
   it('passes selected source ids to marketplace cash flow details', async () => {
     const h = createHarness()
     h.finance.financeCashFlowDetailsFilters.date_from = '2026-06-10'
@@ -278,7 +299,8 @@ describe('useFinanceReports', () => {
       },
       revenues: [{ name: 'Продажа TR', amount: '20000.00' }],
       expenses: [
-        { name: 'Закуп TR', amount: '6000.00', expense_kind: 'direct' },
+        { name: 'ASAT-M Закуп', line_name: 'Закуп', source_id: 99, source_name: 'ASAT-M', source_code: 'ym', amount: '2500.00', expense_kind: 'direct' },
+        { name: 'Закуп TR', line_name: 'Закуп TR', amount: '3500.00', expense_kind: 'direct' },
         { name: 'Маркетинг', amount: '800.00', expense_kind: 'indirect' },
         { name: 'Налог УСН', amount: '200.00', expense_kind: 'tax' },
       ],
@@ -295,7 +317,10 @@ describe('useFinanceReports', () => {
     expect(h.finance.financePlTotals.gross_profit).toBe(14000)
     expect(h.finance.financePlTotals.operating_profit).toBe(13200)
     expect(h.finance.financePlTotals.net_profit).toBe(13000)
-    expect(h.finance.financePlDirectExpenses.value[0]?.name).toBe('Закуп TR')
+    expect(h.finance.financePlDirectExpenses.value[0]?.name).toBe('ASAT-M Закуп')
+    expect(h.finance.financePlDirectExpenses.value[0]?.line_name).toBe('Закуп')
+    expect(h.finance.financePlDirectExpenses.value[0]?.source_id).toBe(99)
+    expect(h.finance.financePlDirectExpenses.value[1]?.name).toBe('Закуп TR')
     expect(h.finance.financePlIndirectExpenses.value[0]?.name).toBe('Маркетинг')
     expect(h.finance.financePlTaxExpenses.value[0]?.name).toBe('Налог УСН')
   })

@@ -768,6 +768,37 @@ describe('WorkFinanceSection', () => {
     )
   })
 
+  it('opens source grouped purchase expense from PL with source metadata', async () => {
+    const ctx = buildCtx({
+      financePlDirectExpenses: [
+        { name: 'ASAT-M Закуп', line_name: 'Закуп', source_id: 99, source_name: 'ASAT-M', source_code: 'ym', amount: 2500, expense_kind: 'direct' },
+        { name: 'Закуп TR', line_name: 'Закуп TR', amount: 3500, expense_kind: 'direct' },
+      ],
+    })
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-pl"]').trigger('click')
+    await wrapper.find('[data-test="finance-pl-details-direct-0"]').trigger('click')
+
+    expect(ctx.financeCashFlowDetailsFilters.date_from).toBe('2026-05-01')
+    expect(ctx.financeCashFlowDetailsFilters.date_to).toBe('2026-05-31')
+    expect(ctx.loadFinanceCashFlowDetails).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'ASAT-M Закуп', line_name: 'Закуп', source_id: 99, line_type: 'expense' }),
+      'Расход: ASAT-M Закуп',
+    )
+  })
+
   it('opens cash flow detail modal and applies date interval', async () => {
     const ctx = buildCtx({ financeCashFlowDetailsOpen: true })
     const wrapper = mount(WorkFinanceSection, {
@@ -814,6 +845,35 @@ describe('WorkFinanceSection', () => {
 
     await wrapper.find('[data-test="finance-apply-cash-flow-details"]').trigger('click')
     expect(ctx.loadFinanceCashFlowDetails).toHaveBeenCalledTimes(2)
+  })
+
+  it('opens source grouped cash flow expense with original line metadata', async () => {
+    const ctx = buildCtx({
+      financeCashFlowExpenses: [
+        { name: 'ASAT Закуп', line_name: 'Закуп', source_id: 99, source_name: 'ASAT', source_code: 'ym', amount: 2500 },
+      ],
+    })
+    const wrapper = mount(WorkFinanceSection, {
+      props: { ctx },
+      global: {
+        stubs: {
+          teleport: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="finance-mode-cash-flow"]').trigger('click')
+    await wrapper.find('[data-test="finance-cash-flow-details-expense-0"]').trigger('click')
+
+    expect(ctx.resetFinanceCashFlowDetailsPeriod).toHaveBeenCalledTimes(1)
+    expect(ctx.loadFinanceCashFlowDetails).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'ASAT Закуп', line_name: 'Закуп', source_id: 99, line_type: 'expense' }),
+      'Расход: ASAT Закуп',
+    )
   })
 
   it('shows source filter only for marketplace API cash flow details', async () => {

@@ -445,8 +445,12 @@ class FinanceSourcesReportDetailsOut(BaseModel):
 
 class FinanceCashFlowLineOut(BaseModel):
     name: str
+    line_name: Optional[str] = None
     amount: Decimal = Decimal("0")
     expense_kind: Optional[str] = None
+    source_id: Optional[int] = None
+    source_code: Optional[str] = None
+    source_name: Optional[str] = None
 
 
 class FinanceCashFlowDetailRowOut(BaseModel):

@@ -3438,6 +3438,8 @@ def mount_finance_routes(
             SELECT
               d.completed_at::date AS activity_date,
               fds.source_id,
+              COALESCE(fds.code, src.code) AS source_code,
+              COALESCE(fds.name, src.name) AS source_name,
               CASE WHEN d.deal_type_code = 'rental' THEN NULL ELSE fdr.region_id END AS region_id,
               'revenue' AS line_type,
               CASE
@@ -3468,6 +3470,8 @@ def mount_finance_routes(
             SELECT
               d.completed_at::date AS activity_date,
               fds.source_id,
+              COALESCE(fds.code, src.code) AS source_code,
+              COALESCE(fds.name, src.name) AS source_name,
               NULL AS region_id,
               'expense' AS line_type,
               'Закуп Шеринг' AS line_name,
@@ -3491,6 +3495,8 @@ def mount_finance_routes(
             SELECT
               d.completed_at::date AS activity_date,
               fds.source_id,
+              COALESCE(fds.code, src.code) AS source_code,
+              COALESCE(fds.name, src.name) AS source_name,
               fdr.region_id,
               'expense' AS line_type,
               CONCAT('Закуп ', COALESCE(fdr.code, rd.code, 'Без региона')) AS line_name,
@@ -3515,6 +3521,8 @@ def mount_finance_routes(
             SELECT
               e.biz_date AS activity_date,
               e.source_id,
+              fsrc.code AS source_code,
+              fsrc.name AS source_name,
               e.region_id,
               CASE WHEN p.metric_code = 'revenue' THEN 'revenue' ELSE 'expense' END AS line_type,
               COALESCE(op.name, 'Ручная операция') AS line_name,
@@ -3537,6 +3545,7 @@ def mount_finance_routes(
               ON e.entry_id = p.entry_id
              AND e.biz_date = p.entry_biz_date
             LEFT JOIN finance.operations op ON op.operation_id = e.operation_id
+            LEFT JOIN finance.dim_sources fsrc ON fsrc.source_id = e.source_id
             WHERE e.status_code = 'confirmed'
               AND e.input_channel IN ('manual', 'api', 'import')
               AND (
@@ -3557,18 +3566,71 @@ def mount_finance_routes(
                 f"""
                 WITH cash_flow_rows AS (
                     {cash_flow_rows_sql}
+                ), grouped_rows AS (
+                    SELECT
+                      line_type,
+                      line_name,
+                      expense_kind,
+                      CASE
+                        WHEN line_type = 'expense'
+                         AND source_id IS NOT NULL
+                         AND expense_kind = 'direct'
+                         AND lower(line_name) LIKE '%%закуп%%'
+                          THEN source_id
+                        ELSE NULL
+                      END AS source_group_id,
+                      CASE
+                        WHEN line_type = 'expense'
+                         AND source_id IS NOT NULL
+                         AND expense_kind = 'direct'
+                         AND lower(line_name) LIKE '%%закуп%%'
+                          THEN source_code
+                        ELSE NULL
+                      END AS source_group_code,
+                      CASE
+                        WHEN line_type = 'expense'
+                         AND source_id IS NOT NULL
+                         AND expense_kind = 'direct'
+                         AND lower(line_name) LIKE '%%закуп%%'
+                          THEN source_name
+                        ELSE NULL
+                      END AS source_group_name,
+                      CASE
+                        WHEN line_type = 'expense'
+                         AND source_id IS NOT NULL
+                         AND expense_kind = 'direct'
+                         AND lower(line_name) LIKE '%%закуп%%'
+                          THEN 'Закуп'
+                        ELSE line_name
+                      END AS group_line_name,
+                      amount
+                    FROM cash_flow_rows
+                    WHERE activity_date >= %s
+                      AND activity_date <= %s
                 )
                 SELECT
                   line_type,
-                  line_name,
+                  CASE
+                    WHEN source_group_id IS NOT NULL
+                      THEN CONCAT(
+                        COALESCE(NULLIF(source_group_name, ''), NULLIF(source_group_code, ''), 'Источник #' || source_group_id::text),
+                        ' ',
+                        group_line_name
+                      )
+                    ELSE group_line_name
+                  END AS display_name,
+                  group_line_name AS line_name,
                   expense_kind,
+                  source_group_id AS source_id,
+                  source_group_code AS source_code,
+                  source_group_name AS source_name,
                   COALESCE(SUM(amount), 0) AS amount
-                FROM cash_flow_rows
-                WHERE activity_date >= %s
-                  AND activity_date <= %s
-                GROUP BY line_type, line_name, expense_kind
+                FROM grouped_rows
+                GROUP BY
+                  line_type, group_line_name, expense_kind,
+                  source_group_id, source_group_code, source_group_name
                 HAVING COALESCE(SUM(amount), 0) <> 0
-                ORDER BY line_type DESC, expense_kind NULLS FIRST, line_name
+                ORDER BY line_type DESC, expense_kind NULLS FIRST, display_name
                 """,
                 (date_from_value, date_to_value),
             )
@@ -3611,9 +3673,17 @@ def mount_finance_routes(
         indirect_total = Decimal("0")
         tax_total = Decimal("0")
         for row in rows:
-            line_amount = _round_money(Decimal(row[3] or 0))
-            expense_kind = str(row[2] or "").strip().lower() or None
-            line = FinanceCashFlowLineOut(name=str(row[1] or "Без названия"), amount=line_amount, expense_kind=expense_kind)
+            line_amount = _round_money(Decimal(row[7] or 0))
+            expense_kind = str(row[3] or "").strip().lower() or None
+            line = FinanceCashFlowLineOut(
+                name=str(row[1] or "Без названия"),
+                line_name=str(row[2] or row[1] or "Без названия"),
+                amount=line_amount,
+                expense_kind=expense_kind,
+                source_id=int(row[4]) if row[4] is not None else None,
+                source_code=str(row[5]) if row[5] is not None else None,
+                source_name=str(row[6]) if row[6] is not None else None,
+            )
             if row[0] == "revenue":
                 revenues.append(line)
                 revenue_total += line_amount
@@ -3684,12 +3754,18 @@ def mount_finance_routes(
             params.append(normalized_line_type)
         normalized_line_name = (line_name or "").strip()
         if normalized_line_name:
-            filters.append("line_name = %s")
-            params.append(normalized_line_name)
+            if normalized_line_type == "expense" and normalized_line_name.lower() == "закуп":
+                filters.append("lower(line_name) LIKE %s")
+                params.append("%закуп%")
+            else:
+                filters.append("line_name = %s")
+                params.append(normalized_line_name)
         source_ids = [int(item) for item in (source_id or []) if int(item) > 0]
         if source_ids:
             filters.append("source_id = ANY(%s)")
             params.append(source_ids)
+        elif normalized_line_type == "expense" and "закуп" in normalized_line_name.lower():
+            filters.append("source_id IS NULL")
         where_sql = " AND ".join(filters)
 
         with psycopg.connect(DB_DSN) as conn:

@@ -348,11 +348,11 @@ class FinanceReportsTests(unittest.TestCase):
         script = [
             {
                 "all": [
-                    ("revenue", "Продажа TR", None, 15000.0),
-                    ("revenue", "Продажа Шеринг", None, 5000.0),
-                    ("expense", "Закуп TR", "direct", 6000.0),
-                    ("expense", "Маркетинг", "indirect", 800.0),
-                    ("expense", "Налог УСН", "tax", 200.0),
+                    ("revenue", "Продажа TR", "Продажа TR", None, None, None, None, 15000.0),
+                    ("revenue", "Продажа Шеринг", "Продажа Шеринг", None, None, None, None, 5000.0),
+                    ("expense", "Закуп TR", "Закуп TR", "direct", None, None, None, 6000.0),
+                    ("expense", "Маркетинг", "Маркетинг", "indirect", None, None, None, 800.0),
+                    ("expense", "Налог УСН", "Налог УСН", "tax", None, None, None, 200.0),
                 ],
             },
             {"one": (date(2026, 6, 1), 3000.0)},
@@ -386,13 +386,53 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(body["totals"]["opening_balance_month"], "2026-06-01")
         self.assertEqual(body["totals"]["opening_balance_manual"], True)
         self.assertEqual(body["revenues"][0]["name"], "Продажа TR")
+        self.assertEqual(body["revenues"][0]["line_name"], "Продажа TR")
         self.assertEqual(body["expenses"][0]["name"], "Закуп TR")
+        self.assertEqual(body["expenses"][0]["line_name"], "Закуп TR")
         self.assertEqual(body["expenses"][0]["expense_kind"], "direct")
         self.assertTrue(any("d.deal_type_code = 'rental' AND COALESCE(di.price, 0) > 0" in sql for sql in sql_collector))
         self.assertTrue(any("WHEN d.deal_type_code = 'rental' THEN 'Продажа Шеринг'" in sql for sql in sql_collector))
         self.assertTrue(any("'Закуп Шеринг' AS line_name" in sql for sql in sql_collector))
         self.assertTrue(any("CONCAT('Закуп '" in sql for sql in sql_collector))
         self.assertTrue(any("e.input_channel IN ('manual', 'api', 'import')" in sql for sql in sql_collector))
+
+    # Расходы закупки с источником должны отделяться от общей строки региона.
+    def test_finance_cash_flow_report_groups_purchase_expenses_by_source(self):
+        script = [
+            {
+                "all": [
+                    ("expense", "ASAT Закуп", "Закуп", "direct", 99, "ym", "ASAT", 2500.0),
+                    ("expense", "Закуп TR", "Закуп TR", "direct", None, None, None, 3500.0),
+                ],
+            },
+            {"one": None},
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/finance/reports/cash-flow?date_from=2026-07-01&date_to=2026-07-05",
+                    headers=self._auth_headers(role="manager"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["totals"]["expense"], "6000.00")
+        self.assertEqual(body["expenses"][0]["name"], "ASAT Закуп")
+        self.assertEqual(body["expenses"][0]["line_name"], "Закуп")
+        self.assertEqual(body["expenses"][0]["source_id"], 99)
+        self.assertEqual(body["expenses"][0]["source_code"], "ym")
+        self.assertEqual(body["expenses"][0]["source_name"], "ASAT")
+        self.assertEqual(body["expenses"][1]["name"], "Закуп TR")
+        self.assertIsNone(body["expenses"][1]["source_id"])
+        self.assertTrue(any("source_group_id" in sql for sql in sql_collector))
+        self.assertTrue(any("group_line_name" in sql for sql in sql_collector))
+        self.assertTrue(any("lower(line_name) LIKE '%%закуп%%'" in sql for sql in sql_collector))
 
     # Расшифровка Cash Flow должна отдавать строки по выбранной статье и интервалу даты проводки.
     def test_finance_cash_flow_details_success(self):
@@ -495,10 +535,121 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertTrue(any("COALESCE(NULLIF(author.name, ''), e.created_by) AS created_by" in sql for sql in sql_collector))
         self.assertTrue(any("p.metric_code IN ('revenue', 'direct_expense', 'indirect_expense')" in sql for sql in sql_collector))
 
+    # Сводная строка закупки источника должна раскрывать все закупочные строки этого источника.
+    def test_finance_cash_flow_details_source_purchase_group_uses_like_filter(self):
+        script = [
+            {
+                "all": [
+                    (
+                        "deal",
+                        "expense",
+                        "Закуп TR",
+                        date(2026, 7, 3),
+                        19350,
+                        None,
+                        "nikita_zheshko",
+                        "Услуга",
+                        "item-19350",
+                        10,
+                        "TR",
+                        "Turkey",
+                        99,
+                        "ym",
+                        "ASAT",
+                        "1",
+                        "12500.00",
+                        None,
+                        None,
+                        [],
+                        [],
+                        0,
+                        0,
+                        "Александр",
+                        "Закупка по завершенной продаже с коэффициентом региона",
+                    ),
+                ],
+            },
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/finance/reports/cash-flow/details?date_from=2026-07-01&date_to=2026-07-05&line_type=expense&line_name=%D0%97%D0%B0%D0%BA%D1%83%D0%BF&source_id=99",
+                    headers=self._auth_headers(role="manager"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["totals"]["expense"], "12500.00")
+        self.assertEqual(body["items"][0]["line_name"], "Закуп TR")
+        self.assertTrue(any("lower(line_name) LIKE %s" in sql for sql in sql_collector))
+        self.assertTrue(any("source_id = ANY(%s)" in sql for sql in sql_collector))
+
+    # Старая региональная строка закупки должна раскрывать только строки без источника.
+    def test_finance_cash_flow_details_purchase_line_excludes_source_rows_without_source_filter(self):
+        script = [
+            {
+                "all": [
+                    (
+                        "deal",
+                        "expense",
+                        "Закуп TR",
+                        date(2026, 7, 3),
+                        19353,
+                        None,
+                        "linovisual",
+                        "Услуга",
+                        "item-19353",
+                        10,
+                        "TR",
+                        "Turkey",
+                        None,
+                        None,
+                        "Без источника",
+                        "1",
+                        "1775.00",
+                        None,
+                        None,
+                        [],
+                        [],
+                        0,
+                        0,
+                        "Александр",
+                        "Закупка по завершенной продаже с коэффициентом региона",
+                    ),
+                ],
+            },
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/finance/reports/cash-flow/details?date_from=2026-07-01&date_to=2026-07-05&line_type=expense&line_name=%D0%97%D0%B0%D0%BA%D1%83%D0%BF%20TR",
+                    headers=self._auth_headers(role="manager"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["totals"]["expense"], "1775.00")
+        self.assertEqual(body["items"][0]["source_name"], "Без источника")
+        self.assertTrue(any("line_name = %s" in sql for sql in sql_collector))
+        self.assertTrue(any("source_id IS NULL" in sql for sql in sql_collector))
+        self.assertFalse(any("source_id = ANY(%s)" in sql for sql in sql_collector))
+
     # Если у месяца нет ручного остатка, берем ближайший прошлый и добавляем накопленный cash flow.
     def test_finance_cash_flow_report_uses_previous_opening_balance(self):
         script = [
-            {"all": [("revenue", "Продажа TR", None, 1000.0)]},
+            {"all": [("revenue", "Продажа TR", "Продажа TR", None, None, None, None, 1000.0)]},
             {"one": (date(2026, 5, 1), 5000.0)},
             {"one": (700.0,)},
         ]
