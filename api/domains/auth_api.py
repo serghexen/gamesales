@@ -74,7 +74,7 @@ def mount_auth_routes(
     @app.get("/users", response_model=list[UserListOut])
     def list_users(user: UserOut = Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
-            # Для обычных пользователей скрываем системные роли admin/owner из списка ответственных.
+            # Для обычных пользователей скрываем только owner; admin остается рабочим ответственным.
             can_view_all = (user.role in ("admin", "owner")) or (user.username in ("admin", "owner"))
             if can_view_all:
                 rows = qall(conn, "SELECT username, name, role_code, created_at FROM app.users ORDER BY user_id")
@@ -84,7 +84,7 @@ def mount_auth_routes(
                     """
                     SELECT username, name, role_code, created_at
                     FROM app.users
-                    WHERE lower(role_code) NOT IN ('admin', 'owner')
+                    WHERE lower(role_code) <> 'owner'
                     ORDER BY user_id
                     """,
                 )

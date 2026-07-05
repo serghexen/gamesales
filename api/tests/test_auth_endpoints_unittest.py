@@ -77,6 +77,23 @@ class AuthEndpointsTests(unittest.TestCase):
             self.assertEqual(body["username"], "alice")
             self.assertEqual(body["role"], "manager")
 
+    # Обычные пользователи должны видеть admin как рабочего ответственного, но не owner.
+    def test_list_users_for_manager_hides_only_owner_role(self):
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
+            patch.object(app_module, "qall", return_value=[]) as qall_mock,
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            token = app_module.create_access_token(7, "alice", "manager")
+            with self._client() as client:
+                res = client.get("/users", headers={"Authorization": f"Bearer {token}"})
+            self.assertEqual(res.status_code, 200)
+            sql_text = qall_mock.call_args[0][1]
+            self.assertIn("lower(role_code) <> 'owner'", sql_text)
+            self.assertNotIn("'admin'", sql_text)
+
     # Смена пароля должна вызвать UPDATE и вернуть ok=true.
     def test_change_password_success(self):
         with (

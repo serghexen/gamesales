@@ -13,4 +13,13 @@ describe('WorkView RBAC fallbacks', () => {
     expect(source).toContain('return defaultActionAllowedByRole(code, auth.state.role)')
     expect(source).not.toContain('if (Object.prototype.hasOwnProperty.call(map, code)) return Boolean(map[code])\n  return true')
   })
+
+  it('keeps admin assignable as deal responsible and hides only owner', () => {
+    const filePath = resolve(process.cwd(), 'src/views/WorkView.vue')
+    const source = readFileSync(filePath, 'utf8')
+
+    expect(source).toContain("const hiddenRoles = new Set(['owner'])")
+    expect(source).toContain('pushName(user?.name || user?.username, user?.role)')
+    expect(source).not.toContain("const hiddenRoles = new Set(['admin', 'owner'])")
+  })
 })

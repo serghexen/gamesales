@@ -560,8 +560,8 @@ function handleDealsRealtimeEvent(payload) {
 }
 
 const responsibleUserOptions = computed(() => {
-  // Строит список ответственных и скрывает admin/owner для остальных пользователей.
-  const hiddenRoles = new Set(['admin', 'owner'])
+  // Строит список ответственных; для обычных ролей скрываем только управляющего owner.
+  const hiddenRoles = new Set(['owner'])
   const seen = new Set()
   const options = []
 
@@ -577,7 +577,7 @@ const responsibleUserOptions = computed(() => {
   }
 
   for (const user of responsibleUsers.value) {
-    pushName(user?.name, user?.role)
+    pushName(user?.name || user?.username, user?.role)
   }
   pushName(currentUserResponsibleName.value)
   return options
