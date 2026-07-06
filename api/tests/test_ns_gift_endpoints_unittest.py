@@ -20,7 +20,7 @@ class NsGiftEndpointsTests(unittest.TestCase):
 
     # Проверяем, что endpoint баланса требует авторизацию.
     def test_balance_requires_auth(self):
-        with patch.object(app_module, "ensure_analytics_schema", return_value=None):
+        with patch.object(app_module, "ensure_startup_schema", return_value=None):
             with self._client() as client:
                 res = client.get("/integrations/ns-gift/balance")
             self.assertEqual(res.status_code, 401)
@@ -28,7 +28,7 @@ class NsGiftEndpointsTests(unittest.TestCase):
     # Баланс должен пробрасываться в нормализованном виде.
     def test_balance_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.ns_gift_service, "get_balance", return_value={"balance": 1234.56, "currency": "rub"}),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -53,7 +53,7 @@ class NsGiftEndpointsTests(unittest.TestCase):
             }
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.ns_gift_service, "get_services", return_value=services),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -67,7 +67,7 @@ class NsGiftEndpointsTests(unittest.TestCase):
     # Категории должны возвращаться как список строк.
     def test_categories_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.ns_gift_service, "get_categories", return_value=[{"category_id": 2, "name": "Steam"}, {"category_id": 3, "name": "PSN"}]),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -81,7 +81,7 @@ class NsGiftEndpointsTests(unittest.TestCase):
     def test_steam_currency_rate_success(self):
         payload = {"date": "2026-03-02", "rub/usd": "76.93", "kzt/usd": "500.41", "uah/usd": "43.23"}
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.ns_gift_service, "get_steam_currency_rate", return_value=payload),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -95,7 +95,7 @@ class NsGiftEndpointsTests(unittest.TestCase):
     def test_steam_amount_success(self):
         payload = {"exchange_rate": 76.93, "usd_price": 0.02}
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.ns_gift_service, "get_steam_amount", return_value=payload) as amount_mock,
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -109,7 +109,7 @@ class NsGiftEndpointsTests(unittest.TestCase):
     # Создание заказа должно валидировать service_id.
     def test_create_order_validation_error(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -130,7 +130,7 @@ class NsGiftEndpointsTests(unittest.TestCase):
             "paid": {"ok": True},
         }
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.ns_gift_service, "create_order_and_pay", return_value=fake_response) as order_mock,
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),

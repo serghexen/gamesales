@@ -32,7 +32,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Получение платформ должно отдавать список с приведением slot_capacity к int.
     def test_list_platforms_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "qall", return_value=[("ps4", "PlayStation 4", 2)]),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
@@ -45,7 +45,7 @@ class CatalogEndpointsTests(unittest.TestCase):
 
     # Без bearer-токена защищенный endpoint должен возвращать 401.
     def test_list_platforms_requires_auth(self):
-        with patch.object(app_module, "ensure_analytics_schema", return_value=None):
+        with patch.object(app_module, "ensure_startup_schema", return_value=None):
             with self._client() as client:
                 res = client.get("/platforms")
             self.assertEqual(res.status_code, 401)
@@ -53,7 +53,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Невалидный токен должен возвращать 401.
     def test_list_platforms_invalid_token(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -64,7 +64,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Создание платформы должно нормализовать code в lowercase.
     def test_create_platform_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "q1", return_value=(9,)),
             patch.object(app_module, "exec1", return_value=1) as exec1_mock,
@@ -84,7 +84,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Менеджер не должен иметь доступ к admin-only endpoint создания платформы.
     def test_create_platform_forbidden_for_manager(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -99,7 +99,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Валидация create_platform: пустые поля -> 400.
     def test_create_platform_validation_error(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -114,7 +114,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Обновление платформы должно возвращать 404, если записи нет.
     def test_update_platform_not_found(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "q1", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
@@ -131,7 +131,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Удаление платформы должно отдавать ok=true.
     def test_delete_platform_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "q1", return_value=(1,)),
             patch.object(app_module, "exec1", return_value=1),
@@ -146,7 +146,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Менеджер не должен иметь доступ к удалению платформы.
     def test_delete_platform_forbidden_for_manager(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -157,7 +157,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Получение регионов должно отдавать float purchase_cost_rate.
     def test_list_regions_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "qall", return_value=[("RU", "Russia", 1.25)]),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
@@ -171,7 +171,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Создание региона должно нормализовать code в uppercase.
     def test_create_region_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "q1", return_value=(9,)),
             patch.object(app_module, "exec1", return_value=1) as exec1_mock,
@@ -192,7 +192,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Менеджер не должен иметь доступ к созданию региона.
     def test_create_region_forbidden_for_manager(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -207,7 +207,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Удаление региона должно возвращать 404, если записи нет.
     def test_delete_region_not_found(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "q1", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
@@ -220,7 +220,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Получение доменов должно возвращать справочник в формате PlatformOut.
     def test_list_domains_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "qall", return_value=[("gmail.com", "gmail.com")]),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
@@ -234,7 +234,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Создание домена должно нормализовать имя в lowercase.
     def test_create_domain_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "exec1", return_value=1) as exec1_mock,
             patch.object(app_module, "JWT_SECRET", "test-secret"),
@@ -253,7 +253,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Пустое имя домена должно возвращать 400.
     def test_create_domain_validation_error(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -264,7 +264,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Менеджер не должен иметь доступ к созданию домена.
     def test_create_domain_forbidden_for_manager(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -275,7 +275,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Удаление домена должно отдавать ok=true.
     def test_delete_domain_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "q1", return_value=(1,)),
             patch.object(app_module, "exec1", return_value=1),
@@ -290,7 +290,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Получение источников должно отдавать список SourceOut.
     def test_list_sources_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "qall", return_value=[(10, "tg", "Telegram")]),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
@@ -304,7 +304,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Создание источника должно возвращать созданную запись.
     def test_create_source_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "q1", return_value=(3, "tg", "Telegram")),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
@@ -322,7 +322,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Пустые code/name для источника должны возвращать 400.
     def test_create_source_validation_error(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -337,7 +337,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Менеджер не должен иметь доступ к созданию источника.
     def test_create_source_forbidden_for_manager(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -352,7 +352,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Обновление источника должно отдавать 404, если записи нет.
     def test_update_source_not_found(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "q1", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
@@ -369,7 +369,7 @@ class CatalogEndpointsTests(unittest.TestCase):
     # Удаление источника должно отдавать ok=true.
     def test_delete_source_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "q1", return_value=(1,)),
             patch.object(app_module, "exec1", return_value=1),

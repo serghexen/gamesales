@@ -72,7 +72,7 @@ class DealsEndpointsTests(unittest.TestCase):
 
     # Без токена список сделок открываться не должен.
     def test_list_deals_requires_auth(self):
-        with patch.object(app_module, "ensure_analytics_schema", return_value=None):
+        with patch.object(app_module, "ensure_startup_schema", return_value=None):
             with self._client() as client:
                 res = client.get("/deals")
             self.assertEqual(res.status_code, 401)
@@ -80,7 +80,7 @@ class DealsEndpointsTests(unittest.TestCase):
     # Валидация списка: page должен быть >= 1.
     def test_list_deals_invalid_page(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -91,7 +91,7 @@ class DealsEndpointsTests(unittest.TestCase):
     # Валидация списка: page_size должен быть в диапазоне 1..200.
     def test_list_deals_invalid_page_size(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -138,7 +138,7 @@ class DealsEndpointsTests(unittest.TestCase):
             },
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -194,7 +194,7 @@ class DealsEndpointsTests(unittest.TestCase):
             },
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -260,7 +260,7 @@ class DealsEndpointsTests(unittest.TestCase):
             },
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -282,7 +282,7 @@ class DealsEndpointsTests(unittest.TestCase):
         ]
         sql_collector = []
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -304,7 +304,7 @@ class DealsEndpointsTests(unittest.TestCase):
         ]
         sql_collector = []
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -326,7 +326,7 @@ class DealsEndpointsTests(unittest.TestCase):
         ]
         sql_collector = []
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -343,7 +343,7 @@ class DealsEndpointsTests(unittest.TestCase):
     # Валидация create_deal: тип сделки должен быть sale/rental.
     def test_create_deal_invalid_type(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -358,7 +358,7 @@ class DealsEndpointsTests(unittest.TestCase):
     # Для sale обязателен region_code.
     def test_create_deal_sale_requires_region(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -378,7 +378,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (44,)},  # deal_item insert
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -400,7 +400,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (44,)},  # deal_item insert
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -424,7 +424,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (44,)},  # deal_item insert
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -456,7 +456,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (44,)},  # deal_item insert
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -493,7 +493,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # assignment insert
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -527,7 +527,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (False,)},  # first P2 is younger than the 2-month threshold
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -560,7 +560,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (1, datetime(2026, 4, 30, 0, 0, tzinfo=timezone.utc), 1)},  # same P2 platform is already active
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -600,7 +600,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # assignment insert
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -644,7 +644,7 @@ class DealsEndpointsTests(unittest.TestCase):
         ]
         sql_collector = []
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -685,7 +685,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # assignment insert
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -723,7 +723,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # duplicate assignment release
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -759,7 +759,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (1,)},  # occupied count for selected slot_type
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -794,7 +794,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (1,)},  # one activate assignment already fills subscription term
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -825,7 +825,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (44,)},  # deal_item insert
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -860,7 +860,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (0,)},  # get_account_slot_free
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -894,7 +894,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (99,)},  # conflicting deal
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -931,7 +931,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (44,)},  # deal_item insert
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -957,7 +957,7 @@ class DealsEndpointsTests(unittest.TestCase):
     # Для rentals обязателен slot_type_code.
     def test_create_rental_requires_slot_type(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -989,7 +989,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (1, 1)},  # slots_summary
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1022,7 +1022,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (0,)},  # get_account_slot_free
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1048,7 +1048,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": None},  # select current deal
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1087,7 +1087,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": current_row},  # select current deal
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1130,7 +1130,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": current_row},  # select current deal
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1172,7 +1172,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # update deal_items
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1221,7 +1221,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (900, 7, "ps5_p1", 5, 55)},  # assignment details
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1273,7 +1273,7 @@ class DealsEndpointsTests(unittest.TestCase):
         ]
         sql_collector = []
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1329,7 +1329,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (900, 7, "ps5_p1", 5, 55, 777)},  # active assignment details
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1377,7 +1377,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (900, 7, "ps5_p1", 5, 55)},  # assignment details
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1427,7 +1427,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (88,)},  # conflicting deal
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1479,7 +1479,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": None},  # no active assignment for sale
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1525,7 +1525,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (1,)},  # ensure_messenger_exists
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1580,7 +1580,7 @@ class DealsEndpointsTests(unittest.TestCase):
         ]
         sql_collector = []
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1625,7 +1625,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": current_row},  # current deal row
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1672,7 +1672,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # update deal_items
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1719,7 +1719,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # update deal_items
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1770,7 +1770,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # update deal_items
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1818,7 +1818,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": current_row},  # current deal row
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1869,7 +1869,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # update deal_items
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1913,7 +1913,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": current_row},  # current deal row
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1957,7 +1957,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (1,)},  # flow_status lookup
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -2005,7 +2005,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # release slot assignment
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -2029,7 +2029,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # update deal_items
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -2050,7 +2050,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # release slot assignments
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -2067,7 +2067,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": ("sale", "completed", datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc))},  # deal state
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -2083,7 +2083,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": ("sale", "pending", None)},  # deal state
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -2098,7 +2098,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": ("pending",)},  # current flow_status
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -2114,7 +2114,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # update deals status_code=cancelled
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),

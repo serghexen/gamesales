@@ -94,7 +94,7 @@ class ProductsEndpointsTests(unittest.TestCase):
         return buf.getvalue()
 
     def test_list_products_requires_auth(self):
-        with patch.object(app_module, "ensure_analytics_schema", return_value=None):
+        with patch.object(app_module, "ensure_startup_schema", return_value=None):
             with self._client() as client:
                 res = client.get("/products")
             self.assertEqual(res.status_code, 401)
@@ -123,7 +123,7 @@ class ProductsEndpointsTests(unittest.TestCase):
             },
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -145,7 +145,7 @@ class ProductsEndpointsTests(unittest.TestCase):
             },
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -164,7 +164,7 @@ class ProductsEndpointsTests(unittest.TestCase):
             {"all": [(77,), (88,)]},
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -182,7 +182,7 @@ class ProductsEndpointsTests(unittest.TestCase):
             {"one": None},
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -213,7 +213,7 @@ class ProductsEndpointsTests(unittest.TestCase):
             },
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -256,7 +256,7 @@ class ProductsEndpointsTests(unittest.TestCase):
             {"all": []},  # load_product platform_codes
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -322,7 +322,7 @@ class ProductsEndpointsTests(unittest.TestCase):
             {"all": [("ps5",)]},  # load_product platform_codes
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -360,7 +360,7 @@ class ProductsEndpointsTests(unittest.TestCase):
             },
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -399,7 +399,7 @@ class ProductsEndpointsTests(unittest.TestCase):
             },
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -424,7 +424,7 @@ class ProductsEndpointsTests(unittest.TestCase):
         ]
         conn_ctx = _ScriptedConnCtx(script)
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=conn_ctx),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -453,7 +453,7 @@ class ProductsEndpointsTests(unittest.TestCase):
         ]
         content = self._build_games_import_xlsx(active_title="Свод", include_games_sheet=True)
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -478,7 +478,7 @@ class ProductsEndpointsTests(unittest.TestCase):
         ]
         content = self._build_games_import_xlsx(active_title="products", include_games_sheet=False)
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),

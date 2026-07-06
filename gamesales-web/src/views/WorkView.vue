@@ -49,11 +49,6 @@
           :ctx="catalogsSectionCtx"
         />
 
-        <WorkAnalyticsSection
-          v-if="canViewAnalyticsSection && activeTab === 'analytics'"
-          :ctx="analyticsSectionCtx"
-        />
-
         <WorkFinanceSection
           v-if="canViewFinanceSection && activeTab === 'finance'"
           :ctx="financeSectionCtx"
@@ -155,7 +150,6 @@ import {
   toUtcDateTime,
   mapApiError,
 } from './work/domainUtils'
-import { useAnalytics } from './work/useAnalytics'
 import { useFinanceReports } from './work/useFinanceReports'
 import {
   createTelegramState,
@@ -201,7 +195,6 @@ import { useWorkSectionContexts } from './work/useWorkSectionContexts'
 import { createRealtimeRefreshScheduler, isDealMutationRealtimeEvent } from './work/realtimeRefreshScheduler'
 import WorkDashboardHero from './work/sections/WorkDashboardHero.vue'
 import WorkDashboardPanel from './work/sections/WorkDashboardPanel.vue'
-import WorkAnalyticsSection from './work/sections/WorkAnalyticsSection.vue'
 import WorkFinanceSection from './work/sections/WorkFinanceSection.vue'
 import WorkProfileSection from './work/sections/WorkProfileSection.vue'
 import WorkUsersSection from './work/sections/WorkUsersSection.vue'
@@ -724,7 +717,7 @@ const showDashboard = true
 const showRolePermissionsPanel = computed(() => canManageRolePermissions.value)
 
 const roleSectionDefaults = {
-  privileged_only: new Set(['analytics', 'catalogs', 'finance', 'users', 'dashboard']),
+  privileged_only: new Set(['catalogs', 'finance', 'users', 'dashboard']),
 }
 
 const mySectionPermissionsMap = ref({})
@@ -812,7 +805,6 @@ const canViewAccountsSection = computed(() => canViewSection('accounts'))
 const canViewProductsSection = computed(() => canViewSection('products'))
 const canViewNsGiftSection = computed(() => canViewSection('ns-gift'))
 const canViewTelegramSection = computed(() => canViewSection('telegram'))
-const canViewAnalyticsSection = computed(() => canViewSection('analytics'))
 const canViewCatalogsSection = computed(() => canViewSection('catalogs'))
 const canViewFinanceSection = computed(() => canViewSection('finance'))
 const canViewUsersSection = computed(() => canViewSection('users'))
@@ -836,7 +828,6 @@ function getAllowedTabs() {
   if (canViewProductsSection.value) tabs.push('products')
   if (canViewNsGiftSection.value) tabs.push('ns-gift')
   if (canViewTelegramSection.value) tabs.push('telegram')
-  if (canViewAnalyticsSection.value) tabs.push('analytics')
   if (canViewCatalogsSection.value) tabs.push('catalogs')
   if (canViewFinanceSection.value) tabs.push('finance')
   if (canViewUsersTab.value) tabs.push('users')
@@ -1340,19 +1331,6 @@ watch(
     writeDealFiltersSession(auth.state.user, dealFilters, dealShowCompleted.value)
   },
 )
-const {
-  analyticsFilters,
-  analyticsTotals,
-  analyticsByDay,
-  analyticsByType,
-  analyticsSourcesTopCount,
-  analyticsSourcesTopRevenue,
-  analyticsRepeatCustomers,
-  analyticsLoaded,
-  analyticsLoading,
-  analyticsError,
-  loadAnalytics,
-} = useAnalytics({ auth, apiGet, mapApiError })
 const {
   financeFilters,
   financeNewEntry,
@@ -3235,7 +3213,6 @@ const {
   routeQuery: computed(() => route.query || {}),
   canViewProfileSection,
   canViewUsersSection,
-  canViewAnalyticsSection,
   canViewCatalogsSection,
   canViewFinanceSection,
   canManageRolePermissions,
@@ -3531,45 +3508,12 @@ const dealsAreaCtx = asCtx({
   dealEditorFormCtx,
 })
 
-// Контекст вкладки аналитики: фильтры, таблицы и форматтеры.
-const analyticsSectionCtx = asCtx({
-  activeTab,
-  routeQuery: computed(() => route.query || {}),
-  canViewProfileSection,
-  canViewUsersSection,
-  canViewAnalyticsSection,
-  canViewCatalogsSection,
-  canViewFinanceSection,
-  canManageRolePermissions,
-  analyticsLoading,
-  analyticsError,
-  analyticsLoaded,
-  analyticsFilters,
-  maxDate,
-  minDate,
-  dealTypeOptions,
-  regions,
-  sourcesByCode,
-  analyticsTotals,
-  analyticsByDay,
-  analyticsByType,
-  analyticsSourcesTopCount,
-  analyticsSourcesTopRevenue,
-  analyticsRepeatCustomers,
-  loadAnalytics,
-  formatPrice,
-  formatDateOnly,
-  getDealTypeName,
-  formatPercent,
-})
-
 // Контекст вкладки финансов: фильтры, итоги и таблица по проектам.
 const financeSectionCtx = asCtx({
   activeTab,
   routeQuery: computed(() => route.query || {}),
   canViewProfileSection,
   canViewUsersSection,
-  canViewAnalyticsSection,
   canViewCatalogsSection,
   canViewFinanceSection,
   canManageRolePermissions,
@@ -3727,7 +3671,6 @@ const usersSectionCtx = asCtx({
 const profileSectionCtx = asCtx({
   isAdmin,
   canManageRolePermissions,
-  canViewAnalyticsSection,
   canViewCatalogsSection,
   canViewFinanceSection,
   canViewUsersSection,
@@ -3852,6 +3795,7 @@ useWorkLifecycleWatchers({
   route,
   TAB_KEYS,
   normalizeWorkTab,
+  setActiveTab,
   activeTab,
   telegram,
   startTelegramPolling,

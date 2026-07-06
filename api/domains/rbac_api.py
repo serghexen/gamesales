@@ -47,12 +47,11 @@ def mount_rbac_routes(
         ("accounts", "Аккаунты", 20),
         ("products", "Товары", 30),
         ("ns-gift", "Магазин", 40),
-        ("analytics", "Аналитика", 50),
-        ("catalogs", "Справочники", 60),
-        ("finance", "Финансы", 70),
-        ("users", "Пользователи", 80),
-        ("dashboard", "Дашборд", 90),
-        ("telegram", "Чаты", 100)
+        ("catalogs", "Справочники", 50),
+        ("finance", "Финансы", 60),
+        ("users", "Пользователи", 70),
+        ("dashboard", "Дашборд", 80),
+        ("telegram", "Чаты", 90)
     ]
 
     # Возвращает дефолтную видимость раздела для роли, если явная настройка еще не задана.
@@ -61,7 +60,7 @@ def mount_rbac_routes(
         section = str(section_code or "").strip().lower()
         if role in {"admin", "owner"}:
             return True
-        if section in {"analytics", "catalogs", "finance", "users", "dashboard"}:
+        if section in {"catalogs", "finance", "users", "dashboard"}:
             return False
         return True
 
@@ -114,6 +113,8 @@ def mount_rbac_routes(
                 action_count = int((cur.fetchone() or [0])[0] or 0)
                 cur.execute("SELECT count(*) FROM app.role_rbac_actions")
                 action_perm_count = int((cur.fetchone() or [0])[0] or 0)
+                cur.execute("SELECT count(*) FROM app.ui_sections WHERE section_code = 'analytics'")
+                stale_analytics_section_count = int((cur.fetchone() or [0])[0] or 0)
                 cur.execute(
                     "SELECT count(*) FROM app.rbac_actions WHERE NOT (action_code = ANY(%s))",
                     ([action_code for action_code, _, _, _ in ACTION_PERMISSIONS],),
@@ -125,6 +126,7 @@ def mount_rbac_routes(
                     and section_perm_count >= role_count * len(UI_SECTIONS)
                     and action_count >= len(ACTION_PERMISSIONS)
                     and action_perm_count >= role_count * len(ACTION_PERMISSIONS)
+                    and stale_analytics_section_count == 0
                     and stale_action_count == 0
                 ):
                     return
@@ -160,6 +162,8 @@ def mount_rbac_routes(
                 """,
                 UI_SECTIONS,
             )
+            # Удаляем старый раздел аналитики из RBAC, чтобы он не возвращался в матрицу доступов.
+            cur.execute("DELETE FROM app.ui_sections WHERE section_code = 'analytics'")
             cur.execute("SELECT code FROM app.user_roles ORDER BY code")
             role_rows = cur.fetchall() or []
             for (role_code,) in role_rows:

@@ -35,11 +35,6 @@
       :ctx="props.ctx.catalogsSectionCtx"
     />
 
-    <WorkAnalyticsSection
-      v-if="activeTab === 'analytics'"
-      :ctx="props.ctx.analyticsSectionCtx"
-    />
-
     <WorkUsersSection
       v-if="isAdmin && activeTab === 'users'"
       :ctx="props.ctx.usersSectionCtx"
@@ -56,7 +51,6 @@ import WorkProductsSection from './WorkProductsSection.vue'
 import WorkTelegramSection from './WorkTelegramSection.vue'
 import WorkDealsArea from './WorkDealsArea.vue'
 import WorkCatalogsSection from './WorkCatalogsSection.vue'
-import WorkAnalyticsSection from './WorkAnalyticsSection.vue'
 import WorkUsersSection from './WorkUsersSection.vue'
 
 // Единый контекст для всех вкладок внутри центральной области страницы.

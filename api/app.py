@@ -21,7 +21,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env.dev", override=True)
 logger = logging.getLogger(__name__)
 
-def ensure_analytics_schema():
+def ensure_startup_schema():
     try:
         with psycopg.connect(DB_DSN) as conn:
             # Поддерживаем схему в актуальном состоянии для локального запуска без ручных миграций.
@@ -169,7 +169,7 @@ async def lifespan(_: FastAPI):
     # Создаём и открываем пул соединений при каждом старте (поддерживает повторные запуски в тестах).
     _pool = ConnectionPool(DB_DSN, min_size=2, max_size=10, open=True)
     # Выполняем легкую инициализацию схемы при старте приложения.
-    ensure_analytics_schema()
+    ensure_startup_schema()
     yield
     # Закрываем пул при остановке приложения.
     _pool.close()
@@ -372,7 +372,6 @@ from domains.deals_api import mount_deals_routes
 from domains.deals_ws import build_deals_events, mount_deals_ws_routes
 from domains.telegram_api import mount_telegram_routes
 from domains.imports_models import ImportReportIn
-from domains.analytics_api import mount_analytics_routes
 from domains.finance_api import mount_finance_routes
 from domains.dashboard_api import mount_dashboard_routes
 from domains.products_api import mount_products_routes
@@ -1083,15 +1082,6 @@ mount_deals_ws_routes(
     app,
     redis_url=_REDIS_URL,
     parse_ws_user=parse_ws_user,
-)
-
-mount_analytics_routes(
-  app,
-  DB_DSN=DB_DSN,
-  get_current_user=get_current_user,
-  q1=q1,
-  qall=qall,
-  psycopg=pooled_psycopg,
 )
 
 mount_finance_routes(

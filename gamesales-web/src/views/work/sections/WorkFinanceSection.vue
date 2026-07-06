@@ -18,14 +18,6 @@
           Доступы
         </router-link>
         <router-link
-          v-if="canViewAnalyticsSection"
-          class="tab"
-          :class="{ active: activeTab === 'analytics' }"
-          :to="{ name: 'work', query: { ...routeQuery, tab: 'analytics', admin_panel: undefined } }"
-        >
-          Аналитика
-        </router-link>
-        <router-link
           v-if="canViewCatalogsSection"
           class="tab"
           :class="{ active: activeTab === 'catalogs' }"
@@ -45,7 +37,7 @@
     </div>
 
     <section class="panel admin-content-shell">
-      <div class="panel__head analytics-head">
+      <div class="panel__head report-head">
       </div>
 
       <div class="panel__body">
@@ -195,7 +187,7 @@
               </div>
             </div>
 
-            <div class="analytics-filters">
+            <div class="report-filters">
               <label class="field">
                 <span class="label">Дата</span>
                 <input v-model="ctx.financeNewEntry.biz_date" class="input" type="date" :max="ctx.maxDate" />
@@ -217,7 +209,7 @@
               </label>
             </div>
 
-            <div class="analytics-head__actions finance-actions-row">
+            <div class="report-head__actions finance-actions-row">
               <button data-test="finance-save-entry" class="ghost" type="button" :disabled="ctx.financeEntrySaving" @click="submitFinanceEntry">
                 {{ ctx.financeEntrySaving ? 'Сохраняем...' : 'Добавить запись' }}
               </button>
@@ -228,7 +220,7 @@
         </template>
 
         <template v-if="financeMode === 'journal'">
-          <div class="analytics-filters">
+          <div class="report-filters">
             <label class="field">
               <span class="label">Период с</span>
               <input v-model="ctx.financeEntryFilters.date_from" class="input" type="date" :max="ctx.financeEntryFilters.date_to || ctx.maxDate" />
@@ -309,7 +301,7 @@
               <span class="finance-integration-badge">API</span>
             </div>
 
-            <div class="analytics-filters">
+            <div class="report-filters">
               <label class="field">
                 <span class="label">Магазин</span>
                 <select v-model="ctx.financeYandexSync.store_code" class="input input--select">
@@ -343,7 +335,7 @@
             <p v-if="ctx.financeYandexSyncError" class="bad">{{ ctx.financeYandexSyncError }}</p>
             <p v-if="ctx.financeYandexSyncOk" class="good">{{ ctx.financeYandexSyncOk }}</p>
 
-            <div v-if="ctx.financeYandexSyncResult" class="analytics-cards finance-sync-cards">
+            <div v-if="ctx.financeYandexSyncResult" class="metric-cards finance-sync-cards">
               <div class="mini">
                 <div class="mini__label">Строк Яндекса</div>
                 <div class="mini__value">{{ Number(ctx.financeYandexSyncResult.total_rows || 0) }}</div>
@@ -375,7 +367,7 @@
               <span class="finance-integration-badge">API</span>
             </div>
 
-            <div class="analytics-filters">
+            <div class="report-filters">
               <label class="field">
                 <span class="label">Магазин</span>
                 <select v-model="ctx.financeWildberriesSync.store_code" class="input input--select">
@@ -414,7 +406,7 @@
             <p v-if="ctx.financeWildberriesSyncError" class="bad">{{ ctx.financeWildberriesSyncError }}</p>
             <p v-if="ctx.financeWildberriesSyncOk" class="good">{{ ctx.financeWildberriesSyncOk }}</p>
 
-            <div v-if="ctx.financeWildberriesSyncResult" class="analytics-cards finance-sync-cards">
+            <div v-if="ctx.financeWildberriesSyncResult" class="metric-cards finance-sync-cards">
               <div class="mini">
                 <div class="mini__label">Строк WB</div>
                 <div class="mini__value">{{ Number(ctx.financeWildberriesSyncResult.total_rows || 0) }}</div>
@@ -446,7 +438,7 @@
               <span class="finance-integration-badge">API</span>
             </div>
 
-            <div class="analytics-filters">
+            <div class="report-filters">
               <label class="field">
                 <span class="label">Магазин</span>
                 <select v-model="ctx.financeOzonSync.store_code" class="input input--select">
@@ -482,7 +474,7 @@
             <p v-if="ctx.financeOzonSyncError" class="bad">{{ ctx.financeOzonSyncError }}</p>
             <p v-if="ctx.financeOzonSyncOk" class="good">{{ ctx.financeOzonSyncOk }}</p>
 
-            <div v-if="ctx.financeOzonSyncResult" class="analytics-cards finance-sync-cards">
+            <div v-if="ctx.financeOzonSyncResult" class="metric-cards finance-sync-cards">
               <div class="mini">
                 <div class="mini__label">Операций Ozon</div>
                 <div class="mini__value">{{ Number(ctx.financeOzonSyncResult.total_rows || 0) }}</div>
@@ -508,7 +500,7 @@
         </template>
 
         <template v-if="financeMode === 'report'">
-          <div class="analytics-filters">
+          <div class="report-filters">
             <label class="field">
               <span class="label">Период с</span>
               <input v-model="ctx.financeFilters.date_from" class="input" type="date" :max="ctx.financeFilters.date_to || ctx.maxDate" />
@@ -649,7 +641,7 @@
           </div>
 
           <template v-else>
-            <div class="analytics-cards">
+            <div class="metric-cards">
               <div class="mini">
                 <div class="mini__label">Поступления</div>
                 <div class="mini__value">{{ ctx.formatPrice(ctx.financeReportTotals.revenue) }}</div>
@@ -702,7 +694,7 @@
         </template>
 
         <template v-if="financeMode === 'cash-flow'">
-          <div class="analytics-filters">
+          <div class="report-filters">
             <label class="field">
               <span class="label">С</span>
               <input v-model="ctx.financeCashFlowFilters.date_from" class="input" type="date" :max="ctx.financeCashFlowFilters.date_to || ctx.maxDate" />
@@ -741,7 +733,7 @@
           </div>
 
           <template v-else>
-            <div class="analytics-cards">
+            <div class="metric-cards">
               <div class="mini">
                 <div class="mini__label">Поступления</div>
                 <div class="mini__value">{{ ctx.formatPrice(ctx.financeCashFlowTotals.revenue) }}</div>
@@ -817,7 +809,7 @@
         </template>
 
         <template v-if="financeMode === 'pl'">
-          <div class="analytics-filters">
+          <div class="report-filters">
             <label class="field">
               <span class="label">С</span>
               <input v-model="ctx.financePlFilters.date_from" class="input" type="date" :max="ctx.financePlFilters.date_to || ctx.maxDate" />
@@ -856,7 +848,7 @@
           </div>
 
           <template v-else>
-            <div class="analytics-cards finance-pl-cards">
+            <div class="metric-cards finance-pl-cards">
               <div class="mini">
                 <div class="mini__label">Поступления</div>
                 <div class="mini__value">{{ ctx.formatPrice(ctx.financePlTotals.revenue) }}</div>
@@ -1043,7 +1035,7 @@
               </div>
             </div>
             <template v-else>
-              <div class="analytics-cards finance-details-cards">
+              <div class="metric-cards finance-details-cards">
                 <div class="mini">
                   <div class="mini__label">Поступления</div>
                   <div class="mini__value">{{ ctx.formatPrice(ctx.financeSourceDetailsTotals.revenue) }}</div>
@@ -1129,7 +1121,7 @@
             <button class="ghost ghost--compact" type="button" @click="closeCashFlowDetails">Закрыть</button>
           </div>
           <div class="modal__body finance-details-modal__body">
-            <div class="analytics-filters finance-details-filters">
+            <div class="report-filters finance-details-filters">
               <label class="field">
                 <span class="label">Период с</span>
                 <input v-model="ctx.financeCashFlowDetailsFilters.date_from" class="input" type="date" :max="ctx.financeCashFlowDetailsFilters.date_to || ctx.maxDate" />
@@ -1198,7 +1190,7 @@
               </div>
             </div>
             <template v-else>
-              <div class="analytics-cards finance-details-cards">
+              <div class="metric-cards finance-details-cards">
                 <div class="mini">
                   <div class="mini__label">Поступления</div>
                   <div class="mini__value">{{ ctx.formatPrice(ctx.financeCashFlowDetailsTotals.revenue) }}</div>
@@ -1291,7 +1283,7 @@
                 <p class="muted">Сохраняем…</p>
               </div>
             </div>
-            <div class="analytics-filters">
+            <div class="report-filters">
               <label class="field">
                 <span class="label">Название</span>
                 <input v-model="typeDraft.name" class="input" type="text" />
@@ -1346,7 +1338,7 @@
                 <p class="muted">Сохраняем…</p>
               </div>
             </div>
-            <div class="analytics-filters">
+            <div class="report-filters">
               <label class="field">
                 <span class="label">Название</span>
                 <input v-model="operationDraft.name" class="input" type="text" />
@@ -1400,13 +1392,11 @@ const activeTab = computed(() => String(unref(props.ctx.activeTab) || ''))
 const routeQuery = computed(() => unref(props.ctx.routeQuery) || {})
 const canViewUsersSection = computed(() => Boolean(unref(props.ctx.canViewUsersSection)))
 const canManageRolePermissions = computed(() => Boolean(unref(props.ctx.canManageRolePermissions)))
-const canViewAnalyticsSection = computed(() => Boolean(unref(props.ctx.canViewAnalyticsSection)))
 const canViewCatalogsSection = computed(() => Boolean(unref(props.ctx.canViewCatalogsSection)))
 const canViewFinanceSection = computed(() => Boolean(unref(props.ctx.canViewFinanceSection)))
 const showAdminTabs = computed(() => (
   canViewUsersSection.value
   || canManageRolePermissions.value
-  || canViewAnalyticsSection.value
   || canViewCatalogsSection.value
   || canViewFinanceSection.value
 ))
@@ -2224,13 +2214,13 @@ async function reloadFinanceCatalogs() {
   margin-top: 18px;
 }
 
-.finance-pl-cards.analytics-cards {
+.finance-pl-cards.metric-cards {
   grid-template-columns: repeat(auto-fill, 220px);
   align-items: start;
   justify-content: start;
 }
 
-.finance-pl-cards.analytics-cards .mini {
+.finance-pl-cards.metric-cards .mini {
   display: flex;
   box-sizing: border-box;
   width: 100%;
@@ -2489,7 +2479,7 @@ async function reloadFinanceCatalogs() {
   padding-bottom: 16px;
 }
 
-.finance-catalog-modal .analytics-filters {
+.finance-catalog-modal .report-filters {
   align-self: stretch;
   max-width: none;
   width: 100%;
@@ -2533,7 +2523,7 @@ async function reloadFinanceCatalogs() {
 }
 
 @media (max-width: 1500px) {
-  .finance-pl-cards.analytics-cards {
+  .finance-pl-cards.metric-cards {
     grid-template-columns: repeat(auto-fill, 220px);
   }
 }
@@ -2558,17 +2548,17 @@ async function reloadFinanceCatalogs() {
 }
 
 @media (max-width: 700px) {
-  .finance-pl-cards.analytics-cards {
+  .finance-pl-cards.metric-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .finance-pl-cards.analytics-cards .mini {
+  .finance-pl-cards.metric-cards .mini {
     width: 100%;
   }
 }
 
 @media (max-width: 480px) {
-  .finance-pl-cards.analytics-cards {
+  .finance-pl-cards.metric-cards {
     grid-template-columns: 1fr;
   }
 }

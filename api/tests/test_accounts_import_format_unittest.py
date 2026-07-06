@@ -100,7 +100,7 @@ class AccountsImportFormatTests(unittest.TestCase):
     def test_accounts_import_validate_reads_only_pochty_sheets(self):
         content = self._build_workbook()
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx([])),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -129,7 +129,7 @@ class AccountsImportFormatTests(unittest.TestCase):
         content = out.getvalue()
 
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx([])),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -248,7 +248,7 @@ class AccountsImportFormatTests(unittest.TestCase):
             {"one": None},   # row3 game missing
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -378,7 +378,7 @@ class AccountsImportFormatTests(unittest.TestCase):
             {"one": (1,)},    # row4 account exists
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -416,7 +416,7 @@ class AccountsImportFormatTests(unittest.TestCase):
             {"one": None},
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -446,7 +446,7 @@ class AccountsImportFormatTests(unittest.TestCase):
         content = out.getvalue()
 
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -478,7 +478,7 @@ class AccountsImportFormatTests(unittest.TestCase):
         content = out.getvalue()
 
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -510,7 +510,7 @@ class AccountsImportFormatTests(unittest.TestCase):
         }]
         sql_collector = []
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -553,7 +553,7 @@ class AccountsImportFormatTests(unittest.TestCase):
             {"all": [("andilino", date(2025, 11, 24))]},
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -584,7 +584,7 @@ class AccountsImportFormatTests(unittest.TestCase):
 
         script = [{"all": [("andilino", date(2025, 11, 24))]}]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -616,7 +616,7 @@ class AccountsImportFormatTests(unittest.TestCase):
             {"rowcount": 1},
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -650,7 +650,7 @@ class AccountsImportFormatTests(unittest.TestCase):
             {"rowcount": 1},
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),

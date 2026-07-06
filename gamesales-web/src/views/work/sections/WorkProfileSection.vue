@@ -21,14 +21,6 @@
         >
           Доступы
         </button>
-        <!-- Переносим вход в аналитику в профиль админа, чтобы не держать вкладку в шапке. -->
-        <router-link
-          v-if="ctx.canViewAnalyticsSection"
-          class="tab"
-          :to="{ name: 'work', query: { ...routeQuery, tab: 'analytics', admin_panel: undefined } }"
-        >
-          Аналитика
-        </router-link>
         <!-- Переносим справочники в профиль админа, чтобы разгрузить шапку. -->
         <router-link
           v-if="ctx.canViewCatalogsSection"
@@ -155,12 +147,11 @@ const rolePermissionsFormOpen = ref(false)
 const showAdminTabs = computed(() => Boolean(
   props.ctx.canViewUsersSection
   || props.ctx.canManageRolePermissions
-  || props.ctx.canViewAnalyticsSection
   || props.ctx.canViewCatalogsSection
   || props.ctx.canViewFinanceSection,
 ))
 
-// Сохраняем текущие query-параметры при переходе в аналитику из профиля.
+// Сохраняем текущие query-параметры при переходах внутри админского профиля.
 const routeQuery = computed(() => unref(props.ctx.routeQuery) || {})
 const accessPanelRequested = computed(() => String(routeQuery.value?.admin_panel || '').trim().toLowerCase() === 'access')
 const groupedActionPermissions = computed(() => {

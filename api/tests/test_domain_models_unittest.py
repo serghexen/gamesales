@@ -2,14 +2,6 @@ import unittest
 from datetime import date, datetime, timezone
 
 from domains.accounts_models import AccountCreate, AccountOut, AccountUpdate
-from domains.analytics_models import (
-    RepeatCustomersOut,
-    SalesAnalyticsByType,
-    SalesAnalyticsOut,
-    SalesAnalyticsPoint,
-    SalesAnalyticsTotals,
-    SourcesAnalyticsOut,
-)
 from domains.deals_models import DealCreate, DealUpdate, RentalCreate
 from domains.telegram_models import TelegramDialogsOut
 
@@ -76,50 +68,6 @@ class DealsModelsTests(unittest.TestCase):
     def test_deal_create_allows_empty_customer_nickname(self):
         model = DealCreate(deal_type_code="sale")
         self.assertIsNone(model.customer_nickname)
-
-
-class AnalyticsModelsTests(unittest.TestCase):
-    # Проверяем сборку вложенной аналитики.
-    def test_sales_analytics_out_builds_nested_payload(self):
-        model = SalesAnalyticsOut(
-            totals=SalesAnalyticsTotals(
-                revenue=1000,
-                purchase_cost=400,
-                margin=600,
-                count=10,
-                avg_check=100,
-            ),
-            by_day=[
-                SalesAnalyticsPoint(
-                    date=date(2026, 2, 9),
-                    revenue=500,
-                    purchase_cost=200,
-                    margin=300,
-                    count=5,
-                )
-            ],
-            by_type=[
-                SalesAnalyticsByType(
-                    deal_type_code="sale",
-                    revenue=1000,
-                    purchase_cost=400,
-                    margin=600,
-                    count=10,
-                )
-            ],
-        )
-        self.assertEqual(model.totals.count, 10)
-        self.assertEqual(model.by_day[0].date, date(2026, 2, 9))
-        self.assertEqual(model.by_type[0].deal_type_code, "sale")
-
-    # Проверяем сборку аналитики источников.
-    def test_sources_analytics_out_builds_nested_payload(self):
-        model = SourcesAnalyticsOut(
-            top_by_count=[],
-            top_by_revenue=[],
-            repeat_customers=RepeatCustomersOut(repeat_count=2, total_customers=10, repeat_share=0.2),
-        )
-        self.assertEqual(model.repeat_customers.repeat_count, 2)
 
 
 class TelegramModelsTests(unittest.TestCase):

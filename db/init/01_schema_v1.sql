@@ -703,11 +703,10 @@ VALUES
   ('products', 'Товары', 30),
   ('ns-gift', 'NS Gift', 40),
   ('telegram', 'Чаты', 50),
-  ('analytics', 'Аналитика', 60),
-  ('catalogs', 'Справочники', 70),
-  ('users', 'Пользователи', 80),
-  ('profile', 'Профиль', 90),
-  ('dashboard', 'Дашборд', 100)
+  ('catalogs', 'Справочники', 60),
+  ('users', 'Пользователи', 70),
+  ('profile', 'Профиль', 80),
+  ('dashboard', 'Дашборд', 90)
 ON CONFLICT (section_code) DO UPDATE
 SET section_name = EXCLUDED.section_name,
     sort_order = EXCLUDED.sort_order;
@@ -718,7 +717,7 @@ SELECT
   s.section_code,
   CASE
     WHEN lower(r.code) IN ('admin', 'owner') THEN true
-    WHEN s.section_code IN ('analytics', 'catalogs', 'users', 'dashboard') THEN false
+    WHEN s.section_code IN ('catalogs', 'users', 'dashboard') THEN false
     ELSE true
   END AS can_view,
   'system'

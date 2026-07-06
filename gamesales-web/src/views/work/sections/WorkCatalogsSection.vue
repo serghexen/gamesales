@@ -20,9 +20,6 @@
         >
           Доступы
         </router-link>
-        <router-link v-if="canViewAnalyticsSection" class="tab" :class="{ active: activeTab === 'analytics' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'analytics', admin_panel: undefined } }">
-          Аналитика
-        </router-link>
         <router-link v-if="canViewCatalogsSection" class="tab" :class="{ active: activeTab === 'catalogs' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'catalogs', admin_panel: undefined } }">
           Справочники
         </router-link>
@@ -657,7 +654,6 @@ const {
   activeTab,
   routeQuery,
   canViewUsersSection,
-  canViewAnalyticsSection,
   canViewCatalogsSection,
   canViewFinanceSection,
   canManageRolePermissions,
@@ -701,7 +697,6 @@ const {
 const showAdminTabs = computed(() => (
   Boolean(canViewUsersSection.value)
   || Boolean(canManageRolePermissions.value)
-  || Boolean(canViewAnalyticsSection.value)
   || Boolean(canViewCatalogsSection.value)
   || Boolean(canViewFinanceSection.value)
 ))

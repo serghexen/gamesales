@@ -83,7 +83,7 @@
                 <p class="muted">Сохраняем…</p>
               </div>
             </div>
-            <div class="analytics-filters">
+            <div class="report-filters">
               <label class="field">
                 <span class="label">Новый баланс</span>
                 <input

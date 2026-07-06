@@ -240,29 +240,6 @@ export function useActiveTabWatcher({
       dealsBootstrapped.value = true
       return
     }
-    if (tab === 'analytics') {
-      const tasks = []
-      if (!catalogsLoadedOnce.value && (!platforms.value.length || !regions.value.length)) {
-        tasks.push(loadCatalogs().then(() => {
-          if (!isCurrentRequest('analytics')) return
-          if (platforms.value.length || regions.value.length) catalogsLoadedOnce.value = true
-        }))
-      }
-      if (!sourcesLoadedOnce.value && !sources.value.length) {
-        tasks.push(loadSources().then(() => {
-          if (!isCurrentRequest('analytics')) return
-          if (sources.value.length) sourcesLoadedOnce.value = true
-        }))
-      }
-      if (!messengersLoadedOnce.value && !messengers.value.length) {
-        tasks.push(loadMessengers().then(() => {
-          if (!isCurrentRequest('analytics')) return
-          if (messengers.value.length) messengersLoadedOnce.value = true
-        }))
-      }
-      await Promise.all(tasks)
-      return
-    }
     if (tab === 'ns-gift') {
       // При открытии вкладки очищаем прошлые сообщения и загружаем свежие данные.
       nsGiftOk.value = ''

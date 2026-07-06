@@ -9,7 +9,6 @@ function buildCtx(overrides = {}) {
   return {
     isAdmin: false,
     canManageRolePermissions: false,
-    canViewAnalyticsSection: false,
     canViewCatalogsSection: false,
     canViewFinanceSection: false,
     canViewUsersSection: false,
@@ -50,7 +49,6 @@ describe('WorkProfileSection', () => {
         ctx: buildCtx({
           isAdmin: true,
           canManageRolePermissions: true,
-          canViewAnalyticsSection: true,
           canViewCatalogsSection: true,
           canViewFinanceSection: true,
           canViewUsersSection: true,
@@ -62,7 +60,7 @@ describe('WorkProfileSection', () => {
           teleport: true,
           RouterLink: {
             props: ['to'],
-            template: '<a class="analytics-link"><slot /></a>',
+            template: '<a class="admin-link"><slot /></a>',
           },
           WorkUsersSection: {
             template: '<div class="users-stub">Users section</div>',
@@ -72,9 +70,9 @@ describe('WorkProfileSection', () => {
     })
 
     expect(wrapper.find('.users-stub').exists()).toBe(true)
-    expect(wrapper.findAll('.analytics-link')).toHaveLength(4)
+    expect(wrapper.findAll('.admin-link')).toHaveLength(3)
     expect(wrapper.text()).toContain('Пользователи')
-    expect(wrapper.text()).toContain('Аналитика')
+    expect(wrapper.text()).not.toContain('Аналитика')
     expect(wrapper.text()).toContain('Справочники')
     expect(wrapper.text()).toContain('Финансы')
   })
@@ -89,7 +87,7 @@ describe('WorkProfileSection', () => {
           teleport: true,
           RouterLink: {
             props: ['to'],
-            template: '<a class="analytics-link"><slot /></a>',
+            template: '<a class="admin-link"><slot /></a>',
           },
           WorkUsersSection: {
             template: '<div class="users-stub">Users section</div>',
@@ -99,7 +97,7 @@ describe('WorkProfileSection', () => {
     })
 
     expect(wrapper.find('.users-stub').exists()).toBe(false)
-    expect(wrapper.find('.analytics-link').exists()).toBe(false)
+    expect(wrapper.find('.admin-link').exists()).toBe(false)
   })
 
   it('opens role permissions form after clicking access button', async () => {
@@ -132,7 +130,7 @@ describe('WorkProfileSection', () => {
           teleport: true,
           RouterLink: {
             props: ['to'],
-            template: '<a class="analytics-link"><slot /></a>',
+            template: '<a class="admin-link"><slot /></a>',
           },
           WorkUsersSection: {
             template: '<div class="users-stub">Users section</div>',

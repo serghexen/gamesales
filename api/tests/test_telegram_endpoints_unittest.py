@@ -68,7 +68,7 @@ class TelegramEndpointsTests(unittest.TestCase):
     def test_tg_status_not_connected(self):
         script = [{"one": None}]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -82,7 +82,7 @@ class TelegramEndpointsTests(unittest.TestCase):
     def test_tg_status_ready(self):
         script = [{"one": ("ready", "+79990000000", "session-token")}]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -97,7 +97,7 @@ class TelegramEndpointsTests(unittest.TestCase):
     # Старт авторизации должен быть закрыт для manager (только admin).
     def test_tg_auth_start_forbidden_for_manager(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -108,7 +108,7 @@ class TelegramEndpointsTests(unittest.TestCase):
     # Невалидный статус диалога должен возвращать 400.
     def test_tg_dialog_status_invalid(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -127,7 +127,7 @@ class TelegramEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # upsert status
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -146,7 +146,7 @@ class TelegramEndpointsTests(unittest.TestCase):
     def test_tg_contact_get_empty(self):
         script = [{"one": None}]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -163,7 +163,7 @@ class TelegramEndpointsTests(unittest.TestCase):
             {"rowcount": 1},  # upsert contact
         ]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -181,7 +181,7 @@ class TelegramEndpointsTests(unittest.TestCase):
     def test_tg_dialogs_not_connected(self):
         script = [{"one": (None, "pending")}]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -194,7 +194,7 @@ class TelegramEndpointsTests(unittest.TestCase):
     def test_tg_messages_not_connected(self):
         script = [{"one": (None, "pending")}]
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),

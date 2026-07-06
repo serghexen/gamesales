@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
 import {
+  TAB_KEYS,
   maxPrice,
   getMaxDate,
   clampPrice,
@@ -12,6 +13,11 @@ import {
 } from '../domainUtils.js'
 
 describe('domainUtils', () => {
+  it('TAB_KEYS does not expose removed analytics tab', () => {
+    expect(TAB_KEYS).not.toContain('analytics')
+    expect(TAB_KEYS).toContain('finance')
+  })
+
   it('getMaxDate returns YYYY-MM-DD format', () => {
     expect(getMaxDate()).toMatch(/^\d{4}-\d{2}-\d{2}$/)
   })

@@ -29,7 +29,7 @@ class AuthEndpointsTests(unittest.TestCase):
     # Логин должен возвращать токен и пользователя при валидных данных.
     def test_login_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "init_auth_schema", return_value=None),
             patch.object(app_module, "ensure_admin_user", return_value=None),
@@ -49,7 +49,7 @@ class AuthEndpointsTests(unittest.TestCase):
     # При неверном пароле API должен отдавать 401.
     def test_login_invalid_credentials(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "init_auth_schema", return_value=None),
             patch.object(app_module, "ensure_admin_user", return_value=None),
@@ -65,7 +65,7 @@ class AuthEndpointsTests(unittest.TestCase):
     # /auth/me должен возвращать пользователя из токена.
     def test_auth_me_returns_user(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
@@ -80,7 +80,7 @@ class AuthEndpointsTests(unittest.TestCase):
     # Обычные пользователи должны видеть admin как рабочего ответственного, но не owner.
     def test_list_users_for_manager_hides_only_owner_role(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "qall", return_value=[]) as qall_mock,
             patch.object(app_module, "JWT_SECRET", "test-secret"),
@@ -97,7 +97,7 @@ class AuthEndpointsTests(unittest.TestCase):
     # Смена пароля должна вызвать UPDATE и вернуть ok=true.
     def test_change_password_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "get_user_by_username", return_value=(1, "admin", "old_hash", "admin")),
             patch.object(app_module, "verify_password", return_value=True),
@@ -120,7 +120,7 @@ class AuthEndpointsTests(unittest.TestCase):
     # Обновление роли пользователя должно писать новый role_code и возвращать профиль.
     def test_update_user_role_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "role_exists", return_value=True),
             patch.object(app_module, "get_user_by_username", return_value=(12, "manager1", "hash", "manager")),
@@ -142,7 +142,7 @@ class AuthEndpointsTests(unittest.TestCase):
     # Создание пользователя должно сохранять заполненное имя.
     def test_create_user_with_name_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "role_exists", return_value=True),
             patch.object(app_module, "get_user_by_username", return_value=None),
@@ -167,7 +167,7 @@ class AuthEndpointsTests(unittest.TestCase):
     # Полное обновление пользователя должно менять имя и роль.
     def test_update_user_success(self):
         with (
-            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_DummyConnCtx()),
             patch.object(app_module, "role_exists", return_value=True),
             patch.object(app_module, "get_user_by_username", return_value=(12, "manager1", "hash", "manager")),

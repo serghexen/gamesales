@@ -9,7 +9,6 @@ function buildCtx(overrides = {}) {
     routeQuery: {},
     canViewUsersSection: true,
     canManageRolePermissions: true,
-    canViewAnalyticsSection: true,
     canViewCatalogsSection: true,
     canViewFinanceSection: true,
     financeMode: 'entry',
@@ -377,6 +376,7 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.findAll('.admin-link').length).toBeGreaterThanOrEqual(4)
     expect(wrapper.text()).toContain('Финансы')
     expect(wrapper.text()).toContain('Справочники')
+    expect(wrapper.text()).not.toContain('Аналитика')
     expect(wrapper.text()).toContain('Ввод')
     expect(wrapper.text()).toContain('Журнал')
     expect(wrapper.text()).toContain('Интеграции')
