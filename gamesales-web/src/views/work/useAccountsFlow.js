@@ -203,6 +203,7 @@ export function useAccountsFlow({
       next_activation_at: editAccount.next_activation_at,
       notes: editAccount.notes,
       account_date: editAccount.account_date,
+      purchase_cost: Number(editAccount.purchase_cost || 0),
       email_password: editAccount.email_password,
       account_password: editAccount.account_password,
       auth_code: editAccount.auth_code,
@@ -390,6 +391,7 @@ export function useAccountsFlow({
     editAccount.next_activation_at = a.next_activation_at || ''
     editAccount.notes = a.notes || ''
     editAccount.account_date = a.account_date || ''
+    editAccount.purchase_cost = Number(a.purchase_cost || 0)
 
     // Сначала показываем то, что уже есть в локальном кеше.
     applyCachedSecretsToEditAccount(a.account_id)
@@ -441,6 +443,7 @@ export function useAccountsFlow({
         editAccount.next_activation_at = freshAccount.next_activation_at || ''
         editAccount.notes = freshAccount.notes || ''
         editAccount.account_date = freshAccount.account_date || ''
+        editAccount.purchase_cost = Number(freshAccount.purchase_cost || 0)
       }
       applyCachedSecretsToEditAccount(targetId)
       if (accountEditMode.value === 'view') {
@@ -470,6 +473,7 @@ export function useAccountsFlow({
     newAccount.region_code = ''
     newAccount.notes = ''
     newAccount.account_date = ''
+    newAccount.purchase_cost = 0
     newAccount.email_password = ''
     newAccount.account_password = ''
     newAccount.reserve_text = ''
@@ -502,6 +506,7 @@ export function useAccountsFlow({
       editAccount.next_activation_at = snapshot.next_activation_at || ''
       editAccount.notes = snapshot.notes || ''
       editAccount.account_date = snapshot.account_date || ''
+      editAccount.purchase_cost = Number(snapshot.purchase_cost || 0)
       editAccount.email_password = snapshot.email_password || ''
       editAccount.account_password = snapshot.account_password || ''
       editAccount.auth_code = snapshot.auth_code || ''
@@ -523,6 +528,7 @@ export function useAccountsFlow({
       region_code: '',
       notes: '',
       account_date: '',
+      purchase_cost: 0,
       email_password: '',
       account_password: '',
       reserve_text: '',
@@ -540,6 +546,7 @@ export function useAccountsFlow({
       next_activation_at: editAccount.next_activation_at,
       notes: editAccount.notes,
       account_date: editAccount.account_date,
+      purchase_cost: Number(editAccount.purchase_cost || 0),
       email_password: editAccount.email_password,
       account_password: editAccount.account_password,
       auth_code: editAccount.auth_code,
@@ -561,6 +568,7 @@ export function useAccountsFlow({
     editAccount.next_activation_at = ''
     editAccount.notes = ''
     editAccount.account_date = ''
+    editAccount.purchase_cost = 0
     editAccount.email_password = ''
     editAccount.email_key = 'email_password'
     editAccount.account_password = ''
@@ -588,6 +596,7 @@ export function useAccountsFlow({
     newAccount.region_code = ''
     newAccount.notes = ''
     newAccount.account_date = ''
+    newAccount.purchase_cost = 0
     newAccount.email_password = ''
     newAccount.account_password = ''
     newAccount.reserve_text = ''
@@ -707,6 +716,8 @@ export function useAccountsFlow({
           domain_code: newAccount.domain_code || null,
           notes: newAccount.notes || null,
           account_date: newAccount.account_date || null,
+          // Передаем закуп аккаунта как базу для косвенного расхода "Закуп Шеринг".
+          purchase_cost: Number(newAccount.purchase_cost || 0),
         },
         { token: auth.state.token }
       )
@@ -767,6 +778,7 @@ export function useAccountsFlow({
       newAccount.region_code = ''
       newAccount.notes = ''
       newAccount.account_date = ''
+      newAccount.purchase_cost = 0
       newAccount.email_password = ''
       newAccount.account_password = ''
       newAccount.reserve_text = ''
@@ -822,6 +834,8 @@ export function useAccountsFlow({
           domain_code: editAccount.domain_code || null,
           notes: editAccount.notes || null,
           account_date: editAccount.account_date || null,
+          // Сохраняем закуп аккаунта отдельно от закупов в сделках.
+          purchase_cost: Number(editAccount.purchase_cost || 0),
           status_code: editAccount.status_code || 'active',
           // Передаем флаг деактивации отдельным полем: backend сам валидирует правило 183 дней.
           is_deactivated: Boolean(editAccount.is_deactivated),

@@ -10,6 +10,7 @@ function buildProps(overrides = {}) {
     login_name: 'acc',
     domain_code: 'mail.com',
     region_code: 'RU',
+    purchase_cost: 1250,
     status_code: 'active',
     is_deactivated: false,
     deactivated_at: '',
@@ -38,6 +39,7 @@ function buildProps(overrides = {}) {
     canReflectEmail: true,
     canReflectDate: true,
     canReflectRegion: true,
+    canReflectPurchaseCost: true,
     canReflectAccountPassword: true,
     canReflectEmailPassword: true,
     canReflectAuthCode: true,
@@ -89,6 +91,7 @@ function buildProps(overrides = {}) {
       login_name: '',
       domain_code: '',
       region_code: '',
+      purchase_cost: 0,
       account_date: '',
       notes: '',
       account_password: '',
@@ -233,6 +236,34 @@ describe('WorkAccountEditorModal', () => {
     expect(typeSelect).toBeTruthy()
     expect(typeSelect.text()).not.toContain('Все')
     expect(typeSelect.element.value).toBe('game')
+  })
+
+  it('shows purchase cost between region and date in account forms', () => {
+    const editWrapper = mount(WorkAccountEditorModal, {
+      props: buildProps({
+        accountModalMode: 'edit',
+        accountEditMode: 'view',
+      }),
+      global: { stubs: { teleport: true } },
+    })
+    const editLabels = editWrapper.findAll('.label').map((item) => item.text())
+    expect(editLabels.indexOf('Регион')).toBeLessThan(editLabels.indexOf('Закупочная цена'))
+    expect(editLabels.indexOf('Закупочная цена')).toBeLessThan(editLabels.indexOf('Дата'))
+    const editTripleRows = editWrapper.findAll('.deal-form__triple').map((row) => row.text())
+    expect(editTripleRows.some((text) => text.includes('Регион') && text.includes('Закупочная цена') && text.includes('Дата'))).toBe(true)
+
+    const createWrapper = mount(WorkAccountEditorModal, {
+      props: buildProps({
+        accountModalMode: 'create',
+        accountEditMode: 'edit',
+      }),
+      global: { stubs: { teleport: true } },
+    })
+    const createLabels = createWrapper.findAll('.label').map((item) => item.text())
+    expect(createLabels.indexOf('Регион')).toBeLessThan(createLabels.indexOf('Закупочная цена'))
+    expect(createLabels.indexOf('Закупочная цена')).toBeLessThan(createLabels.indexOf('Дата'))
+    const createTripleRows = createWrapper.findAll('.deal-form__triple').map((row) => row.text())
+    expect(createTripleRows.some((text) => text.includes('Регион') && text.includes('Закупочная цена') && text.includes('Дата'))).toBe(true)
   })
 
   it('shows quick product create when list is empty and calls create handler with selected type', async () => {
@@ -558,6 +589,7 @@ describe('WorkAccountEditorModal', () => {
         canReflectEmail: false,
         canReflectDate: false,
         canReflectRegion: false,
+        canReflectPurchaseCost: false,
         canReflectAccountPassword: false,
         canReflectEmailPassword: false,
         canReflectAuthCode: false,
@@ -577,6 +609,7 @@ describe('WorkAccountEditorModal', () => {
     expect(wrapper.text()).not.toContain('Логин (без домена)')
     expect(wrapper.text()).not.toContain('Домен')
     expect(wrapper.text()).not.toContain('Регион')
+    expect(wrapper.text()).not.toContain('Закупочная цена')
     expect(wrapper.text()).not.toContain('Дата')
     expect(wrapper.text()).not.toContain('Пароль аккаунт')
     expect(wrapper.text()).not.toContain('Пароль почта')

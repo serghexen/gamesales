@@ -30,8 +30,8 @@ function createHarness() {
     resetModalPos: vi.fn(),
     accountModalMode: ref('edit'),
     accountEditMode: ref('view'),
-    editAccount: reactive({ open: true, account_id: 5, product_ids: [] }),
-    newAccount: reactive({ product_ids: [] }),
+    editAccount: reactive({ open: true, account_id: 5, product_ids: [], purchase_cost: 0 }),
+    newAccount: reactive({ product_ids: [], purchase_cost: 0 }),
     accountProductSearch: ref(''),
     editAccountProductSearch: ref(''),
     accountProductType: ref(''),
@@ -155,6 +155,7 @@ describe('useAccountsFlow', () => {
     h.newAccount.domain_code = 'mail.com'
     h.newAccount.region_code = 'RU'
     h.newAccount.account_date = '2026-03-26'
+    h.newAccount.purchase_cost = 333.45
     h.newAccount.account_password = 'acc-pass'
     h.newAccount.email_password = 'mail-pass'
     h.newAccount.auth_code = 'auth-code'
@@ -177,6 +178,11 @@ describe('useAccountsFlow', () => {
           { secret_key: 'auth_code', secret_value: 'auth-code' },
         ]),
       }),
+      { token: 'token-1' }
+    )
+    expect(h.apiPost).toHaveBeenCalledWith(
+      '/accounts',
+      expect.objectContaining({ purchase_cost: 333.45 }),
       { token: 'token-1' }
     )
     expect(h.apiPost).toHaveBeenCalledWith(
@@ -243,6 +249,7 @@ describe('useAccountsFlow', () => {
       region_code: 'RU',
       notes: 'note',
       account_date: '2025-01-01',
+      purchase_cost: 1500,
       status: 'active',
     })
 
@@ -251,11 +258,13 @@ describe('useAccountsFlow', () => {
 
     h.editAccount.login_name = 'changed'
     h.editAccount.notes = 'changed note'
+    h.editAccount.purchase_cost = 2500
 
     h.toggleAccountEditMode()
     expect(h.accountEditMode.value).toBe('view')
     expect(h.editAccount.login_name).toBe('user')
     expect(h.editAccount.notes).toBe('note')
+    expect(h.editAccount.purchase_cost).toBe(1500)
   })
 
   it('createAccount duplicate shows warning modal text instead of inline error', async () => {
@@ -298,6 +307,7 @@ describe('useAccountsFlow', () => {
     h.editAccount.login_name = 'user'
     h.editAccount.domain_code = 'mail.com'
     h.editAccount.region_code = 'RU'
+    h.editAccount.purchase_cost = 444.55
     h.editAccount.is_deactivated = true
     h.apiPut.mockResolvedValue({ ok: true })
     h.suppressUnsavedConfirm.value = true
@@ -306,7 +316,7 @@ describe('useAccountsFlow', () => {
 
     expect(h.apiPut).toHaveBeenCalledWith(
       '/accounts/5',
-      expect.objectContaining({ is_deactivated: true }),
+      expect.objectContaining({ is_deactivated: true, purchase_cost: 444.55 }),
       { token: 'token-1' }
     )
   })

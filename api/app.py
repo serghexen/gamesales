@@ -33,6 +33,7 @@ def ensure_startup_schema():
             exec1(conn, "ALTER TABLE app.accounts ADD COLUMN IF NOT EXISTS is_deactivated boolean NOT NULL DEFAULT false")
             exec1(conn, "ALTER TABLE app.accounts ADD COLUMN IF NOT EXISTS deactivated_at timestamptz")
             exec1(conn, "ALTER TABLE app.accounts ADD COLUMN IF NOT EXISTS next_activation_at timestamptz")
+            exec1(conn, "ALTER TABLE app.accounts ADD COLUMN IF NOT EXISTS purchase_cost numeric(12,2) NOT NULL DEFAULT 0")
             # Фиксируем копирование резерва отдельно от сделки, чтобы повторная выдача была невозможна.
             exec1(
                 conn,

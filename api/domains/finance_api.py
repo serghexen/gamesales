@@ -3519,6 +3519,24 @@ def mount_finance_routes(
             UNION ALL
 
             SELECT
+              a.account_date AS activity_date,
+              NULL::bigint AS source_id,
+              NULL::text AS source_code,
+              NULL::text AS source_name,
+              fdr.region_id,
+              'expense' AS line_type,
+              CONCAT('Закуп Шеринг ', COALESCE(fdr.code, r.code, 'Без региона')) AS line_name,
+              'indirect'::text AS expense_kind,
+              (a.purchase_cost * COALESCE(r.purchase_cost_rate, 1.0)) AS amount
+            FROM app.accounts a
+            LEFT JOIN app.regions r ON r.region_id = a.region_id
+            LEFT JOIN finance.dim_regions fdr ON fdr.app_region_id = r.region_id
+            WHERE a.account_date IS NOT NULL
+              AND COALESCE(a.purchase_cost, 0) <> 0
+
+            UNION ALL
+
+            SELECT
               e.biz_date AS activity_date,
               e.source_id,
               fsrc.code AS source_code,
@@ -3937,6 +3955,41 @@ def mount_finance_routes(
                     fdr.region_id, fdr.code, rd.code, fdr.name, rd.name,
                     fds.source_id, fds.code, src.code, fds.name, src.name,
                     closer.created_by
+
+                  UNION ALL
+
+                  SELECT
+                    'account'::text AS row_type,
+                    'expense'::text AS line_type,
+                    CONCAT('Закуп Шеринг ', COALESCE(fdr.code, r.code, 'Без региона')) AS line_name,
+                    a.account_date AS activity_date,
+                    NULL::bigint AS deal_id,
+                    NULL::bigint AS entry_id,
+                    COALESCE(NULLIF(a.login_name || '@' || d.name, '@'), NULLIF(a.login_name, ''), 'Аккаунт') AS customer_name,
+                    'Аккаунт' AS operation_name,
+                    COALESCE(NULLIF(a.login_name || '@' || d.name, '@'), NULLIF(a.login_name, ''), 'Аккаунт') AS item_title,
+                    fdr.region_id,
+                    COALESCE(fdr.code, r.code) AS region_code,
+                    COALESCE(fdr.name, r.name, 'Без региона') AS region_name,
+                    NULL::bigint AS source_id,
+                    NULL::text AS source_code,
+                    NULL::text AS source_name,
+                    1::numeric AS qty,
+                    (a.purchase_cost * COALESCE(r.purchase_cost_rate, 1.0)) AS amount,
+                    a.notes AS comment,
+                    ('account-' || a.account_id::text) AS external_key,
+                    '[]'::jsonb AS order_ids,
+                    '[]'::jsonb AS shop_skus,
+                    0::integer AS orders_count,
+                    0::integer AS rows_count,
+                    NULL::text AS created_by,
+                    'Закупочная цена аккаунта с коэффициентом региона' AS reason
+                  FROM app.accounts a
+                  LEFT JOIN app.domains d ON d.domain_id = a.domain_id
+                  LEFT JOIN app.regions r ON r.region_id = a.region_id
+                  LEFT JOIN finance.dim_regions fdr ON fdr.app_region_id = r.region_id
+                  WHERE a.account_date IS NOT NULL
+                    AND COALESCE(a.purchase_cost, 0) <> 0
 
                   UNION ALL
 

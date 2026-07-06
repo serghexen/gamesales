@@ -188,7 +188,7 @@
                           </select>
                         </label>
                       </div>
-                      <div v-if="canReflectRegion || canReflectDate" class="deal-form__double field--full">
+                      <div v-if="canReflectRegion || canReflectPurchaseCost || canReflectDate" class="deal-form__triple field--full">
                         <label v-if="canReflectRegion" class="field">
                           <span class="label">Регион</span>
                           <input
@@ -203,6 +203,18 @@
                               {{ r.name }} ({{ r.code }})
                             </option>
                           </select>
+                        </label>
+                        <label v-if="canReflectPurchaseCost" class="field">
+                          <span class="label">Закупочная цена</span>
+                          <input
+                            v-model.number="editAccount.purchase_cost"
+                            class="input"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            :readonly="accountEditMode === 'view'"
+                            @input="editAccount.purchase_cost = normalizeAccountPurchaseCost(editAccount.purchase_cost)"
+                          />
                         </label>
                         <label v-if="canReflectDate" class="field">
                           <span class="label">Дата</span>
@@ -524,7 +536,7 @@
                           </select>
                         </label>
                       </div>
-                      <div class="deal-form__double field--full">
+                      <div class="deal-form__triple field--full">
                         <label class="field">
                           <span class="label">Регион</span>
                           <select v-model="newAccount.region_code" class="input input--select">
@@ -533,6 +545,17 @@
                               {{ r.name }} ({{ r.code }})
                             </option>
                           </select>
+                        </label>
+                        <label v-if="canReflectPurchaseCost" class="field">
+                          <span class="label">Закупочная цена</span>
+                          <input
+                            v-model.number="newAccount.purchase_cost"
+                            class="input"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            @input="newAccount.purchase_cost = normalizeAccountPurchaseCost(newAccount.purchase_cost)"
+                          />
                         </label>
                         <label class="field">
                           <span class="label">Дата</span>
@@ -700,6 +723,7 @@ const props = defineProps([
   'canReflectEmail',
   'canReflectDate',
   'canReflectRegion',
+  'canReflectPurchaseCost',
   'canReflectAccountPassword',
   'canReflectEmailPassword',
   'canReflectAuthCode',
@@ -780,6 +804,7 @@ const canDeleteAccountModal = computed(() => props.canDeleteAccount === true)
 const canReflectEmail = computed(() => props.canReflectEmail === true)
 const canReflectDate = computed(() => props.canReflectDate === true)
 const canReflectRegion = computed(() => props.canReflectRegion === true)
+const canReflectPurchaseCost = computed(() => props.canReflectPurchaseCost === true)
 const canReflectAccountPassword = computed(() => props.canReflectAccountPassword === true)
 const canReflectEmailPassword = computed(() => props.canReflectEmailPassword === true)
 const canReflectAuthCode = computed(() => props.canReflectAuthCode === true)
@@ -818,6 +843,13 @@ const accountProductSearchModel = computed({
   get: () => props.accountProductSearch,
   set: (value) => props.setAccountProductSearch(value),
 })
+
+// Держим закупочную цену в допустимом формате, чтобы в API не уходили отрицательные значения.
+const normalizeAccountPurchaseCost = (value) => {
+  const num = Number(value)
+  if (!Number.isFinite(num) || num < 0) return 0
+  return Math.round(num * 100) / 100
+}
 
 const accountProductTypeModel = computed({
   get: () => props.accountProductType,

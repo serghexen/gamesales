@@ -22,6 +22,13 @@ class AccountsModelsTests(unittest.TestCase):
         model = AccountCreate(account_date=datetime(2026, 2, 9, 12, 30))
         self.assertEqual(model.account_date, date(2026, 2, 9))
 
+    # Закупочная цена аккаунта не может быть отрицательной.
+    def test_account_purchase_cost_must_be_non_negative(self):
+        with self.assertRaises(ValueError):
+            AccountCreate(purchase_cost=-1)
+        with self.assertRaises(ValueError):
+            AccountUpdate(purchase_cost=-1)
+
     # Проверяем, что list-поле не "шарится" между экземплярами.
     def test_account_out_slot_status_not_shared_between_instances(self):
         first = AccountOut(

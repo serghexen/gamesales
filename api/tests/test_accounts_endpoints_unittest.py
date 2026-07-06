@@ -261,6 +261,30 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(body["account_id"], 11)
             self.assertEqual(body["status"], "active")
             self.assertEqual(body["login_full"], "acc1@gmail.com")
+            self.assertEqual(body["purchase_cost"], 0.0)
+
+    # Менеджер не может вручную передать закупочную цену аккаунта без action-права.
+    def test_create_account_purchase_cost_forbidden_for_manager(self):
+        with (
+            patch.object(app_module, "ensure_startup_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx([])),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.post(
+                    "/accounts",
+                    headers=self._auth_headers(role="manager"),
+                    json={
+                        "region_code": "RU",
+                        "login_name": "acc1",
+                        "domain_code": "gmail.com",
+                        "account_date": "2024-01-10",
+                        "purchase_cost": 500,
+                    },
+                )
+            self.assertEqual(res.status_code, 403)
+            self.assertIn("accounts.reflect_purchase_cost", str(res.json().get("detail", "")))
 
     # Обновление аккаунта доступно админу, у менеджера это выключено матрицей RBAC.
     def test_update_account_allowed_for_admin(self):
@@ -299,9 +323,9 @@ class AccountsEndpointsTests(unittest.TestCase):
     # Обновление аккаунта должно вернуть актуальную карточку.
     def test_update_account_success(self):
         script = [
-            {"one": ("login1", 3, 2, "active", "2024-01-10", "old")},  # current
+            {"one": ("login1", 3, 2, "active", "2024-01-10", "old", False, None, None, 100.0)},  # current
             {"rowcount": 1},  # update
-            {"one": (5, "RU", "active", "login1", "gmail.com", "2024-01-10", "updated")},  # result row
+            {"one": (5, "RU", "active", "login1", "gmail.com", "2024-01-10", "updated", False, None, None, 555.5)},  # result row
             {"all": []},  # get_account_platform_slots
             {"all": []},  # get_account_slot_status
         ]
@@ -312,9 +336,10 @@ class AccountsEndpointsTests(unittest.TestCase):
             patch.object(app_module, "JWT_ALG", "HS256"),
         ):
             with self._client() as client:
-                res = client.put("/accounts/5", headers=self._auth_headers(role="admin"), json={"notes": "updated"})
+                res = client.put("/accounts/5", headers=self._auth_headers(role="admin"), json={"notes": "updated", "purchase_cost": 555.5})
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json()["notes"], "updated")
+            self.assertEqual(res.json()["purchase_cost"], 555.5)
 
     # Деактивация должна выставлять флаг и даты в карточке аккаунта.
     def test_update_account_deactivation_success(self):

@@ -20,6 +20,7 @@ REFERENCE_DISABLED_ACTIONS = {
     "accounts.reflect_auth_code",
     "accounts.reflect_reserves",
     "accounts.reflect_slots",
+    "accounts.reflect_purchase_cost",
     "accounts.edit",
     "accounts.delete",
     "products.reflect_slots",
@@ -65,6 +66,7 @@ class RbacPermissionsTests(unittest.TestCase):
         self.assertTrue(default_action_allowed("manager", "deals_active.approve_return"))
         self.assertTrue(default_action_allowed("operator", "deals_completed.press_return"))
         self.assertTrue(default_action_allowed("manager", "accounts.reflect_deals"))
+        self.assertFalse(default_action_allowed("manager", "accounts.reflect_purchase_cost"))
         self.assertTrue(default_action_allowed("operator", "products.reflect_deals"))
         self.assertFalse(default_action_allowed("admin", "deals_draft.change_deal_date"))
 

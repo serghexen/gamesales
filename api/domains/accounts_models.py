@@ -19,12 +19,20 @@ class AccountCreate(BaseModel):
     login_name: Optional[str] = None
     domain_code: Optional[str] = Field(None, description="email domain, e.g. example.com")
     account_date: Optional[date] = None
+    purchase_cost: float = 0
     notes: Optional[str] = None
 
     @field_validator("account_date", mode="before")
     @classmethod
     def normalize_account_date(cls, v):
         return _normalize_date(v)
+
+    @field_validator("purchase_cost")
+    @classmethod
+    def validate_purchase_cost(cls, v):
+        if float(v or 0) < 0:
+            raise ValueError("purchase_cost must be >= 0")
+        return float(v or 0)
 
 
 class AccountUpdate(BaseModel):
@@ -34,12 +42,20 @@ class AccountUpdate(BaseModel):
     status_code: Optional[str] = None
     is_deactivated: Optional[bool] = None
     account_date: Optional[date] = None
+    purchase_cost: Optional[float] = None
     notes: Optional[str] = None
 
     @field_validator("account_date", mode="before")
     @classmethod
     def normalize_account_date(cls, v):
         return _normalize_date(v)
+
+    @field_validator("purchase_cost")
+    @classmethod
+    def validate_purchase_cost(cls, v):
+        if v is not None and float(v or 0) < 0:
+            raise ValueError("purchase_cost must be >= 0")
+        return None if v is None else float(v or 0)
 
 
 class AccountPlatformSlots(BaseModel):
@@ -70,6 +86,7 @@ class AccountOut(BaseModel):
     product_titles: Optional[List[str]] = None
     platform_codes: Optional[List[str]] = None
     account_date: Optional[date] = None
+    purchase_cost: float = 0
     notes: Optional[str] = None
     is_deactivated: bool = False
     deactivated_at: Optional[datetime] = None

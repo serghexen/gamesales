@@ -327,6 +327,7 @@ def mount_accounts_routes(
                     a.domain_id,
                     a.account_date,
                     a.notes,
+                    a.purchase_cost,
                     a.is_deactivated,
                     a.deactivated_at,
                     a.next_activation_at,
@@ -376,7 +377,8 @@ def mount_accounts_routes(
                   page.total_count,
                   page.is_deactivated,
                   page.deactivated_at,
-                  page.next_activation_at
+                  page.next_activation_at,
+                  page.purchase_cost
                 FROM page
                 LEFT JOIN app.v_account_slot_status s ON s.account_id = page.account_id
                 ORDER BY {sort_col} {sort_dir}, page.account_id DESC, s.slot_type_code
@@ -405,6 +407,7 @@ def mount_accounts_routes(
                     platform_codes=list(row[8] or []),
                     account_date=row[5],
                     notes=row[6],
+                    purchase_cost=float(row_value(row, 19, 0) or 0),
                     is_deactivated=bool(row_value(row, 16, False)),
                     deactivated_at=row_value(row, 17),
                     next_activation_at=row_value(row, 18),
@@ -489,15 +492,17 @@ def mount_accounts_routes(
         validate_date_not_future(payload.account_date, "account_date")
         with psycopg.connect(DB_DSN) as conn:
             require_action_permission(conn, q1, user, "accounts.create")
+            if float(payload.purchase_cost or 0) != 0:
+                require_action_permission(conn, q1, user, "accounts.reflect_purchase_cost")
             region_id = get_region_id(conn, payload.region_code) if payload.region_code else None
             domain_id = get_domain_id(conn, payload.domain_code)
 
             try:
                 row = q1(conn, """
-                    INSERT INTO app.accounts(login_name, domain_id, region_id, notes, account_date)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO app.accounts(login_name, domain_id, region_id, notes, account_date, purchase_cost)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     RETURNING account_id
-                """, (payload.login_name, domain_id, region_id, payload.notes, payload.account_date))
+                """, (payload.login_name, domain_id, region_id, payload.notes, payload.account_date, payload.purchase_cost))
             except Exception as exc:
                 # 23505 = unique_violation (PostgreSQL), срабатывает и при proxy-обертке psycopg.
                 if getattr(exc, "sqlstate", None) == "23505":
@@ -531,6 +536,7 @@ def mount_accounts_routes(
                 slot_status=slot_status,
                 product_titles=None,
                 account_date=payload.account_date,
+                purchase_cost=float(payload.purchase_cost or 0),
                 notes=payload.notes,
                 is_deactivated=False,
                 deactivated_at=None,
@@ -549,7 +555,7 @@ def mount_accounts_routes(
             current = q1(
                 conn,
                 """
-                SELECT login_name, domain_id, region_id, status_code, account_date, notes, is_deactivated, deactivated_at, next_activation_at
+                SELECT login_name, domain_id, region_id, status_code, account_date, notes, is_deactivated, deactivated_at, next_activation_at, purchase_cost
                 FROM app.accounts
                 WHERE account_id=%s
                 """,
@@ -567,6 +573,7 @@ def mount_accounts_routes(
             current_is_deactivated = bool(row_value(current, 6, False))
             current_deactivated_at = row_value(current, 7)
             current_next_activation_at = row_value(current, 8)
+            current_purchase_cost = float(row_value(current, 9, 0) or 0)
             user_role = str(getattr(user, "role", "") or "").strip().lower()
 
             region_id = get_region_id(conn, payload.region_code) if payload.region_code else current_region_id
@@ -578,6 +585,7 @@ def mount_accounts_routes(
                 raise HTTPException(403, "Only admin can change account status")
             new_status = payload.status_code if payload.status_code is not None else current_status
             new_date = payload.account_date if payload.account_date is not None else current_account_date
+            new_purchase_cost = float(payload.purchase_cost if payload.purchase_cost is not None else current_purchase_cost)
             new_notes = payload.notes if payload.notes is not None else current_notes
 
             # Оператору запрещаем менять флаг деактивации, но статус он видит как обычно.
@@ -595,6 +603,8 @@ def mount_accounts_routes(
                 require_action_permission(conn, q1, user, "accounts.reflect_email")
             if payload.region_code is not None and region_id != current_region_id:
                 require_action_permission(conn, q1, user, "accounts.reflect_region")
+            if payload.purchase_cost is not None and new_purchase_cost != current_purchase_cost:
+                require_action_permission(conn, q1, user, "accounts.reflect_purchase_cost")
 
             # Обновляем деактивацию с правилом повторной активации не раньше чем через 183 дня.
             requested_is_deactivated = current_is_deactivated if payload.is_deactivated is None else bool(payload.is_deactivated)
@@ -626,6 +636,7 @@ def mount_accounts_routes(
                     status_code=%s,
                     notes=%s,
                     account_date=%s,
+                    purchase_cost=%s,
                     is_deactivated=%s,
                     deactivated_at=%s,
                     next_activation_at=%s
@@ -638,6 +649,7 @@ def mount_accounts_routes(
                     new_status,
                     new_notes,
                     new_date,
+                    new_purchase_cost,
                     next_is_deactivated,
                     next_deactivated_at,
                     next_activation_at,
@@ -659,7 +671,8 @@ def mount_accounts_routes(
                   a.notes,
                   a.is_deactivated,
                   a.deactivated_at,
-                  a.next_activation_at
+                  a.next_activation_at,
+                  a.purchase_cost
                 FROM app.accounts a
                 LEFT JOIN app.regions r ON r.region_id = a.region_id
                 LEFT JOIN app.domains d ON d.domain_id = a.domain_id
@@ -681,6 +694,7 @@ def mount_accounts_routes(
                 product_titles=None,
                 account_date=row[5],
                 notes=row[6],
+                purchase_cost=float(row_value(row, 10, 0) or 0),
                 is_deactivated=bool(row_value(row, 7, False)),
                 deactivated_at=row_value(row, 8),
                 next_activation_at=row_value(row, 9),

@@ -146,6 +146,7 @@
         :can-reflect-email="canDoAction('accounts.reflect_email')"
         :can-reflect-date="canDoAction('accounts.reflect_date')"
         :can-reflect-region="canDoAction('accounts.reflect_region')"
+        :can-reflect-purchase-cost="canDoAction('accounts.reflect_purchase_cost')"
         :can-reflect-account-password="canDoAction('accounts.reflect_account_password')"
         :can-reflect-email-password="canDoAction('accounts.reflect_email_password')"
         :can-reflect-auth-code="canDoAction('accounts.reflect_auth_code')"
