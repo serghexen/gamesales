@@ -153,6 +153,7 @@
         :can-reflect-reserves="canDoAction('accounts.reflect_reserves')"
         :can-reflect-slots="canDoAction('accounts.reflect_slots')"
         :can-reflect-deals="canDoAction('accounts.reflect_deals')"
+        :can-do-action="canDoAction"
         :cancel-edit-account="ctx.cancelEditAccount"
         :modal-ref="ctx.modalRef"
         :modal-style="ctx.modalStyle"

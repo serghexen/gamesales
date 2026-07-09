@@ -46,6 +46,10 @@ def mount_products_routes(
         if not row:
             raise HTTPException(400, f"Unknown subscription product_id: {product_id}")
 
+    def require_product_field_permission(conn, user: UserOut, context_code: str, field_code: str) -> None:
+        # Проверяет точечное право поля товара, чтобы API не принимал скрытые поля напрямую.
+        require_action_permission(conn, q1, user, f"products.{context_code}.field.{field_code}")
+
     @app.get("/products/subscriptions/free-by-slot", response_model=List[int])
     def list_subscription_products_with_free_slot(
         slot_type_code: str,
@@ -742,6 +746,24 @@ def mount_products_routes(
 
         with psycopg.connect(DB_DSN) as conn:
             require_action_permission(conn, q1, user, "products.create_games")
+            require_product_field_permission(conn, user, "create", "title")
+            if payload.short_title is not None:
+                require_product_field_permission(conn, user, "create", "short_title")
+            if payload.region_code is not None:
+                require_product_field_permission(conn, user, "create", "region")
+            if payload.platform_codes is not None:
+                require_product_field_permission(conn, user, "create", "platforms")
+            if payload.subscription_notes is not None:
+                require_product_field_permission(conn, user, "create", "notes")
+            if type_code == "game":
+                if payload.link is not None:
+                    require_product_field_permission(conn, user, "create", "link")
+                if payload.text_lang is not None:
+                    require_product_field_permission(conn, user, "create", "text_lang")
+                if payload.audio_lang is not None:
+                    require_product_field_permission(conn, user, "create", "audio_lang")
+                if payload.vr_support is not None:
+                    require_product_field_permission(conn, user, "create", "vr_support")
             type_row = q1(
                 conn,
                 "SELECT 1 FROM app.product_types WHERE code=%s AND is_archived IS NOT TRUE",
@@ -855,6 +877,24 @@ def mount_products_routes(
     def update_product(product_id: int, payload: ProductUpdate = Body(...), user: UserOut = Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
             require_action_permission(conn, q1, user, "products.edit")
+            if payload.title is not None:
+                require_product_field_permission(conn, user, "edit", "title")
+            if payload.short_title is not None:
+                require_product_field_permission(conn, user, "edit", "short_title")
+            if payload.region_code is not None:
+                require_product_field_permission(conn, user, "edit", "region")
+            if payload.platform_codes is not None:
+                require_product_field_permission(conn, user, "edit", "platforms")
+            if payload.subscription_notes is not None:
+                require_product_field_permission(conn, user, "edit", "notes")
+            if payload.link is not None:
+                require_product_field_permission(conn, user, "edit", "link")
+            if payload.text_lang is not None:
+                require_product_field_permission(conn, user, "edit", "text_lang")
+            if payload.audio_lang is not None:
+                require_product_field_permission(conn, user, "edit", "audio_lang")
+            if payload.vr_support is not None:
+                require_product_field_permission(conn, user, "edit", "vr_support")
             row = q1(
                 conn,
                 """

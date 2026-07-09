@@ -381,4 +381,23 @@ describe('WorkProductEditorModal', () => {
     expect(wrapper.text()).not.toContain('Аккаунты')
     expect(wrapper.text()).not.toContain('Быстрое создание аккаунта')
   })
+
+  it('hides product form fields without field permissions', async () => {
+    const wrapper = mount(WorkProductEditorModal, {
+      props: {
+        ctx: buildCtx({
+          canDoAction: (actionCode) => ![
+            'products.view.field.link',
+            'products.view.field.notes',
+            'products.view.field.accounts',
+          ].includes(actionCode),
+        }),
+      },
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(wrapper.text()).not.toContain('Ссылка')
+    expect(wrapper.text()).not.toContain('Комментарий')
+    expect(wrapper.text()).not.toContain('Аккаунты')
+  })
 })

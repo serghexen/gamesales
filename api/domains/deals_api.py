@@ -854,8 +854,10 @@ def mount_deals_routes(
     
         with psycopg.connect(DB_DSN) as conn:
             require_action_permission(conn, q1, user, "deals_active.create")
+            require_action_permission(conn, q1, user, f"deals_active.new.{deal_type}.create")
             if new_flow_status == "draft":
                 require_action_permission(conn, q1, user, "deals_active.draft")
+                require_action_permission(conn, q1, user, f"deals_active.new.{deal_type}.draft")
             # Нормализуем поля "номер заказа" и "ответственный", чтобы не хранить служебные значения.
             order_number = (payload.order_number or "").strip() or None
             responsible_username = (payload.responsible_username or "").strip() or None

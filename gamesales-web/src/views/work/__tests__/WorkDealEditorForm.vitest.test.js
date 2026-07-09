@@ -159,8 +159,8 @@ describe('WorkDealEditorForm template', () => {
 
   it('renders rental slot type in right column рядом с типом товара', () => {
     const source = readTemplateSource()
-    const newRentalMain = source.match(/<div class="deal-form__rental-main">[\s\S]*?<label class="field field--sharing-account">/)?.[0] || ''
-    const newRentalSide = source.match(/<div class="deal-form__rental-side">[\s\S]*?<label class="field">[\s\S]*?{{ showNewDealProductSearch \? 'Поиск' : 'Товар' }}/)?.[0] || ''
+    const newRentalMain = source.match(/<div class="deal-form__rental-main">[\s\S]*?<label[^>]*class="field field--sharing-account"/)?.[0] || ''
+    const newRentalSide = source.match(/<div class="deal-form__rental-side">[\s\S]*?{{ showNewDealProductSearch \? 'Поиск' : 'Товар' }}/)?.[0] || ''
     const rentalLayouts = source.match(/class="deal-form__rental-layout"/g) || []
 
     expect(source).toContain('deal-form__rental-main')
@@ -192,8 +192,8 @@ describe('WorkDealEditorForm template', () => {
   it('uses slot-first flow controls for subscriptions in create and edit', () => {
     const source = readTemplateSource()
 
-    expect(source).toContain("v-if=\"showNewDealProductSearch\"")
-    expect(source).toContain("v-if=\"dealEditMode !== 'view' && showEditDealProductSearch\"")
+    expect(source).toContain("v-if=\"canNewDealField('product', 'rental') && showNewDealProductSearch\"")
+    expect(source).toContain("v-if=\"canEditDealField('product', 'rental') && dealEditMode !== 'view' && showEditDealProductSearch\"")
     expect(source).toContain('isNewRentalSubscriptionMode && !newDeal.slot_type_code')
     expect(source).toContain('isEditRentalSubscriptionMode && !editDeal.slot_type_code')
     expect(source).toContain("getSlotTypeOptionsForDeal('new')")
@@ -223,8 +223,8 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('!isNewRentalSubscriptionMode || showNewDealProductSearch || newDeal.subscription_term_id')
     expect(source).toContain('isEditRentalSubscriptionMode && editDeal.product_id && editDeal.slot_type_code && !editDeal.subscription_term_id')
     expect(source).toContain('isNewRentalSubscriptionMode && newDeal.product_id && newDeal.slot_type_code && !newDeal.subscription_term_id')
-    expect(source).toContain("v-if=\"isEditRentalSubscriptionMode && editDeal.product_id && !editDeal.subscription_term_id\"")
-    expect(source).toContain("v-if=\"isNewRentalSubscriptionMode && newDeal.product_id && !newDeal.subscription_term_id\"")
+    expect(source).toContain("v-if=\"canEditDealField('subscription_term', 'rental') && isEditRentalSubscriptionMode && editDeal.product_id && !editDeal.subscription_term_id\"")
+    expect(source).toContain("v-if=\"canNewDealField('subscription_term', 'rental') && isNewRentalSubscriptionMode && newDeal.product_id && !newDeal.subscription_term_id\"")
   })
 
   it('renders quick create blocks as collapsible toggles', () => {
@@ -346,8 +346,8 @@ describe('WorkDealEditorForm template', () => {
   it('hides refund field in pending and draft statuses and keeps it only for other flows', () => {
     const source = readTemplateSource()
 
-    expect(source).toContain("editDeal.deal_type_code === 'rental' && !isEditDealPendingFlow")
-    expect(source).toContain("editDeal.deal_type_code === 'sale' && !isEditDealPendingFlow")
+    expect(source).toContain("editDeal.deal_type_code === 'rental' && canEditDealField('return', 'rental') && !isEditDealPendingFlow")
+    expect(source).toContain("editDeal.deal_type_code === 'sale' && canEditDealField('return', 'sale') && !isEditDealPendingFlow")
     expect(source).toContain("const isEditDealPendingFlow = computed(() => {")
     expect(source).toContain("return status === 'pending' || status === 'draft'")
     expect(source).toContain("ctx.canDoAction('deals_completed.process_return')")
@@ -409,6 +409,7 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('<span class="label">Скидка</span>')
     expect(source).toContain('const canViewDiscountField = computed(() => {')
     expect(source).toContain("ctx.canDoAction('deals_active.discount')")
+    expect(source).toContain('dealFieldAction(groupCode, `${mode}.${type}`, fieldKey)')
     expect(discountLabels).toHaveLength(4)
     expect(source).toContain('deal-form__input--locked')
     expect(source).toContain('Аккаунт')
@@ -432,5 +433,35 @@ describe('WorkDealEditorForm template', () => {
 
     expect(wrapper.text()).toContain('Метод оплаты')
     expect(wrapper.text()).not.toContain('Скидка')
+  })
+
+  it('hides edit system deal fields when their field permissions are disabled', () => {
+    const hiddenSystemFields = new Set([
+      'deals_completed.edit.sale.field.created_at',
+      'deals_completed.edit.sale.field.completed_at',
+      'deals_completed.edit.sale.field.status',
+      'deals_completed.edit.sale.field.return',
+    ])
+    const wrapper = mount(WorkDealEditorForm, {
+      props: {
+        ctx: buildDealFormCtx({
+          editDeal: {
+            open: true,
+            deal_type_code: 'sale',
+            flow_status_code: 'completed',
+            created_at: '2026-07-09T10:00:00Z',
+            completed_at: '2026-07-09T11:00:00Z',
+            is_refund: true,
+            product_link: '',
+          },
+          canDoAction: (actionCode) => !hiddenSystemFields.has(actionCode),
+        }),
+      },
+    })
+
+    expect(wrapper.text()).not.toContain('Дата создания')
+    expect(wrapper.text()).not.toContain('Дата завершения')
+    expect(wrapper.text()).not.toContain('Статус')
+    expect(wrapper.text()).not.toContain('Возврат')
   })
 })

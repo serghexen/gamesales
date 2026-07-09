@@ -1,4 +1,5 @@
 import { confirmDiscardIfNeeded, isSameNormalized } from './unsavedChanges'
+import { accountFieldAction } from './accountPermissions.js'
 
 export function useAccountsFlow({
   auth,
@@ -58,6 +59,11 @@ export function useAccountsFlow({
     return canDoAction(actionCode)
   }
 
+  const canUseAccountField = (context, fieldKey) => {
+    // Поля формы аккаунта проверяем отдельной матрицей, чтобы скрытое поле не уходило в payload.
+    return canUseAccountAction(accountFieldAction(context, fieldKey))
+  }
+
   // Возвращает дефолтную дату срока подписки: сегодня + 1 год.
   function getDefaultSubscriptionTermDate() {
     const nextYearDate = new Date()
@@ -73,11 +79,11 @@ export function useAccountsFlow({
     const missing = []
     if (!String(newAccount.login_name || '').trim()) missing.push('Логин')
     if (!String(newAccount.domain_code || '').trim()) missing.push('Домен')
-    if (!String(newAccount.region_code || '').trim()) missing.push('Регион')
-    if (!String(newAccount.account_date || '').trim()) missing.push('Дата')
-    if (canUseAccountAction('accounts.reflect_account_password') && !String(newAccount.account_password || '').trim()) missing.push('Пароль аккаунта')
-    if (canUseAccountAction('accounts.reflect_email_password') && !String(newAccount.email_password || '').trim()) missing.push('Пароль почты')
-    if (canUseAccountAction('accounts.reflect_auth_code') && !String(newAccount.auth_code || '').trim()) missing.push('Код аутентификатора')
+    if (canUseAccountField('create', 'region') && !String(newAccount.region_code || '').trim()) missing.push('Регион')
+    if (canUseAccountField('create', 'date') && !String(newAccount.account_date || '').trim()) missing.push('Дата')
+    if (canUseAccountAction('accounts.reflect_account_password') && canUseAccountField('create', 'account_password') && !String(newAccount.account_password || '').trim()) missing.push('Пароль аккаунта')
+    if (canUseAccountAction('accounts.reflect_email_password') && canUseAccountField('create', 'email_password') && !String(newAccount.email_password || '').trim()) missing.push('Пароль почты')
+    if (canUseAccountAction('accounts.reflect_auth_code') && canUseAccountField('create', 'auth_code') && !String(newAccount.auth_code || '').trim()) missing.push('Код аутентификатора')
     return missing
   }
 
@@ -708,32 +714,34 @@ export function useAccountsFlow({
     }
     accountsLoading.value = true
     try {
-      const created = await apiPost(
-        '/accounts',
-        {
-          region_code: newAccount.region_code || null,
+      const createPayload = {
+        ...(canUseAccountField('create', 'region') ? { region_code: newAccount.region_code || null } : {}),
+        ...(canUseAccountField('create', 'email') ? {
           login_name: newAccount.login_name || null,
           domain_code: newAccount.domain_code || null,
-          notes: newAccount.notes || null,
-          account_date: newAccount.account_date || null,
-          // Передаем закуп аккаунта как базу для косвенного расхода "Закуп Шеринг".
-          purchase_cost: Number(newAccount.purchase_cost || 0),
-        },
+        } : {}),
+        ...(canUseAccountField('create', 'notes') ? { notes: newAccount.notes || null } : {}),
+        ...(canUseAccountField('create', 'date') ? { account_date: newAccount.account_date || null } : {}),
+        ...(canUseAccountField('create', 'purchase_cost') ? { purchase_cost: Number(newAccount.purchase_cost || 0) } : {}),
+      }
+      const created = await apiPost(
+        '/accounts',
+        createPayload,
         { token: auth.state.token }
       )
 
       // Готовим пачку секретов и сохраняем ее атомарно одним запросом.
       const secretUpserts = []
-      if (canUseAccountAction('accounts.reflect_email_password') && newAccount.email_password) {
+      if (canUseAccountAction('accounts.reflect_email_password') && canUseAccountField('create', 'email_password') && newAccount.email_password) {
         secretUpserts.push({ secret_key: 'email_password', secret_value: newAccount.email_password })
       }
-      if (canUseAccountAction('accounts.reflect_account_password') && newAccount.account_password) {
+      if (canUseAccountAction('accounts.reflect_account_password') && canUseAccountField('create', 'account_password') && newAccount.account_password) {
         secretUpserts.push({ secret_key: 'account_password', secret_value: newAccount.account_password })
       }
-      if (canUseAccountAction('accounts.reflect_auth_code') && newAccount.auth_code) {
+      if (canUseAccountAction('accounts.reflect_auth_code') && canUseAccountField('create', 'auth_code') && newAccount.auth_code) {
         secretUpserts.push({ secret_key: 'auth_code', secret_value: newAccount.auth_code })
       }
-      if (canUseAccountAction('accounts.reflect_reserves')) {
+      if (canUseAccountAction('accounts.reflect_reserves') && canUseAccountField('create', 'reserves')) {
         const reserveValues = (newAccount.reserve_text || '')
           .split(/\s+/)
           .map((v) => v.trim())
@@ -750,14 +758,14 @@ export function useAccountsFlow({
         )
       }
 
-      if (canUseAccountAction('accounts.reflect_slots') && newAccount.product_ids.length) {
+      if (canUseAccountAction('accounts.reflect_slots') && canUseAccountField('create', 'products') && newAccount.product_ids.length) {
         await apiPut(
           `/accounts/${created.account_id}/products`,
           { product_ids: newAccount.product_ids },
           { token: auth.state.token }
         )
       }
-      if (canUseAccountAction('accounts.reflect_slots') && isCreateSubscriptionMode && subscriptionProductId && subscriptionValidUntil) {
+      if (canUseAccountAction('accounts.reflect_slots') && canUseAccountField('create', 'products') && isCreateSubscriptionMode && subscriptionProductId && subscriptionValidUntil) {
         try {
           await apiPost(
             `/products/subscriptions/${encodeURIComponent(subscriptionProductId)}/terms`,
@@ -826,54 +834,55 @@ export function useAccountsFlow({
     }
     accountSaving.value = true
     try {
-      await apiPut(
-        `/accounts/${editAccount.account_id}`,
-        {
-          region_code: editAccount.region_code || null,
+      const updatePayload = {
+        ...(canUseAccountField('edit', 'region') ? { region_code: editAccount.region_code || null } : {}),
+        ...(canUseAccountField('edit', 'email') ? {
           login_name: editAccount.login_name || null,
           domain_code: editAccount.domain_code || null,
-          notes: editAccount.notes || null,
-          account_date: editAccount.account_date || null,
-          // Сохраняем закуп аккаунта отдельно от закупов в сделках.
-          purchase_cost: Number(editAccount.purchase_cost || 0),
-          status_code: editAccount.status_code || 'active',
-          // Передаем флаг деактивации отдельным полем: backend сам валидирует правило 183 дней.
-          is_deactivated: Boolean(editAccount.is_deactivated),
-        },
+        } : {}),
+        ...(canUseAccountField('edit', 'notes') ? { notes: editAccount.notes || null } : {}),
+        ...(canUseAccountField('edit', 'date') ? { account_date: editAccount.account_date || null } : {}),
+        ...(canUseAccountField('edit', 'purchase_cost') ? { purchase_cost: Number(editAccount.purchase_cost || 0) } : {}),
+        status_code: editAccount.status_code || 'active',
+        is_deactivated: Boolean(editAccount.is_deactivated),
+      }
+      await apiPut(
+        `/accounts/${editAccount.account_id}`,
+        updatePayload,
         { token: auth.state.token }
       )
 
       // Секреты сохраняем одной операцией, чтобы исключить частичное обновление при сетевой ошибке.
       const secretUpserts = []
       const secretDeleteKeys = []
-      if (canUseAccountAction('accounts.reflect_email_password') && editAccount.email_password) {
+      if (canUseAccountAction('accounts.reflect_email_password') && canUseAccountField('edit', 'email_password') && editAccount.email_password) {
         secretUpserts.push({
           secret_key: editAccount.email_key || 'email_password',
           secret_value: editAccount.email_password,
         })
-      } else if (canUseAccountAction('accounts.reflect_email_password') && editAccount.has_email) {
+      } else if (canUseAccountAction('accounts.reflect_email_password') && canUseAccountField('edit', 'email_password') && editAccount.has_email) {
         secretDeleteKeys.push(editAccount.email_key || 'email_password')
       }
 
-      if (canUseAccountAction('accounts.reflect_account_password') && editAccount.account_password) {
+      if (canUseAccountAction('accounts.reflect_account_password') && canUseAccountField('edit', 'account_password') && editAccount.account_password) {
         secretUpserts.push({
           secret_key: editAccount.account_key || 'account_password',
           secret_value: editAccount.account_password,
         })
-      } else if (canUseAccountAction('accounts.reflect_account_password') && editAccount.has_account) {
+      } else if (canUseAccountAction('accounts.reflect_account_password') && canUseAccountField('edit', 'account_password') && editAccount.has_account) {
         secretDeleteKeys.push(editAccount.account_key || 'account_password')
       }
 
-      if (canUseAccountAction('accounts.reflect_auth_code') && editAccount.auth_code) {
+      if (canUseAccountAction('accounts.reflect_auth_code') && canUseAccountField('edit', 'auth_code') && editAccount.auth_code) {
         secretUpserts.push({
           secret_key: editAccount.auth_key || 'auth_code',
           secret_value: editAccount.auth_code,
         })
-      } else if (canUseAccountAction('accounts.reflect_auth_code') && editAccount.has_auth) {
+      } else if (canUseAccountAction('accounts.reflect_auth_code') && canUseAccountField('edit', 'auth_code') && editAccount.has_auth) {
         secretDeleteKeys.push(editAccount.auth_key || 'auth_code')
       }
 
-      if (canUseAccountAction('accounts.reflect_reserves')) {
+      if (canUseAccountAction('accounts.reflect_reserves') && canUseAccountField('edit', 'reserves')) {
         const reserveValues = (editAccount.reserve_text || '')
           .split(/\s+/)
           .map((v) => v.trim())
@@ -922,7 +931,7 @@ export function useAccountsFlow({
       // Принудительно обновляем кеш секретов, чтобы сразу показать актуальные резервы без ручного refresh.
       await ensureAccountSecretsLoaded(editAccount.account_id, true)
 
-      if (canUseAccountAction('accounts.reflect_slots')) {
+      if (canUseAccountAction('accounts.reflect_slots') && canUseAccountField('edit', 'products')) {
         await apiPut(
           `/accounts/${editAccount.account_id}/products`,
           { product_ids: editAccount.product_ids || [] },

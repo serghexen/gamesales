@@ -30,6 +30,9 @@ function buildProps(overrides = {}) {
     formatProductPlatforms: (platforms) => (platforms || []).join(', '),
     openProductAccounts: () => {},
     canViewGames: true,
+    canViewTypeColumn: true,
+    canViewTitleColumn: true,
+    canViewPlatformColumn: true,
     canOpenProductAccounts: true,
     ...overrides,
   }
@@ -127,5 +130,22 @@ describe('WorkProductsTableSection', () => {
 
     expect(wrapper.find('tbody tr').classes()).not.toContain('clickable-row')
     expect(openProductAccounts).not.toHaveBeenCalled()
+  })
+
+  it('hides disabled product list columns', () => {
+    const wrapper = mount(WorkProductsTableSection, {
+      props: buildProps({
+        sortedProducts: [{ product_id: 1 }],
+        pagedProducts: [{ product_id: 1, title: 'EA FC 26', type_code: 'game', platform_codes: ['ps5'] }],
+        canViewTypeColumn: false,
+        canViewPlatformColumn: false,
+      }),
+    })
+
+    const headers = wrapper.findAll('thead th').map((th) => th.text().trim())
+    expect(headers[0]).toContain('Товар')
+    expect(headers).not.toContain('Тип')
+    expect(headers).not.toContain('Платформа')
+    expect(wrapper.findAll('tbody tr td').map((td) => td.text().trim())).toEqual(['EA FC 26'])
   })
 })

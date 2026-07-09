@@ -1,14 +1,14 @@
 <template>
-  <div v-if="sortedProducts.length && canViewGames" class="products-table-wrap">
+  <div v-if="sortedProducts.length && canViewGames && hasVisibleColumns" class="products-table-wrap">
     <table ref="tableEl" class="table table--compact products-table">
       <colgroup>
-        <col :style="getColumnStyle('type')" />
-        <col :style="getColumnStyle('title')" />
-        <col :style="getColumnStyle('platform')" />
+        <col v-if="canViewTypeColumn" :style="getColumnStyle('type')" />
+        <col v-if="canViewTitleColumn" :style="getColumnStyle('title')" />
+        <col v-if="canViewPlatformColumn" :style="getColumnStyle('platform')" />
       </colgroup>
       <thead>
         <tr>
-          <th class="product-col-type">
+          <th v-if="canViewTypeColumn" class="product-col-type">
           <span class="th-title th-title--filter">
             Тип
             <span class="th-actions">
@@ -59,7 +59,7 @@
             @mousedown.stop.prevent="startResize($event, 'type')"
           />
           </th>
-          <th class="product-col-title">
+          <th v-if="canViewTitleColumn" class="product-col-title">
           <span class="th-title th-title--filter">
             Товар
             <span class="th-actions">
@@ -106,7 +106,7 @@
             @mousedown.stop.prevent="startResize($event, 'title')"
           />
           </th>
-          <th class="product-col-platform">
+          <th v-if="canViewPlatformColumn" class="product-col-platform">
           <span class="th-title th-title--filter">
             Платформа
             <span class="th-actions">
@@ -155,9 +155,9 @@
           :class="{ 'clickable-row': canOpenProductAccounts }"
           @click="onProductRowClick(g)"
         >
-          <td class="product-col-type">{{ formatTypeLabel(g.type_code) }}</td>
-          <td class="product-col-title">{{ g.title }}</td>
-          <td class="product-col-platform">{{ formatProductPlatforms(g.platform_codes) }}</td>
+          <td v-if="canViewTypeColumn" class="product-col-type">{{ formatTypeLabel(g.type_code) }}</td>
+          <td v-if="canViewTitleColumn" class="product-col-title">{{ g.title }}</td>
+          <td v-if="canViewPlatformColumn" class="product-col-platform">{{ formatProductPlatforms(g.platform_codes) }}</td>
         </tr>
       </tbody>
     </table>
@@ -167,7 +167,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { PRODUCT_TYPE_PRIMARY } from '../domainUtils'
 import { useResizableTableColumns } from '../useResizableTableColumns'
@@ -203,7 +203,15 @@ const props = defineProps({
   formatProductPlatforms: { type: Function, required: true },
   openProductAccounts: { type: Function, required: true },
   canViewGames: { type: Boolean, default: false },
+  canViewTypeColumn: { type: Boolean, default: false },
+  canViewTitleColumn: { type: Boolean, default: false },
+  canViewPlatformColumn: { type: Boolean, default: false },
   canOpenProductAccounts: { type: Boolean, default: false },
+})
+
+const hasVisibleColumns = computed(() => {
+  // Таблица остается доступной только если включена хотя бы одна колонка списка товаров.
+  return props.canViewTypeColumn || props.canViewTitleColumn || props.canViewPlatformColumn
 })
 
 // Открывает карточку товара только при праве видеть связанные аккаунты товара.

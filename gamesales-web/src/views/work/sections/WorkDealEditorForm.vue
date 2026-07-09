@@ -2,7 +2,7 @@
                     <div v-if="editDeal.open" class="form deal-form" :class="{ 'deal-form--sale': editDeal.deal_type_code === 'sale' || editDeal.deal_type_code === 'rental' }">
                       <div class="deal-form__col deal-form__col--left">
                         <div v-if="editDeal.deal_type_code === 'rental'" class="deal-form__triple deal-form__triple--sale-status-row">
-                          <label class="field">
+                          <label v-if="canEditDealField('created_at', 'rental')" class="field">
                             <span class="label">Дата создания</span>
                             <input
                               v-if="dealEditMode !== 'view' && canEditDealDate"
@@ -17,7 +17,7 @@
                               readonly
                             />
                           </label>
-                          <label class="field">
+                          <label v-if="canEditDealField('completed_at', 'rental')" class="field">
                             <span class="label">Дата завершения</span>
                             <input
                               v-if="dealEditMode !== 'view' && canEditCompletedDate"
@@ -32,7 +32,7 @@
                               readonly
                             />
                           </label>
-                          <label class="field">
+                          <label v-if="canEditDealField('status', 'rental')" class="field">
                             <span class="label">Статус</span>
                             <input
                               v-if="dealEditMode === 'view'"
@@ -48,7 +48,7 @@
                             </select>
                           </label>
                         </div>
-                        <div v-if="editDeal.deal_type_code === 'rental' && !isEditDealPendingFlow && (dealEditMode !== 'view' || editDeal.is_refund)" class="field">
+                        <div v-if="editDeal.deal_type_code === 'rental' && canEditDealField('return', 'rental') && !isEditDealPendingFlow && (dealEditMode !== 'view' || editDeal.is_refund)" class="field">
                           <span class="label">Возврат</span>
                           <input
                             v-if="dealEditMode === 'view'"
@@ -68,7 +68,7 @@
                         <div v-if="editDeal.deal_type_code === 'rental'" class="deal-form__rental-layout">
                           <div class="deal-form__rental-main">
                             <div class="deal-form__double">
-                              <label class="field">
+                              <label v-if="canEditDealField('source', 'rental')" class="field">
                                 <span class="label">Источник</span>
                                 <input
                                   v-if="dealEditMode === 'view'"
@@ -83,7 +83,7 @@
                                   </option>
                                 </select>
                               </label>
-                              <label class="field">
+                              <label v-if="canEditDealField('messenger', 'rental')" class="field">
                                 <span class="label">Мессенджер</span>
                                 <input
                                   v-if="dealEditMode === 'view'"
@@ -100,11 +100,11 @@
                               </label>
                             </div>
                             <div class="deal-form__double">
-                              <label class="field">
+                              <label v-if="canEditDealField('order_number', 'rental')" class="field">
                                 <span class="label">Номер заказа</span>
                                 <input v-model.trim="editDeal.order_number" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
                               </label>
-                              <label class="field">
+                              <label v-if="canEditDealField('price', 'rental')" class="field">
                                 <span class="label">Сумма продажи</span>
                                 <input
                                   v-model.number="editDeal.price"
@@ -118,11 +118,11 @@
                               </label>
                             </div>
                             <div class="deal-form__double">
-                              <label class="field">
+                              <label v-if="canEditDealField('customer', 'rental')" class="field">
                                 <span class="label">Покупатель</span>
                                 <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
                               </label>
-                              <label class="field">
+                              <label v-if="canEditDealField('responsible', 'rental')" class="field">
                                 <span class="label">Ответственный</span>
                                 <input
                                   v-if="dealEditMode === 'view'"
@@ -143,7 +143,7 @@
                               </label>
                             </div>
                             <div class="deal-form__double">
-                              <label class="field">
+                              <label v-if="canEditDealField('payment_method', 'rental')" class="field">
                                 <span class="label">Метод оплаты</span>
                                 <select class="input input--select deal-form__input--locked" disabled>
                                   <option value="">— скоро будет —</option>
@@ -156,7 +156,7 @@
                                 </select>
                               </label>
                             </div>
-                            <label class="field field--sharing-account">
+                            <label v-if="canEditDealField('account', 'rental')" class="field field--sharing-account">
                               <span
                                 v-if="dealEditMode === 'view' || dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length || editDeal.account_id"
                                 class="label"
@@ -228,7 +228,7 @@
                                 </div>
                               </div>
                             </label>
-                            <div class="field field--comment-collapsible">
+                            <div v-if="canEditDealField('notes', 'rental')" class="field field--comment-collapsible">
                               <button class="comment-toggle" type="button" @click="editDealCommentOpen = !editDealCommentOpen">
                                 {{ editDealCommentOpen || editDeal.notes ? 'Комментарий' : '+ Комментарий' }}
                               </button>
@@ -250,7 +250,7 @@
                               <div class="deal-form__quick-reminder-text">{{ editQuickAccountMissingText }}</div>
                             </div>
                             <div class="deal-form__double">
-                              <label class="field">
+                              <label v-if="canEditDealField('product_type', 'rental')" class="field">
                                 <span class="label">Тип товара</span>
                                 <input
                                   v-if="dealEditMode === 'view'"
@@ -264,7 +264,7 @@
                                 </select>
                               </label>
                               <label
-                                v-if="dealEditMode === 'view' || isEditRentalSubscriptionMode || dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length"
+                                v-if="canEditDealField('slot_type', 'rental') && (dealEditMode === 'view' || isEditRentalSubscriptionMode || dealAccountsForProductLoading || !editDeal.product_id || !editDeal.slot_type_code || isDealSlotTypeUnsupported('edit') || dealAccountsForEdit.length)"
                                 class="field"
                               >
                                 <span class="label">Тип слота</span>
@@ -292,7 +292,7 @@
                                 </select>
                               </label>
                             </div>
-                            <label v-if="isEditRentalSubscriptionMode && editDeal.product_id && !editDeal.subscription_term_id" class="field">
+                            <label v-if="canEditDealField('subscription_term', 'rental') && isEditRentalSubscriptionMode && editDeal.product_id && !editDeal.subscription_term_id" class="field">
                               <span class="label">Срок подписки</span>
                               <input
                                 v-if="dealEditMode === 'view'"
@@ -360,7 +360,7 @@
                               </template>
                             </div>
                             <label
-                              v-if="!isEditRentalSubscriptionMode || showEditDealProductSearch || editDeal.subscription_term_id"
+                              v-if="canEditDealField('product', 'rental') && (!isEditRentalSubscriptionMode || showEditDealProductSearch || editDeal.subscription_term_id)"
                               class="field"
                             >
                               <span class="label">{{ showEditDealProductSearch ? 'Поиск' : 'Товар' }}</span>
@@ -401,7 +401,7 @@
                               </div>
                             </label>
                             <label
-                              v-if="dealEditMode !== 'view' && showEditDealProductSearch"
+                              v-if="canEditDealField('product', 'rental') && dealEditMode !== 'view' && showEditDealProductSearch"
                               :class="[
                                 'field field--product field--sharing-product-list',
                                 {
@@ -527,7 +527,7 @@
                                 </div>
                               </div>
                               <template v-else>
-                                <label class="field">
+                                <label v-if="canEditDealField('account_login', 'rental')" class="field">
                                   <span class="label">Логин</span>
                                   <div class="input--select-wrap">
                                     <input class="input input--with-copy" :value="getDealAccountLoginLabel('edit')" readonly />
@@ -546,7 +546,7 @@
                                     </button>
                                   </div>
                                 </label>
-                                <label class="field">
+                                <label v-if="canEditDealField('account_password', 'rental')" class="field">
                                   <span class="label">Пароль</span>
                                   <div class="input--select-wrap">
                                     <input class="input input--with-copy" :value="getAccountPasswordById(editDeal.account_id)" readonly />
@@ -565,7 +565,7 @@
                                     </button>
                                   </div>
                                 </label>
-                                <label class="field">
+                                <label v-if="canEditDealField('reserve', 'rental')" class="field">
                                   <span class="label">Резерв</span>
                                   <div class="input--select-wrap">
                                     <input
@@ -661,7 +661,7 @@
                           </div>
                         </div>
                         <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__triple deal-form__triple--sale-status-row">
-                          <label class="field">
+                          <label v-if="canEditDealField('created_at', 'sale')" class="field">
                             <span class="label">Дата создания</span>
                             <input
                               v-if="dealEditMode !== 'view' && canEditDealDate"
@@ -676,7 +676,7 @@
                               readonly
                             />
                           </label>
-                          <label class="field">
+                          <label v-if="canEditDealField('completed_at', 'sale')" class="field">
                             <span class="label">Дата завершения</span>
                             <input
                               v-if="dealEditMode !== 'view' && canEditCompletedDate"
@@ -691,7 +691,7 @@
                               readonly
                             />
                           </label>
-                          <label class="field">
+                          <label v-if="canEditDealField('status', 'sale')" class="field">
                             <span class="label">Статус</span>
                             <input
                               v-if="dealEditMode === 'view'"
@@ -707,7 +707,7 @@
                             </select>
                           </label>
                         </div>
-                        <div v-if="editDeal.deal_type_code === 'sale' && !isEditDealPendingFlow && (dealEditMode !== 'view' || editDeal.is_refund)" class="field">
+                        <div v-if="editDeal.deal_type_code === 'sale' && canEditDealField('return', 'sale') && !isEditDealPendingFlow && (dealEditMode !== 'view' || editDeal.is_refund)" class="field">
                           <span class="label">Возврат</span>
                           <input
                             v-if="dealEditMode === 'view'"
@@ -726,7 +726,7 @@
                         </div>
                         <div v-if="editDeal.deal_type_code === 'sale'" class="deal-form__sale-layout">
                           <div class="deal-form__sale-col">
-                            <label class="field">
+                            <label v-if="canEditDealField('messenger', 'sale')" class="field">
                               <span class="label">Мессенджер</span>
                               <input
                                 v-if="dealEditMode === 'view'"
@@ -742,7 +742,7 @@
                               </select>
                             </label>
                             <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--source">
-                              <label class="field">
+                              <label v-if="canEditDealField('source', 'sale')" class="field">
                                 <span class="label">Источник</span>
                                 <input
                                   v-if="dealEditMode === 'view'"
@@ -757,11 +757,11 @@
                                   </option>
                                 </select>
                               </label>
-                              <label class="field">
+                              <label v-if="canEditDealField('order_number', 'sale')" class="field">
                                 <span class="label">Номер заказа</span>
                                 <input v-model.trim="editDeal.order_number" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
                               </label>
-                              <label class="field">
+                              <label v-if="canEditDealField('responsible', 'sale')" class="field">
                                 <span class="label">Ответственный</span>
                                 <input
                                   v-if="dealEditMode === 'view'"
@@ -781,7 +781,7 @@
                                 </select>
                               </label>
                             </div>
-                            <div class="field field--comment-collapsible deal-form__sale-comment">
+                            <div v-if="canEditDealField('notes', 'sale')" class="field field--comment-collapsible deal-form__sale-comment">
                               <button class="comment-toggle" type="button" @click="editDealCommentOpen = !editDealCommentOpen">
                                 {{ editDealCommentOpen || editDeal.notes ? 'Комментарий' : '+ Комментарий' }}
                               </button>
@@ -795,20 +795,20 @@
                             </div>
                           </div>
                           <div class="deal-form__sale-col">
-                            <label class="field">
+                            <label v-if="canEditDealField('customer', 'sale')" class="field">
                               <span class="label">Покупатель</span>
                               <input v-model.trim="editDeal.customer_nickname" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
                             </label>
                             <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--account">
-                              <label class="field">
+                              <label v-if="canEditDealField('login', 'sale')" class="field">
                                 <span class="label">Логин</span>
                                 <input v-model.trim="editDeal.login" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
                               </label>
-                              <label class="field">
+                              <label v-if="canEditDealField('password', 'sale')" class="field">
                                 <span class="label">Пароль</span>
                                 <input v-model.trim="editDeal.password" class="input" placeholder="-" :readonly="dealEditMode === 'view'" />
                               </label>
-                              <div class="deal-form__sale-links">
+                              <div v-if="canEditDealField('product_link', 'sale')" class="deal-form__sale-links">
                                 <label v-if="getSaleProductLinks('edit').length" class="field">
                                   <span class="label">Ссылка на товар</span>
                                   <div
@@ -860,7 +860,7 @@
                             </div>
                           </div>
                           <div class="deal-form__sale-col">
-                            <label class="field">
+                            <label v-if="canEditDealField('region', 'sale')" class="field">
                               <span class="label">Регион</span>
                               <input
                                 v-if="dealEditMode === 'view'"
@@ -876,7 +876,7 @@
                             </select>
                           </label>
                             <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--price">
-                              <label class="field">
+                              <label v-if="canEditDealField('purchase_cost', 'sale')" class="field">
                                 <span class="label">Закупочная цена</span>
                                 <input
                                   v-model.number="editDeal.purchase_cost"
@@ -889,7 +889,7 @@
                                   :readonly="dealEditMode === 'view'"
                                 />
                               </label>
-                              <label class="field">
+                              <label v-if="canEditDealField('price', 'sale')" class="field">
                                 <span class="label">Сумма продажи</span>
                                 <input
                                   v-model.number="editDeal.price"
@@ -902,7 +902,7 @@
                                 />
                               </label>
                               <div class="deal-form__sale-col-bottom">
-                                <label class="field">
+                                <label v-if="canEditDealField('payment_method', 'sale')" class="field">
                                   <span class="label">Метод оплаты</span>
                                   <select class="input input--select deal-form__input--locked" disabled>
                                     <option value="">— скоро будет —</option>
@@ -940,7 +940,7 @@
                         <div v-if="newDeal.deal_type_code === 'rental'" class="deal-form__rental-layout">
                           <div class="deal-form__rental-main">
                             <div class="deal-form__double">
-                              <label class="field">
+                              <label v-if="canNewDealField('source', 'rental')" class="field">
                                 <span class="label">Источник</span>
                                 <select v-model.number="newDeal.source_id" class="input input--select">
                                   <option value="">— не выбрано —</option>
@@ -949,7 +949,7 @@
                                   </option>
                                 </select>
                               </label>
-                              <label class="field">
+                              <label v-if="canNewDealField('messenger', 'rental')" class="field">
                                 <span class="label">Мессенджер</span>
                                 <select v-model.number="newDeal.messenger_id" class="input input--select">
                                   <option value="">— не выбрано —</option>
@@ -960,11 +960,11 @@
                               </label>
                             </div>
                             <div class="deal-form__double">
-                              <label class="field">
+                              <label v-if="canNewDealField('order_number', 'rental')" class="field">
                                 <span class="label">Номер заказа</span>
                                 <input v-model.trim="newDeal.order_number" class="input" placeholder="-" />
                               </label>
-                              <label class="field">
+                              <label v-if="canNewDealField('price', 'rental')" class="field">
                                 <span class="label">Сумма продажи</span>
                                 <input
                                   v-model.number="newDeal.price"
@@ -977,11 +977,11 @@
                               </label>
                             </div>
                             <div class="deal-form__double">
-                              <label class="field">
+                              <label v-if="canNewDealField('customer', 'rental')" class="field">
                                 <span class="label">Покупатель</span>
                                 <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="-" />
                               </label>
-                              <label class="field">
+                              <label v-if="canNewDealField('responsible', 'rental')" class="field">
                                 <span class="label">Ответственный</span>
                                 <select v-model="newDealResponsible" class="input input--select">
                                   <option value="">— не выбрано —</option>
@@ -996,7 +996,7 @@
                               </label>
                             </div>
                             <div class="deal-form__double">
-                              <label class="field">
+                              <label v-if="canNewDealField('payment_method', 'rental')" class="field">
                                 <span class="label">Метод оплаты</span>
                                 <select class="input input--select deal-form__input--locked" disabled>
                                   <option value="">— скоро будет —</option>
@@ -1009,7 +1009,7 @@
                                 </select>
                               </label>
                             </div>
-                            <label class="field field--sharing-account">
+                            <label v-if="canNewDealField('account', 'rental')" class="field field--sharing-account">
                           <span
                             v-if="dealAccountsForProductLoading || !newDeal.product_id || !newDeal.slot_type_code || isDealSlotTypeUnsupported('new') || dealAccountsForNew.length || newDeal.account_id"
                             class="label"
@@ -1075,7 +1075,7 @@
                             </div>
                           </div>
                         </label>
-                            <div class="field field--comment-collapsible">
+                            <div v-if="canNewDealField('notes', 'rental')" class="field field--comment-collapsible">
                               <button class="comment-toggle" type="button" @click="newDealCommentOpen = !newDealCommentOpen">
                                 {{ newDealCommentOpen || newDeal.notes ? 'Комментарий' : '+ Комментарий' }}
                               </button>
@@ -1096,14 +1096,14 @@
                               <div class="deal-form__quick-reminder-text">{{ newQuickAccountMissingText }}</div>
                             </div>
                             <div class="deal-form__double">
-                              <label class="field">
+                              <label v-if="canNewDealField('product_type', 'rental')" class="field">
                                 <span class="label">Тип товара</span>
                                 <select v-model="newDealProductTypeFilter" class="input input--select">
                                   <option value="game">Игра</option>
                                   <option value="subscription">Подписка</option>
                                 </select>
                               </label>
-                              <label class="field">
+                              <label v-if="canNewDealField('slot_type', 'rental')" class="field">
                                 <span class="label">Тип слота</span>
                                 <select
                                   v-model="newDeal.slot_type_code"
@@ -1122,7 +1122,7 @@
                                 </select>
                               </label>
                             </div>
-                            <label v-if="isNewRentalSubscriptionMode && newDeal.product_id && !newDeal.subscription_term_id" class="field">
+                            <label v-if="canNewDealField('subscription_term', 'rental') && isNewRentalSubscriptionMode && newDeal.product_id && !newDeal.subscription_term_id" class="field">
                               <span class="label">Срок подписки</span>
                               <select
                                 v-model.number="newDeal.subscription_term_id"
@@ -1183,7 +1183,7 @@
                               </template>
                             </div>
                             <label
-                              v-if="!isNewRentalSubscriptionMode || showNewDealProductSearch || newDeal.subscription_term_id"
+                              v-if="canNewDealField('product', 'rental') && (!isNewRentalSubscriptionMode || showNewDealProductSearch || newDeal.subscription_term_id)"
                               class="field"
                             >
                               <span class="label">{{ showNewDealProductSearch ? 'Поиск' : 'Товар' }}</span>
@@ -1218,7 +1218,7 @@
                               </div>
                             </label>
                             <label
-                              v-if="showNewDealProductSearch"
+                              v-if="canNewDealField('product', 'rental') && showNewDealProductSearch"
                               :class="[
                                 'field field--product field--sharing-product-list',
                                 {
@@ -1344,7 +1344,7 @@
                                 </div>
                               </div>
                               <template v-else>
-                                <label class="field">
+                                <label v-if="canNewDealField('account_login', 'rental')" class="field">
                                   <span class="label">Логин</span>
                                   <div class="input--select-wrap">
                                     <input class="input input--with-copy" :value="getDealAccountLoginLabel('new')" readonly />
@@ -1363,7 +1363,7 @@
                                     </button>
                                   </div>
                                 </label>
-                                <label class="field">
+                                <label v-if="canNewDealField('account_password', 'rental')" class="field">
                                   <span class="label">Пароль</span>
                                   <div class="input--select-wrap">
                                     <input class="input input--with-copy" :value="getAccountPasswordById(newDeal.account_id)" readonly />
@@ -1382,7 +1382,7 @@
                                     </button>
                                   </div>
                                 </label>
-                                <label class="field">
+                                <label v-if="canNewDealField('reserve', 'rental')" class="field">
                                   <span class="label">Резерв</span>
                                   <div class="input--select-wrap">
                                     <input class="input input--with-copy" :value="getSharingReserveDisplayValue('new')" readonly />
@@ -1474,7 +1474,7 @@
                         </div>
                         <div v-if="newDeal.deal_type_code === 'sale'" class="deal-form__sale-layout">
                           <div class="deal-form__sale-col">
-                            <label class="field">
+                            <label v-if="canNewDealField('messenger', 'sale')" class="field">
                               <span class="label">Мессенджер</span>
                               <select v-model.number="newDeal.messenger_id" class="input input--select">
                                 <option value="">— не выбрано —</option>
@@ -1484,7 +1484,7 @@
                               </select>
                             </label>
                             <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--source">
-                              <label class="field">
+                              <label v-if="canNewDealField('source', 'sale')" class="field">
                                 <span class="label">Источник</span>
                                 <select v-model.number="newDeal.source_id" class="input input--select">
                                   <option value="">— не выбрано —</option>
@@ -1493,11 +1493,11 @@
                                   </option>
                                 </select>
                               </label>
-                              <label class="field">
+                              <label v-if="canNewDealField('order_number', 'sale')" class="field">
                                 <span class="label">Номер заказа</span>
                                 <input v-model.trim="newDeal.order_number" class="input" placeholder="-" />
                               </label>
-                              <label class="field">
+                              <label v-if="canNewDealField('responsible', 'sale')" class="field">
                                 <span class="label">Ответственный</span>
                                 <select v-model="newDealResponsible" class="input input--select">
                                   <option value="">— не выбрано —</option>
@@ -1511,7 +1511,7 @@
                                 </select>
                               </label>
                             </div>
-                            <div class="field field--comment-collapsible deal-form__sale-comment">
+                            <div v-if="canNewDealField('notes', 'sale')" class="field field--comment-collapsible deal-form__sale-comment">
                               <button class="comment-toggle" type="button" @click="newDealCommentOpen = !newDealCommentOpen">
                                 {{ newDealCommentOpen || newDeal.notes ? 'Комментарий' : '+ Комментарий' }}
                               </button>
@@ -1524,20 +1524,20 @@
                             </div>
                           </div>
                           <div class="deal-form__sale-col">
-                            <label class="field">
+                            <label v-if="canNewDealField('customer', 'sale')" class="field">
                               <span class="label">Покупатель</span>
                               <input v-model.trim="newDeal.customer_nickname" class="input" placeholder="-" />
                             </label>
                             <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--account">
-                              <label class="field">
+                              <label v-if="canNewDealField('login', 'sale')" class="field">
                                 <span class="label">Логин</span>
                                 <input v-model.trim="newDeal.login" class="input" placeholder="-" />
                               </label>
-                              <label class="field">
+                              <label v-if="canNewDealField('password', 'sale')" class="field">
                                 <span class="label">Пароль</span>
                                 <input v-model.trim="newDeal.password" class="input" placeholder="-" />
                               </label>
-                              <div class="deal-form__sale-links">
+                              <div v-if="canNewDealField('product_link', 'sale')" class="deal-form__sale-links">
                                 <label v-if="getSaleProductLinks('new').length" class="field">
                                   <span class="label">Ссылка на товар</span>
                                   <div
@@ -1587,7 +1587,7 @@
                             </div>
                           </div>
                           <div class="deal-form__sale-col">
-                            <label class="field">
+                            <label v-if="canNewDealField('region', 'sale')" class="field">
                               <span class="label">Регион</span>
                               <select v-model="newDeal.region_code" class="input input--select">
                                 <option value="">— не выбрано —</option>
@@ -1597,7 +1597,7 @@
                             </select>
                           </label>
                             <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--price">
-                              <label class="field">
+                              <label v-if="canNewDealField('purchase_cost', 'sale')" class="field">
                                 <span class="label">Закупочная цена</span>
                                 <input
                                   v-model.number="newDeal.purchase_cost"
@@ -1609,7 +1609,7 @@
                                   @input="newDeal.purchase_cost = clampPrice(newDeal.purchase_cost)"
                                 />
                               </label>
-                              <label class="field">
+                              <label v-if="canNewDealField('price', 'sale')" class="field">
                                 <span class="label">Сумма продажи</span>
                                 <input
                                   v-model.number="newDeal.price"
@@ -1621,7 +1621,7 @@
                                 />
                               </label>
                               <div class="deal-form__sale-col-bottom">
-                                <label class="field">
+                                <label v-if="canNewDealField('payment_method', 'sale')" class="field">
                                   <span class="label">Метод оплаты</span>
                                   <select class="input input--select deal-form__input--locked" disabled>
                                     <option value="">— скоро будет —</option>
@@ -1658,6 +1658,7 @@
 
 <script setup>
 import { computed, reactive, ref, toRefs, watch } from 'vue'
+import { dealFieldAction } from '../dealActivePermissions.js'
 
 // Большая форма сделки (режим редактирования и создания) вынесена из WorkView.
 const props = defineProps({
@@ -2607,10 +2608,39 @@ const canEditCompletedDate = computed(() => {
 })
 
 const canViewDiscountField = computed(() => {
-  // Поле скидки показываем только ролям с разрешенным действием скидки.
+  // Для активных сделок сохраняем старое право "Скидка"; draft/completed режем по своей матрице полей.
   if (typeof ctx.canDoAction !== 'function') return false
-  return ctx.canDoAction('deals_active.discount')
+  const formMode = editDeal.value?.open ? (dealEditMode.value === 'view' ? 'view' : 'edit') : 'new'
+  const dealType = editDeal.value?.open ? editDeal.value?.deal_type_code : newDeal.value?.deal_type_code
+  const groupCode = editDeal.value?.open ? editDealActionGroup.value : 'deals_active'
+  const legacyDiscountAllowed = groupCode === 'deals_active' ? ctx.canDoAction('deals_active.discount') : true
+  return legacyDiscountAllowed && canDealFormField(formMode, dealType, 'discount')
 })
+
+function normalizeDealTypeCode(dealTypeCode) {
+  // Приводим тип сделки к коду матрицы active-deals.
+  return String(dealTypeCode || '').trim().toLowerCase() === 'rental' ? 'rental' : 'sale'
+}
+
+function canDealFormField(formMode, dealTypeCode, fieldKey) {
+  // Активные, черновики и завершенные сделки проверяем по своей матрице полей.
+  if (typeof ctx.canDoAction !== 'function') return false
+  const mode = String(formMode || '').trim().toLowerCase() === 'new'
+    ? 'new'
+    : (dealEditMode.value === 'view' ? 'view' : 'edit')
+  const groupCode = mode === 'new' ? 'deals_active' : editDealActionGroup.value
+  if (!['deals_active', 'deals_draft', 'deals_completed'].includes(groupCode)) return true
+  const type = normalizeDealTypeCode(dealTypeCode)
+  return ctx.canDoAction(dealFieldAction(groupCode, `${mode}.${type}`, fieldKey))
+}
+
+function canNewDealField(fieldKey, dealTypeCode = newDeal.value?.deal_type_code) {
+  return canDealFormField('new', dealTypeCode, fieldKey)
+}
+
+function canEditDealField(fieldKey, dealTypeCode = editDeal.value?.deal_type_code) {
+  return canDealFormField(dealEditMode.value === 'view' ? 'view' : 'edit', dealTypeCode, fieldKey)
+}
 
 const refundEditBlockedReason = computed(() => {
   // Подсказываем причину блокировки, чтобы было понятно почему чекбокс недоступен.

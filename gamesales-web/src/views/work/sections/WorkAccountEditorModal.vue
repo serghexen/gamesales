@@ -316,7 +316,7 @@
                           </div>
                         </div>
                       </div>
-                      <div v-if="canShowReflectSlots" class="field field--full">
+                      <div v-if="canShowAccountProducts" class="field field--full">
                         <span class="label account-products-title">Товары</span>
                         <div v-if="accountEditMode === 'view'" class="pill-list">
                           <span v-for="t in accountProductTitles" :key="t" class="pill">{{ t }}</span>
@@ -377,7 +377,7 @@
                           </div>
                         </div>
                       </div>
-                      <div v-if="canShowReflectSlots" class="field field--full">
+                      <div v-if="canShowAccountSlots" class="field field--full">
                         <span class="label">Слоты аккаунта</span>
                         <p v-if="accountSlotAssignmentsError" class="bad">{{ accountSlotAssignmentsError }}</p>
                         <div v-if="accountSlotAssignmentsLoading" class="loader-wrap loader-wrap--compact">
@@ -503,7 +503,7 @@
                         </table>
                         <p v-else class="muted">Сделок по аккаунту пока нет.</p>
                       </div>
-                      <div class="field field--comment-collapsible field--full">
+                      <div v-if="canShowAccountNotes" class="field field--comment-collapsible field--full">
                         <button class="comment-toggle" type="button" @click="editAccountCommentOpen = !editAccountCommentOpen" :disabled="accountEditMode === 'view'">
                           {{ editAccountCommentOpen || editAccount.notes ? 'Комментарий' : '+ Комментарий' }}
                         </button>
@@ -618,7 +618,7 @@
                           placeholder="mkn4N5 6uGjMm ..."
                         />
                       </div>
-                      <div v-if="canShowReflectSlots" class="field field--full">
+                      <div v-if="canShowAccountProducts" class="field field--full">
                         <span class="label account-products-title">Товары</span>
                         <div class="account-product-filters field--full">
                           <label class="field">
@@ -690,7 +690,7 @@
                           </template>
                         </div>
                       </div>
-                      <div class="field field--comment-collapsible field--full">
+                      <div v-if="canShowAccountNotes" class="field field--comment-collapsible field--full">
                         <button class="comment-toggle" type="button" @click="newAccountCommentOpen = !newAccountCommentOpen">
                           {{ newAccountCommentOpen || newAccount.notes ? 'Комментарий' : '+ Комментарий' }}
                         </button>
@@ -712,6 +712,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { accountFieldAction } from '../accountPermissions.js'
 
 const props = defineProps([
   'editAccount',
@@ -730,6 +731,7 @@ const props = defineProps([
   'canReflectReserves',
   'canReflectSlots',
   'canReflectDeals',
+  'canDoAction',
   'cancelEditAccount',
   'modalRef',
   'modalStyle',
@@ -796,19 +798,33 @@ const props = defineProps([
   'setAccountProductType',
 ])
 
-const canShowReflectSlots = computed(() => props.canReflectSlots === true)
-const canShowReflectDeals = computed(() => props.canReflectDeals === true)
+const accountFieldContext = computed(() => {
+  // Выбираем контекст матрицы по открытому режиму формы аккаунта.
+  if (props.accountModalMode === 'create') return 'create'
+  return props.accountEditMode === 'view' ? 'view' : 'edit'
+})
+
+function canAccountField(fieldKey) {
+  // Новая матрица полей аккаунта дополняет старые reflect/view права и не заменяет backend-проверки.
+  if (typeof props.canDoAction !== 'function') return true
+  return props.canDoAction(accountFieldAction(accountFieldContext.value, fieldKey))
+}
+
+const canShowAccountProducts = computed(() => props.canReflectSlots === true && canAccountField('products'))
+const canShowAccountSlots = computed(() => props.canReflectSlots === true && canAccountField('slots'))
+const canShowReflectDeals = computed(() => props.canReflectDeals === true && canAccountField('deals'))
 const canCreateAccountModal = computed(() => props.canCreateAccount === true)
 const canEditAccountModal = computed(() => props.canEditAccount === true)
 const canDeleteAccountModal = computed(() => props.canDeleteAccount === true)
-const canReflectEmail = computed(() => props.canReflectEmail === true)
-const canReflectDate = computed(() => props.canReflectDate === true)
-const canReflectRegion = computed(() => props.canReflectRegion === true)
-const canReflectPurchaseCost = computed(() => props.canReflectPurchaseCost === true)
-const canReflectAccountPassword = computed(() => props.canReflectAccountPassword === true)
-const canReflectEmailPassword = computed(() => props.canReflectEmailPassword === true)
-const canReflectAuthCode = computed(() => props.canReflectAuthCode === true)
-const canReflectReserves = computed(() => props.canReflectReserves === true)
+const canReflectEmail = computed(() => props.canReflectEmail === true && canAccountField('email'))
+const canReflectDate = computed(() => props.canReflectDate === true && canAccountField('date'))
+const canReflectRegion = computed(() => props.canReflectRegion === true && canAccountField('region'))
+const canReflectPurchaseCost = computed(() => props.canReflectPurchaseCost === true && canAccountField('purchase_cost'))
+const canReflectAccountPassword = computed(() => props.canReflectAccountPassword === true && canAccountField('account_password'))
+const canReflectEmailPassword = computed(() => props.canReflectEmailPassword === true && canAccountField('email_password'))
+const canReflectAuthCode = computed(() => props.canReflectAuthCode === true && canAccountField('auth_code'))
+const canReflectReserves = computed(() => props.canReflectReserves === true && canAccountField('reserves'))
+const canShowAccountNotes = computed(() => canAccountField('notes'))
 
 // Галочку деактивации показываем только тем ролям, которым разрешено менять этот флаг.
 const showDeactivationToggle = computed(() => {

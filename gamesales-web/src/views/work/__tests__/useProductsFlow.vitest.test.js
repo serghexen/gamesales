@@ -257,6 +257,21 @@ describe('useProductsFlow', () => {
     expect(h.deps.apiPut).not.toHaveBeenCalled()
   })
 
+  it('createProduct omits disabled product form fields from payload', async () => {
+    const h = createHarness()
+    h.deps.canDoAction = (actionCode) => actionCode !== 'products.create.field.notes'
+    h.flow = useProductsFlow(h.deps)
+    h.newProduct.type_code = 'game'
+    h.newProduct.title = 'GTA V'
+    h.newProduct.subscription_notes = 'hidden'
+    h.apiPost.mockResolvedValueOnce({ product_id: 88 })
+    h.apiGet.mockResolvedValue({ items: [], total: 0 })
+
+    await h.flow.createProduct()
+
+    expect(h.apiPost.mock.calls[0][1]).not.toHaveProperty('subscription_notes')
+  })
+
   it('loadProductAccounts requests product endpoint', async () => {
     const h = createHarness()
     h.apiGet.mockResolvedValueOnce([])

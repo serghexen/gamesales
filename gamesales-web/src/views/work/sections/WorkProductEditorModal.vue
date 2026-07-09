@@ -108,16 +108,16 @@
 
           <!-- Редактирование существующего товара -->
           <div v-if="editProduct.open" class="form form--stack form--compact">
-            <label class="field">
+            <label v-if="canProductField('title')" class="field">
               <span class="label">Название</span>
               <input v-model.trim="editProduct.title" class="input" placeholder="" :readonly="productEditMode === 'view'" />
             </label>
-            <label v-if="isEditGameType" class="field">
+            <label v-if="isEditGameType && canProductField('short_title')" class="field">
               <span class="label">Короткое название</span>
               <input v-model.trim="editProduct.short_title" class="input" placeholder="" :readonly="productEditMode === 'view'" />
             </label>
             <template v-if="isEditGameType">
-              <label class="field">
+              <label v-if="canProductField('text_lang')" class="field">
                 <span class="label">Язык текста</span>
                 <input
                   v-if="productEditMode === 'view'"
@@ -132,7 +132,7 @@
                   </option>
                 </select>
               </label>
-              <label class="field">
+              <label v-if="canProductField('audio_lang')" class="field">
                 <span class="label">Язык озвучки</span>
                 <input
                   v-if="productEditMode === 'view'"
@@ -148,7 +148,7 @@
                 </select>
               </label>
               <div class="deal-form__double field--full">
-                <label class="field">
+                <label v-if="canProductField('vr_support')" class="field">
                   <span class="label">Поддержка VR</span>
                   <input
                     v-if="productEditMode === 'view'"
@@ -163,7 +163,7 @@
                     </option>
                   </select>
                 </label>
-                <label class="field">
+                <label v-if="canProductField('region')" class="field">
                   <span class="label">Регион</span>
                   <input
                     v-if="productEditMode === 'view'"
@@ -179,7 +179,7 @@
                   </select>
                 </label>
               </div>
-              <div v-if="canReflectProductAccounts" class="field field--full">
+              <div v-if="canShowProductAccounts" class="field field--full">
                 <span class="label account-products-title">Аккаунты</span>
                 <div v-if="productEditMode === 'view'" class="pill-list">
                   <span v-for="title in editProductAccountTitles" :key="`product-edit-account-pill-${title}`" class="pill">{{ title }}</span>
@@ -198,7 +198,7 @@
                   </div>
                 </div>
               </div>
-              <div v-if="productEditMode !== 'view' && canReflectProductAccounts" class="quick-create quick-create--account">
+              <div v-if="productEditMode !== 'view' && canShowProductAccounts" class="quick-create quick-create--account">
                 <div class="quick-create__header">
                   <button class="comment-toggle" type="button" @click="editQuickAccountOpen = !editQuickAccountOpen">
                     {{ editQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
@@ -233,7 +233,7 @@
                   <span v-if="quickEditProductAccountError" class="bad">{{ quickEditProductAccountError }}</span>
                 </template>
               </div>
-              <div v-if="canReflectProductAccounts" class="field field--full">
+              <div v-if="canProductField('platforms')" class="field field--full">
                 <span class="label">Платформа</span>
                 <div class="check-list check-list--compact">
                   <label v-for="p in platforms" :key="p.code" class="check-item">
@@ -242,11 +242,11 @@
                   </label>
                 </div>
               </div>
-              <label class="field field--full">
+              <label v-if="canProductField('link')" class="field field--full">
                 <span class="label">Ссылка</span>
                 <input v-model.trim="editProduct.link" class="input" placeholder="https://..." :readonly="productEditMode === 'view'" />
               </label>
-              <div class="field field--comment-collapsible field--full">
+              <div v-if="canProductField('notes')" class="field field--comment-collapsible field--full">
                 <button class="comment-toggle" type="button" @click="editProductCommentOpen = !editProductCommentOpen" :disabled="productEditMode === 'view'">
                   {{ editProductCommentOpen || editProduct.subscription_notes ? 'Комментарий' : '+ Комментарий' }}
                 </button>
@@ -260,7 +260,7 @@
               </div>
             </template>
             <template v-else>
-              <label class="field">
+              <label v-if="canProductField('region')" class="field">
                 <span class="label">Регион</span>
                 <input
                   v-if="productEditMode === 'view'"
@@ -346,7 +346,7 @@
                   <span v-if="quickEditProductAccountError" class="bad">{{ quickEditProductAccountError }}</span>
                 </template>
               </div>
-              <div class="field field--full">
+              <div v-if="canProductField('platforms')" class="field field--full">
                 <span class="label">Платформа</span>
                 <div class="check-list check-list--compact">
                   <label v-for="p in platforms" :key="p.code" class="check-item">
@@ -357,7 +357,7 @@
               </div>
             </template>
             <div class="divider"></div>
-            <div v-if="!isEditGameType" class="field field--full">
+            <div v-if="!isEditGameType && canProductField('subscription_terms')" class="field field--full">
               <span class="label">Сроки подписки ({{ productSubscriptionTermsCount }})</span>
               <p v-if="productSubscriptionTermsErrorText" class="bad">{{ productSubscriptionTermsErrorText }}</p>
               <div v-else-if="productSubscriptionTermsLoadingState" class="loader-wrap loader-wrap--compact">
@@ -469,7 +469,7 @@
                 Сроков подписки пока нет.
               </p>
             </div>
-            <div v-if="!isEditGameType" class="field field--comment-collapsible field--full">
+            <div v-if="!isEditGameType && canProductField('notes')" class="field field--comment-collapsible field--full">
               <button class="comment-toggle" type="button" @click="editProductCommentOpen = !editProductCommentOpen" :disabled="productEditMode === 'view'">
                 {{ editProductCommentOpen || editProduct.subscription_notes ? 'Комментарий' : '+ Комментарий' }}
               </button>
@@ -481,7 +481,7 @@
                 :readonly="productEditMode === 'view'"
               />
             </div>
-            <div v-if="isEditGameType && canReflectProductDeals" class="field field--full">
+            <div v-if="isEditGameType && canShowProductDeals" class="field field--full">
               <button
                 class="section-toggle"
                 type="button"
@@ -628,7 +628,7 @@
                 </div>
               </template>
             </div>
-            <div v-if="isEditGameType && canReflectProductSlots" class="field field--full">
+            <div v-if="isEditGameType && canShowProductSlots" class="field field--full">
               <button
                 class="section-toggle"
                 type="button"
@@ -859,16 +859,16 @@
 
           <!-- Создание нового товара -->
           <div v-else class="form form--stack form--compact">
-            <label class="field">
+            <label v-if="canProductField('title')" class="field">
               <span class="label">Название</span>
               <input v-model.trim="newProduct.title" class="input" placeholder="" />
             </label>
-            <label v-if="newProduct.type_code === PRODUCT_TYPE_PRIMARY" class="field">
+            <label v-if="newProduct.type_code === PRODUCT_TYPE_PRIMARY && canProductField('short_title')" class="field">
               <span class="label">Короткое название</span>
               <input v-model.trim="newProduct.short_title" class="input" placeholder="" />
             </label>
             <template v-if="newProduct.type_code === PRODUCT_TYPE_PRIMARY">
-              <label class="field">
+              <label v-if="canProductField('text_lang')" class="field">
                 <span class="label">Язык текста</span>
                 <select v-model="newProduct.text_lang" class="input input--select">
                   <option value="">— не выбрано —</option>
@@ -877,7 +877,7 @@
                   </option>
                 </select>
               </label>
-              <label class="field">
+              <label v-if="canProductField('audio_lang')" class="field">
                 <span class="label">Язык озвучки</span>
                 <select v-model="newProduct.audio_lang" class="input input--select">
                   <option value="">— не выбрано —</option>
@@ -887,7 +887,7 @@
                 </select>
               </label>
               <div class="deal-form__double field--full">
-                <label class="field">
+                <label v-if="canProductField('vr_support')" class="field">
                   <span class="label">Поддержка VR</span>
                   <select v-model="newProduct.vr_support" class="input input--select">
                     <option value="">— не выбрано —</option>
@@ -896,7 +896,7 @@
                     </option>
                   </select>
                 </label>
-                <label class="field">
+                <label v-if="canProductField('region')" class="field">
                   <span class="label">Регион</span>
                   <select v-model="newProduct.region_code" class="input input--select">
                     <option value="">— не выбрано —</option>
@@ -906,7 +906,7 @@
                   </select>
                 </label>
               </div>
-              <div v-if="canReflectProductAccounts" class="field field--full">
+              <div v-if="canShowProductAccounts" class="field field--full">
                 <span class="label account-products-title">Аккаунты</span>
                 <label class="field">
                   <span class="label">Поиск</span>
@@ -919,7 +919,7 @@
                   </label>
                 </div>
               </div>
-              <div v-if="canReflectProductAccounts" class="quick-create quick-create--account">
+              <div v-if="canShowProductAccounts" class="quick-create quick-create--account">
                 <div class="quick-create__header">
                   <button class="comment-toggle" type="button" @click="newQuickAccountOpen = !newQuickAccountOpen">
                     {{ newQuickAccountOpen ? 'Быстрое создание аккаунта' : '+ Быстрое создание аккаунта' }}
@@ -954,7 +954,7 @@
                   <span v-if="quickNewProductAccountError" class="bad">{{ quickNewProductAccountError }}</span>
                 </template>
               </div>
-              <div class="field field--full">
+              <div v-if="canProductField('platforms')" class="field field--full">
                 <span class="label">Платформа</span>
                 <div class="check-list check-list--compact">
                   <label v-for="p in platforms" :key="p.code" class="check-item">
@@ -963,11 +963,11 @@
                   </label>
                 </div>
               </div>
-              <label class="field field--full">
+              <label v-if="canProductField('link')" class="field field--full">
                 <span class="label">Ссылка</span>
                 <input v-model.trim="newProduct.link" class="input" placeholder="https://..." />
               </label>
-              <div class="field field--comment-collapsible field--full">
+              <div v-if="canProductField('notes')" class="field field--comment-collapsible field--full">
                 <button class="comment-toggle" type="button" @click="newProductCommentOpen = !newProductCommentOpen">
                   {{ newProductCommentOpen || newProduct.subscription_notes ? 'Комментарий' : '+ Комментарий' }}
                 </button>
@@ -980,7 +980,7 @@
               </div>
             </template>
             <template v-else>
-              <label class="field">
+              <label v-if="canProductField('region')" class="field">
                 <span class="label">Регион</span>
                 <select v-model="newProduct.region_code" class="input input--select">
                   <option value="">— не выбрано —</option>
@@ -989,7 +989,7 @@
                   </option>
                 </select>
               </label>
-              <div class="field field--full">
+              <div v-if="canProductField('platforms')" class="field field--full">
                 <span class="label">Платформа</span>
                 <div class="check-list check-list--compact">
                   <label v-for="p in platforms" :key="p.code" class="check-item">
@@ -998,7 +998,7 @@
                   </label>
                 </div>
               </div>
-              <div class="field field--comment-collapsible field--full">
+              <div v-if="canProductField('notes')" class="field field--comment-collapsible field--full">
                 <button class="comment-toggle" type="button" @click="newProductCommentOpen = !newProductCommentOpen">
                   {{ newProductCommentOpen || newProduct.subscription_notes ? 'Комментарий' : '+ Комментарий' }}
                 </button>
@@ -1022,6 +1022,7 @@
 <script setup>
 import { computed, reactive, ref, toRefs, watch } from 'vue'
 import { PRODUCT_TYPE_PRIMARY } from '../domainUtils'
+import { productFieldAction } from '../productPermissions.js'
 import { useResizableTableColumns } from '../useResizableTableColumns'
 
 // Передаем один объект контекста, чтобы не раздувать длинный список props.
@@ -1094,12 +1095,25 @@ const hasProductAction = (actionCode) => {
   if (typeof ctx.canDoAction !== 'function') return false
   return ctx.canDoAction(actionCode)
 }
-const canCreateProduct = computed(() => hasProductAction('products.create_games'))
+const canCreateProduct = computed(() => (
+  hasProductAction('products.create_games') && hasProductAction(productFieldAction('create', 'title'))
+))
 const canEditProduct = computed(() => hasProductAction('products.edit'))
 const canDeleteProduct = computed(() => hasProductAction('products.delete'))
 const canReflectProductAccounts = computed(() => hasProductAction('products.reflect_accounts'))
 const canReflectProductDeals = computed(() => hasProductAction('products.reflect_deals'))
 const canReflectProductSlots = computed(() => hasProductAction('products.reflect_slots'))
+const productFieldContext = computed(() => {
+  if (!editProduct.value?.open) return 'create'
+  return productEditMode.value === 'view' ? 'view' : 'edit'
+})
+function canProductField(fieldKey) {
+  // Проверяем точечное право поля товара поверх старых операций create/edit/reflect.
+  return hasProductAction(productFieldAction(productFieldContext.value, fieldKey))
+}
+const canShowProductAccounts = computed(() => canReflectProductAccounts.value && canProductField('accounts'))
+const canShowProductDeals = computed(() => canReflectProductDeals.value && canProductField('deals'))
+const canShowProductSlots = computed(() => canReflectProductSlots.value && canProductField('slots'))
 
 // В заголовке редактирования показываем тип товара и текущее название.
 const editProductTitle = computed(() => {

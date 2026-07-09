@@ -6,12 +6,246 @@ from fastapi import HTTPException
 
 
 ACTION_GROUPS = [
-    ("deals_active", "Активные сделки", "Что можно делать в активных сделках", 10),
-    ("deals_draft", "Черновики", "Что можно делать в черновиках", 20),
-    ("deals_completed", "Завершенные сделки", "Что можно делать в завершенных сделках", 30),
-    ("accounts", "Аккаунты", "Что можно делать с аккаунтами", 40),
-    ("products", "Товары", "Что можно делать с товарами", 50),
+    ("deals_active", "Сделки", "", 10),
+    ("deals_draft", "Черновики", "", 20),
+    ("deals_completed", "Завершенные сделки", "", 30),
+    ("accounts", "Аккаунты", "", 40),
+    ("products", "Товары", "", 50),
 ]
+
+DEAL_ACTIVE_LIST_PERMISSIONS = [
+    ("deals_active.list.type", "Список: тип", 100),
+    ("deals_active.list.customer", "Список: покупатель", 110),
+    ("deals_active.list.product", "Список: товар", 120),
+    ("deals_active.list.datetime", "Список: дата/время", 130),
+    ("deals_active.list.status", "Список: статус", 140),
+    ("deals_active.list.responsible", "Список: ответственный", 150),
+    ("deals_active.list.action", "Список: действие", 160),
+]
+
+DEAL_COMPLETED_LIST_PERMISSIONS = [
+    ("deals_completed.list.type", "Список: тип", 100),
+    ("deals_completed.list.customer", "Список: покупатель", 110),
+    ("deals_completed.list.product", "Список: товар", 120),
+    ("deals_completed.list.datetime", "Список: дата/время", 130),
+    ("deals_completed.list.status", "Список: статус", 140),
+    ("deals_completed.list.responsible", "Список: ответственный", 150),
+    ("deals_completed.list.action", "Список: действие", 160),
+]
+
+DEAL_ACTIVE_CONTEXT_PERMISSIONS = [
+    ("deals_active.new.sale.create", "Услуга - создание", 200),
+    ("deals_active.new.sale.draft", "Услуга - черновик", 210),
+    ("deals_active.view.sale.edit", "Услуга - редактирование", 220),
+    ("deals_active.new.rental.create", "Шеринг - создание", 230),
+    ("deals_active.new.rental.draft", "Шеринг - черновик", 240),
+    ("deals_active.view.rental.edit", "Шеринг - редактирование", 250),
+]
+
+DEAL_ACTIVE_FIELD_CONTEXTS = [
+    ("new.sale", "Новая услуга"),
+    ("view.sale", "Просмотр услуги"),
+    ("edit.sale", "Редактирование услуги"),
+    ("new.rental", "Новый шеринг"),
+    ("view.rental", "Просмотр шеринга"),
+    ("edit.rental", "Редактирование шеринга"),
+]
+
+DEAL_COMPLETED_FIELD_CONTEXTS = [
+    ("view.sale", "Просмотр услуги"),
+    ("edit.sale", "Редактирование услуги"),
+    ("view.rental", "Просмотр шеринга"),
+    ("edit.rental", "Редактирование шеринга"),
+]
+
+DEAL_DRAFT_FIELD_CONTEXTS = DEAL_COMPLETED_FIELD_CONTEXTS
+
+DEAL_ACTIVE_FIELDS = [
+    ("created_at", "Дата создания", {"view.sale", "view.rental", "edit.sale", "edit.rental"}),
+    ("completed_at", "Дата завершения", {"view.sale", "view.rental", "edit.sale", "edit.rental"}),
+    ("status", "Статус", {"view.sale", "view.rental", "edit.sale", "edit.rental"}),
+    ("return", "Возврат", {"view.sale", "view.rental", "edit.sale", "edit.rental"}),
+    ("source", "Источник", None),
+    ("messenger", "Мессенджер", None),
+    ("order_number", "Номер заказа", None),
+    ("customer", "Покупатель", None),
+    ("responsible", "Ответственный", None),
+    ("purchase_cost", "Закупочная цена", {"new.sale", "view.sale", "edit.sale"}),
+    ("price", "Сумма продажи", None),
+    ("payment_method", "Метод оплаты", None),
+    ("discount", "Скидка", None),
+    ("login", "Логин", {"new.sale", "view.sale", "edit.sale"}),
+    ("password", "Пароль", {"new.sale", "view.sale", "edit.sale"}),
+    ("product_link", "Ссылка на товар", {"new.sale", "view.sale", "edit.sale"}),
+    ("region", "Регион", {"new.sale", "view.sale", "edit.sale"}),
+    ("product_type", "Тип товара", {"new.rental", "view.rental", "edit.rental"}),
+    ("slot_type", "Тип слота", {"new.rental", "view.rental", "edit.rental"}),
+    ("subscription_term", "Срок подписки", {"new.rental", "view.rental", "edit.rental"}),
+    ("product", "Товар", {"new.rental", "view.rental", "edit.rental"}),
+    ("account", "Аккаунт", {"new.rental", "view.rental", "edit.rental"}),
+    ("account_login", "Логин аккаунта", {"new.rental", "view.rental", "edit.rental"}),
+    ("account_password", "Пароль аккаунта", {"new.rental", "view.rental", "edit.rental"}),
+    ("reserve", "Резерв", {"new.rental", "view.rental", "edit.rental"}),
+    ("notes", "Комментарий", None),
+]
+
+
+def deal_active_field_permissions() -> list[tuple[str, str, str, int]]:
+    # Разворачивает матрицу полей в обычные action-коды для хранения в БД.
+    return deal_field_permissions("deals_active", DEAL_ACTIVE_FIELD_CONTEXTS)
+
+
+def deal_completed_field_permissions() -> list[tuple[str, str, str, int]]:
+    # Для завершенных сделок используем те же поля, но без контекстов создания.
+    return deal_field_permissions("deals_completed", DEAL_COMPLETED_FIELD_CONTEXTS)
+
+
+def deal_draft_field_permissions() -> list[tuple[str, str, str, int]]:
+    # Черновики редактируются как существующие сделки, поэтому контекстов создания тут нет.
+    return deal_field_permissions("deals_draft", DEAL_DRAFT_FIELD_CONTEXTS)
+
+
+def deal_field_permissions(group_code: str, contexts: list[tuple[str, str]]) -> list[tuple[str, str, str, int]]:
+    # Разворачивает матрицу полей выбранной группы в обычные action-коды.
+    rows: list[tuple[str, str, str, int]] = []
+    sort_order = 300
+    for context_code, context_name in contexts:
+        for field_code, field_name, allowed_contexts in DEAL_ACTIVE_FIELDS:
+            if allowed_contexts is not None and context_code not in allowed_contexts:
+                continue
+            rows.append((
+                f"{group_code}.{context_code}.field.{field_code}",
+                f"{context_name}: {field_name}",
+                group_code,
+                sort_order,
+            ))
+            sort_order += 1
+    return rows
+
+
+DEAL_ACTIVE_DISCOUNT_FIELD_ACTIONS = {
+    f"deals_active.{context_code}.field.discount"
+    for context_code, _ in DEAL_ACTIVE_FIELD_CONTEXTS
+}
+
+DEAL_COMPLETED_DISCOUNT_FIELD_ACTIONS = {
+    f"deals_completed.{context_code}.field.discount"
+    for context_code, _ in DEAL_COMPLETED_FIELD_CONTEXTS
+}
+
+DEAL_DRAFT_DISCOUNT_FIELD_ACTIONS = {
+    f"deals_draft.{context_code}.field.discount"
+    for context_code, _ in DEAL_DRAFT_FIELD_CONTEXTS
+}
+
+ACCOUNT_FIELD_CONTEXTS = [
+    ("create", "Создание"),
+    ("view", "Просмотр"),
+    ("edit", "Редактирование"),
+]
+
+ACCOUNT_FIELDS = [
+    ("email", "Почта", {"create", "view", "edit"}),
+    ("region", "Регион", {"create", "view", "edit"}),
+    ("date", "Дата", {"create", "view", "edit"}),
+    ("purchase_cost", "Закупочная цена", {"create", "view", "edit"}),
+    ("notes", "Комментарий", {"create", "view", "edit"}),
+    ("account_password", "Пароль аккаунта", {"create", "view", "edit"}),
+    ("email_password", "Пароль почты", {"create", "view", "edit"}),
+    ("auth_code", "Код аутентификатора", {"create", "view", "edit"}),
+    ("reserves", "Резервы", {"create", "view", "edit"}),
+    ("products", "Товары", {"create", "view", "edit"}),
+    ("slots", "Слоты аккаунта", {"view", "edit"}),
+    ("deals", "Пользователи по сделкам", {"view", "edit"}),
+]
+
+
+def account_field_permissions() -> list[tuple[str, str, str, int]]:
+    # Разворачивает поля аккаунта в action-коды для матрицы формы.
+    rows: list[tuple[str, str, str, int]] = []
+    sort_order = 300
+    for context_code, context_name in ACCOUNT_FIELD_CONTEXTS:
+        for field_code, field_name, allowed_contexts in ACCOUNT_FIELDS:
+            if context_code not in allowed_contexts:
+                continue
+            rows.append((
+                f"accounts.{context_code}.field.{field_code}",
+                f"{context_name}: {field_name}",
+                "accounts",
+                sort_order,
+            ))
+            sort_order += 1
+    return rows
+
+
+ACCOUNT_DEFAULT_FALSE_FIELD_ACTIONS = {
+    f"accounts.{context_code}.field.{field_code}"
+    for context_code, _ in ACCOUNT_FIELD_CONTEXTS
+    for field_code in {
+        "date",
+        "region",
+        "purchase_cost",
+        "email_password",
+        "auth_code",
+        "reserves",
+        "products",
+        "slots",
+    }
+}
+
+
+PRODUCT_LIST_PERMISSIONS = [
+    ("products.list.type", "Список: тип", 100),
+    ("products.list.title", "Список: товар", 110),
+    ("products.list.platform", "Список: платформа", 120),
+]
+
+PRODUCT_FIELD_CONTEXTS = [
+    ("create", "Создание"),
+    ("view", "Просмотр"),
+    ("edit", "Редактирование"),
+]
+
+PRODUCT_FIELDS = [
+    ("title", "Название", {"create", "view", "edit"}),
+    ("short_title", "Короткое название", {"create", "view", "edit"}),
+    ("region", "Регион", {"create", "view", "edit"}),
+    ("platforms", "Платформа", {"create", "view", "edit"}),
+    ("notes", "Комментарий", {"create", "view", "edit"}),
+    ("link", "Ссылка", {"create", "view", "edit"}),
+    ("text_lang", "Язык текста", {"create", "view", "edit"}),
+    ("audio_lang", "Язык озвучки", {"create", "view", "edit"}),
+    ("vr_support", "Поддержка VR", {"create", "view", "edit"}),
+    ("accounts", "Аккаунты", {"create", "view", "edit"}),
+    ("deals", "Сделки", {"view", "edit"}),
+    ("slots", "Слоты по товару", {"view", "edit"}),
+    ("subscription_terms", "Сроки подписки", {"view", "edit"}),
+]
+
+
+def product_field_permissions() -> list[tuple[str, str, str, int]]:
+    # Разворачивает поля товара в action-коды для матрицы формы.
+    rows: list[tuple[str, str, str, int]] = []
+    sort_order = 300
+    for context_code, context_name in PRODUCT_FIELD_CONTEXTS:
+        for field_code, field_name, allowed_contexts in PRODUCT_FIELDS:
+            if context_code not in allowed_contexts:
+                continue
+            rows.append((
+                f"products.{context_code}.field.{field_code}",
+                f"{context_name}: {field_name}",
+                "products",
+                sort_order,
+            ))
+            sort_order += 1
+    return rows
+
+
+PRODUCT_DEFAULT_FALSE_FIELD_ACTIONS = {
+    f"products.{context_code}.field.{field_code}"
+    for context_code, _ in PRODUCT_FIELD_CONTEXTS
+    for field_code in {"slots"}
+}
 
 
 ACTION_PERMISSIONS = [
@@ -23,6 +257,9 @@ ACTION_PERMISSIONS = [
     ("deals_active.draft", "Черновик", "deals_active", 70),
     ("deals_active.discount", "Скидка", "deals_active", 80),
     ("deals_active.approve_return", "Одобрить возврат", "deals_active", 90),
+    *[(code, name, "deals_active", sort_order) for code, name, sort_order in DEAL_ACTIVE_LIST_PERMISSIONS],
+    *[(code, name, "deals_active", sort_order) for code, name, sort_order in DEAL_ACTIVE_CONTEXT_PERMISSIONS],
+    *deal_active_field_permissions(),
     ("deals_draft.view", "Просматривать", "deals_draft", 10),
     ("deals_draft.edit", "Редактирование", "deals_draft", 20),
     ("deals_draft.save", "Сохранять", "deals_draft", 30),
@@ -30,6 +267,7 @@ ACTION_PERMISSIONS = [
     ("deals_draft.delete", "Удалять", "deals_draft", 50),
     ("deals_draft.change_deal_date", "Смена даты сделки", "deals_draft", 60),
     ("deals_draft.change_completed_date", "Смена даты завершение", "deals_draft", 70),
+    *deal_draft_field_permissions(),
     ("deals_completed.view", "Просматривать", "deals_completed", 10),
     ("deals_completed.edit", "Редактирование", "deals_completed", 20),
     ("deals_completed.save", "Сохранять", "deals_completed", 30),
@@ -38,6 +276,8 @@ ACTION_PERMISSIONS = [
     ("deals_completed.change_completed_date", "Смена даты завершение", "deals_completed", 70),
     ("deals_completed.process_return", "Произвести возврат", "deals_completed", 80),
     ("deals_completed.press_return", "Нажать возврат", "deals_completed", 90),
+    *[(code, name, "deals_completed", sort_order) for code, name, sort_order in DEAL_COMPLETED_LIST_PERMISSIONS],
+    *deal_completed_field_permissions(),
     ("accounts.view_email", "Просмотр почты", "accounts", 10),
     ("accounts.view_games", "Просмотр игры", "accounts", 20),
     ("accounts.view_slots", "Просмотр слотов", "accounts", 30),
@@ -55,6 +295,7 @@ ACTION_PERMISSIONS = [
     ("accounts.reflect_deals", "Отражение сделок", "accounts", 140),
     ("accounts.edit", "Редактирование", "accounts", 150),
     ("accounts.delete", "Удаление", "accounts", 160),
+    *account_field_permissions(),
     ("products.view_games", "Просмотр игр", "products", 10),
     ("products.create_games", "Создание игр", "products", 20),
     ("products.reflect_accounts", "Отражение аккаунтов", "products", 30),
@@ -62,11 +303,16 @@ ACTION_PERMISSIONS = [
     ("products.reflect_slots", "Отражение слотов", "products", 50),
     ("products.edit", "Редактирование", "products", 60),
     ("products.delete", "Удаление", "products", 70),
+    *[(code, name, "products", sort_order) for code, name, sort_order in PRODUCT_LIST_PERMISSIONS],
+    *product_field_permissions(),
 ]
 
 
 DEFAULT_FALSE_ACTIONS = {
     "deals_active.discount",
+    *DEAL_ACTIVE_DISCOUNT_FIELD_ACTIONS,
+    *DEAL_COMPLETED_DISCOUNT_FIELD_ACTIONS,
+    *DEAL_DRAFT_DISCOUNT_FIELD_ACTIONS,
     "deals_draft.delete",
     "deals_draft.change_deal_date",
     "deals_draft.change_completed_date",
@@ -85,9 +331,11 @@ DEFAULT_FALSE_ACTIONS = {
     "accounts.reflect_purchase_cost",
     "accounts.edit",
     "accounts.delete",
+    *ACCOUNT_DEFAULT_FALSE_FIELD_ACTIONS,
     "products.reflect_slots",
     "products.edit",
     "products.delete",
+    *PRODUCT_DEFAULT_FALSE_FIELD_ACTIONS,
 }
 
 

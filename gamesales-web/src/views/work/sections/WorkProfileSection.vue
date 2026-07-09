@@ -79,10 +79,10 @@
             </div>
             <p v-if="ctx.rolePermissionsLoading" class="muted">Загрузка доступов…</p>
             <div v-else class="role-access-matrix">
-              <section class="role-access-group role-access-group--sections">
-                <div class="role-access-group__head">
-                  <h3>Разделы</h3>
-                </div>
+              <details class="role-access-group role-access-group--sections">
+                <summary class="role-access-group__summary">
+                  <span>Разделы</span>
+                </summary>
                 <div class="check-list check-list--compact check-list--role-permissions">
                   <label
                     v-for="item in (ctx.rolePermissionsItems || [])"
@@ -99,32 +99,64 @@
                   </label>
                   <p v-if="!(ctx.rolePermissionsItems || []).length" class="muted">Для выбранной роли пока нет настроек.</p>
                 </div>
-              </section>
-              <section
+              </details>
+              <template
                 v-for="group in groupedActionPermissions"
                 :key="`action-permission-group-${group.code}`"
-                class="role-access-group"
               >
-                <div class="role-access-group__head">
-                  <h3>{{ group.name }}</h3>
-                  <span>{{ group.description }}</span>
-                </div>
-                <div class="check-list check-list--compact check-list--role-permissions">
-                  <label
-                    v-for="item in group.items"
-                    :key="`action-permission-${item.action_code}`"
-                    class="check-item"
-                  >
-                    <input
-                      type="checkbox"
-                      :checked="item.can_do"
-                      :disabled="ctx.rolePermissionsLoading || ctx.rolePermissionsSaving"
-                      @change="ctx.setRoleActionPermissionItem(item.action_code, $event.target.checked)"
-                    />
-                    <span>{{ item.action_name }}</span>
-                  </label>
-                </div>
-              </section>
+                <WorkRoleActiveDealsPermissions
+                  v-if="['deals_active', 'deals_completed', 'deals_draft'].includes(group.code)"
+                  :group-code="group.code"
+                  :group-name="group.name"
+                  :group-description="group.description"
+                  :items="group.items"
+                  :disabled="ctx.rolePermissionsLoading || ctx.rolePermissionsSaving"
+                  :set-action="ctx.setRoleActionPermissionItem"
+                />
+                <WorkRoleAccountPermissions
+                  v-else-if="group.code === 'accounts'"
+                  :group-name="group.name"
+                  :group-description="group.description"
+                  :items="group.items"
+                  :disabled="ctx.rolePermissionsLoading || ctx.rolePermissionsSaving"
+                  :set-action="ctx.setRoleActionPermissionItem"
+                />
+                <WorkRoleProductPermissions
+                  v-else-if="group.code === 'products'"
+                  :group-name="group.name"
+                  :group-description="group.description"
+                  :items="group.items"
+                  :disabled="ctx.rolePermissionsLoading || ctx.rolePermissionsSaving"
+                  :set-action="ctx.setRoleActionPermissionItem"
+                />
+                <details
+                  v-else
+                  class="role-access-group role-action-permissions"
+                >
+                  <summary class="role-access-group__summary">
+                    <span>{{ group.name }}</span>
+                    <small v-if="group.description">{{ group.description }}</small>
+                  </summary>
+                  <details class="role-active-deals__panel">
+                    <summary>Операции</summary>
+                    <div class="role-active-deals__ops">
+                      <label
+                        v-for="item in group.items"
+                        :key="`action-permission-${item.action_code}`"
+                        class="check-item role-active-deals__chip"
+                      >
+                        <input
+                          type="checkbox"
+                          :checked="item.can_do"
+                          :disabled="ctx.rolePermissionsLoading || ctx.rolePermissionsSaving"
+                          @change="ctx.setRoleActionPermissionItem(item.action_code, $event.target.checked)"
+                        />
+                        <span>{{ item.action_name }}</span>
+                      </label>
+                    </div>
+                  </details>
+                </details>
+              </template>
             </div>
             <p v-if="ctx.rolePermissionsError" class="bad">{{ ctx.rolePermissionsError }}</p>
             <p v-if="ctx.rolePermissionsOk" class="ok">{{ ctx.rolePermissionsOk }}</p>
@@ -139,6 +171,9 @@
 <script setup>
 import { computed, ref, unref, watch } from 'vue'
 import WorkUsersSection from './WorkUsersSection.vue'
+import WorkRoleActiveDealsPermissions from './WorkRoleActiveDealsPermissions.vue'
+import WorkRoleAccountPermissions from './WorkRoleAccountPermissions.vue'
+import WorkRoleProductPermissions from './WorkRoleProductPermissions.vue'
 
 const props = defineProps({
   ctx: { type: Object, required: true },
@@ -174,8 +209,20 @@ const groupedActionPermissions = computed(() => {
     }
     index.get(code).items.push(item)
   }
-  return groups
+  return groups.sort((left, right) => actionGroupOrder(left.code) - actionGroupOrder(right.code))
 })
+
+function actionGroupOrder(groupCode) {
+  // Держим завершенные сделки сразу под активными, независимо от порядка, который пришел из API.
+  const order = {
+    deals_active: 10,
+    deals_completed: 20,
+    deals_draft: 30,
+    accounts: 40,
+    products: 50,
+  }
+  return order[String(groupCode || '').trim()] ?? 100
+}
 
 // Открывает форму управления доступами как отдельную вкладку без toggle-поведения.
 const openRolePermissionsForm = async () => {

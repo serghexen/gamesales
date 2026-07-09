@@ -339,6 +339,145 @@
   overflow: hidden;
 }
 
+.work-page .role-access-group.role-active-deals,
+.work-page .role-action-permissions {
+  grid-column: 1 / -1;
+}
+
+.work-page .role-access-group--sections {
+  grid-column: 1 / -1;
+}
+
+.work-page .role-access-group > .role-access-group__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.25;
+  cursor: pointer;
+}
+
+.work-page .role-access-group > .role-access-group__summary small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.work-page .role-access-group--sections .check-list.check-list--role-permissions {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  padding: 12px;
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.work-page .role-active-deals {
+  display: grid;
+  gap: 10px;
+}
+
+.work-page .role-active-deals__panel {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  overflow: hidden;
+}
+
+.work-page .role-active-deals__panel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 11px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.work-page .role-active-deals__summary-count {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.work-page .role-active-deals__chips,
+.work-page .role-active-deals__ops {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 6px;
+  padding: 0 11px 11px;
+}
+
+.work-page .role-active-deals__chip {
+  min-height: 28px;
+  padding: 5px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  background: rgba(5, 10, 24, 0.4);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.work-page .role-active-deals__ops .role-active-deals__chip--new-row {
+  grid-column-start: 1;
+}
+
+.work-page .role-active-deals__matrix-wrap {
+  overflow-x: auto;
+  padding: 0 10px 10px;
+}
+
+.work-page .role-active-deals__matrix {
+  width: 100%;
+  min-width: 880px;
+  border-collapse: collapse;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.work-page .role-active-deals__matrix th,
+.work-page .role-active-deals__matrix td {
+  padding: 7px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+  vertical-align: middle;
+}
+
+.work-page .role-active-deals__matrix th:first-child,
+.work-page .role-active-deals__matrix td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 150px;
+  background: #11182b;
+  text-align: left;
+  font-weight: 800;
+}
+
+.work-page .role-active-deals__required-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 16px;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 201, 92, 0.42);
+  border-radius: 5px;
+  background: rgba(255, 201, 92, 0.12);
+  color: #ffd36b;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.work-page .role-active-deals input[type="checkbox"] {
+  accent-color: #2688ff;
+}
+
 .work-page .role-access-group__head {
   display: grid;
   gap: 4px;

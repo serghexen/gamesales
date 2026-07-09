@@ -1,10 +1,29 @@
 import unittest
 
-from domains.rbac_permissions import ACTION_PERMISSIONS, default_action_allowed
+from domains.rbac_permissions import (
+    ACTION_PERMISSIONS,
+    ACCOUNT_DEFAULT_FALSE_FIELD_ACTIONS,
+    PRODUCT_DEFAULT_FALSE_FIELD_ACTIONS,
+    default_action_allowed,
+)
 
 
 REFERENCE_DISABLED_ACTIONS = {
     "deals_active.discount",
+    "deals_active.new.sale.field.discount",
+    "deals_active.new.rental.field.discount",
+    "deals_active.view.sale.field.discount",
+    "deals_active.view.rental.field.discount",
+    "deals_active.edit.sale.field.discount",
+    "deals_active.edit.rental.field.discount",
+    "deals_completed.view.sale.field.discount",
+    "deals_completed.view.rental.field.discount",
+    "deals_completed.edit.sale.field.discount",
+    "deals_completed.edit.rental.field.discount",
+    "deals_draft.view.sale.field.discount",
+    "deals_draft.view.rental.field.discount",
+    "deals_draft.edit.sale.field.discount",
+    "deals_draft.edit.rental.field.discount",
     "deals_draft.delete",
     "deals_draft.change_deal_date",
     "deals_draft.change_completed_date",
@@ -23,9 +42,11 @@ REFERENCE_DISABLED_ACTIONS = {
     "accounts.reflect_purchase_cost",
     "accounts.edit",
     "accounts.delete",
+    *ACCOUNT_DEFAULT_FALSE_FIELD_ACTIONS,
     "products.reflect_slots",
     "products.edit",
     "products.delete",
+    *PRODUCT_DEFAULT_FALSE_FIELD_ACTIONS,
 }
 
 

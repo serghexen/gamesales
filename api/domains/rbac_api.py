@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from fastapi import Depends, HTTPException
@@ -41,6 +42,9 @@ def mount_rbac_routes(
     get_current_user,
     require_role,
 ):
+    rbac_defaults_lock = threading.Lock()
+    rbac_defaults_ready = False
+
     # Справочник UI-разделов, которыми можно управлять из ролевой модели.
     UI_SECTIONS = [
         ("deals", "Сделки", 10),
@@ -89,7 +93,22 @@ def mount_rbac_routes(
 
     # Гарантирует наличие RBAC-таблиц и дефолтных значений для всех ролей и разделов.
     def ensure_rbac_schema_and_defaults(conn) -> None:
+        nonlocal rbac_defaults_ready
+        if rbac_defaults_ready:
+            return
+        with rbac_defaults_lock:
+            if rbac_defaults_ready:
+                return
+            ensure_rbac_schema_and_defaults_locked(conn)
+            conn.commit()
+            rbac_defaults_ready = True
+
+    # Выполняет фактический досев RBAC под lock-ом процесса, чтобы чтения не стартовали пачкой.
+    def ensure_rbac_schema_and_defaults_locked(conn) -> None:
         with conn.cursor() as cur:
+            # Сериализуем досев RBAC между процессами и не даем запросам висеть бесконечно.
+            cur.execute("SET LOCAL lock_timeout = '5s'")
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext('gamesales.rbac.defaults'))")
             # Не трогает справочники на каждом чтении, если матрица уже полностью посеяна.
             cur.execute(
                 """

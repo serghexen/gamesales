@@ -6,6 +6,8 @@
       :deal-filters="ctx.dealFilters"
       :apply-deal-search="ctx.applyDealSearch"
       :can-create-deals="canDoAction('deals_active.create')"
+      :can-create-sale-deals="canDoAction('deals_active.create') && canDoAction('deals_active.new.sale.create')"
+      :can-create-sharing-deals="canDoAction('deals_active.create') && canDoAction('deals_active.new.rental.create')"
       :can-view-completed-deals="canDoAction('deals_completed.view')"
       :open-create-sale-modal="ctx.openCreateSaleModal"
       :open-create-sharing-modal="ctx.openCreateSharingModal"

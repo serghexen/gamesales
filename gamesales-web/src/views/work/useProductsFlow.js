@@ -1,5 +1,6 @@
 import { confirmDiscardIfNeeded, isSameNormalized } from './unsavedChanges'
 import { PRODUCT_TYPE_PRIMARY } from './domainUtils'
+import { productFieldAction } from './productPermissions.js'
 
 export function useProductsFlow({
   auth,
@@ -58,6 +59,30 @@ export function useProductsFlow({
     // Без action-checker не выполняем действие, чтобы не обходить матрицу.
     if (typeof canDoAction !== 'function') return false
     return canDoAction(actionCode)
+  }
+  const canUseProductField = (contextKey, fieldKey) => {
+    // Поля товара отправляем только если они разрешены в матрице формы.
+    return canUseProductAction(productFieldAction(contextKey, fieldKey))
+  }
+
+  function buildProductPayload(source, typeCode, contextKey) {
+    // Собирает payload товара только из разрешенных полей текущего контекста.
+    const payload = { type_code: typeCode }
+    if (canUseProductField(contextKey, 'title')) payload.title = source.title
+    if (canUseProductField(contextKey, 'short_title')) payload.short_title = source.short_title || null
+    if (canUseProductField(contextKey, 'region')) payload.region_code = source.region_code || null
+    if (canUseProductField(contextKey, 'platforms')) payload.platform_codes = source.platform_codes || []
+    if (canUseProductField(contextKey, 'notes')) payload.subscription_notes = source.subscription_notes || null
+    if (typeCode === PRODUCT_TYPE_PRIMARY) {
+      if (canUseProductField(contextKey, 'link')) payload.link = source.link || null
+      if (canUseProductField(contextKey, 'text_lang')) payload.text_lang = source.text_lang || null
+      if (canUseProductField(contextKey, 'audio_lang')) payload.audio_lang = source.audio_lang || null
+      if (canUseProductField(contextKey, 'vr_support')) payload.vr_support = source.vr_support || null
+    } else {
+      payload.provider = canUseProductField(contextKey, 'title') ? (source.provider || null) : null
+      payload.billing_period = canUseProductField(contextKey, 'title') ? (source.billing_period || null) : null
+    }
+    return payload
   }
 
   let initialEditProductSnapshot = null
@@ -546,29 +571,15 @@ export function useProductsFlow({
       const typeCode = String(newProduct.type_code || '').toLowerCase() === 'subscription'
         ? 'subscription'
         : PRODUCT_TYPE_PRIMARY
-      const created = await apiPost(
-        '/products',
-        {
-          type_code: typeCode,
-          title: newProduct.title,
-          short_title: newProduct.short_title || null,
-          link: typeCode === PRODUCT_TYPE_PRIMARY ? (newProduct.link || null) : null,
-          text_lang: typeCode === PRODUCT_TYPE_PRIMARY ? (newProduct.text_lang || null) : null,
-          audio_lang: typeCode === PRODUCT_TYPE_PRIMARY ? (newProduct.audio_lang || null) : null,
-          vr_support: typeCode === PRODUCT_TYPE_PRIMARY ? (newProduct.vr_support || null) : null,
-          // Платформы сохраняем для обоих типов товаров (игра и подписка).
-          platform_codes: newProduct.platform_codes || [],
-          provider: typeCode !== PRODUCT_TYPE_PRIMARY ? (newProduct.provider || null) : null,
-          billing_period: typeCode !== PRODUCT_TYPE_PRIMARY ? (newProduct.billing_period || null) : null,
-          // Поле используем как универсальный комментарий для игры и подписки.
-          subscription_notes: newProduct.subscription_notes || null,
-          region_code: newProduct.region_code || null,
-        },
-        { token: auth.state.token }
-      )
+      const created = await apiPost('/products', buildProductPayload(newProduct, typeCode, 'create'), { token: auth.state.token })
       // Для игры дополнительно сохраняем выбранные привязки к аккаунтам.
       const createdProductId = Number(created?.product_id || 0)
-      if (typeCode === PRODUCT_TYPE_PRIMARY && createdProductId && canUseProductAction('products.reflect_accounts')) {
+      if (
+        typeCode === PRODUCT_TYPE_PRIMARY
+        && createdProductId
+        && canUseProductAction('products.reflect_accounts')
+        && canUseProductField('create', 'accounts')
+      ) {
         await syncProductAccountBindings(createdProductId, newProduct.account_ids)
       }
       const createdTitle = newProduct.title
@@ -606,28 +617,13 @@ export function useProductsFlow({
       const typeCode = String(editProduct.type_code || '').toLowerCase() === 'subscription'
         ? 'subscription'
         : PRODUCT_TYPE_PRIMARY
-      await apiPut(
-        `/products/${editProduct.product_id}`,
-        {
-          type_code: typeCode,
-          title: editProduct.title,
-          short_title: editProduct.short_title || null,
-          link: typeCode === PRODUCT_TYPE_PRIMARY ? (editProduct.link || null) : null,
-          text_lang: typeCode === PRODUCT_TYPE_PRIMARY ? (editProduct.text_lang || null) : null,
-          audio_lang: typeCode === PRODUCT_TYPE_PRIMARY ? (editProduct.audio_lang || null) : null,
-          vr_support: typeCode === PRODUCT_TYPE_PRIMARY ? (editProduct.vr_support || null) : null,
-          // Платформы сохраняем для обоих типов товаров (игра и подписка).
-          platform_codes: editProduct.platform_codes || [],
-          provider: typeCode !== PRODUCT_TYPE_PRIMARY ? (editProduct.provider || null) : null,
-          billing_period: typeCode !== PRODUCT_TYPE_PRIMARY ? (editProduct.billing_period || null) : null,
-          // Поле используем как универсальный комментарий для игры и подписки.
-          subscription_notes: editProduct.subscription_notes || null,
-          region_code: editProduct.region_code || null,
-        },
-        { token: auth.state.token }
-      )
+      await apiPut(`/products/${editProduct.product_id}`, buildProductPayload(editProduct, typeCode, 'edit'), { token: auth.state.token })
       // При редактировании игры добавляем связи с выбранными аккаунтами.
-      if (typeCode === PRODUCT_TYPE_PRIMARY && canUseProductAction('products.reflect_accounts')) {
+      if (
+        typeCode === PRODUCT_TYPE_PRIMARY
+        && canUseProductAction('products.reflect_accounts')
+        && canUseProductField('edit', 'accounts')
+      ) {
         await syncProductAccountBindings(editProduct.product_id, editProduct.account_ids)
       }
       productOk.value = 'Товар обновлен'
@@ -705,6 +701,9 @@ export function useProductsFlow({
 
   async function createQuickProductAccount(target) {
     const isEdit = target === 'edit'
+    if (!canUseProductAction('products.reflect_accounts') || !canUseProductField(isEdit ? 'edit' : 'create', 'accounts')) {
+      return
+    }
     const state = isEdit ? quickEditProductAccount : quickNewProductAccount
     const loading = isEdit ? quickEditProductAccountLoading : quickNewProductAccountLoading
     const error = isEdit ? quickEditProductAccountError : quickNewProductAccountError

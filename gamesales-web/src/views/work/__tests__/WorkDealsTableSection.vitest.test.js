@@ -60,6 +60,41 @@ describe('WorkDealsTableSection', () => {
     expect(wrapper.find('table.deals-table').exists()).toBe(true)
   })
 
+  it('hides active deal list columns by action permissions', () => {
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        sortedDeals: [{
+          deal_id: 1,
+          deal_type: 'Услуга',
+          customer_nickname: 'Покупатель',
+          flow_status: 'В работе',
+        }],
+        canDoAction: (actionCode) => actionCode !== 'deals_active.list.customer',
+      }),
+    })
+
+    expect(wrapper.text()).toContain('Тип')
+    expect(wrapper.text()).not.toContain('Покупатель')
+  })
+
+  it('hides completed deal list columns by action permissions', () => {
+    const wrapper = mount(WorkDealsTableSection, {
+      props: buildProps({
+        dealShowCompleted: true,
+        sortedDeals: [{
+          deal_id: 1,
+          deal_type: 'Услуга',
+          customer_nickname: 'Покупатель',
+          flow_status: 'Завершен',
+        }],
+        canDoAction: (actionCode) => actionCode !== 'deals_completed.list.customer',
+      }),
+    })
+
+    expect(wrapper.text()).toContain('Тип')
+    expect(wrapper.text()).not.toContain('Покупатель')
+  })
+
   it('shows created/completed timestamps in completed list mode', () => {
     const wrapper = mount(WorkDealsTableSection, {
       props: buildProps({

@@ -76,6 +76,9 @@
         :format-product-platforms="ctx.formatProductPlatforms"
         :open-product-accounts="ctx.openProductAccounts"
         :can-view-games="canDoAction('products.view_games')"
+        :can-view-type-column="canDoAction('products.list.type')"
+        :can-view-title-column="canDoAction('products.list.title')"
+        :can-view-platform-column="canDoAction('products.list.platform')"
         :can-open-product-accounts="canDoAction('products.reflect_accounts')"
       />
 

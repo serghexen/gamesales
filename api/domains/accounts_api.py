@@ -492,8 +492,17 @@ def mount_accounts_routes(
         validate_date_not_future(payload.account_date, "account_date")
         with psycopg.connect(DB_DSN) as conn:
             require_action_permission(conn, q1, user, "accounts.create")
+            if payload.login_name or payload.domain_code:
+                require_action_permission(conn, q1, user, "accounts.create.field.email")
+            if payload.region_code:
+                require_action_permission(conn, q1, user, "accounts.create.field.region")
+            if payload.account_date is not None:
+                require_action_permission(conn, q1, user, "accounts.create.field.date")
+            if payload.notes:
+                require_action_permission(conn, q1, user, "accounts.create.field.notes")
             if float(payload.purchase_cost or 0) != 0:
                 require_action_permission(conn, q1, user, "accounts.reflect_purchase_cost")
+                require_action_permission(conn, q1, user, "accounts.create.field.purchase_cost")
             region_id = get_region_id(conn, payload.region_code) if payload.region_code else None
             domain_id = get_domain_id(conn, payload.domain_code)
 
@@ -595,16 +604,22 @@ def mount_accounts_routes(
                     raise HTTPException(403, "Operator cannot change account deactivation flag")
             if payload.account_date is not None and payload.account_date != current_account_date:
                 require_action_permission(conn, q1, user, "accounts.reflect_date")
+                require_action_permission(conn, q1, user, "accounts.edit.field.date")
             # Логин и домен вместе образуют почту аккаунта, поэтому проверяем право на ее отражение.
             if (
                 (payload.login_name is not None and payload.login_name != current_login)
                 or (payload.domain_code is not None and domain_id != current_domain_id)
             ):
                 require_action_permission(conn, q1, user, "accounts.reflect_email")
+                require_action_permission(conn, q1, user, "accounts.edit.field.email")
             if payload.region_code is not None and region_id != current_region_id:
                 require_action_permission(conn, q1, user, "accounts.reflect_region")
+                require_action_permission(conn, q1, user, "accounts.edit.field.region")
             if payload.purchase_cost is not None and new_purchase_cost != current_purchase_cost:
                 require_action_permission(conn, q1, user, "accounts.reflect_purchase_cost")
+                require_action_permission(conn, q1, user, "accounts.edit.field.purchase_cost")
+            if payload.notes is not None and payload.notes != current_notes:
+                require_action_permission(conn, q1, user, "accounts.edit.field.notes")
 
             # Обновляем деактивацию с правилом повторной активации не раньше чем через 183 дня.
             requested_is_deactivated = current_is_deactivated if payload.is_deactivated is None else bool(payload.is_deactivated)

@@ -6,17 +6,17 @@
       :class="{ 'table--completed': dealShowCompleted, 'table--pending': !dealShowCompleted }"
     >
     <colgroup>
-      <col :style="getColumnStyle('type')" />
-      <col :style="getColumnStyle('customer')" />
-      <col :style="getColumnStyle('region')" />
-      <col :style="getColumnStyle('date')" />
-      <col :style="getColumnStyle('status')" />
-      <col :style="getColumnStyle('responsible')" />
-      <col :style="getColumnStyle('action')" />
+      <col v-if="canShowDealColumn('type')" :style="getColumnStyle('type')" />
+      <col v-if="canShowDealColumn('customer')" :style="getColumnStyle('customer')" />
+      <col v-if="canShowDealColumn('product')" :style="getColumnStyle('region')" />
+      <col v-if="canShowDealColumn('datetime')" :style="getColumnStyle('date')" />
+      <col v-if="canShowDealColumn('status')" :style="getColumnStyle('status')" />
+      <col v-if="canShowDealColumn('responsible')" :style="getColumnStyle('responsible')" />
+      <col v-if="canShowDealColumn('action')" :style="getColumnStyle('action')" />
     </colgroup>
     <thead>
       <tr>
-        <th class="cell--tight deal-col-type">
+        <th v-if="canShowDealColumn('type')" class="cell--tight deal-col-type">
           <span class="th-title th-title--filter">
             Тип
             <span class="th-actions">
@@ -66,7 +66,7 @@
             @mousedown.stop.prevent="startResize($event, 'type')"
           />
         </th>
-        <th class="deal-col-customer">
+        <th v-if="canShowDealColumn('customer')" class="deal-col-customer">
           <span class="th-title th-title--filter">
             Покупатель
             <span class="th-actions">
@@ -118,7 +118,7 @@
             @mousedown.stop.prevent="startResize($event, 'customer')"
           />
         </th>
-        <th class="cell--tight deal-col-region">
+        <th v-if="canShowDealColumn('product')" class="cell--tight deal-col-region">
           <span class="th-title th-title--filter">
             Товар
             <span class="th-actions">
@@ -145,7 +145,7 @@
             @mousedown.stop.prevent="startResize($event, 'region')"
           />
         </th>
-        <th class="deal-col-date">
+        <th v-if="canShowDealColumn('datetime')" class="deal-col-date">
           <span class="th-title th-title--filter">
             Дата/время
             <span class="th-actions">
@@ -217,7 +217,7 @@
             @mousedown.stop.prevent="startResize($event, 'date')"
           />
         </th>
-        <th class="cell--tight deal-col-status">
+        <th v-if="canShowDealColumn('status')" class="cell--tight deal-col-status">
           <span class="th-title th-title--filter">
             Статус
             <span class="th-actions">
@@ -267,7 +267,7 @@
             @mousedown.stop.prevent="startResize($event, 'status')"
           />
         </th>
-        <th class="cell--tight deal-col-responsible">
+        <th v-if="canShowDealColumn('responsible')" class="cell--tight deal-col-responsible">
           <span class="th-title th-title--filter">
             {{ dealShowCompleted ? 'Ответств.' : 'Ответств.' }}
             <span class="th-actions">
@@ -317,7 +317,7 @@
             @mousedown.stop.prevent="startResize($event, 'responsible')"
           />
         </th>
-        <th class="cell--tight deal-col-action">Действие</th>
+        <th v-if="canShowDealColumn('action')" class="cell--tight deal-col-action">Действие</th>
       </tr>
     </thead>
     <tbody>
@@ -337,6 +337,7 @@
         @click="onDealRowClick(d)"
       >
         <td
+          v-if="canShowDealColumn('type')"
           :class="[
             'cell--tight',
             'deal-col-type',
@@ -345,9 +346,9 @@
         >
           {{ getDealTypeCellLabel(d) }}
         </td>
-        <td class="deal-col-customer">{{ d.customer_nickname || '—' }}</td>
-        <td class="cell--tight deal-col-region">{{ getDealProductCellLabel(d) }}</td>
-        <td class="deal-col-date">
+        <td v-if="canShowDealColumn('customer')" class="deal-col-customer">{{ d.customer_nickname || '—' }}</td>
+        <td v-if="canShowDealColumn('product')" class="cell--tight deal-col-region">{{ getDealProductCellLabel(d) }}</td>
+        <td v-if="canShowDealColumn('datetime')" class="deal-col-date">
           <template v-if="dealShowCompleted">
             <div class="deal-date-lines">
               <div><span class="muted">Соз.:</span> {{ formatDateTimeMinutes(d.purchase_at || d.created_at) }}</div>
@@ -358,9 +359,9 @@
             {{ formatDateTimeMinutes(d.purchase_at || d.created_at) }}
           </template>
         </td>
-        <td class="cell--tight deal-col-status">{{ d.flow_status || '—' }}</td>
-        <td class="cell--tight deal-col-responsible">{{ d.responsible_username || '—' }}</td>
-        <td class="cell--tight deal-col-action">
+        <td v-if="canShowDealColumn('status')" class="cell--tight deal-col-status">{{ d.flow_status || '—' }}</td>
+        <td v-if="canShowDealColumn('responsible')" class="cell--tight deal-col-responsible">{{ d.responsible_username || '—' }}</td>
+        <td v-if="canShowDealColumn('action')" class="cell--tight deal-col-action">
           <span
             v-if="isDealEditedByAnotherUser(d.deal_id)"
             class="deal-row-lock-label"
@@ -403,6 +404,8 @@
 
 <script setup>
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
+
+import { dealListColumns } from '../dealActivePermissions.js'
 
 import {
   parseMultiValueFilterQuery,
@@ -469,9 +472,23 @@ const props = defineProps({
   realtimeAnimationTick: { type: Number, default: 0 },
 })
 
-const emptyColspan = computed(() => 7)
+const dealListActionGroup = computed(() => (props.dealShowCompleted ? 'deals_completed' : 'deals_active'))
+const dealColumnActions = computed(() => {
+  return new Map(dealListColumns(dealListActionGroup.value).map((column) => [column.key, column.action]))
+})
+const visibleDealColumnCount = computed(() => {
+  return dealListColumns(dealListActionGroup.value).filter((column) => canShowDealColumn(column.key)).length || 1
+})
+const emptyColspan = computed(() => visibleDealColumnCount.value)
 const canCompleteDeal = computed(() => props.canDoAction('deals_active.change_status'))
 const canPressReturn = computed(() => props.canDoAction('deals_completed.press_return'))
+
+function canShowDealColumn(columnKey) {
+  // Колонки активного и завершенного списка читают свои action-коды из матрицы доступа.
+  const actionCode = dealColumnActions.value.get(columnKey)
+  if (!actionCode) return true
+  return props.canDoAction(actionCode)
+}
 const animatedDeals = computed(() => {
   const base = Array.isArray(props.sortedDeals) ? props.sortedDeals : []
   if (!removingDeals.value.length) return base
