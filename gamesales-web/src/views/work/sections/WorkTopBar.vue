@@ -57,7 +57,7 @@
               class="tab-workload__item"
             >
               <span class="tab-workload__dot" :class="{ 'is-online': item.isOnline }" aria-hidden="true"></span>
-              <span class="tab-workload__name">{{ item.title }}</span>
+              <span class="tab-workload__name" :title="item.title">{{ item.title }}</span>
               <span class="tab-workload__sep"> - </span>
               <span class="tab-workload__count">{{ item.pendingCount }}</span>
             </span>

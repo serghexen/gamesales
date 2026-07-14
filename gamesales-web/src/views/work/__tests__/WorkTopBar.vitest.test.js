@@ -89,6 +89,17 @@ describe('WorkTopBar', () => {
     expect(wrapper.findAll('.tab-workload__dot')).toHaveLength(2)
   })
 
+  it('keeps the full manager name available when it is shortened in the header', () => {
+    const fullName = 'Александр-ответственный-за-международные-сделки'
+    const wrapper = mountTopBar(buildCtx({
+      managersLoadItems: [
+        { username: 'm1', name: fullName, pending_count: 3, is_online: true },
+      ],
+    }))
+
+    expect(wrapper.find('.tab-workload__name').attributes('title')).toBe(fullName)
+  })
+
   it('shows TR card balance before workload for all users', () => {
     const wrapper = mountTopBar(buildCtx({ canManageRolePermissions: false }))
 
