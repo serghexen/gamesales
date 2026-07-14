@@ -288,7 +288,7 @@ describe('useFinanceReports', () => {
 
     expect(ok).toBe(true)
     expect(h.apiGet).toHaveBeenCalledWith(
-      '/finance/reports/cash-flow?date_from=2026-06-10&date_to=2026-06-20',
+      '/finance/reports/cash-flow?date_from=2026-06-10&date_to=2026-06-20&report_type=pl',
       { token: 'token-1' },
     )
     expect(h.finance.financePlLoaded.value).toBe(true)

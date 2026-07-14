@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 import json
 import os
 import re
@@ -3418,9 +3418,10 @@ def mount_finance_routes(
         month: Optional[str] = None,
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
+        report_type: Literal["cash_flow", "pl"] = "cash_flow",
         user=Depends(get_current_user),
     ):
-        # Строим Cash Flow за период и остатки от ближайшего ручного начального баланса.
+        # Cash Flow отражает результат основной деятельности, а PL получает все виды расходов.
         if date_from or date_to:
             date_from_value = date_from or date_to
             date_to_value = date_to or date_from_value
@@ -3550,6 +3551,10 @@ def mount_finance_routes(
               )
               AND COALESCE(p.amount, 0) <> 0
         """
+        # В Cash Flow оставляем только поступления и прямые расходы, чтобы не смешивать его с PL.
+        report_scope_sql = ""
+        if report_type == "cash_flow":
+            report_scope_sql = "AND (line_type = 'revenue' OR expense_kind = 'direct')"
 
         with psycopg.connect(DB_DSN) as conn:
             rows = qall(
@@ -3566,6 +3571,7 @@ def mount_finance_routes(
                 FROM cash_flow_rows
                 WHERE activity_date >= %s
                   AND activity_date <= %s
+                  {report_scope_sql}
                 GROUP BY line_type, line_name, expense_kind
                 HAVING COALESCE(SUM(amount), 0) <> 0
                 ORDER BY line_type DESC, expense_kind NULLS FIRST, line_name
@@ -3598,6 +3604,7 @@ def mount_finance_routes(
                     FROM cash_flow_rows
                     WHERE activity_date >= %s
                       AND activity_date < %s
+                      {report_scope_sql}
                     """,
                     (opening_balance_month, date_from_value),
                 ) or (Decimal("0"),)

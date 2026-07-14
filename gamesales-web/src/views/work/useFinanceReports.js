@@ -621,7 +621,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
   }
 
   const loadFinancePlReport = async () => {
-    // Загружаем PL за период через cash-flow endpoint и раскладываем строки по группам прибыли.
+    // Запрашиваем полный набор расходов для PL, а не сокращенный состав Cash Flow.
     financeError.value = null
     financePlLoading.value = true
     try {
@@ -642,6 +642,7 @@ export function useFinanceReports({ auth, apiGet, apiPost, apiPut, apiDelete, ma
       }
       params.set('date_from', dateFrom)
       params.set('date_to', dateTo)
+      params.set('report_type', 'pl')
 
       const query = params.toString()
       const data = await apiGet(`/finance/reports/cash-flow${query ? `?${query}` : ''}`, { token: auth.state.token })

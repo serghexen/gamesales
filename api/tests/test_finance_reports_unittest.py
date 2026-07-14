@@ -343,7 +343,7 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertTrue(any("NULLIF(region_code, '') IS NULL" in sql for sql in sql_collector))
         self.assertTrue(any("operation_code = %s" in sql for sql in sql_collector))
 
-    # Cash Flow должен отдавать поступления/расходы отдельными строками и считать остатки.
+    # Cash Flow должен учитывать поступления и только прямые расходы бизнеса.
     def test_finance_cash_flow_report_success(self):
         script = [
             {
@@ -351,8 +351,6 @@ class FinanceReportsTests(unittest.TestCase):
                     ("revenue", "Продажа TR", None, 15000.0),
                     ("revenue", "Продажа Шеринг", None, 5000.0),
                     ("expense", "Закуп TR", "direct", 6000.0),
-                    ("expense", "Маркетинг", "indirect", 800.0),
-                    ("expense", "Налог УСН", "tax", 200.0),
                 ],
             },
             {"one": (date(2026, 6, 1), 3000.0)},
@@ -373,16 +371,16 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         body = res.json()
         self.assertEqual(body["totals"]["revenue"], "20000.00")
-        self.assertEqual(body["totals"]["expense"], "7000.00")
-        self.assertEqual(body["totals"]["cash_flow"], "13000.00")
+        self.assertEqual(body["totals"]["expense"], "6000.00")
+        self.assertEqual(body["totals"]["cash_flow"], "14000.00")
         self.assertEqual(body["totals"]["direct_expense"], "6000.00")
-        self.assertEqual(body["totals"]["indirect_expense"], "800.00")
-        self.assertEqual(body["totals"]["tax_expense"], "200.00")
+        self.assertEqual(body["totals"]["indirect_expense"], "0.00")
+        self.assertEqual(body["totals"]["tax_expense"], "0.00")
         self.assertEqual(body["totals"]["gross_profit"], "14000.00")
-        self.assertEqual(body["totals"]["operating_profit"], "13200.00")
-        self.assertEqual(body["totals"]["net_profit"], "13000.00")
+        self.assertEqual(body["totals"]["operating_profit"], "14000.00")
+        self.assertEqual(body["totals"]["net_profit"], "14000.00")
         self.assertEqual(body["totals"]["opening_balance"], "3000.00")
-        self.assertEqual(body["totals"]["current_balance"], "16000.00")
+        self.assertEqual(body["totals"]["current_balance"], "17000.00")
         self.assertEqual(body["totals"]["opening_balance_month"], "2026-06-01")
         self.assertEqual(body["totals"]["opening_balance_manual"], True)
         self.assertEqual(body["revenues"][0]["name"], "Продажа TR")
@@ -393,6 +391,41 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertTrue(any("'Закуп Шеринг' AS line_name" in sql for sql in sql_collector))
         self.assertTrue(any("CONCAT('Закуп '" in sql for sql in sql_collector))
         self.assertTrue(any("e.input_channel IN ('manual', 'api', 'import')" in sql for sql in sql_collector))
+        self.assertTrue(any("AND (line_type = 'revenue' OR expense_kind = 'direct')" in sql for sql in sql_collector))
+
+    # PL должен сохранить косвенные расходы и налоги, чтобы показать полный результат компании.
+    def test_finance_pl_report_keeps_all_expense_kinds(self):
+        script = [
+            {
+                "all": [
+                    ("revenue", "Продажа TR", None, 100000.0),
+                    ("expense", "Закуп TR", "direct", 60000.0),
+                    ("expense", "Кино и домино", "indirect", 50000.0),
+                ],
+            },
+            {"one": None},
+        ]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get(
+                    "/finance/reports/cash-flow?date_from=2026-06-01&date_to=2026-06-30&report_type=pl",
+                    headers=self._auth_headers(role="manager"),
+                )
+
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["totals"]["cash_flow"], "-10000.00")
+        self.assertEqual(body["totals"]["direct_expense"], "60000.00")
+        self.assertEqual(body["totals"]["indirect_expense"], "50000.00")
+        self.assertEqual(body["totals"]["net_profit"], "-10000.00")
+        self.assertEqual(len(body["expenses"]), 2)
+        self.assertFalse(any("AND (line_type = 'revenue' OR expense_kind = 'direct')" in sql for sql in sql_collector))
 
     # Расшифровка Cash Flow должна отдавать строки по выбранной статье и интервалу даты проводки.
     def test_finance_cash_flow_details_success(self):
