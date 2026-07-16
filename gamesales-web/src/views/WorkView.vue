@@ -2127,14 +2127,17 @@ function setInterhubSearchFromEvent(event) {
   interhubSearch.value = String(event?.target?.value || '')
 }
 
-async function calculateInterhub(payload) {
-  // Создаем уникальный ID для проверки, чтобы будущая оплата не могла задублировать операцию.
+async function validateInterhub(payload) {
+  // Выбираем check для TOP_UP и calculate для остальных типов без вызова pay.
   interhubCalculationLoading.value = true
   interhubCalculation.value = null
   try {
     const agentTransactionId = `gamesales-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    interhubCalculation.value = await apiPost('/integrations/interhub/calculate', {
-      ...payload,
+    const requestPayload = { ...payload }
+    const isTopUp = String(requestPayload.flow_type || '').toUpperCase() === 'TOP_UP'
+    delete requestPayload.flow_type
+    interhubCalculation.value = await apiPost(isTopUp ? '/integrations/interhub/check' : '/integrations/interhub/calculate', {
+      ...requestPayload,
       agent_transaction_id: agentTransactionId,
     }, { token: auth.state.token })
   } catch (err) {
@@ -3493,7 +3496,7 @@ const interhubSectionCtx = asCtx({
   calculation: interhubCalculation,
   calculationLoading: interhubCalculationLoading,
   reload: reloadInterhubData,
-  calculate: calculateInterhub,
+  validate: validateInterhub,
   setSearchFromEvent: setInterhubSearchFromEvent,
 })
 

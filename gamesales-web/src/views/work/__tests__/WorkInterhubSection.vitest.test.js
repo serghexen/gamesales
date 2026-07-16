@@ -32,7 +32,7 @@ function buildCtx(overrides = {}) {
       },
     ],
     reload: vi.fn(),
-    calculate: vi.fn(),
+    validate: vi.fn(),
     calculation: null,
     calculationLoading: false,
     setSearchFromEvent: vi.fn(),
@@ -78,10 +78,23 @@ describe('WorkInterhubSection', () => {
     await wrapper.find('.interhub-catalog__form select').setValue('15')
     await wrapper.find('.interhub-catalog__form').trigger('submit.prevent')
 
-    expect(ctx.calculate).toHaveBeenCalledWith({
+    expect(ctx.validate).toHaveBeenCalledWith({
       service_id: 7,
       account: '998877',
       params: { nominal: 15 },
+      flow_type: 'TOP_UP_FIXED',
     })
+  })
+
+  it('derives TOP_UP amount from the selected nominal instead of rendering a manual amount input', async () => {
+    const ctx = buildCtx({
+      services: [{ service_id: 9, title: 'PlayStation', category: '', type: 'TOP_UP', fields: [{ name: 'nominal', type: 'LIST', required: true, value_list: [{ id: 250, title: 'TRY 250' }] }] }],
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await wrapper.find('tbody tr').trigger('click')
+    await wrapper.find('.interhub-catalog__form select').setValue('250')
+    expect(wrapper.text()).toContain('TRY 250')
+    expect(wrapper.find('.interhub-catalog__form input[type="number"]').exists()).toBe(false)
   })
 })

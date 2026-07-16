@@ -60,9 +60,9 @@
       <form v-if="selectedService" class="interhub-catalog__form" @submit.prevent="calculate">
         <div><p class="interhub-catalog__eyebrow">Шаг 1 · проверка</p><h3>{{ selectedService.title }}</h3></div>
         <label class="field"><span class="label">{{ accountLabel }}</span><input v-model.trim="account" class="input" required /></label>
-        <label v-if="needsAmount" class="field"><span class="label">Сумма</span><input v-model="amount" class="input" type="number" min="0.01" step="0.01" required /></label>
+        <div v-if="needsAmount" class="interhub-catalog__auto-amount"><span>Сумма пополнения</span><strong>{{ selectedNominalTitle || 'Выберите номинал' }}</strong><small>Подставляется автоматически из номинала</small></div>
         <label v-for="field in selectedService.fields" :key="field.name" class="field"><span class="label">{{ field.name }}<i v-if="field.required"> *</i></span><select v-if="field.type === 'LIST'" v-model="params[field.name]" class="input" :required="field.required"><option value="">Выберите значение</option><option v-for="option in field.value_list" :key="option.id" :value="option.id">{{ option.title }}</option></select><input v-else v-model.trim="params[field.name]" class="input" :required="field.required" /></label>
-        <button class="btn" :disabled="ctx.calculationLoading">{{ ctx.calculationLoading ? 'Проверяем…' : 'Рассчитать и проверить' }}</button>
+        <button class="btn" :disabled="ctx.calculationLoading">{{ ctx.calculationLoading ? 'Проверяем…' : validationLabel }}</button>
         <p v-if="ctx.calculation" class="interhub-catalog__result">{{ ctx.calculation.success ? 'Можно продолжать' : 'Проверка не пройдена' }} · {{ ctx.calculation.message || 'Ответ получен' }}</p>
       </form>
     </div>
@@ -86,24 +86,32 @@ const filteredServices = computed(() => {
 })
 const selectedService = ref(null)
 const account = ref('')
-const amount = ref('')
 const params = reactive({})
-const needsAmount = computed(() => ['TOP_UP'].includes(String(selectedService.value?.type || '').toUpperCase()) && !selectedService.value?.fields?.some((field) => field?.name === 'nominal'))
+const needsAmount = computed(() => ['TOP_UP'].includes(String(selectedService.value?.type || '').toUpperCase()))
 const accountLabel = computed(() => String(selectedService.value?.title || '').toLowerCase().includes('playstation') ? 'PSN ID / логин' : 'Аккаунт или номер')
+const validationLabel = computed(() => String(selectedService.value?.type || '').toUpperCase() === 'TOP_UP' ? 'Проверить реквизиты' : 'Рассчитать и проверить')
+const selectedNominalTitle = computed(() => {
+  // Находим подпись выбранного номинала, чтобы не заставлять оператора переносить сумму вручную.
+  const nominal = selectedService.value?.fields?.find((field) => field?.name === 'nominal')
+  return nominal?.value_list?.find((item) => String(item?.id) === String(params.nominal))?.title || ''
+})
 
 function selectService(service) {
   // Открываем форму выбранной услуги и очищаем реквизиты от предыдущей операции.
   selectedService.value = service
   account.value = ''
-  amount.value = ''
   Object.keys(params).forEach((key) => delete params[key])
 }
 
 function calculate() {
   // Передаем только заполненные параметры для безопасного предварительного расчета.
-  const payload = { service_id: selectedService.value.service_id, account: account.value, params: { ...params } }
-  if (needsAmount.value) payload.amount = Number(amount.value)
-  props.ctx.calculate(payload)
+  const payload = { service_id: selectedService.value.service_id, account: account.value, params: { ...params }, flow_type: selectedService.value.type }
+  if (needsAmount.value) {
+    // Извлекаем числовое значение из подписи вида "TRY 250" для обязательного поля amount.
+    const numeric = String(selectedNominalTitle.value).match(/[0-9]+(?:[.,][0-9]+)?/)
+    payload.amount = Number(String(numeric?.[0] || '').replace(',', '.'))
+  }
+  props.ctx.validate(payload)
 }
 
 function formatType(type) {
@@ -156,5 +164,6 @@ function formatBalance(value, currency) {
 .interhub-catalog__id { display: block; margin-top: 3px; font-family: ui-monospace, monospace; }
 .interhub-catalog__type { display: inline-flex; padding: 3px 7px; border: 1px solid rgba(232, 134, 19, .35); color: #9b570d; font-size: 12px; font-weight: 700; }
 .interhub-catalog__row { cursor: pointer; }.interhub-catalog__row.is-selected td { background: rgba(232, 134, 19, .08); }.interhub-catalog__form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; align-items: end; margin-top: 22px; padding: 18px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); }.interhub-catalog__form h3 { margin: 0; }.interhub-catalog__result { margin: 0; font-weight: 700; }
+.interhub-catalog__auto-amount { display: grid; gap: 3px; min-height: 42px; padding: 8px 10px; border: 1px solid rgba(232, 134, 19, .35); }.interhub-catalog__auto-amount span, .interhub-catalog__auto-amount small { color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__auto-amount strong { font-size: 18px; }
 @media (max-width: 680px) { .interhub-catalog__toolbar { align-items: stretch; flex-direction: column; } .interhub-catalog__search { width: 100%; } .interhub-catalog__stats { width: fit-content; } }
 </style>
