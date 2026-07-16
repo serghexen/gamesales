@@ -9,6 +9,8 @@ function buildCtx(overrides = {}) {
     loading: false,
     error: '',
     search: '',
+    balance: 10000,
+    currency: 'RUB',
     services: [
       {
         service_id: 7,
@@ -46,6 +48,7 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).toContain('Фикс. номинал')
     expect(wrapper.text()).toContain('PIN-код')
     expect(wrapper.text()).toContain('nominal')
+    expect(wrapper.text()).toContain('10 000 ₽')
   })
 
   it('filters catalog locally and reloads on demand', async () => {

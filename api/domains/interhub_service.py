@@ -148,7 +148,9 @@ def build_interhub_service(
         # Возвращаем баланс и лимит овердрафта в формате, безопасном для виджета UI.
         payload = send_request(deposit_path)
         data = payload if isinstance(payload, dict) else {}
-        return {"balance": as_float(data.get("balance")), "currency": str(data.get("currency") or ""), "over_balance": as_float(data.get("over_balance")), "over_limit": as_float(data.get("over_limit"))}
+        currency_codes = {"643": "RUB", "949": "TRY", "840": "USD", "978": "EUR"}
+        currency = str(data.get("currency") or "").upper()
+        return {"balance": as_float(data.get("balance")), "currency": currency_codes.get(currency, currency), "over_balance": as_float(data.get("over_balance")), "over_limit": as_float(data.get("over_limit"))}
 
     def normalize_payment_response(payload: Any) -> dict[str, Any]:
         # Собираем ключевые поля ответа, но сохраняем raw до уточнения всех форматов InterHub.
