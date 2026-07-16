@@ -32,6 +32,11 @@
           :ctx="nsGiftSectionCtx"
         />
 
+        <WorkInterhubSection
+          v-if="canViewInterhubSection && activeTab === 'interhub'"
+          :ctx="interhubSectionCtx"
+        />
+
 
         <WorkTelegramSection
           v-if="canViewTelegramSection && activeTab === 'telegram'"
@@ -212,6 +217,7 @@ import WorkCatalogsSection from './work/sections/WorkCatalogsSection.vue'
 import WorkTelegramSection from './work/sections/WorkTelegramSection.vue'
 import WorkTopBar from './work/sections/WorkTopBar.vue'
 import WorkNsGiftSection from './work/sections/WorkNsGiftSection.vue'
+import WorkInterhubSection from './work/sections/WorkInterhubSection.vue'
 import './work/styles/work-bundle.css'
 
 const router = useRouter()
@@ -758,6 +764,7 @@ const canViewDealsSection = computed(() => canViewSection('deals'))
 const canViewAccountsSection = computed(() => canViewSection('accounts'))
 const canViewProductsSection = computed(() => canViewSection('products'))
 const canViewNsGiftSection = computed(() => canViewSection('ns-gift'))
+const canViewInterhubSection = computed(() => canViewSection('interhub'))
 const canViewTelegramSection = computed(() => canViewSection('telegram'))
 const canViewAnalyticsSection = computed(() => canViewSection('analytics'))
 const canViewCatalogsSection = computed(() => canViewSection('catalogs'))
@@ -779,6 +786,7 @@ function getAllowedTabs() {
   if (canViewAccountsSection.value) tabs.push('accounts')
   if (canViewProductsSection.value) tabs.push('products')
   if (canViewNsGiftSection.value) tabs.push('ns-gift')
+  if (canViewInterhubSection.value) tabs.push('interhub')
   if (canViewTelegramSection.value) tabs.push('telegram')
   if (canViewAnalyticsSection.value) tabs.push('analytics')
   if (canViewCatalogsSection.value) tabs.push('catalogs')
@@ -1135,6 +1143,10 @@ const nsGiftSteamCurrencyRate = ref({
   uahUsd: 0,
 })
 const nsGiftSteamRateLoading = ref(false)
+const interhubLoading = ref(false)
+const interhubError = ref('')
+const interhubServices = ref([])
+const interhubSearch = ref('')
 const editProductState = reactive({
   open: false,
   product_id: null,
@@ -2059,6 +2071,47 @@ function setNsGiftSteamAmountFromEvent(event) {
   nsGiftSteamAmount.value = raw
 }
 
+function normalizeInterhubServices(payload) {
+  // Приводим серверный контракт InterHub к безопасному для таблицы списку услуг.
+  if (!Array.isArray(payload)) return []
+  return payload
+    .map((item) => ({
+      service_id: Number(item?.service_id || 0),
+      title: String(item?.title || '').trim(),
+      category: String(item?.category || '').trim(),
+      type: String(item?.type || '').trim(),
+      min_amount: Number(item?.min_amount || 0),
+      max_amount: Number(item?.max_amount || 0),
+      fields: Array.isArray(item?.fields) ? item.fields : [],
+    }))
+    .filter((item) => item.service_id > 0 && item.title)
+}
+
+async function loadInterhubServices() {
+  // Загружаем каталог через наш backend, чтобы секрет InterHub не оказался в браузере.
+  interhubLoading.value = true
+  interhubError.value = ''
+  try {
+    const data = await apiGet('/integrations/interhub/services', { token: auth.state.token })
+    interhubServices.value = normalizeInterhubServices(data?.items)
+  } catch (err) {
+    interhubServices.value = []
+    interhubError.value = mapApiError(err?.message || 'Не удалось загрузить каталог InterHub')
+  } finally {
+    interhubLoading.value = false
+  }
+}
+
+function setInterhubSearchFromEvent(event) {
+  // Храним запрос отдельно, чтобы фильтрация каталога происходила без сетевой задержки.
+  interhubSearch.value = String(event?.target?.value || '')
+}
+
+watch(activeTab, (tab) => {
+  // Подгружаем каталог только при открытии вкладки, не выполняя лишние запросы на других экранах.
+  if (tab === 'interhub') void loadInterhubServices()
+}, { immediate: true })
+
 const {
   getAccountSecret,
   getReserveSecrets,
@@ -2431,6 +2484,7 @@ const topBarCtx = asCtx({
   canViewAccountsSection,
   canViewProductsSection,
   canViewNsGiftSection,
+  canViewInterhubSection,
   canViewTelegramSection,
   canViewUsersSection: canViewUsersTab,
   canViewProfileSection,
@@ -3389,6 +3443,16 @@ const nsGiftSectionCtx = asCtx({
   setServicesSearchFromEvent: setNsGiftServicesSearchFromEvent,
   setSteamLoginFromEvent: setNsGiftSteamLoginFromEvent,
   setSteamAmountFromEvent: setNsGiftSteamAmountFromEvent,
+})
+
+// Контекст первого, обзорного этапа InterHub: каталог без запуска платежей.
+const interhubSectionCtx = asCtx({
+  loading: interhubLoading,
+  error: interhubError,
+  services: interhubServices,
+  search: interhubSearch,
+  reload: loadInterhubServices,
+  setSearchFromEvent: setInterhubSearchFromEvent,
 })
 
 // Контекст вкладки сделок: список + модалка редактирования сделки.

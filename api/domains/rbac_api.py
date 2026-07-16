@@ -32,6 +32,7 @@ def mount_rbac_routes(
         ("accounts", "Аккаунты", 20),
         ("products", "Товары", 30),
         ("ns-gift", "Магазин", 40),
+        ("interhub", "Платежи InterHub", 45),
         ("analytics", "Аналитика", 50),
         ("catalogs", "Справочники", 60),
         ("finance", "Финансы", 70),

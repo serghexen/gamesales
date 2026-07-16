@@ -381,6 +381,7 @@ from domains.accounts_import_api import mount_accounts_import_routes
 from domains.catalogs_api import mount_catalogs_routes
 from domains.auth_api import mount_auth_routes
 from domains.slots_import_api import mount_slots_import_routes
+from domains.interhub_api import mount_interhub_routes
 from domains.ns_gift_api import mount_ns_gift_routes
 from domains.rbac_api import mount_rbac_routes
 from domains.import_jobs import build_import_jobs
@@ -391,6 +392,7 @@ from domains.telegram_sync import build_telegram_sync_service
 from domains.auth_service import build_auth_service
 from domains.db_helpers import build_db_helpers
 from domains.games_lookup_service import build_games_lookup_service
+from domains.interhub_service import build_interhub_service
 from domains.ns_gift_service import build_ns_gift_service
 
 class ProductCreate(BaseModel):
@@ -600,6 +602,27 @@ class NsGiftOrderOut(BaseModel):
     created: dict[str, Any] = Field(default_factory=dict)
     paid: dict[str, Any] = Field(default_factory=dict)
 
+class InterHubFieldOut(BaseModel):
+    name: str
+    type: str
+    required: bool = False
+    value_list: list[dict[str, Any]] = Field(default_factory=list)
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+class InterHubServiceOut(BaseModel):
+    service_id: int
+    title: str
+    category: str = ""
+    type: str = ""
+    min_amount: float = 0.0
+    max_amount: float = 0.0
+    fields: list[InterHubFieldOut] = Field(default_factory=list)
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+class InterHubServiceListOut(BaseModel):
+    total: int
+    items: list[InterHubServiceOut]
+
 # ----------------------------
 # DB helpers
 # ----------------------------
@@ -703,6 +726,11 @@ _NS_GIFT_TIMEOUT_SEC = int(os.getenv("NS_GIFT_TIMEOUT_SEC", "20") or "20")
 _NS_GIFT_SSL_VERIFY = str(os.getenv("NS_GIFT_SSL_VERIFY", "true") or "true").strip().lower() in ("1", "true", "yes", "on")
 _NS_GIFT_CA_CERT_PATH = os.getenv("NS_GIFT_CA_CERT_PATH", "")
 _NS_GIFT_USER_AGENT = os.getenv("NS_GIFT_USER_AGENT", "Mozilla/5.0 (compatible; GameSalesBot/1.0)")
+_INTERHUB_API_URL = os.getenv("INTERHUB_API_URL", "https://api.interhub.ae")
+_INTERHUB_TOKEN = os.getenv("INTERHUB_TOKEN", "")
+_INTERHUB_TIMEOUT_SEC = int(os.getenv("INTERHUB_TIMEOUT_SEC", "20") or "20")
+_INTERHUB_SSL_VERIFY = str(os.getenv("INTERHUB_SSL_VERIFY", "true") or "true").strip().lower() in ("1", "true", "yes", "on")
+_INTERHUB_CA_CERT_PATH = os.getenv("INTERHUB_CA_CERT_PATH", "")
 TELEGRAM_DIALOGS_SYNC_LIMIT = int(os.getenv("TELEGRAM_DIALOGS_SYNC_LIMIT", "0") or "0")
 TELEGRAM_DIALOGS_SYNC_BATCH = int(os.getenv("TELEGRAM_DIALOGS_SYNC_BATCH", "100") or "100")
 TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC = int(os.getenv("TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC", "45") or "45")
@@ -813,6 +841,15 @@ ns_gift_service = build_ns_gift_service(
     user_agent=_NS_GIFT_USER_AGENT,
 )
 
+interhub_service = build_interhub_service(
+    HTTPException=HTTPException,
+    interhub_api_url=_INTERHUB_API_URL,
+    interhub_token=_INTERHUB_TOKEN,
+    timeout_sec=_INTERHUB_TIMEOUT_SEC,
+    ssl_verify=_INTERHUB_SSL_VERIFY,
+    ca_cert_path=_INTERHUB_CA_CERT_PATH,
+)
+
 def ns_gift_get_balance():
     # Проксируем вызов через объект сервиса, чтобы в тестах можно было мокать методы.
     return ns_gift_service.get_balance()
@@ -836,6 +873,10 @@ def ns_gift_get_steam_amount(amount: float):
 def ns_gift_create_order_and_pay(service_id: int, quantity: float, data: str, auto_pay: bool):
     # Проксируем оформление заказа для единообразного вызова из роутов.
     return ns_gift_service.create_order_and_pay(service_id, quantity, data, auto_pay)
+
+def interhub_get_services():
+    # Проксируем каталог через сервис, чтобы endpoint и тесты не зависели от внешней сети.
+    return interhub_service.get_services()
 
 def b64_encode(value: str | bytes | memoryview) -> str:
     # Кодирует строку или байтовый blob в base64 для отдачи в API.
@@ -1128,6 +1169,14 @@ mount_ns_gift_routes(
     ns_gift_get_steam_currency_rate=ns_gift_get_steam_currency_rate,
     ns_gift_get_steam_amount=ns_gift_get_steam_amount,
     ns_gift_create_order_and_pay=ns_gift_create_order_and_pay,
+)
+
+mount_interhub_routes(
+    app,
+    get_current_user=get_current_user,
+    UserOut=UserOut,
+    InterHubServiceListOut=InterHubServiceListOut,
+    interhub_get_services=interhub_get_services,
 )
 
 mount_rbac_routes(

@@ -12,6 +12,7 @@ function buildCtx(overrides = {}) {
     canViewAccountsSection: true,
     canViewProductsSection: true,
     canViewNsGiftSection: true,
+    canViewInterhubSection: false,
     canViewTelegramSection: false,
     canViewUsersSection: false,
     canViewProfileSection: true,
@@ -53,6 +54,12 @@ function mountTopBar(ctx) {
 }
 
 describe('WorkTopBar', () => {
+  it('shows InterHub payments tab when the role permits it', () => {
+    const wrapper = mountTopBar(buildCtx({ canViewInterhubSection: true }))
+
+    expect(wrapper.text()).toContain('Платежи')
+  })
+
   it('renders only managers with active pending deals', () => {
     const wrapper = mountTopBar(buildCtx({
       managersLoadItems: [

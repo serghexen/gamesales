@@ -1,4 +1,4 @@
-export const TAB_KEYS = ['deals', 'accounts', 'products', 'ns-gift', 'telegram', 'analytics', 'catalogs', 'finance', 'users', 'profile', 'dashboard']
+export const TAB_KEYS = ['deals', 'accounts', 'products', 'ns-gift', 'interhub', 'telegram', 'analytics', 'catalogs', 'finance', 'users', 'profile', 'dashboard']
 
 export const TELEGRAM_DIALOGS_POLL_MS = 5000
 export const TELEGRAM_MESSAGES_POLL_MS = 1000

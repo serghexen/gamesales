@@ -29,6 +29,9 @@
           <router-link v-if="canViewNsGiftSection" class="tab" :class="{ active: activeTab === 'ns-gift' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'ns-gift' } }">
             Магазин
           </router-link>
+          <router-link v-if="canViewInterhubSection" class="tab" :class="{ active: activeTab === 'interhub' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'interhub' } }">
+            Платежи
+          </router-link>
           <router-link
             v-if="canViewTelegramSection"
             class="tab"
@@ -125,6 +128,7 @@ const canViewDealsSection = computed(() => unref(props.ctx.canViewDealsSection))
 const canViewAccountsSection = computed(() => unref(props.ctx.canViewAccountsSection))
 const canViewProductsSection = computed(() => unref(props.ctx.canViewProductsSection))
 const canViewNsGiftSection = computed(() => unref(props.ctx.canViewNsGiftSection))
+const canViewInterhubSection = computed(() => unref(props.ctx.canViewInterhubSection))
 const canViewTelegramSection = computed(() => unref(props.ctx.canViewTelegramSection))
 const canViewUsersSection = computed(() => unref(props.ctx.canViewUsersSection))
 const canViewProfileSection = computed(() => unref(props.ctx.canViewProfileSection))
