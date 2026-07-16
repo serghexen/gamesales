@@ -97,4 +97,15 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).toContain('TRY 250')
     expect(wrapper.find('.interhub-catalog__form input[type="number"]').exists()).toBe(false)
   })
+
+  it('asks for amount when a TOP_UP service does not provide nominal options', async () => {
+    const ctx = buildCtx({
+      services: [{ service_id: 10, title: 'Steam CIS', category: '', type: 'TOP_UP', min_amount: 7.79, fields: [] }],
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await wrapper.find('tbody tr').trigger('click')
+    expect(wrapper.find('.interhub-catalog__form input[type="number"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Минимум: 7.79')
+  })
 })

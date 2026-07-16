@@ -60,7 +60,8 @@
       <form v-if="selectedService" class="interhub-catalog__form" @submit.prevent="calculate">
         <div><p class="interhub-catalog__eyebrow">Шаг 1 · проверка</p><h3>{{ selectedService.title }}</h3></div>
         <label class="field"><span class="label">{{ accountLabel }}</span><input v-model.trim="account" class="input" required /></label>
-        <div v-if="needsAmount" class="interhub-catalog__auto-amount"><span>Сумма пополнения</span><strong>{{ selectedNominalTitle || 'Выберите номинал' }}</strong><small>Подставляется автоматически из номинала</small></div>
+        <div v-if="amountFromNominal" class="interhub-catalog__auto-amount"><span>Сумма пополнения</span><strong>{{ selectedNominalTitle || 'Выберите номинал' }}</strong><small>Подставляется автоматически из номинала</small></div>
+        <label v-else-if="needsAmount" class="field"><span class="label">Сумма пополнения</span><input v-model="amount" class="input" type="number" :min="selectedService.min_amount || 0.01" step="0.01" required /><small class="muted">Минимум: {{ selectedService.min_amount || '—' }}</small></label>
         <label v-for="field in selectedService.fields" :key="field.name" class="field"><span class="label">{{ field.name }}<i v-if="field.required"> *</i></span><select v-if="field.type === 'LIST'" v-model="params[field.name]" class="input" :required="field.required"><option value="">Выберите значение</option><option v-for="option in field.value_list" :key="option.id" :value="option.id">{{ option.title }}</option></select><input v-else v-model.trim="params[field.name]" class="input" :required="field.required" /></label>
         <button class="btn" :disabled="ctx.calculationLoading">{{ ctx.calculationLoading ? 'Проверяем…' : validationLabel }}</button>
         <p v-if="ctx.calculation" class="interhub-catalog__result">{{ ctx.calculation.success ? 'Можно продолжать' : 'Проверка не пройдена' }} · {{ ctx.calculation.message || 'Ответ получен' }}</p>
@@ -86,8 +87,11 @@ const filteredServices = computed(() => {
 })
 const selectedService = ref(null)
 const account = ref('')
+const amount = ref('')
 const params = reactive({})
 const needsAmount = computed(() => ['TOP_UP'].includes(String(selectedService.value?.type || '').toUpperCase()))
+const hasNominal = computed(() => Boolean(selectedService.value?.fields?.some((field) => field?.name === 'nominal')))
+const amountFromNominal = computed(() => needsAmount.value && hasNominal.value)
 const accountLabel = computed(() => String(selectedService.value?.title || '').toLowerCase().includes('playstation') ? 'PSN ID / логин' : 'Аккаунт или номер')
 const validationLabel = computed(() => String(selectedService.value?.type || '').toUpperCase() === 'TOP_UP' ? 'Проверить реквизиты' : 'Рассчитать и проверить')
 const selectedNominalTitle = computed(() => {
@@ -100,16 +104,20 @@ function selectService(service) {
   // Открываем форму выбранной услуги и очищаем реквизиты от предыдущей операции.
   selectedService.value = service
   account.value = ''
+  amount.value = ''
   Object.keys(params).forEach((key) => delete params[key])
 }
 
 function calculate() {
   // Передаем только заполненные параметры для безопасного предварительного расчета.
   const payload = { service_id: selectedService.value.service_id, account: account.value, params: { ...params }, flow_type: selectedService.value.type }
-  if (needsAmount.value) {
+  if (amountFromNominal.value) {
     // Извлекаем числовое значение из подписи вида "TRY 250" для обязательного поля amount.
     const numeric = String(selectedNominalTitle.value).match(/[0-9]+(?:[.,][0-9]+)?/)
     payload.amount = Number(String(numeric?.[0] || '').replace(',', '.'))
+  } else if (needsAmount.value) {
+    // Передаем введенную сумму только для TOP_UP без фиксированного списка номиналов.
+    payload.amount = Number(amount.value)
   }
   props.ctx.validate(payload)
 }
