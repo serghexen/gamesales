@@ -17,7 +17,7 @@ function buildCtx(overrides = {}) {
         type: 'TOP_UP_FIXED',
         min_amount: 10,
         max_amount: 100,
-        fields: [{ name: 'nominal', required: true }],
+        fields: [{ name: 'nominal', type: 'LIST', required: true, value_list: [{ id: 15, title: '15' }] }],
       },
       {
         service_id: 8,
@@ -30,6 +30,9 @@ function buildCtx(overrides = {}) {
       },
     ],
     reload: vi.fn(),
+    calculate: vi.fn(),
+    calculation: null,
+    calculationLoading: false,
     setSearchFromEvent: vi.fn(),
     ...overrides,
   }
@@ -58,5 +61,24 @@ describe('WorkInterhubSection', () => {
 
     await wrapper.find('[aria-label="Обновить каталог InterHub"]').trigger('click')
     expect(ctx.reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens a dynamic form and sends account with required params to calculation', async () => {
+    const ctx = buildCtx()
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await wrapper.findAll('tbody tr')[0].trigger('click')
+    expect(wrapper.text()).toContain('Шаг 1 · проверка')
+
+    const inputs = wrapper.findAll('.interhub-catalog__form input')
+    await inputs[0].setValue('998877')
+    await wrapper.find('.interhub-catalog__form select').setValue('15')
+    await wrapper.find('.interhub-catalog__form').trigger('submit.prevent')
+
+    expect(ctx.calculate).toHaveBeenCalledWith({
+      service_id: 7,
+      account: '998877',
+      params: { nominal: 15 },
+    })
   })
 })

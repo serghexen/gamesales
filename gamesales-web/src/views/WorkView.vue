@@ -1147,6 +1147,10 @@ const interhubLoading = ref(false)
 const interhubError = ref('')
 const interhubServices = ref([])
 const interhubSearch = ref('')
+const interhubBalance = ref(0)
+const interhubCurrency = ref('')
+const interhubCalculation = ref(null)
+const interhubCalculationLoading = ref(false)
 const editProductState = reactive({
   open: false,
   product_id: null,
@@ -2102,14 +2106,47 @@ async function loadInterhubServices() {
   }
 }
 
+async function loadInterhubBalance() {
+  // Загружаем баланс отдельно, чтобы ошибка каталога не скрывала остаток агентского счёта.
+  try {
+    const data = await apiGet('/integrations/interhub/balance', { token: auth.state.token })
+    interhubBalance.value = Number(data?.balance || 0)
+    interhubCurrency.value = String(data?.currency || '')
+  } catch (err) {
+    interhubError.value = mapApiError(err?.message || 'Не удалось загрузить баланс InterHub')
+  }
+}
+
+async function reloadInterhubData() {
+  // Обновляем баланс и каталог одновременно по кнопке в шапке раздела.
+  await Promise.all([loadInterhubServices(), loadInterhubBalance()])
+}
+
 function setInterhubSearchFromEvent(event) {
   // Храним запрос отдельно, чтобы фильтрация каталога происходила без сетевой задержки.
   interhubSearch.value = String(event?.target?.value || '')
 }
 
+async function calculateInterhub(payload) {
+  // Создаем уникальный ID для проверки, чтобы будущая оплата не могла задублировать операцию.
+  interhubCalculationLoading.value = true
+  interhubCalculation.value = null
+  try {
+    const agentTransactionId = `gamesales-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    interhubCalculation.value = await apiPost('/integrations/interhub/calculate', {
+      ...payload,
+      agent_transaction_id: agentTransactionId,
+    }, { token: auth.state.token })
+  } catch (err) {
+    interhubCalculation.value = { success: false, message: mapApiError(err?.message || 'Не удалось проверить услугу') }
+  } finally {
+    interhubCalculationLoading.value = false
+  }
+}
+
 watch(activeTab, (tab) => {
   // Подгружаем каталог только при открытии вкладки, не выполняя лишние запросы на других экранах.
-  if (tab === 'interhub') void loadInterhubServices()
+  if (tab === 'interhub') void reloadInterhubData()
 }, { immediate: true })
 
 const {
@@ -3450,8 +3487,13 @@ const interhubSectionCtx = asCtx({
   loading: interhubLoading,
   error: interhubError,
   services: interhubServices,
+  balance: interhubBalance,
+  currency: interhubCurrency,
   search: interhubSearch,
-  reload: loadInterhubServices,
+  calculation: interhubCalculation,
+  calculationLoading: interhubCalculationLoading,
+  reload: reloadInterhubData,
+  calculate: calculateInterhub,
   setSearchFromEvent: setInterhubSearchFromEvent,
 })
 

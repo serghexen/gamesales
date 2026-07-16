@@ -623,6 +623,31 @@ class InterHubServiceListOut(BaseModel):
     total: int
     items: list[InterHubServiceOut]
 
+class InterHubBalanceOut(BaseModel):
+    balance: float
+    currency: str = ''
+    over_balance: float = 0.0
+    over_limit: float = 0.0
+
+class InterHubPaymentRequestIn(BaseModel):
+    service_id: int
+    account: str
+    agent_transaction_id: str
+    amount: Optional[float] = None
+    params: dict[str, Any] = Field(default_factory=dict)
+
+class InterHubPaymentCheckOut(BaseModel):
+    success: bool
+    message: str = ''
+    status: int = 0
+    account: str = ''
+    amount: float = 0.0
+    transaction_id: str = ''
+    amount_in_currency: float = 0.0
+    commission: float = 0.0
+    fixed_amount: float = 0.0
+    raw: dict[str, Any] = Field(default_factory=dict)
+
 # ----------------------------
 # DB helpers
 # ----------------------------
@@ -731,6 +756,9 @@ _INTERHUB_TOKEN = os.getenv("INTERHUB_TOKEN", "")
 _INTERHUB_TIMEOUT_SEC = int(os.getenv("INTERHUB_TIMEOUT_SEC", "20") or "20")
 _INTERHUB_SSL_VERIFY = str(os.getenv("INTERHUB_SSL_VERIFY", "true") or "true").strip().lower() in ("1", "true", "yes", "on")
 _INTERHUB_CA_CERT_PATH = os.getenv("INTERHUB_CA_CERT_PATH", "")
+_INTERHUB_CALCULATE_PATH = os.getenv("INTERHUB_CALCULATE_PATH", "/api/agent/payment/check/calculate")
+_INTERHUB_CHECK_PATH = os.getenv("INTERHUB_CHECK_PATH", "/api/agent/payment/check")
+_INTERHUB_DEPOSIT_PATH = os.getenv("INTERHUB_DEPOSIT_PATH", "/api/agent/deposit")
 TELEGRAM_DIALOGS_SYNC_LIMIT = int(os.getenv("TELEGRAM_DIALOGS_SYNC_LIMIT", "0") or "0")
 TELEGRAM_DIALOGS_SYNC_BATCH = int(os.getenv("TELEGRAM_DIALOGS_SYNC_BATCH", "100") or "100")
 TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC = int(os.getenv("TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC", "45") or "45")
@@ -848,6 +876,9 @@ interhub_service = build_interhub_service(
     timeout_sec=_INTERHUB_TIMEOUT_SEC,
     ssl_verify=_INTERHUB_SSL_VERIFY,
     ca_cert_path=_INTERHUB_CA_CERT_PATH,
+    calculate_path=_INTERHUB_CALCULATE_PATH,
+    check_path=_INTERHUB_CHECK_PATH,
+    deposit_path=_INTERHUB_DEPOSIT_PATH,
 )
 
 def ns_gift_get_balance():
@@ -877,6 +908,18 @@ def ns_gift_create_order_and_pay(service_id: int, quantity: float, data: str, au
 def interhub_get_services():
     # Проксируем каталог через сервис, чтобы endpoint и тесты не зависели от внешней сети.
     return interhub_service.get_services()
+
+def interhub_get_balance():
+    # Проксируем баланс, чтобы браузер никогда не обращался к InterHub напрямую.
+    return interhub_service.get_balance()
+
+def interhub_calculate(payload: dict[str, Any]):
+    # Проксируем предварительный расчет, не добавляя сюда вызов pay.
+    return interhub_service.calculate(payload)
+
+def interhub_check(payload: dict[str, Any]):
+    # Проксируем проверку реквизитов перед будущим подтверждением оплаты.
+    return interhub_service.check(payload)
 
 def b64_encode(value: str | bytes | memoryview) -> str:
     # Кодирует строку или байтовый blob в base64 для отдачи в API.
@@ -1176,7 +1219,13 @@ mount_interhub_routes(
     get_current_user=get_current_user,
     UserOut=UserOut,
     InterHubServiceListOut=InterHubServiceListOut,
+    InterHubBalanceOut=InterHubBalanceOut,
+    InterHubPaymentRequestIn=InterHubPaymentRequestIn,
+    InterHubPaymentCheckOut=InterHubPaymentCheckOut,
     interhub_get_services=interhub_get_services,
+    interhub_get_balance=interhub_get_balance,
+    interhub_calculate=interhub_calculate,
+    interhub_check=interhub_check,
 )
 
 mount_rbac_routes(

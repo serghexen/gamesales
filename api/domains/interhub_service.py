@@ -10,6 +10,9 @@ import urllib.request
 @dataclass
 class InterHubService:
     get_services: Callable[[], list[dict[str, Any]]]
+    get_balance: Callable[[], dict[str, Any]]
+    calculate: Callable[[dict[str, Any]], dict[str, Any]]
+    check: Callable[[dict[str, Any]], dict[str, Any]]
 
 
 def build_interhub_service(
@@ -20,6 +23,9 @@ def build_interhub_service(
     timeout_sec: int,
     ssl_verify: bool,
     ca_cert_path: str,
+    calculate_path: str,
+    check_path: str,
+    deposit_path: str,
 ):
     def ensure_configured():
         # Не отправляем запрос провайдеру, пока URL или токен не настроены на сервере.
@@ -37,7 +43,7 @@ def build_interhub_service(
         except Exception as exc:  # pragma: no cover - редкий случай невалидного JSON
             raise HTTPException(502, "InterHub returned invalid JSON") from exc
 
-    def send_request(path: str) -> Any:
+    def send_request(path: str, payload: dict[str, Any] | None = None) -> Any:
         # Выполняем авторизованный запрос к InterHub, не передавая токен в клиентский UI.
         ensure_configured()
         url = interhub_api_url.rstrip("/") + path
@@ -46,7 +52,8 @@ def build_interhub_service(
             "Content-Type": "application/json",
             "token": str(interhub_token).strip(),
         }
-        request = urllib.request.Request(url, headers=headers, method="GET")
+        body = None if payload is None else json.dumps(payload).encode("utf-8")
+        request = urllib.request.Request(url, data=body, headers=headers, method="GET" if payload is None else "POST")
         context = ssl.create_default_context(cafile=ca_cert_path or None) if ssl_verify else ssl._create_unverified_context()
         try:
             with urllib.request.urlopen(request, timeout=max(5, int(timeout_sec or 20)), context=context) as response:
@@ -137,4 +144,30 @@ def build_interhub_service(
         # Загружаем каталог услуг из единственного подтверждённого метода InterHub.
         return normalize_services(send_request("/api/agent/service/list"))
 
-    return InterHubService(get_services=get_services)
+    def get_balance() -> dict[str, Any]:
+        # Возвращаем баланс и лимит овердрафта в формате, безопасном для виджета UI.
+        payload = send_request(deposit_path)
+        data = payload if isinstance(payload, dict) else {}
+        return {"balance": as_float(data.get("balance")), "currency": str(data.get("currency") or ""), "over_balance": as_float(data.get("over_balance")), "over_limit": as_float(data.get("over_limit"))}
+
+    def normalize_payment_response(payload: Any) -> dict[str, Any]:
+        # Собираем ключевые поля ответа, но сохраняем raw до уточнения всех форматов InterHub.
+        data = payload if isinstance(payload, dict) else {}
+        return {
+            "success": bool(data.get("success")), "message": str(data.get("message") or ""),
+            "status": int(data.get("status") or 0), "account": str(data.get("account") or ""),
+            "amount": as_float(data.get("amount")), "transaction_id": str(data.get("transaction_id") or ""),
+            "amount_in_currency": as_float(data.get("amount_in_currency")),
+            "commission": as_float(data.get("commission", data.get("comission"))),
+            "fixed_amount": as_float(data.get("fixed_amount")), "raw": data,
+        }
+
+    def calculate(payload: dict[str, Any]) -> dict[str, Any]:
+        # Запрашиваем номинал и предварительную проверку без запуска оплаты.
+        return normalize_payment_response(send_request(calculate_path, payload))
+
+    def check(payload: dict[str, Any]) -> dict[str, Any]:
+        # Проверяем реквизиты и сумму перед отдельным подтверждением будущей оплаты.
+        return normalize_payment_response(send_request(check_path, payload))
+
+    return InterHubService(get_services=get_services, get_balance=get_balance, calculate=calculate, check=check)

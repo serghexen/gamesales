@@ -53,6 +53,9 @@ class InterHubServiceTests(unittest.TestCase):
             timeout_sec=20,
             ssl_verify=False,
             ca_cert_path="",
+            calculate_path="/api/agent/payment/check/calculate",
+            check_path="/api/agent/payment/check",
+            deposit_path="/api/agent/deposit",
         )
         with patch("domains.interhub_service.urllib.request.urlopen", return_value=_Response(payload)) as urlopen_mock:
             items = service.get_services()
@@ -74,6 +77,9 @@ class InterHubServiceTests(unittest.TestCase):
             timeout_sec=20,
             ssl_verify=True,
             ca_cert_path="",
+            calculate_path="/api/agent/payment/check/calculate",
+            check_path="/api/agent/payment/check",
+            deposit_path="/api/agent/deposit",
         )
         with self.assertRaises(HTTPException) as error:
             service.get_services()
