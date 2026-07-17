@@ -202,6 +202,7 @@ import { useManagersLoad } from './work/useManagersLoad'
 import { useWorkActions } from './work/useWorkActions'
 import { useWorkUiHelpers } from './work/useWorkUiHelpers'
 import { createDeferredCall } from './work/deferredCall'
+import { createInterhubAgentTransactionId } from './work/interhubUtils'
 import { useWorkSectionContexts } from './work/useWorkSectionContexts'
 import { createRealtimeRefreshScheduler, isDealMutationRealtimeEvent } from './work/realtimeRefreshScheduler'
 import WorkDashboardHero from './work/sections/WorkDashboardHero.vue'
@@ -2132,7 +2133,7 @@ async function validateInterhub(payload) {
   interhubCalculationLoading.value = true
   interhubCalculation.value = null
   try {
-    const agentTransactionId = `gamesales-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const agentTransactionId = createInterhubAgentTransactionId()
     const requestPayload = { ...payload }
     const isTopUp = String(requestPayload.flow_type || '').toUpperCase() === 'TOP_UP'
     delete requestPayload.flow_type
