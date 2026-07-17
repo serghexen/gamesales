@@ -108,4 +108,16 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.find('.interhub-catalog__form input[type="number"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('Минимум: 7.79')
   })
+
+  it('keeps account optional for voucher services', async () => {
+    const ctx = buildCtx({
+      services: [{ service_id: 11, title: 'Steam voucher', category: '', type: 'VOUCHER', fields: [{ name: 'nominal', type: 'LIST', required: true, value_list: [{ id: 25, title: 'USD 25' }] }] }],
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await wrapper.find('tbody tr').trigger('click')
+    const accountInput = wrapper.find('.interhub-catalog__form input')
+    expect(accountInput.attributes('required')).toBeUndefined()
+    expect(wrapper.text()).toContain('Аккаунт (необязательно)')
+  })
 })
