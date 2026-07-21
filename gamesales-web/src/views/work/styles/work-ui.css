@@ -482,6 +482,7 @@
 }
 
 .work-page .product-search-btn,
+.work-page .product-ozon-btn,
 .work-page .product-import-btn,
 .work-page .product-export-btn,
 .work-page .product-refresh-btn {
@@ -511,6 +512,7 @@
 }
 
 .work-page .product-search-btn::before,
+.work-page .product-ozon-btn::before,
 .work-page .product-import-btn::before,
 .work-page .product-export-btn::before,
 .work-page .product-refresh-btn::before {
@@ -525,6 +527,7 @@
 }
 
 .work-page .product-search-btn:hover::before,
+.work-page .product-ozon-btn:hover::before,
 .work-page .product-import-btn:hover::before,
 .work-page .product-export-btn:hover::before,
 .work-page .product-refresh-btn:hover::before {
@@ -532,6 +535,7 @@
 }
 
 .work-page .product-search-btn:hover,
+.work-page .product-ozon-btn:hover,
 .work-page .product-import-btn:hover,
 .work-page .product-export-btn:hover,
 .work-page .product-refresh-btn:hover {
@@ -539,6 +543,7 @@
 }
 
 .work-page .product-search-btn:active,
+.work-page .product-ozon-btn:active,
 .work-page .product-import-btn:active,
 .work-page .product-export-btn:active,
 .work-page .product-refresh-btn:active {
@@ -557,6 +562,7 @@
 }
 
 .work-page .product-search-btn__content,
+.work-page .product-ozon-btn__content,
 .work-page .product-import-btn__content,
 .work-page .product-export-btn__content,
 .work-page .product-refresh-btn__content {
@@ -582,6 +588,27 @@
 .work-page .product-search-btn {
   background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
   box-shadow: 0 6px 18px rgba(20, 184, 166, 0.34);
+}
+
+.work-page .product-ozon-btn {
+  background: linear-gradient(135deg, #3067ff 0%, #1743d4 100%);
+  box-shadow: 0 6px 18px rgba(48, 103, 255, 0.34);
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.work-page .product-ozon-btn:hover {
+  box-shadow: 0 8px 22px rgba(48, 103, 255, 0.5);
+  border-color: rgba(48, 103, 255, 0.44);
+}
+
+.work-page .ozon-catalog-modal__hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.work-page .ozon-catalog-modal__table {
+  margin-top: 12px;
 }
 
 .work-page .product-search-btn:hover {

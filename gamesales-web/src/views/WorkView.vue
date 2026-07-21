@@ -181,6 +181,7 @@ import { useImportFlow } from './work/useImportFlow'
 import { useCatalogs } from './work/useCatalogs'
 import { useAccountsFlow } from './work/useAccountsFlow'
 import { useProductsFlow } from './work/useProductsFlow'
+import { useOzonCatalog } from './work/useOzonCatalog'
 import { useProductsViewState } from './work/useProductsViewState'
 import { useAccountsViewState } from './work/useAccountsViewState'
 import { useAccountsDerivedState } from './work/useAccountsDerivedState'
@@ -1835,6 +1836,18 @@ const {
   quickEditProductAccountLoading,
   quickEditProductAccountError,
 })
+
+const {
+  showOzonCatalog,
+  ozonCatalogItems,
+  ozonCatalogLoading,
+  ozonCatalogSyncing,
+  ozonCatalogError,
+  ozonCatalogOk,
+  syncOzonCatalog,
+  openOzonCatalog,
+  closeOzonCatalog,
+} = useOzonCatalog({ auth, apiGet, apiPost, mapApiError })
 
 function clearNsGiftMessages() {
   // Сбрасываем прошлые сообщения перед новым запросом к NS Gift.
@@ -3565,6 +3578,15 @@ const productsSectionCtx = asCtx({
   activeProductChips,
   resetProductFilter,
   openProductImport,
+  openOzonCatalog,
+  closeOzonCatalog,
+  syncOzonCatalog,
+  showOzonCatalog,
+  ozonCatalogItems,
+  ozonCatalogLoading,
+  ozonCatalogSyncing,
+  ozonCatalogError,
+  ozonCatalogOk,
   closeProductImport,
   showProductImport,
   downloadProductTemplate,

@@ -447,6 +447,7 @@ from domains.telegram_api import mount_telegram_routes
 from domains.imports_models import ImportReportIn
 from domains.analytics_api import mount_analytics_routes
 from domains.finance_api import mount_finance_routes
+from domains.marketplaces_api import mount_marketplaces_routes
 from domains.dashboard_api import mount_dashboard_routes
 from domains.products_api import mount_products_routes
 from domains.products_import_api import mount_products_import_routes
@@ -1269,6 +1270,17 @@ mount_analytics_routes(
 )
 
 mount_finance_routes(
+    app,
+    DB_DSN=DB_DSN,
+    psycopg=pooled_psycopg,
+    q1=q1,
+    qall=qall,
+    exec1=exec1,
+    get_current_user=get_current_user,
+    require_role=require_role,
+)
+
+mount_marketplaces_routes(
     app,
     DB_DSN=DB_DSN,
     psycopg=pooled_psycopg,

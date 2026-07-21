@@ -40,6 +40,15 @@
     </div>
     <div class="toolbar-actions">
       <button
+        class="product-ozon-btn"
+        type="button"
+        title="Каталог Ozon"
+        aria-label="Каталог Ozon"
+        @click="openOzonCatalog"
+      >
+        <span class="product-ozon-btn__content" aria-hidden="true">O</span>
+      </button>
+      <button
         class="product-import-btn"
         type="button"
         title="Импорт товаров"
@@ -95,6 +104,7 @@ defineProps({
   openCreateGameProductModal: { type: Function, required: true },
   openCreateSubscriptionProductModal: { type: Function, required: true },
   openProductImport: { type: Function, required: true },
+  openOzonCatalog: { type: Function, required: true },
   loadProducts: { type: Function, required: true },
   productsLoading: { type: Boolean, required: true },
 })

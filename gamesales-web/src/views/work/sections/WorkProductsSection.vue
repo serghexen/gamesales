@@ -6,6 +6,7 @@
       :open-create-game-product-modal="ctx.openCreateGameProductModal"
       :open-create-subscription-product-modal="ctx.openCreateSubscriptionProductModal"
       :open-product-import="ctx.openProductImport"
+      :open-ozon-catalog="ctx.openOzonCatalog"
       :load-products="ctx.loadProducts"
       :products-loading="ctx.productsLoading"
     />
@@ -61,6 +62,17 @@
         :product-import-stats="ctx.productImportStats"
       />
 
+      <WorkOzonCatalogModal
+        :show-ozon-catalog="ctx.showOzonCatalog"
+        :close-ozon-catalog="ctx.closeOzonCatalog"
+        :sync-ozon-catalog="ctx.syncOzonCatalog"
+        :ozon-catalog-items="ctx.ozonCatalogItems"
+        :ozon-catalog-loading="ctx.ozonCatalogLoading"
+        :ozon-catalog-syncing="ctx.ozonCatalogSyncing"
+        :ozon-catalog-error="ctx.ozonCatalogError"
+        :ozon-catalog-ok="ctx.ozonCatalogOk"
+      />
+
       <WorkProductsTableSection
         :sorted-products="ctx.sortedProducts"
         :paged-products="ctx.pagedProducts"
@@ -101,6 +113,7 @@
 import WorkProductsHeader from './WorkProductsHeader.vue'
 import WorkGameFilterChips from './WorkGameFilterChips.vue'
 import WorkGameImportModal from './WorkGameImportModal.vue'
+import WorkOzonCatalogModal from './WorkOzonCatalogModal.vue'
 import WorkProductsTableSection from './WorkProductsTableSection.vue'
 import WorkProductsPager from './WorkProductsPager.vue'
 import WorkProductEditorModal from './WorkProductEditorModal.vue'

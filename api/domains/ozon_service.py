@@ -220,6 +220,56 @@ def fetch_ozon_finance_transactions(
     return rows
 
 
+def fetch_ozon_catalog_items(
+    store_code: str = "asat",
+    progress: Callable[[str], None] | None = None,
+) -> list[dict[str, Any]]:
+    # Загружает карточки кабинета Ozon, чтобы локально сопоставить их с будущими номиналами ключей.
+    normalized_store_code = normalize_ozon_store_code(store_code)
+    client_id = _required_store_env("CLIENT_ID", store_code=normalized_store_code)
+    api_key = _required_store_env("API_KEY", store_code=normalized_store_code)
+    base_url = str(os.getenv("OZON_SELLER_BASE_URL", OZON_SELLER_BASE_URL) or OZON_SELLER_BASE_URL).rstrip("/")
+    timeout = max(5, _env_int("OZON_TIMEOUT_SEC", 60))
+    page_size = min(1000, max(1, _env_int("OZON_CATALOG_PAGE_SIZE", 1000)))
+    max_pages = max(1, _env_int("OZON_CATALOG_MAX_PAGES", 1000))
+    rows: list[dict[str, Any]] = []
+    last_id = ""
+
+    for page in range(1, max_pages + 1):
+        if progress:
+            progress(f"Загружаем каталог Ozon: страница {page}")
+        data = _request_json(
+            f"{base_url}/v2/product/list",
+            client_id=client_id,
+            api_key=api_key,
+            payload={
+                "filter": {"offer_id": [], "product_id": [], "visibility": "ALL"},
+                "last_id": last_id,
+                "limit": page_size,
+            },
+            timeout=timeout,
+        )
+        result = data.get("result")
+        if not isinstance(result, dict):
+            raise HTTPException(502, "Ozon catalog response does not contain result")
+        items = result.get("items")
+        if not isinstance(items, list):
+            raise HTTPException(502, "Ozon catalog response does not contain items")
+        rows.extend(item for item in items if isinstance(item, dict))
+        next_last_id = str(result.get("last_id") or "").strip()
+        if not next_last_id or not items:
+            break
+        if next_last_id == last_id:
+            raise HTTPException(502, "Ozon catalog pagination did not advance")
+        last_id = next_last_id
+    else:
+        raise HTTPException(502, f"Ozon catalog exceeded {max_pages} pages")
+
+    if progress:
+        progress(f"Загружено карточек Ozon: {len(rows)}")
+    return rows
+
+
 def aggregate_ozon_finance_transactions(
     rows: list[dict[str, Any]],
     *,

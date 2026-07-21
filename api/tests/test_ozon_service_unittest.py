@@ -167,6 +167,32 @@ class OzonServiceTest(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "must be asat"):
             ozon_service.normalize_ozon_store_code("sps")
 
+    # Каталог должен читаться постранично, чтобы первый импорт не терял карточки большого магазина.
+    def test_fetch_catalog_reads_all_pages(self):
+        responses = [
+            _Response({"result": {"items": [{"product_id": 101, "offer_id": "steam-1000"}], "last_id": "next"}}),
+            _Response({"result": {"items": [{"product_id": 102, "offer_id": "psn-500"}], "last_id": ""}}),
+        ]
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "OZON_CLIENT_ID": "client-1",
+                    "OZON_API_KEY": "secret-1",
+                    "OZON_CATALOG_PAGE_SIZE": "1",
+                },
+                clear=False,
+            ),
+            patch.object(ozon_service.urllib.request, "urlopen", side_effect=responses) as urlopen,
+        ):
+            rows = ozon_service.fetch_ozon_catalog_items()
+
+        self.assertEqual([row["product_id"] for row in rows], [101, 102])
+        first_payload = json.loads(urlopen.call_args_list[0].args[0].data.decode("utf-8"))
+        second_payload = json.loads(urlopen.call_args_list[1].args[0].data.decode("utf-8"))
+        self.assertEqual(first_payload["filter"]["visibility"], "ALL")
+        self.assertEqual(second_payload["last_id"], "next")
+
 
 if __name__ == "__main__":
     unittest.main()
