@@ -35,6 +35,11 @@ function buildCtx(overrides = {}) {
     validate: vi.fn(),
     calculation: null,
     calculationLoading: false,
+    payment: null,
+    paymentLoading: false,
+    canPay: false,
+    pay: vi.fn(),
+    refreshPaymentStatus: vi.fn(),
     setSearchFromEvent: vi.fn(),
     ...overrides,
   }
@@ -119,5 +124,33 @@ describe('WorkInterhubSection', () => {
     const accountInput = wrapper.find('.interhub-catalog__form input')
     expect(accountInput.attributes('required')).toBeUndefined()
     expect(wrapper.text()).toContain('Аккаунт (необязательно)')
+  })
+
+  it('lets only the owner confirm a checked payment and shows the gift code', async () => {
+    const ctx = buildCtx({
+      canPay: true,
+      calculation: { success: true, message: 'Success', fixed_amount: 117.47 },
+      payment: { success: true, status: 0, params: { gift_code: 'TESTGIFTCODE' } },
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await wrapper.find('tbody tr').trigger('click')
+    expect(wrapper.text()).toContain('TESTGIFTCODE')
+    expect(wrapper.text()).toContain('Оплата успешна')
+
+    await wrapper.setProps({ ctx: { ...ctx, payment: null } })
+    await wrapper.get('button[type="button"].btn').trigger('click')
+    expect(ctx.pay).toHaveBeenCalledTimes(1)
+  })
+
+  it('explains the documented polling schedule for a processing payment', async () => {
+    const ctx = buildCtx({
+      calculation: { success: true, message: 'Success' },
+      payment: { success: true, status: 1, params: {} },
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await wrapper.find('tbody tr').trigger('click')
+    expect(wrapper.text()).toContain('Первая проверка статуса — через 1 минуту')
   })
 })

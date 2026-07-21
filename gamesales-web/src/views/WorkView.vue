@@ -202,7 +202,6 @@ import { useManagersLoad } from './work/useManagersLoad'
 import { useWorkActions } from './work/useWorkActions'
 import { useWorkUiHelpers } from './work/useWorkUiHelpers'
 import { createDeferredCall } from './work/deferredCall'
-import { createInterhubAgentTransactionId } from './work/interhubUtils'
 import { useWorkSectionContexts } from './work/useWorkSectionContexts'
 import { createRealtimeRefreshScheduler, isDealMutationRealtimeEvent } from './work/realtimeRefreshScheduler'
 import WorkDashboardHero from './work/sections/WorkDashboardHero.vue'
@@ -1152,6 +1151,9 @@ const interhubBalance = ref(0)
 const interhubCurrency = ref('')
 const interhubCalculation = ref(null)
 const interhubCalculationLoading = ref(false)
+const interhubPayment = ref(null)
+const interhubPaymentLoading = ref(false)
+const canPayInterhub = computed(() => normalizeRole(auth.state.role) === 'owner')
 const editProductState = reactive({
   open: false,
   product_id: null,
@@ -2129,22 +2131,82 @@ function setInterhubSearchFromEvent(event) {
 }
 
 async function validateInterhub(payload) {
-  // Выбираем check для TOP_UP и calculate для остальных типов без вызова pay.
+  // Для фиксированных услуг сначала получаем цену, затем обязательно создаём check с этой суммой.
   interhubCalculationLoading.value = true
   interhubCalculation.value = null
+  interhubPayment.value = null
   try {
-    const agentTransactionId = createInterhubAgentTransactionId()
     const requestPayload = { ...payload }
-    const isTopUp = String(requestPayload.flow_type || '').toUpperCase() === 'TOP_UP'
+    const flowType = String(requestPayload.flow_type || '').toUpperCase()
+    const isTopUp = flowType === 'TOP_UP'
     delete requestPayload.flow_type
-    interhubCalculation.value = await apiPost(isTopUp ? '/integrations/interhub/check' : '/integrations/interhub/calculate', {
+    const checkTransactionId = `gamesales-check-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    if (isTopUp) {
+      const check = await apiPost('/integrations/interhub/check', {
+        ...requestPayload,
+        agent_transaction_id: checkTransactionId,
+      }, { token: auth.state.token })
+      interhubCalculation.value = { ...check, agent_transaction_id: checkTransactionId }
+      return
+    }
+    const calculateTransactionId = `gamesales-calculate-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const quote = await apiPost('/integrations/interhub/calculate', {
       ...requestPayload,
-      agent_transaction_id: agentTransactionId,
+      agent_transaction_id: calculateTransactionId,
     }, { token: auth.state.token })
+    if (!quote?.success) {
+      interhubCalculation.value = quote
+      return
+    }
+    const fixedAmount = Number(quote.fixed_amount || 0)
+    if (!(fixedAmount > 0)) {
+      interhubCalculation.value = { success: false, message: 'InterHub не вернул стоимость оплаты' }
+      return
+    }
+    const check = await apiPost('/integrations/interhub/check', {
+      ...requestPayload,
+      amount: fixedAmount,
+      agent_transaction_id: checkTransactionId,
+    }, { token: auth.state.token })
+    interhubCalculation.value = { ...check, fixed_amount: fixedAmount, agent_transaction_id: checkTransactionId }
   } catch (err) {
     interhubCalculation.value = { success: false, message: mapApiError(err?.message || 'Не удалось проверить услугу') }
   } finally {
     interhubCalculationLoading.value = false
+  }
+}
+
+async function payInterhub() {
+  // Подтверждаем платёж только отдельным кликом владельца по уже проверенной операции.
+  const agentTransactionId = String(interhubCalculation.value?.agent_transaction_id || '')
+  if (!agentTransactionId || !canPayInterhub.value) return
+  interhubPaymentLoading.value = true
+  interhubPayment.value = null
+  try {
+    interhubPayment.value = await apiPost('/integrations/interhub/pay', {
+      agent_transaction_id: agentTransactionId,
+    }, { token: auth.state.token })
+    if (Number(interhubPayment.value?.status) === 1) void loadInterhubBalance()
+  } catch (err) {
+    interhubPayment.value = { success: false, message: mapApiError(err?.message || 'Не удалось подтвердить оплату') }
+  } finally {
+    interhubPaymentLoading.value = false
+  }
+}
+
+async function refreshInterhubPaymentStatus() {
+  // Даём владельцу вручную уточнить результат, не отправляя pay повторно.
+  const agentTransactionId = String(interhubCalculation.value?.agent_transaction_id || '')
+  if (!agentTransactionId || !canPayInterhub.value) return
+  interhubPaymentLoading.value = true
+  try {
+    interhubPayment.value = await apiPost('/integrations/interhub/check-status', {
+      agent_transaction_id: agentTransactionId,
+    }, { token: auth.state.token })
+  } catch (err) {
+    interhubPayment.value = { success: false, message: mapApiError(err?.message || 'Не удалось обновить статус платежа') }
+  } finally {
+    interhubPaymentLoading.value = false
   }
 }
 
@@ -3496,6 +3558,11 @@ const interhubSectionCtx = asCtx({
   search: interhubSearch,
   calculation: interhubCalculation,
   calculationLoading: interhubCalculationLoading,
+  payment: interhubPayment,
+  paymentLoading: interhubPaymentLoading,
+  canPay: canPayInterhub,
+  pay: payInterhub,
+  refreshPaymentStatus: refreshInterhubPaymentStatus,
   reload: reloadInterhubData,
   validate: validateInterhub,
   setSearchFromEvent: setInterhubSearchFromEvent,

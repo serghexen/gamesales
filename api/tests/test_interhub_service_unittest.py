@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
+from domains.interhub_api import interhub_status_check_interval
 from domains.interhub_service import build_interhub_service
 
 
@@ -23,6 +24,13 @@ class _Response:
 
 
 class InterHubServiceTests(unittest.TestCase):
+    def test_status_polling_uses_documented_backoff(self):
+        # Первый статус проверяем через минуту, затем три раза через пять и дальше через тридцать минут.
+        self.assertEqual(interhub_status_check_interval(0), "1 minute")
+        self.assertEqual(interhub_status_check_interval(1), "5 minutes")
+        self.assertEqual(interhub_status_check_interval(3), "5 minutes")
+        self.assertEqual(interhub_status_check_interval(4), "30 minutes")
+
     def test_catalog_normalizes_nested_service_and_dynamic_fields(self):
         # Преобразуем типовой ответ провайдера в контракт, удобный для динамической формы.
         payload = {
@@ -84,6 +92,29 @@ class InterHubServiceTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as error:
             service.get_services()
         self.assertEqual(error.exception.status_code, 500)
+
+    def test_pay_preserves_gift_code_and_check_status(self):
+        # Сохраняем код ваучера из pay и статус processing без потери полей провайдера.
+        service = build_interhub_service(
+            HTTPException=HTTPException,
+            interhub_api_url="https://api.interhub.ae",
+            interhub_token="test-token",
+            timeout_sec=20,
+            ssl_verify=False,
+            ca_cert_path="",
+            calculate_path="/api/agent/payment/check/calculate",
+            check_path="/api/agent/payment/check",
+            deposit_path="/api/agent/deposit",
+        )
+        with patch(
+            "domains.interhub_service.urllib.request.urlopen",
+            return_value=_Response({"success": True, "status": 0, "params": {"gift_code": "TESTGIFTCODE"}}),
+        ) as urlopen_mock:
+            result = service.pay({"agent_transaction_id": "test-1"})
+
+        self.assertEqual(result["params"]["gift_code"], "TESTGIFTCODE")
+        request = urlopen_mock.call_args.args[0]
+        self.assertTrue(request.full_url.endswith("/api/agent/payment/pay"))
 
 
 if __name__ == "__main__":

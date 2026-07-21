@@ -13,6 +13,8 @@ class InterHubService:
     get_balance: Callable[[], dict[str, Any]]
     calculate: Callable[[dict[str, Any]], dict[str, Any]]
     check: Callable[[dict[str, Any]], dict[str, Any]]
+    pay: Callable[[dict[str, Any]], dict[str, Any]]
+    check_status: Callable[[dict[str, Any]], dict[str, Any]]
 
 
 def build_interhub_service(
@@ -26,6 +28,8 @@ def build_interhub_service(
     calculate_path: str,
     check_path: str,
     deposit_path: str,
+    pay_path: str = "/api/agent/payment/pay",
+    check_status_path: str = "/api/agent/payment/check_status",
 ):
     def ensure_configured():
         # Не отправляем запрос провайдеру, пока URL или токен не настроены на сервере.
@@ -161,7 +165,9 @@ def build_interhub_service(
             "amount": as_float(data.get("amount")), "transaction_id": str(data.get("transaction_id") or ""),
             "amount_in_currency": as_float(data.get("amount_in_currency")),
             "commission": as_float(data.get("commission", data.get("comission"))),
-            "fixed_amount": as_float(data.get("fixed_amount")), "raw": data,
+            "fixed_amount": as_float(data.get("fixed_amount")),
+            "params": data.get("params") if isinstance(data.get("params"), dict) else {},
+            "raw": data,
         }
 
     def calculate(payload: dict[str, Any]) -> dict[str, Any]:
@@ -172,4 +178,12 @@ def build_interhub_service(
         # Проверяем реквизиты и сумму перед отдельным подтверждением будущей оплаты.
         return normalize_payment_response(send_request(check_path, payload))
 
-    return InterHubService(get_services=get_services, get_balance=get_balance, calculate=calculate, check=check)
+    def pay(payload: dict[str, Any]) -> dict[str, Any]:
+        # Подтверждаем уже проверенную операцию только по её идемпотентному идентификатору.
+        return normalize_payment_response(send_request(pay_path, payload))
+
+    def check_status(payload: dict[str, Any]) -> dict[str, Any]:
+        # Получаем финальный результат операции, которую провайдер ещё обрабатывает.
+        return normalize_payment_response(send_request(check_status_path, payload))
+
+    return InterHubService(get_services=get_services, get_balance=get_balance, calculate=calculate, check=check, pay=pay, check_status=check_status)

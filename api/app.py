@@ -1,6 +1,7 @@
 from datetime import datetime, timezone, date
 from typing import Optional, List, Tuple, Any
 from contextlib import asynccontextmanager
+import asyncio
 
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -157,6 +158,32 @@ def ensure_analytics_schema():
                 conn,
                 "CREATE INDEX IF NOT EXISTS idx_tg_dialog_snapshot_updated_at ON tg.dialog_snapshot(updated_at DESC)",
             )
+            # Храним операции InterHub до финального статуса, чтобы не потерять ключ ваучера и не повторить списание.
+            exec1(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS app.interhub_transactions (
+                  agent_transaction_id text PRIMARY KEY,
+                  service_id integer NOT NULL,
+                  account text NOT NULL DEFAULT '',
+                  amount numeric(14,2) NOT NULL DEFAULT 0,
+                  request_params jsonb NOT NULL DEFAULT '{}'::jsonb,
+                  state text NOT NULL DEFAULT 'checked',
+                  provider_status integer NOT NULL DEFAULT 0,
+                  provider_message text NOT NULL DEFAULT '',
+                  provider_transaction_id text NOT NULL DEFAULT '',
+                  gift_code text NOT NULL DEFAULT '',
+                  provider_response jsonb NOT NULL DEFAULT '{}'::jsonb,
+                  created_by text NOT NULL DEFAULT '',
+                  created_at timestamptz NOT NULL DEFAULT now(),
+                  updated_at timestamptz NOT NULL DEFAULT now(),
+                  status_check_attempts integer NOT NULL DEFAULT 0,
+                  next_status_check_at timestamptz
+                )
+                """,
+            )
+            exec1(conn, "ALTER TABLE app.interhub_transactions ADD COLUMN IF NOT EXISTS status_check_attempts integer NOT NULL DEFAULT 0")
+            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_interhub_transactions_pending ON app.interhub_transactions(state, next_status_check_at)")
             conn.commit()
     except Exception:
         # Ошибки миграций не валят запуск, но обязательно пишем их в лог для диагностики.
@@ -170,7 +197,28 @@ async def lifespan(_: FastAPI):
     _pool = ConnectionPool(DB_DSN, min_size=2, max_size=10, open=True)
     # Выполняем легкую инициализацию схемы при старте приложения.
     ensure_analytics_schema()
-    yield
+    stop_interhub_polling = asyncio.Event()
+
+    async def poll_interhub_pending_transactions():
+        # Проверяем зависшие платежи в фоне раз в пять минут, не связывая результат с открытой вкладкой браузера.
+        while not stop_interhub_polling.is_set():
+            try:
+                await asyncio.wait_for(stop_interhub_polling.wait(), timeout=300)
+                continue
+            except asyncio.TimeoutError:
+                pass
+            try:
+                await asyncio.to_thread(interhub_refresh_pending)
+            except Exception:
+                logger.exception("InterHub pending payment polling failed")
+
+    interhub_polling_task = asyncio.create_task(poll_interhub_pending_transactions())
+    try:
+        yield
+    finally:
+        # Останавливаем фоновую проверку до закрытия пула, чтобы она не работала с уже закрытой БД.
+        stop_interhub_polling.set()
+        await interhub_polling_task
     # Закрываем пул при остановке приложения.
     _pool.close()
     _pool = None
@@ -646,7 +694,11 @@ class InterHubPaymentCheckOut(BaseModel):
     amount_in_currency: float = 0.0
     commission: float = 0.0
     fixed_amount: float = 0.0
+    params: dict[str, Any] = Field(default_factory=dict)
     raw: dict[str, Any] = Field(default_factory=dict)
+
+class InterHubPayRequestIn(BaseModel):
+    agent_transaction_id: str
 
 # ----------------------------
 # DB helpers
@@ -758,6 +810,8 @@ _INTERHUB_SSL_VERIFY = str(os.getenv("INTERHUB_SSL_VERIFY", "true") or "true").s
 _INTERHUB_CA_CERT_PATH = os.getenv("INTERHUB_CA_CERT_PATH", "")
 _INTERHUB_CALCULATE_PATH = os.getenv("INTERHUB_CALCULATE_PATH", "/api/agent/payment/check/calculate")
 _INTERHUB_CHECK_PATH = os.getenv("INTERHUB_CHECK_PATH", "/api/agent/payment/check")
+_INTERHUB_PAY_PATH = os.getenv("INTERHUB_PAY_PATH", "/api/agent/payment/pay")
+_INTERHUB_CHECK_STATUS_PATH = os.getenv("INTERHUB_CHECK_STATUS_PATH", "/api/agent/payment/check_status")
 _INTERHUB_DEPOSIT_PATH = os.getenv("INTERHUB_DEPOSIT_PATH", "/api/agent/deposit")
 TELEGRAM_DIALOGS_SYNC_LIMIT = int(os.getenv("TELEGRAM_DIALOGS_SYNC_LIMIT", "0") or "0")
 TELEGRAM_DIALOGS_SYNC_BATCH = int(os.getenv("TELEGRAM_DIALOGS_SYNC_BATCH", "100") or "100")
@@ -878,6 +932,8 @@ interhub_service = build_interhub_service(
     ca_cert_path=_INTERHUB_CA_CERT_PATH,
     calculate_path=_INTERHUB_CALCULATE_PATH,
     check_path=_INTERHUB_CHECK_PATH,
+    pay_path=_INTERHUB_PAY_PATH,
+    check_status_path=_INTERHUB_CHECK_STATUS_PATH,
     deposit_path=_INTERHUB_DEPOSIT_PATH,
 )
 
@@ -920,6 +976,14 @@ def interhub_calculate(payload: dict[str, Any]):
 def interhub_check(payload: dict[str, Any]):
     # Проксируем проверку реквизитов перед будущим подтверждением оплаты.
     return interhub_service.check(payload)
+
+def interhub_pay(payload: dict[str, Any]):
+    # Подтверждаем операцию у провайдера только после отдельного действия владельца.
+    return interhub_service.pay(payload)
+
+def interhub_check_status(payload: dict[str, Any]):
+    # Запрашиваем финальный статус уже начатой операции InterHub.
+    return interhub_service.check_status(payload)
 
 def b64_encode(value: str | bytes | memoryview) -> str:
     # Кодирует строку или байтовый blob в base64 для отдачи в API.
@@ -1214,18 +1278,24 @@ mount_ns_gift_routes(
     ns_gift_create_order_and_pay=ns_gift_create_order_and_pay,
 )
 
-mount_interhub_routes(
+interhub_refresh_pending = mount_interhub_routes(
     app,
+    DB_DSN=DB_DSN,
+    psycopg=pooled_psycopg,
     get_current_user=get_current_user,
+    require_role=require_role,
     UserOut=UserOut,
     InterHubServiceListOut=InterHubServiceListOut,
     InterHubBalanceOut=InterHubBalanceOut,
     InterHubPaymentRequestIn=InterHubPaymentRequestIn,
     InterHubPaymentCheckOut=InterHubPaymentCheckOut,
+    InterHubPayRequestIn=InterHubPayRequestIn,
     interhub_get_services=interhub_get_services,
     interhub_get_balance=interhub_get_balance,
     interhub_calculate=interhub_calculate,
     interhub_check=interhub_check,
+    interhub_pay=interhub_pay,
+    interhub_check_status=interhub_check_status,
 )
 
 mount_rbac_routes(
