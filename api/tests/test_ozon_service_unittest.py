@@ -188,6 +188,7 @@ class OzonServiceTest(unittest.TestCase):
             rows = ozon_service.fetch_ozon_catalog_items()
 
         self.assertEqual([row["product_id"] for row in rows], [101, 102])
+        self.assertEqual(urlopen.call_args_list[0].args[0].full_url, "https://api-seller.ozon.ru/v3/product/list")
         first_payload = json.loads(urlopen.call_args_list[0].args[0].data.decode("utf-8"))
         second_payload = json.loads(urlopen.call_args_list[1].args[0].data.decode("utf-8"))
         self.assertEqual(first_payload["filter"]["visibility"], "ALL")

@@ -239,7 +239,7 @@ def fetch_ozon_catalog_items(
         if progress:
             progress(f"Загружаем каталог Ozon: страница {page}")
         data = _request_json(
-            f"{base_url}/v2/product/list",
+            f"{base_url}/v3/product/list",
             client_id=client_id,
             api_key=api_key,
             payload={
