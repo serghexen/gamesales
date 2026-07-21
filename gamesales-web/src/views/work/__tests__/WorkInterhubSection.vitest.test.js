@@ -232,6 +232,16 @@ describe('WorkInterhubSection', () => {
     expect(ctx.checkPayment).not.toHaveBeenCalled()
   })
 
+  it('groups price and availability actions into a compact two-button block', async () => {
+    const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx() } })
+
+    await selectServiceByTitle(wrapper, 'Mobile top up')
+
+    const actions = wrapper.find('.interhub-catalog__actions')
+    expect(actions.exists()).toBe(true)
+    expect(actions.findAll('.interhub-catalog__action-btn')).toHaveLength(2)
+  })
+
   it('shows the cached purchase price for the selected nominal without calculate', async () => {
     const ctx = buildCtx({
       cachedPrices: [{ service_id: 7, nominal_id: 15, fixed_amount: 117.47, calculated_at: '2026-07-21T09:10:00+03:00' }],
