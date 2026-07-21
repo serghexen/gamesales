@@ -173,6 +173,11 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.find('.interhub-catalog__form input:not([type="number"])').attributes('required')).toBeDefined()
     expect(wrapper.text()).toContain('Аккаунт или номер *')
     expect(wrapper.text()).toContain('Лимит: 7.79–701550')
+    await wrapper.find('.interhub-catalog__form input[type="number"]').setValue('200')
+    const actions = wrapper.find('.interhub-catalog__actions')
+    expect(actions.classes()).toContain('is-single')
+    expect(actions.find('.interhub-catalog__action-index').text()).toBe('1')
+    expect(actions.find('.interhub-catalog__action-btn').attributes('disabled')).toBeUndefined()
   })
 
   it('hides the account field for voucher services', async () => {
@@ -220,6 +225,8 @@ describe('WorkInterhubSection', () => {
 
     await selectServiceByTitle(wrapper, 'Mobile top up')
     await wrapper.find('.interhub-catalog__form select').setValue('15')
+    const checkButton = wrapper.findAll('.interhub-catalog__action-btn')[1]
+    expect(checkButton.attributes('disabled')).toBeDefined()
     const calculateButton = wrapper.findAll('button').find((button) => button.text().includes('Узнать цену'))
     await calculateButton.trigger('click')
 
@@ -230,6 +237,9 @@ describe('WorkInterhubSection', () => {
       flow_type: 'TOP_UP_FIXED',
     })
     expect(ctx.checkPayment).not.toHaveBeenCalled()
+
+    await wrapper.setProps({ ctx: { ...ctx, calculation: { success: true, fixed_amount: 117.47 } } })
+    expect(wrapper.findAll('.interhub-catalog__action-btn')[1].attributes('disabled')).toBeUndefined()
   })
 
   it('groups price and availability actions into a compact two-button block', async () => {
