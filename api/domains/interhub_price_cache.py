@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import BytesIO
 from typing import Any
 import json
@@ -52,11 +53,13 @@ def build_interhub_prices_xlsx(prices: list[dict[str, Any]], errors: list[dict[s
     workbook = Workbook()
     prices_sheet = workbook.active
     prices_sheet.title = "Закупочные цены"
-    prices_sheet.append(["ID услуги", "Услуга", "Категория", "Тип", "ID номинала", "Номинал", "Закупочная цена, ₽", "Рассчитано", "Полный ответ calculate (JSON)"])
+    prices_sheet.append(["ID услуги", "Услуга", "Категория", "Тип", "ID номинала", "Номинал", "Закупочная цена, ₽", "Сумма для клиента (amount_in_currency)", "Розничная цена, ₽", "Рассчитано", "Полный ответ calculate (JSON)"])
     for row in prices:
+        amount_in_currency = extract_response_number(row.get("provider_response"), "amount_in_currency")
         prices_sheet.append([
             row.get("service_id"), row.get("service_title"), row.get("category"), row.get("service_type"),
-            row.get("nominal_id"), row.get("nominal_title"), row.get("fixed_amount"), format_datetime(row.get("calculated_at")),
+            row.get("nominal_id"), row.get("nominal_title"), row.get("fixed_amount"), amount_in_currency,
+            calculate_retail_price(row.get("fixed_amount")), format_datetime(row.get("calculated_at")),
             format_provider_response(row.get("provider_response")),
         ])
     errors_sheet = workbook.create_sheet("Ошибки calculate")
@@ -70,7 +73,9 @@ def build_interhub_prices_xlsx(prices: list[dict[str, Any]], errors: list[dict[s
     for sheet in (prices_sheet, errors_sheet):
         style_sheet(sheet)
     prices_sheet.column_dimensions["G"].width = 22
-    prices_sheet.column_dimensions["I"].width = 52
+    prices_sheet.column_dimensions["H"].width = 34
+    prices_sheet.column_dimensions["I"].width = 22
+    prices_sheet.column_dimensions["K"].width = 52
     errors_sheet.column_dimensions["I"].width = 52
     buffer = BytesIO()
     workbook.save(buffer)
@@ -92,6 +97,29 @@ def format_provider_response(value: Any) -> str:
         return json.dumps(value or {}, ensure_ascii=False, sort_keys=True)
     except (TypeError, ValueError):
         return str(value or "")
+
+
+def extract_response_number(value: Any, key: str) -> float:
+    """Достаёт числовое поле из сохранённого JSON calculate для отдельной колонки отчёта."""
+    response = value
+    if isinstance(value, str):
+        try:
+            response = json.loads(value)
+        except (TypeError, ValueError):
+            response = {}
+    try:
+        return float(response.get(key) or 0) if isinstance(response, dict) else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def calculate_retail_price(fixed_amount: Any) -> int:
+    """Считает розницу от закупочной цены по согласованному коэффициенту без потери округления."""
+    try:
+        value = Decimal(str(fixed_amount or 0)) / Decimal("0.801024")
+        return int(value.to_integral_value(rounding=ROUND_HALF_UP))
+    except (InvalidOperation, ValueError):
+        return 0
 
 
 def style_sheet(sheet) -> None:
