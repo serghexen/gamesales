@@ -97,25 +97,38 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.findAll('tbody tr')[0].text()).toContain('Mobile top up')
   })
 
-  it('opens a dynamic form and sends the same params to a separate check', async () => {
+  it('opens a fixed nominal form and sends its params to a separate check', async () => {
     const ctx = buildCtx()
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
     await selectServiceByTitle(wrapper, 'Mobile top up')
     expect(wrapper.text()).toContain('Шаги оплаты')
 
-    const inputs = wrapper.findAll('.interhub-catalog__form input')
-    await inputs[0].setValue('998877')
     await wrapper.find('.interhub-catalog__form select').setValue('15')
     await wrapper.find('.interhub-catalog__form').trigger('submit.prevent')
 
     expect(ctx.checkPayment).toHaveBeenCalledWith({
       service_id: 7,
-      account: '998877',
+      account: '',
       params: { nominal: 15 },
       flow_type: 'TOP_UP_FIXED',
     })
     expect(ctx.resetPaymentFlow).toHaveBeenCalledTimes(1)
+  })
+
+  it('scrolls the selected service payment form into view', async () => {
+    const scrollIntoView = vi.fn()
+    const originalDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView')
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView })
+    try {
+      const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx() } })
+      await selectServiceByTitle(wrapper, 'Mobile top up')
+
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+    } finally {
+      if (originalDescriptor) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalDescriptor)
+      else delete HTMLElement.prototype.scrollIntoView
+    }
   })
 
   it('paginates a long catalog so the selected service form stays close to its row', async () => {
@@ -154,21 +167,31 @@ describe('WorkInterhubSection', () => {
     })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
-    await wrapper.find('tbody tr').trigger('click')
+    await selectServiceByTitle(wrapper, 'Steam CIS')
     expect(wrapper.find('.interhub-catalog__form input[type="number"]').exists()).toBe(true)
+    expect(wrapper.find('.interhub-catalog__form input:not([type="number"])').attributes('required')).toBeDefined()
+    expect(wrapper.text()).toContain('Аккаунт или номер *')
     expect(wrapper.text()).toContain('Минимум: 7.79')
   })
 
-  it('keeps account optional for voucher services', async () => {
+  it('hides the account field for voucher services', async () => {
     const ctx = buildCtx({
       services: [{ service_id: 11, title: 'Steam voucher', category: '', type: 'VOUCHER', fields: [{ name: 'nominal', type: 'LIST', required: true, value_list: [{ id: 25, title: 'USD 25' }] }] }],
     })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
     await wrapper.find('tbody tr').trigger('click')
-    const accountInput = wrapper.find('.interhub-catalog__form input')
-    expect(accountInput.attributes('required')).toBeUndefined()
-    expect(wrapper.text()).toContain('Аккаунт (временно необязательно)')
+    expect(wrapper.find('.interhub-catalog__form input').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Аккаунт (временно необязательно)')
+  })
+
+  it('hides the account field for fixed nominal services', async () => {
+    const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx() } })
+
+    await selectServiceByTitle(wrapper, 'Mobile top up')
+    const formInputs = wrapper.findAll('.interhub-catalog__form input')
+    expect(formInputs).toHaveLength(0)
+    expect(wrapper.text()).not.toContain('Аккаунт (временно необязательно)')
   })
 
   it('lets only the owner confirm a checked payment and shows the gift code', async () => {
