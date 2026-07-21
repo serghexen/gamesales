@@ -1155,6 +1155,7 @@ const interhubCheck = ref(null)
 const interhubCheckLoading = ref(false)
 const interhubPayment = ref(null)
 const interhubPaymentLoading = ref(false)
+const interhubPaymentFlowVersion = ref(0)
 const interhubPrices = ref([])
 const interhubPriceRefresh = ref(null)
 const interhubPriceRefreshLoading = ref(false)
@@ -2201,28 +2202,43 @@ function setInterhubSearchFromEvent(event) {
   interhubSearch.value = String(event?.target?.value || '')
 }
 
+function resetInterhubPaymentFlow() {
+  // Сбрасываем результаты прошлой услуги, чтобы нельзя было оплатить её после переключения каталога.
+  interhubPaymentFlowVersion.value += 1
+  interhubCalculation.value = null
+  interhubCheck.value = null
+  interhubPayment.value = null
+  interhubCalculationLoading.value = false
+  interhubCheckLoading.value = false
+  interhubPaymentLoading.value = false
+}
+
 async function calculateInterhub(payload) {
   // Узнаём актуальную цену через calculate отдельно, не создавая операцию check и не запуская оплату.
+  const flowVersion = interhubPaymentFlowVersion.value
   interhubCalculationLoading.value = true
   interhubCalculation.value = null
+  interhubCheck.value = null
   interhubPayment.value = null
   try {
     const requestPayload = { ...payload }
     delete requestPayload.flow_type
     const calculateTransactionId = `gamesales-calculate-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    interhubCalculation.value = await apiPost('/integrations/interhub/calculate', {
+    const calculation = await apiPost('/integrations/interhub/calculate', {
       ...requestPayload,
       agent_transaction_id: calculateTransactionId,
     }, { token: auth.state.token })
+    if (flowVersion === interhubPaymentFlowVersion.value) interhubCalculation.value = calculation
   } catch (err) {
-    interhubCalculation.value = { success: false, message: mapApiError(err?.message || 'Не удалось узнать цену') }
+    if (flowVersion === interhubPaymentFlowVersion.value) interhubCalculation.value = { success: false, message: mapApiError(err?.message || 'Не удалось узнать цену') }
   } finally {
-    interhubCalculationLoading.value = false
+    if (flowVersion === interhubPaymentFlowVersion.value) interhubCalculationLoading.value = false
   }
 }
 
 async function checkInterhub(payload) {
   // Отправляем check отдельно, используя цену calculate для фиксированных услуг и сохраняя операцию для pay.
+  const flowVersion = interhubPaymentFlowVersion.value
   interhubCheckLoading.value = true
   interhubCheck.value = null
   interhubPayment.value = null
@@ -2233,7 +2249,7 @@ async function checkInterhub(payload) {
     if (flowType !== 'TOP_UP') {
       const fixedAmount = Number(interhubCalculation.value?.fixed_amount || 0)
       if (!(fixedAmount > 0)) {
-        interhubCheck.value = { success: false, message: 'Сначала узнайте цену через calculate' }
+        if (flowVersion === interhubPaymentFlowVersion.value) interhubCheck.value = { success: false, message: 'Сначала узнайте цену через calculate' }
         return
       }
       requestPayload.amount = fixedAmount
@@ -2243,11 +2259,11 @@ async function checkInterhub(payload) {
       ...requestPayload,
       agent_transaction_id: checkTransactionId,
     }, { token: auth.state.token })
-    interhubCheck.value = { ...check, agent_transaction_id: checkTransactionId }
+    if (flowVersion === interhubPaymentFlowVersion.value) interhubCheck.value = { ...check, agent_transaction_id: checkTransactionId }
   } catch (err) {
-    interhubCheck.value = { success: false, message: mapApiError(err?.message || 'Не удалось проверить доступность') }
+    if (flowVersion === interhubPaymentFlowVersion.value) interhubCheck.value = { success: false, message: mapApiError(err?.message || 'Не удалось проверить доступность') }
   } finally {
-    interhubCheckLoading.value = false
+    if (flowVersion === interhubPaymentFlowVersion.value) interhubCheckLoading.value = false
   }
 }
 
@@ -2255,17 +2271,19 @@ async function payInterhub() {
   // Подтверждаем платёж только отдельным кликом владельца по уже проверенной операции.
   const agentTransactionId = String(interhubCheck.value?.agent_transaction_id || '')
   if (!agentTransactionId || !canPayInterhub.value) return
+  const flowVersion = interhubPaymentFlowVersion.value
   interhubPaymentLoading.value = true
   interhubPayment.value = null
   try {
-    interhubPayment.value = await apiPost('/integrations/interhub/pay', {
+    const payment = await apiPost('/integrations/interhub/pay', {
       agent_transaction_id: agentTransactionId,
     }, { token: auth.state.token })
-    if (Number(interhubPayment.value?.status) === 1) void loadInterhubBalance()
+    if (flowVersion === interhubPaymentFlowVersion.value) interhubPayment.value = payment
+    if (Number(payment?.status) === 1) void loadInterhubBalance()
   } catch (err) {
-    interhubPayment.value = { success: false, message: mapApiError(err?.message || 'Не удалось подтвердить оплату') }
+    if (flowVersion === interhubPaymentFlowVersion.value) interhubPayment.value = { success: false, message: mapApiError(err?.message || 'Не удалось подтвердить оплату') }
   } finally {
-    interhubPaymentLoading.value = false
+    if (flowVersion === interhubPaymentFlowVersion.value) interhubPaymentLoading.value = false
   }
 }
 
@@ -2273,15 +2291,17 @@ async function refreshInterhubPaymentStatus() {
   // Даём владельцу вручную уточнить результат, не отправляя pay повторно.
   const agentTransactionId = String(interhubCheck.value?.agent_transaction_id || '')
   if (!agentTransactionId || !canPayInterhub.value) return
+  const flowVersion = interhubPaymentFlowVersion.value
   interhubPaymentLoading.value = true
   try {
-    interhubPayment.value = await apiPost('/integrations/interhub/check-status', {
+    const payment = await apiPost('/integrations/interhub/check-status', {
       agent_transaction_id: agentTransactionId,
     }, { token: auth.state.token })
+    if (flowVersion === interhubPaymentFlowVersion.value) interhubPayment.value = payment
   } catch (err) {
-    interhubPayment.value = { success: false, message: mapApiError(err?.message || 'Не удалось обновить статус платежа') }
+    if (flowVersion === interhubPaymentFlowVersion.value) interhubPayment.value = { success: false, message: mapApiError(err?.message || 'Не удалось обновить статус платежа') }
   } finally {
-    interhubPaymentLoading.value = false
+    if (flowVersion === interhubPaymentFlowVersion.value) interhubPaymentLoading.value = false
   }
 }
 
@@ -3650,6 +3670,7 @@ const interhubSectionCtx = asCtx({
   reload: reloadInterhubData,
   calculate: calculateInterhub,
   checkPayment: checkInterhub,
+  resetPaymentFlow: resetInterhubPaymentFlow,
   setSearchFromEvent: setInterhubSearchFromEvent,
 })
 

@@ -28,6 +28,7 @@
           <span class="label">Поиск услуги</span>
           <input class="input" type="search" :value="ctx.search" placeholder="Название или категория" @input="ctx.setSearchFromEvent" />
         </label>
+        <button class="ghost interhub-catalog__sort" type="button" @click="toggleServicesSort">По названию: {{ servicesSortDirection === 'asc' ? 'А–Я' : 'Я–А' }}</button>
         <div class="interhub-catalog__stats" aria-label="Статистика каталога">
           <strong>{{ filteredServices.length }}</strong>
           <span>из {{ ctx.services.length }} услуг</span>
@@ -51,7 +52,7 @@
             <tr v-else-if="!filteredServices.length">
               <td colspan="4" class="muted">Услуги по этому запросу не найдены.</td>
             </tr>
-            <tr v-for="service in filteredServices" :key="service.service_id" class="interhub-catalog__row" :class="{ 'is-selected': selectedService?.service_id === service.service_id }" @click="selectService(service)">
+            <tr v-for="service in pagedServices" :key="service.service_id" class="interhub-catalog__row" :class="{ 'is-selected': selectedService?.service_id === service.service_id }" @click="selectService(service)">
               <td>
                 <strong>{{ service.title }}</strong>
                 <span class="interhub-catalog__id">#{{ service.service_id }}</span>
@@ -63,12 +64,17 @@
           </tbody>
         </table>
       </div>
+      <nav v-if="totalPages > 1" class="interhub-catalog__pagination" aria-label="Страницы каталога InterHub">
+        <button class="ghost" type="button" :disabled="currentPage === 1" aria-label="Предыдущая страница" @click="changePage(-1)">Назад</button>
+        <span>Страница {{ currentPage }} из {{ totalPages }}</span>
+        <button class="ghost" type="button" :disabled="currentPage === totalPages" aria-label="Следующая страница" @click="changePage(1)">Далее</button>
+      </nav>
       <form v-if="selectedService" class="interhub-catalog__form" @submit.prevent="checkPayment">
         <div><p class="interhub-catalog__eyebrow">Шаги оплаты</p><h3>{{ selectedService.title }}</h3></div>
         <label class="field"><span class="label">{{ accountLabel }}</span><input v-model.trim="account" class="input" :required="accountRequired" /><small v-if="!accountRequired" class="muted">Необязательно для этого типа услуги</small></label>
         <div v-if="amountFromNominal" class="interhub-catalog__auto-amount"><span>Сумма пополнения</span><strong>{{ selectedNominalTitle || 'Выберите номинал' }}</strong><small>Подставляется автоматически из номинала</small></div>
         <label v-else-if="needsAmount" class="field"><span class="label">Сумма пополнения</span><input v-model="amount" class="input" type="number" :min="selectedService.min_amount || 0.01" step="0.01" required /><small class="muted">Минимум: {{ selectedService.min_amount || '—' }}</small></label>
-        <label v-for="field in selectedService.fields" :key="field.name" class="field"><span class="label">{{ field.name }}<i v-if="field.required"> *</i></span><select v-if="field.type === 'LIST'" v-model="params[field.name]" class="input" :required="field.required"><option value="">Выберите значение</option><option v-for="option in field.value_list" :key="option.id" :value="option.id">{{ option.title }}</option></select><input v-else v-model.trim="params[field.name]" class="input" :required="field.required" /><small v-if="field.name === 'nominal' && selectedCachedPrice" class="muted">Закупочная цена из кэша: {{ formatMoney(selectedCachedPrice.fixed_amount) }} ₽ · {{ formatCachedDate(selectedCachedPrice.calculated_at) }}</small><details v-if="field.name === 'nominal' && selectedCachedPrice" class="interhub-catalog__calculate-response"><summary>Полный ответ calculate</summary><pre>{{ formatProviderResponse(selectedCachedPrice.provider_response) }}</pre></details></label>
+        <label v-for="field in selectedService.fields" :key="field.name" class="field"><span class="label">{{ field.name }}<i v-if="field.required"> *</i></span><select v-if="field.type === 'LIST'" v-model="params[field.name]" class="input" :required="field.required"><option value="">Выберите значение</option><option v-for="option in sortedNominals(field.value_list)" :key="option.id" :value="option.id">{{ option.title }}</option></select><input v-else v-model.trim="params[field.name]" class="input" :required="field.required" /><small v-if="field.name === 'nominal' && selectedCachedPrice" class="muted">Закупочная цена из кэша: {{ formatMoney(selectedCachedPrice.fixed_amount) }} ₽ · {{ formatCachedDate(selectedCachedPrice.calculated_at) }}</small><details v-if="field.name === 'nominal' && selectedCachedPrice" class="interhub-catalog__calculate-response"><summary>Полный ответ calculate</summary><pre>{{ formatProviderResponse(selectedCachedPrice.provider_response) }}</pre></details></label>
         <div class="interhub-catalog__actions">
           <button v-if="supportsCalculate" class="btn" type="button" :disabled="ctx.calculationLoading" @click="calculate">{{ ctx.calculationLoading ? 'Узнаём…' : 'Узнать цену (calculate)' }}</button>
           <button class="btn" :disabled="ctx.checkLoading">{{ ctx.checkLoading ? 'Проверяем…' : 'Узнать остаток (check)' }}</button>
@@ -94,19 +100,30 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
 // Контекст содержит каталог и действия загрузки, чтобы экран не знал деталей API.
 const props = defineProps({
   ctx: { type: Object, required: true },
 })
 
+const titleCollator = new Intl.Collator('ru', { numeric: true, sensitivity: 'base' })
+const servicesSortDirection = ref('asc')
 const filteredServices = computed(() => {
   // Фильтруем по названию и категории без повторного запроса к провайдеру.
   const query = String(props.ctx.search || '').trim().toLowerCase()
   const services = Array.isArray(props.ctx.services) ? props.ctx.services : []
-  if (!query) return services
-  return services.filter((service) => `${service?.title || ''} ${service?.category || ''}`.toLowerCase().includes(query))
+  const filtered = query ? services.filter((service) => `${service?.title || ''} ${service?.category || ''}`.toLowerCase().includes(query)) : services
+  const direction = servicesSortDirection.value === 'asc' ? 1 : -1
+  return [...filtered].sort((left, right) => direction * titleCollator.compare(String(left?.title || ''), String(right?.title || '')))
+})
+const pageSize = 20
+const currentPage = ref(1)
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredServices.value.length / pageSize)))
+const pagedServices = computed(() => {
+  // Показываем короткую страницу каталога, чтобы форма оплаты оставалась рядом с выбранной услугой.
+  const start = (currentPage.value - 1) * pageSize
+  return filteredServices.value.slice(start, start + pageSize)
 })
 const selectedService = ref(null)
 const account = ref('')
@@ -139,12 +156,29 @@ const paymentMessage = computed(() => {
   return `Оплата не прошла · ${props.ctx.payment?.message || 'Ответ InterHub не получен'}`
 })
 
+watch(() => props.ctx.search, () => {
+  // Возвращаемся на первую страницу после поиска, иначе выдача может выглядеть пустой.
+  currentPage.value = 1
+})
+
 function selectService(service) {
-  // Открываем форму выбранной услуги и очищаем реквизиты от предыдущей операции.
+  // Открываем новую услугу и очищаем её форму вместе с результатами предыдущей операции.
   selectedService.value = service
   account.value = ''
   amount.value = ''
   Object.keys(params).forEach((key) => delete params[key])
+  props.ctx.resetPaymentFlow()
+}
+
+function changePage(direction) {
+  // Переключаем страницу в допустимых пределах без повторной загрузки каталога.
+  currentPage.value = Math.min(totalPages.value, Math.max(1, currentPage.value + direction))
+}
+
+function toggleServicesSort() {
+  // Меняем порядок услуг и возвращаемся к началу списка, чтобы не потерять выбранную страницу.
+  servicesSortDirection.value = servicesSortDirection.value === 'asc' ? 'desc' : 'asc'
+  currentPage.value = 1
 }
 
 function buildPayload() {
@@ -218,6 +252,27 @@ function formatProviderResponse(value) {
     return String(value || '')
   }
 }
+
+function sortedNominals(options) {
+  // Сортируем номиналы по сумме, а одинаковые значения — по подписи без случайного порядка от API.
+  return [...(Array.isArray(options) ? options : [])].sort((left, right) => {
+    const difference = nominalSortValue(left?.title) - nominalSortValue(right?.title)
+    if (difference) return difference
+    return titleCollator.compare(String(left?.title || ''), String(right?.title || ''))
+  })
+}
+
+function nominalSortValue(title) {
+  // Сохраняем разрядность в подписях вида "INR 2.500", чтобы 2 500 не стало 2,5.
+  const match = String(title || '').match(/\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?/)
+  if (!match) return Number.POSITIVE_INFINITY
+  const value = match[0]
+  const groups = value.split(/[.,]/)
+  const normalized = groups.length > 1 && groups.slice(1).every((group) => group.length === 3)
+    ? groups.join('')
+    : value.replace(',', '.')
+  return Number(normalized) || Number.POSITIVE_INFINITY
+}
 </script>
 
 <style scoped>
@@ -230,12 +285,14 @@ function formatProviderResponse(value) {
 .interhub-catalog__price-progress { margin: -8px 0 18px; }
 .interhub-catalog__toolbar { display: flex; gap: 16px; align-items: end; justify-content: space-between; margin-bottom: 18px; }
 .interhub-catalog__search { width: min(460px, 100%); }
+.interhub-catalog__sort { margin-right: auto; white-space: nowrap; }
 .interhub-catalog__stats { display: grid; min-width: 120px; padding: 8px 12px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .08); }
 .interhub-catalog__stats strong { font-size: 20px; line-height: 1; }
 .interhub-catalog__stats span, .interhub-catalog__id { color: var(--muted, #7a766f); font-size: 12px; }
 .interhub-catalog__id { display: block; margin-top: 3px; font-family: ui-monospace, monospace; }
 .interhub-catalog__type { display: inline-flex; padding: 3px 7px; border: 1px solid rgba(232, 134, 19, .35); color: #9b570d; font-size: 12px; font-weight: 700; }
 .interhub-catalog__row { cursor: pointer; }.interhub-catalog__row.is-selected td { background: rgba(232, 134, 19, .08); }.interhub-catalog__form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; align-items: end; margin-top: 22px; padding: 18px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); }.interhub-catalog__form h3 { margin: 0; }.interhub-catalog__actions { display: flex; flex-wrap: wrap; gap: 8px; }.interhub-catalog__result { margin: 0; font-weight: 700; }.interhub-catalog__payment-result { display: grid; gap: 8px; align-content: center; }.interhub-catalog__payment-result.is-error { color: #d45f5f; }.interhub-catalog__gift-code { width: fit-content; padding: 8px 10px; border: 1px dashed rgba(232, 134, 19, .7); background: rgba(232, 134, 19, .08); color: inherit; font-weight: 700; letter-spacing: .04em; }
+.interhub-catalog__pagination { display: flex; gap: 12px; align-items: center; justify-content: end; margin-top: 12px; color: var(--muted, #7a766f); font-size: 13px; }
 .interhub-catalog__auto-amount { display: grid; gap: 3px; min-height: 42px; padding: 8px 10px; border: 1px solid rgba(232, 134, 19, .35); }.interhub-catalog__auto-amount span, .interhub-catalog__auto-amount small { color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__auto-amount strong { font-size: 18px; }
 .interhub-catalog__calculate-response { margin-top: 7px; color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__calculate-response summary { cursor: pointer; color: inherit; }.interhub-catalog__calculate-response pre { max-width: 420px; max-height: 180px; margin: 8px 0 0; padding: 8px; overflow: auto; border: 1px solid rgba(232, 134, 19, .2); background: rgba(9, 12, 25, .38); color: var(--text, #eee); font: 11px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
 @media (max-width: 680px) { .interhub-catalog__head { align-items: start; flex-direction: column; } .interhub-catalog__head-actions { justify-content: start; } .interhub-catalog__toolbar { align-items: stretch; flex-direction: column; } .interhub-catalog__search { width: 100%; } .interhub-catalog__stats { width: fit-content; } }

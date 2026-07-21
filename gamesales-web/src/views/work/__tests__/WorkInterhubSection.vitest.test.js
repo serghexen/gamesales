@@ -50,9 +50,16 @@ function buildCtx(overrides = {}) {
     refreshPaymentStatus: vi.fn(),
     refreshPrices: vi.fn(),
     exportPrices: vi.fn(),
+    resetPaymentFlow: vi.fn(),
     setSearchFromEvent: vi.fn(),
     ...overrides,
   }
+}
+
+async function selectServiceByTitle(wrapper, title) {
+  // Выбираем строку по названию, чтобы тест не зависел от пользовательской сортировки каталога.
+  const row = wrapper.findAll('tbody tr').find((item) => item.text().includes(title))
+  await row.trigger('click')
 }
 
 describe('WorkInterhubSection', () => {
@@ -82,11 +89,19 @@ describe('WorkInterhubSection', () => {
     expect(ctx.reload).toHaveBeenCalledTimes(1)
   })
 
+  it('sorts services by title in both directions', async () => {
+    const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx() } })
+
+    expect(wrapper.findAll('tbody tr')[0].text()).toContain('Gift PIN')
+    await wrapper.find('.interhub-catalog__sort').trigger('click')
+    expect(wrapper.findAll('tbody tr')[0].text()).toContain('Mobile top up')
+  })
+
   it('opens a dynamic form and sends the same params to a separate check', async () => {
     const ctx = buildCtx()
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
-    await wrapper.findAll('tbody tr')[0].trigger('click')
+    await selectServiceByTitle(wrapper, 'Mobile top up')
     expect(wrapper.text()).toContain('Шаги оплаты')
 
     const inputs = wrapper.findAll('.interhub-catalog__form input')
@@ -100,6 +115,25 @@ describe('WorkInterhubSection', () => {
       params: { nominal: 15 },
       flow_type: 'TOP_UP_FIXED',
     })
+    expect(ctx.resetPaymentFlow).toHaveBeenCalledTimes(1)
+  })
+
+  it('paginates a long catalog so the selected service form stays close to its row', async () => {
+    const services = Array.from({ length: 21 }, (_, index) => ({
+      service_id: index + 1,
+      title: `Service ${index + 1}`,
+      category: 'Games',
+      type: 'VOUCHER',
+      fields: [],
+    }))
+    const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx({ services }) } })
+
+    expect(wrapper.text()).toContain('Service 20')
+    expect(wrapper.text()).not.toContain('Service 21')
+    await wrapper.find('[aria-label="Следующая страница"]').trigger('click')
+    expect(wrapper.text()).toContain('Страница 2 из 2')
+    expect(wrapper.text()).toContain('Service 21')
+    expect(wrapper.text()).not.toContain('Service 1')
   })
 
   it('derives TOP_UP amount from the selected nominal instead of rendering a manual amount input', async () => {
@@ -160,7 +194,7 @@ describe('WorkInterhubSection', () => {
     const ctx = buildCtx()
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
-    await wrapper.find('tbody tr').trigger('click')
+    await selectServiceByTitle(wrapper, 'Mobile top up')
     await wrapper.find('.interhub-catalog__form select').setValue('15')
     const calculateButton = wrapper.findAll('button').find((button) => button.text().includes('Узнать цену'))
     await calculateButton.trigger('click')
@@ -180,7 +214,7 @@ describe('WorkInterhubSection', () => {
     })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
-    await wrapper.find('tbody tr').trigger('click')
+    await selectServiceByTitle(wrapper, 'Mobile top up')
     await wrapper.find('.interhub-catalog__form select').setValue('15')
 
     expect(wrapper.text()).toContain('Закупочная цена из кэша: 117,47 ₽')
@@ -192,10 +226,20 @@ describe('WorkInterhubSection', () => {
     })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
-    await wrapper.find('tbody tr').trigger('click')
+    await selectServiceByTitle(wrapper, 'Mobile top up')
     await wrapper.find('.interhub-catalog__form select').setValue('15')
     expect(wrapper.text()).toContain('Полный ответ calculate')
     expect(wrapper.text()).toContain('"fixed_amount": 117.47')
+  })
+
+  it('sorts nominal options by their numeric value', async () => {
+    const ctx = buildCtx({
+      services: [{ service_id: 11, title: 'Sorted voucher', category: '', type: 'VOUCHER', fields: [{ name: 'nominal', type: 'LIST', required: true, value_list: [{ id: 100, title: 'USD 100' }, { id: 5, title: 'USD 5' }, { id: 25, title: 'USD 25' }] }] }],
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await selectServiceByTitle(wrapper, 'Sorted voucher')
+    expect(wrapper.find('.interhub-catalog__form select').findAll('option').map((option) => option.text())).toEqual(['Выберите значение', 'USD 5', 'USD 25', 'USD 100'])
   })
 
   it('allows only the owner to start the cached price refresh and export', async () => {
