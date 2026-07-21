@@ -1151,6 +1151,8 @@ const interhubBalance = ref(0)
 const interhubCurrency = ref('')
 const interhubCalculation = ref(null)
 const interhubCalculationLoading = ref(false)
+const interhubCheck = ref(null)
+const interhubCheckLoading = ref(false)
 const interhubPayment = ref(null)
 const interhubPaymentLoading = ref(false)
 const canPayInterhub = computed(() => normalizeRole(auth.state.role) === 'owner')
@@ -2130,55 +2132,59 @@ function setInterhubSearchFromEvent(event) {
   interhubSearch.value = String(event?.target?.value || '')
 }
 
-async function validateInterhub(payload) {
-  // Для фиксированных услуг сначала получаем цену, затем обязательно создаём check с этой суммой.
+async function calculateInterhub(payload) {
+  // Узнаём актуальную цену через calculate отдельно, не создавая операцию check и не запуская оплату.
   interhubCalculationLoading.value = true
   interhubCalculation.value = null
   interhubPayment.value = null
   try {
     const requestPayload = { ...payload }
-    const flowType = String(requestPayload.flow_type || '').toUpperCase()
-    const isTopUp = flowType === 'TOP_UP'
     delete requestPayload.flow_type
-    const checkTransactionId = `gamesales-check-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    if (isTopUp) {
-      const check = await apiPost('/integrations/interhub/check', {
-        ...requestPayload,
-        agent_transaction_id: checkTransactionId,
-      }, { token: auth.state.token })
-      interhubCalculation.value = { ...check, agent_transaction_id: checkTransactionId }
-      return
-    }
     const calculateTransactionId = `gamesales-calculate-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    const quote = await apiPost('/integrations/interhub/calculate', {
+    interhubCalculation.value = await apiPost('/integrations/interhub/calculate', {
       ...requestPayload,
       agent_transaction_id: calculateTransactionId,
     }, { token: auth.state.token })
-    if (!quote?.success) {
-      interhubCalculation.value = quote
-      return
-    }
-    const fixedAmount = Number(quote.fixed_amount || 0)
-    if (!(fixedAmount > 0)) {
-      interhubCalculation.value = { success: false, message: 'InterHub не вернул стоимость оплаты' }
-      return
-    }
-    const check = await apiPost('/integrations/interhub/check', {
-      ...requestPayload,
-      amount: fixedAmount,
-      agent_transaction_id: checkTransactionId,
-    }, { token: auth.state.token })
-    interhubCalculation.value = { ...check, fixed_amount: fixedAmount, agent_transaction_id: checkTransactionId }
   } catch (err) {
-    interhubCalculation.value = { success: false, message: mapApiError(err?.message || 'Не удалось проверить услугу') }
+    interhubCalculation.value = { success: false, message: mapApiError(err?.message || 'Не удалось узнать цену') }
   } finally {
     interhubCalculationLoading.value = false
   }
 }
 
+async function checkInterhub(payload) {
+  // Отправляем check отдельно, используя цену calculate для фиксированных услуг и сохраняя операцию для pay.
+  interhubCheckLoading.value = true
+  interhubCheck.value = null
+  interhubPayment.value = null
+  try {
+    const requestPayload = { ...payload }
+    const flowType = String(requestPayload.flow_type || '').toUpperCase()
+    delete requestPayload.flow_type
+    if (flowType !== 'TOP_UP') {
+      const fixedAmount = Number(interhubCalculation.value?.fixed_amount || 0)
+      if (!(fixedAmount > 0)) {
+        interhubCheck.value = { success: false, message: 'Сначала узнайте цену через calculate' }
+        return
+      }
+      requestPayload.amount = fixedAmount
+    }
+    const checkTransactionId = `gamesales-check-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const check = await apiPost('/integrations/interhub/check', {
+      ...requestPayload,
+      agent_transaction_id: checkTransactionId,
+    }, { token: auth.state.token })
+    interhubCheck.value = { ...check, agent_transaction_id: checkTransactionId }
+  } catch (err) {
+    interhubCheck.value = { success: false, message: mapApiError(err?.message || 'Не удалось проверить доступность') }
+  } finally {
+    interhubCheckLoading.value = false
+  }
+}
+
 async function payInterhub() {
   // Подтверждаем платёж только отдельным кликом владельца по уже проверенной операции.
-  const agentTransactionId = String(interhubCalculation.value?.agent_transaction_id || '')
+  const agentTransactionId = String(interhubCheck.value?.agent_transaction_id || '')
   if (!agentTransactionId || !canPayInterhub.value) return
   interhubPaymentLoading.value = true
   interhubPayment.value = null
@@ -2196,7 +2202,7 @@ async function payInterhub() {
 
 async function refreshInterhubPaymentStatus() {
   // Даём владельцу вручную уточнить результат, не отправляя pay повторно.
-  const agentTransactionId = String(interhubCalculation.value?.agent_transaction_id || '')
+  const agentTransactionId = String(interhubCheck.value?.agent_transaction_id || '')
   if (!agentTransactionId || !canPayInterhub.value) return
   interhubPaymentLoading.value = true
   try {
@@ -3558,13 +3564,16 @@ const interhubSectionCtx = asCtx({
   search: interhubSearch,
   calculation: interhubCalculation,
   calculationLoading: interhubCalculationLoading,
+  check: interhubCheck,
+  checkLoading: interhubCheckLoading,
   payment: interhubPayment,
   paymentLoading: interhubPaymentLoading,
   canPay: canPayInterhub,
   pay: payInterhub,
   refreshPaymentStatus: refreshInterhubPaymentStatus,
   reload: reloadInterhubData,
-  validate: validateInterhub,
+  calculate: calculateInterhub,
+  checkPayment: checkInterhub,
   setSearchFromEvent: setInterhubSearchFromEvent,
 })
 

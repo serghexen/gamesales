@@ -57,18 +57,25 @@
           </tbody>
         </table>
       </div>
-      <form v-if="selectedService" class="interhub-catalog__form" @submit.prevent="calculate">
-        <div><p class="interhub-catalog__eyebrow">Шаг 1 · проверка</p><h3>{{ selectedService.title }}</h3></div>
+      <form v-if="selectedService" class="interhub-catalog__form" @submit.prevent="checkPayment">
+        <div><p class="interhub-catalog__eyebrow">Шаги оплаты</p><h3>{{ selectedService.title }}</h3></div>
         <label class="field"><span class="label">{{ accountLabel }}</span><input v-model.trim="account" class="input" :required="accountRequired" /><small v-if="!accountRequired" class="muted">Необязательно для этого типа услуги</small></label>
         <div v-if="amountFromNominal" class="interhub-catalog__auto-amount"><span>Сумма пополнения</span><strong>{{ selectedNominalTitle || 'Выберите номинал' }}</strong><small>Подставляется автоматически из номинала</small></div>
         <label v-else-if="needsAmount" class="field"><span class="label">Сумма пополнения</span><input v-model="amount" class="input" type="number" :min="selectedService.min_amount || 0.01" step="0.01" required /><small class="muted">Минимум: {{ selectedService.min_amount || '—' }}</small></label>
         <label v-for="field in selectedService.fields" :key="field.name" class="field"><span class="label">{{ field.name }}<i v-if="field.required"> *</i></span><select v-if="field.type === 'LIST'" v-model="params[field.name]" class="input" :required="field.required"><option value="">Выберите значение</option><option v-for="option in field.value_list" :key="option.id" :value="option.id">{{ option.title }}</option></select><input v-else v-model.trim="params[field.name]" class="input" :required="field.required" /></label>
-        <button class="btn" :disabled="ctx.calculationLoading">{{ ctx.calculationLoading ? 'Проверяем…' : validationLabel }}</button>
+        <div class="interhub-catalog__actions">
+          <button v-if="supportsCalculate" class="btn" type="button" :disabled="ctx.calculationLoading" @click="calculate">{{ ctx.calculationLoading ? 'Узнаём…' : 'Узнать цену (calculate)' }}</button>
+          <button class="btn" :disabled="ctx.checkLoading">{{ ctx.checkLoading ? 'Проверяем…' : 'Узнать остаток (check)' }}</button>
+        </div>
         <div v-if="ctx.calculation" class="interhub-catalog__payment-result">
-          <p class="interhub-catalog__result">{{ ctx.calculation.success ? 'Проверка пройдена' : 'Проверка не пройдена' }} · {{ ctx.calculation.message || 'Ответ получен' }}</p>
-          <p v-if="ctx.calculation.success && ctx.calculation.fixed_amount" class="muted">К списанию: {{ formatMoney(ctx.calculation.fixed_amount) }}</p>
-          <button v-if="ctx.calculation.success && ctx.canPay && !ctx.payment" class="btn" type="button" :disabled="ctx.paymentLoading" @click="ctx.pay">Подтвердить оплату</button>
-          <p v-else-if="ctx.calculation.success && !ctx.canPay" class="muted">Подтвердить оплату может только владелец.</p>
+          <p class="interhub-catalog__result">{{ ctx.calculation.success ? 'Цена получена' : 'Цену получить не удалось' }} · {{ ctx.calculation.message || 'Ответ получен' }}</p>
+          <p v-if="ctx.calculation.success && ctx.calculation.fixed_amount" class="muted">К списанию: {{ formatMoney(ctx.calculation.fixed_amount) }} ₽</p>
+        </div>
+        <div v-if="ctx.check" class="interhub-catalog__payment-result" :class="{ 'is-error': !ctx.check.success }">
+          <p class="interhub-catalog__result">{{ ctx.check.success ? 'Проверка доступности пройдена' : 'Проверка доступности не пройдена' }} · {{ ctx.check.message || 'Ответ получен' }}</p>
+          <small class="muted">Check не возвращает числовой остаток, а подтверждает возможность провести операцию.</small>
+          <button v-if="ctx.check.success && ctx.canPay && !ctx.payment" class="btn" type="button" :disabled="ctx.paymentLoading" @click="ctx.pay">Оплатить</button>
+          <p v-else-if="ctx.check.success && !ctx.canPay" class="muted">Оплатить может только владелец.</p>
         </div>
         <div v-if="ctx.payment" class="interhub-catalog__payment-result" :class="{ 'is-error': !ctx.payment.success }">
           <p class="interhub-catalog__result">{{ paymentMessage }}</p>
@@ -103,9 +110,9 @@ const needsAmount = computed(() => ['TOP_UP'].includes(String(selectedService.va
 const hasNominal = computed(() => Boolean(selectedService.value?.fields?.some((field) => field?.name === 'nominal')))
 const amountFromNominal = computed(() => needsAmount.value && hasNominal.value)
 const paymentType = computed(() => String(selectedService.value?.type || '').toUpperCase())
-const accountRequired = computed(() => ['TOP_UP', 'TOP_UP_FIXED'].includes(paymentType.value))
-const accountLabel = computed(() => accountRequired.value ? 'Игровой аккаунт' : 'Аккаунт (необязательно)')
-const validationLabel = computed(() => String(selectedService.value?.type || '').toUpperCase() === 'TOP_UP' ? 'Проверить реквизиты' : 'Рассчитать и проверить')
+const supportsCalculate = computed(() => ['VOUCHER', 'PIN', 'TOP_UP_FIXED'].includes(paymentType.value))
+const accountRequired = computed(() => false)
+const accountLabel = computed(() => 'Аккаунт (временно необязательно)')
 const selectedNominalTitle = computed(() => {
   // Находим подпись выбранного номинала, чтобы не заставлять оператора переносить сумму вручную.
   const nominal = selectedService.value?.fields?.find((field) => field?.name === 'nominal')
@@ -128,8 +135,8 @@ function selectService(service) {
   Object.keys(params).forEach((key) => delete params[key])
 }
 
-function calculate() {
-  // Передаем только заполненные параметры для безопасного предварительного расчета.
+function buildPayload() {
+  // Собираем одинаковые реквизиты для раздельных calculate и check без скрытых подстановок.
   const payload = { service_id: selectedService.value.service_id, account: account.value, params: { ...params }, flow_type: selectedService.value.type }
   if (amountFromNominal.value) {
     // Извлекаем числовое значение из подписи вида "TRY 250" для обязательного поля amount.
@@ -139,7 +146,17 @@ function calculate() {
     // Передаем введенную сумму только для TOP_UP без фиксированного списка номиналов.
     payload.amount = Number(amount.value)
   }
-  props.ctx.validate(payload)
+  return payload
+}
+
+function calculate() {
+  // Узнаём цену отдельно, чтобы владелец видел расчёт до проверки доступности.
+  props.ctx.calculate(buildPayload())
+}
+
+function checkPayment() {
+  // Проверяем доступность отдельным вызовом check и не запускаем оплату.
+  props.ctx.checkPayment(buildPayload())
 }
 
 function formatType(type) {
@@ -196,7 +213,7 @@ function formatMoney(value) {
 .interhub-catalog__stats span, .interhub-catalog__id { color: var(--muted, #7a766f); font-size: 12px; }
 .interhub-catalog__id { display: block; margin-top: 3px; font-family: ui-monospace, monospace; }
 .interhub-catalog__type { display: inline-flex; padding: 3px 7px; border: 1px solid rgba(232, 134, 19, .35); color: #9b570d; font-size: 12px; font-weight: 700; }
-.interhub-catalog__row { cursor: pointer; }.interhub-catalog__row.is-selected td { background: rgba(232, 134, 19, .08); }.interhub-catalog__form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; align-items: end; margin-top: 22px; padding: 18px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); }.interhub-catalog__form h3 { margin: 0; }.interhub-catalog__result { margin: 0; font-weight: 700; }.interhub-catalog__payment-result { display: grid; gap: 8px; align-content: center; }.interhub-catalog__payment-result.is-error { color: #d45f5f; }.interhub-catalog__gift-code { width: fit-content; padding: 8px 10px; border: 1px dashed rgba(232, 134, 19, .7); background: rgba(232, 134, 19, .08); color: inherit; font-weight: 700; letter-spacing: .04em; }
+.interhub-catalog__row { cursor: pointer; }.interhub-catalog__row.is-selected td { background: rgba(232, 134, 19, .08); }.interhub-catalog__form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; align-items: end; margin-top: 22px; padding: 18px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); }.interhub-catalog__form h3 { margin: 0; }.interhub-catalog__actions { display: flex; flex-wrap: wrap; gap: 8px; }.interhub-catalog__result { margin: 0; font-weight: 700; }.interhub-catalog__payment-result { display: grid; gap: 8px; align-content: center; }.interhub-catalog__payment-result.is-error { color: #d45f5f; }.interhub-catalog__gift-code { width: fit-content; padding: 8px 10px; border: 1px dashed rgba(232, 134, 19, .7); background: rgba(232, 134, 19, .08); color: inherit; font-weight: 700; letter-spacing: .04em; }
 .interhub-catalog__auto-amount { display: grid; gap: 3px; min-height: 42px; padding: 8px 10px; border: 1px solid rgba(232, 134, 19, .35); }.interhub-catalog__auto-amount span, .interhub-catalog__auto-amount small { color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__auto-amount strong { font-size: 18px; }
 @media (max-width: 680px) { .interhub-catalog__toolbar { align-items: stretch; flex-direction: column; } .interhub-catalog__search { width: 100%; } .interhub-catalog__stats { width: fit-content; } }
 </style>

@@ -32,9 +32,12 @@ function buildCtx(overrides = {}) {
       },
     ],
     reload: vi.fn(),
-    validate: vi.fn(),
+    calculate: vi.fn(),
+    checkPayment: vi.fn(),
     calculation: null,
     calculationLoading: false,
+    check: null,
+    checkLoading: false,
     payment: null,
     paymentLoading: false,
     canPay: false,
@@ -71,19 +74,19 @@ describe('WorkInterhubSection', () => {
     expect(ctx.reload).toHaveBeenCalledTimes(1)
   })
 
-  it('opens a dynamic form and sends account with required params to calculation', async () => {
+  it('opens a dynamic form and sends the same params to a separate check', async () => {
     const ctx = buildCtx()
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
     await wrapper.findAll('tbody tr')[0].trigger('click')
-    expect(wrapper.text()).toContain('Шаг 1 · проверка')
+    expect(wrapper.text()).toContain('Шаги оплаты')
 
     const inputs = wrapper.findAll('.interhub-catalog__form input')
     await inputs[0].setValue('998877')
     await wrapper.find('.interhub-catalog__form select').setValue('15')
     await wrapper.find('.interhub-catalog__form').trigger('submit.prevent')
 
-    expect(ctx.validate).toHaveBeenCalledWith({
+    expect(ctx.checkPayment).toHaveBeenCalledWith({
       service_id: 7,
       account: '998877',
       params: { nominal: 15 },
@@ -123,13 +126,14 @@ describe('WorkInterhubSection', () => {
     await wrapper.find('tbody tr').trigger('click')
     const accountInput = wrapper.find('.interhub-catalog__form input')
     expect(accountInput.attributes('required')).toBeUndefined()
-    expect(wrapper.text()).toContain('Аккаунт (необязательно)')
+    expect(wrapper.text()).toContain('Аккаунт (временно необязательно)')
   })
 
   it('lets only the owner confirm a checked payment and shows the gift code', async () => {
     const ctx = buildCtx({
       canPay: true,
       calculation: { success: true, message: 'Success', fixed_amount: 117.47 },
+      check: { success: true, message: 'Success' },
       payment: { success: true, status: 0, params: { gift_code: 'TESTGIFTCODE' } },
     })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
@@ -139,8 +143,27 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).toContain('Оплата успешна')
 
     await wrapper.setProps({ ctx: { ...ctx, payment: null } })
-    await wrapper.get('button[type="button"].btn').trigger('click')
+    const payButton = wrapper.findAll('button').find((button) => button.text() === 'Оплатить')
+    await payButton.trigger('click')
     expect(ctx.pay).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps calculate and check as separate actions', async () => {
+    const ctx = buildCtx()
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await wrapper.find('tbody tr').trigger('click')
+    await wrapper.find('.interhub-catalog__form select').setValue('15')
+    const calculateButton = wrapper.findAll('button').find((button) => button.text().includes('Узнать цену'))
+    await calculateButton.trigger('click')
+
+    expect(ctx.calculate).toHaveBeenCalledWith({
+      service_id: 7,
+      account: '',
+      params: { nominal: 15 },
+      flow_type: 'TOP_UP_FIXED',
+    })
+    expect(ctx.checkPayment).not.toHaveBeenCalled()
   })
 
   it('explains the documented polling schedule for a processing payment', async () => {
