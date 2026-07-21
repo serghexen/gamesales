@@ -30,6 +30,20 @@ class OzonCatalogSyncOut(BaseModel):
     synced_at: datetime
 
 
+class OzonCatalogDetailsOut(BaseModel):
+    external_product_id: int
+    title: str = ""
+    primary_image: str = ""
+    barcodes: list[str] = Field(default_factory=list)
+    category_id: int | None = None
+    fbo_sku: str = ""
+    fbs_sku: str = ""
+    price: str = ""
+    price_currency_code: str = ""
+    available_stock: int = 0
+    synced_at: datetime
+
+
 def mount_marketplaces_routes(
     app,
     *,
@@ -80,6 +94,59 @@ def mount_marketplaces_routes(
         status = item.get("status") if isinstance(item.get("status"), dict) else {}
         state = str(status.get("state") or item.get("state") or "").strip()
         return external_product_id, offer_id, title, visibility, state
+
+    def read_catalog_payload(value: Any) -> dict[str, Any]:
+        # Приводит jsonb из PostgreSQL к словарю, чтобы не отдавать UI необработанный ответ Ozon.
+        if isinstance(value, dict):
+            return value
+        if not isinstance(value, str):
+            return {}
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
+    def first_text(*values: Any) -> str:
+        # Берет первое непустое текстовое значение, в том числе из массивов ссылок или штрихкодов.
+        for value in values:
+            candidates = value if isinstance(value, list) else [value]
+            for candidate in candidates:
+                text = str("" if candidate is None else candidate).strip()
+                if text:
+                    return text
+        return ""
+
+    def optional_int(value: Any) -> int | None:
+        # Не дает пустым или нестандартным числам из внешнего API сломать открытие карточки.
+        try:
+            return int(value) if value not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+
+    def make_catalog_details(product_id: int, payload: dict[str, Any], synced_at: datetime) -> OzonCatalogDetailsOut:
+        # Оставляет для оператора только полезные реквизиты из детального ответа Ozon без дублей таблицы.
+        raw_barcodes = payload.get("barcodes") if isinstance(payload.get("barcodes"), list) else []
+        barcode = first_text(payload.get("barcode"))
+        barcodes = [str(value).strip() for value in raw_barcodes if str(value or "").strip()]
+        if barcode and barcode not in barcodes:
+            barcodes.insert(0, barcode)
+        price = payload.get("ozon_price") if isinstance(payload.get("ozon_price"), dict) else {}
+        stock_rows = payload.get("ozon_stocks") if isinstance(payload.get("ozon_stocks"), list) else []
+        available_stock = sum(optional_int(stock.get("present")) or 0 for stock in stock_rows if isinstance(stock, dict))
+        return OzonCatalogDetailsOut(
+            external_product_id=product_id,
+            title=first_text(payload.get("name"), payload.get("title")),
+            primary_image=first_text(payload.get("primary_image"), payload.get("images")),
+            barcodes=barcodes,
+            category_id=optional_int(payload.get("category_id")),
+            fbo_sku=first_text(payload.get("fbo_sku")),
+            fbs_sku=first_text(payload.get("fbs_sku")),
+            price=first_text(price.get("price")),
+            price_currency_code=first_text(price.get("currency_code")),
+            available_stock=available_stock,
+            synced_at=synced_at,
+        )
 
     @app.post("/marketplaces/ozon/catalog/sync", response_model=OzonCatalogSyncOut)
     def sync_ozon_catalog(store_code: str = "asat", user=Depends(require_role("admin", "owner"))):
@@ -143,3 +210,22 @@ def mount_marketplaces_routes(
                 for row in rows
             ],
         )
+
+    @app.get("/marketplaces/ozon/catalog/{product_id}", response_model=OzonCatalogDetailsOut)
+    def get_ozon_catalog_details(product_id: int, store_code: str = "asat", user=Depends(get_current_user)):
+        # Возвращает важные поля уже сохраненного ответа, не повторяя запрос к Ozon при клике в UI.
+        normalized_store_code = normalize_ozon_store_code(store_code)
+        with psycopg.connect(DB_DSN) as conn:
+            ensure_marketplaces_schema(conn)
+            row = q1(
+                conn,
+                """
+                SELECT raw_payload, synced_at
+                FROM app.marketplace_ozon_catalog_items
+                WHERE store_code=%s AND external_product_id=%s
+                """,
+                (normalized_store_code, product_id),
+            )
+        if not row:
+            raise HTTPException(404, "Ozon catalog item is not found")
+        return make_catalog_details(product_id, read_catalog_payload(row[0]), row[1])

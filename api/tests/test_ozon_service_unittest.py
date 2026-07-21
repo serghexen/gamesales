@@ -176,6 +176,14 @@ class OzonServiceTest(unittest.TestCase):
                 {"id": 101, "name": "Steam 1000", "status": {"state": "sale"}},
                 {"id": 102, "name": "PSN 500", "status": {"state": "sale"}},
             ]}),
+            _Response({"items": [
+                {"product_id": 101, "price": {"price": 1000, "currency_code": "RUB"}},
+                {"product_id": 102, "price": {"price": 500, "currency_code": "RUB"}},
+            ]}),
+            _Response({"items": [
+                {"product_id": 101, "stocks": [{"type": "fbs", "present": 3}]},
+                {"product_id": 102, "stocks": [{"type": "fbo", "present": 2}]},
+            ]}),
         ]
         with (
             patch.dict(
@@ -193,14 +201,22 @@ class OzonServiceTest(unittest.TestCase):
 
         self.assertEqual([row["product_id"] for row in rows], [101, 102])
         self.assertEqual([row["name"] for row in rows], ["Steam 1000", "PSN 500"])
+        self.assertEqual(rows[0]["ozon_price"], {"price": 1000, "currency_code": "RUB"})
+        self.assertEqual(rows[1]["ozon_stocks"], [{"type": "fbo", "present": 2}])
         self.assertEqual(urlopen.call_args_list[0].args[0].full_url, "https://api-seller.ozon.ru/v3/product/list")
         self.assertEqual(urlopen.call_args_list[2].args[0].full_url, "https://api-seller.ozon.ru/v3/product/info/list")
+        self.assertEqual(urlopen.call_args_list[3].args[0].full_url, "https://api-seller.ozon.ru/v5/product/info/prices")
+        self.assertEqual(urlopen.call_args_list[4].args[0].full_url, "https://api-seller.ozon.ru/v4/product/info/stocks")
         first_payload = json.loads(urlopen.call_args_list[0].args[0].data.decode("utf-8"))
         second_payload = json.loads(urlopen.call_args_list[1].args[0].data.decode("utf-8"))
         details_payload = json.loads(urlopen.call_args_list[2].args[0].data.decode("utf-8"))
+        prices_payload = json.loads(urlopen.call_args_list[3].args[0].data.decode("utf-8"))
+        stocks_payload = json.loads(urlopen.call_args_list[4].args[0].data.decode("utf-8"))
         self.assertEqual(first_payload["filter"]["visibility"], "ALL")
         self.assertEqual(second_payload["last_id"], "next")
         self.assertEqual(details_payload["product_id"], [101, 102])
+        self.assertEqual(prices_payload["filter"]["product_id"], [101, 102])
+        self.assertEqual(stocks_payload["filter"]["with_quant"], {"created": True, "exists": True})
 
 
 if __name__ == "__main__":

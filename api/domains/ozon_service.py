@@ -300,6 +300,62 @@ def fetch_ozon_catalog_items(
         details = details_by_product_id.get(int(raw_product_id)) if str(raw_product_id or "").isdigit() else None
         enriched_rows.append({**item, **(details or {})})
 
+    prices_by_product_id: dict[int, dict[str, Any]] = {}
+    stocks_by_product_id: dict[int, list[dict[str, Any]]] = {}
+    for offset in range(0, len(enriched_rows), 1000):
+        product_ids = [
+            int(item.get("product_id") or item.get("id"))
+            for item in enriched_rows[offset:offset + 1000]
+            if str(item.get("product_id") or item.get("id") or "").isdigit()
+        ]
+        if not product_ids:
+            continue
+        product_filter = {"offer_id": [], "product_id": product_ids, "visibility": "ALL"}
+        # Берем цену отдельным методом Ozon: поле vat в нем означает ставку НДС, а не остаток.
+        prices_data = _request_json(
+            f"{base_url}/v5/product/info/prices",
+            client_id=client_id,
+            api_key=api_key,
+            payload={"cursor": "", "filter": product_filter, "limit": len(product_ids)},
+            timeout=timeout,
+        )
+        price_items = prices_data.get("items") if isinstance(prices_data.get("items"), list) else []
+        for item in price_items:
+            raw_product_id = item.get("product_id") if isinstance(item, dict) else None
+            if str(raw_product_id or "").isdigit():
+                prices_by_product_id[int(raw_product_id)] = item
+
+        # Суммируем present по схемам FBO/FBS, чтобы показать фактический остаток, а не ставку НДС.
+        stocks_data = _request_json(
+            f"{base_url}/v4/product/info/stocks",
+            client_id=client_id,
+            api_key=api_key,
+            payload={
+                "cursor": "",
+                "filter": {**product_filter, "with_quant": {"created": True, "exists": True}},
+                "limit": len(product_ids),
+            },
+            timeout=timeout,
+        )
+        stock_items = stocks_data.get("items") if isinstance(stocks_data.get("items"), list) else []
+        for item in stock_items:
+            raw_product_id = item.get("product_id") if isinstance(item, dict) else None
+            if not str(raw_product_id or "").isdigit():
+                continue
+            stocks = item.get("stocks") if isinstance(item.get("stocks"), list) else []
+            stocks_by_product_id[int(raw_product_id)] = [stock for stock in stocks if isinstance(stock, dict)]
+
+    # Дополняем сохраненный снимок ценой и остатком, чтобы карточка UI не зависела от формата API Ozon.
+    for item in enriched_rows:
+        raw_product_id = item.get("product_id") or item.get("id")
+        if not str(raw_product_id or "").isdigit():
+            continue
+        product_id = int(raw_product_id)
+        price_item = prices_by_product_id.get(product_id, {})
+        price = price_item.get("price") if isinstance(price_item.get("price"), dict) else {}
+        item["ozon_price"] = price
+        item["ozon_stocks"] = stocks_by_product_id.get(product_id, [])
+
     if progress:
         progress(f"Загружено карточек Ozon: {len(enriched_rows)}")
     return enriched_rows

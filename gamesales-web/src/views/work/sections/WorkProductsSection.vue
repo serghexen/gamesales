@@ -66,11 +66,20 @@
         :show-ozon-catalog="ctx.showOzonCatalog"
         :close-ozon-catalog="ctx.closeOzonCatalog"
         :sync-ozon-catalog="ctx.syncOzonCatalog"
+        :open-ozon-catalog-details="ctx.openOzonCatalogDetails"
         :ozon-catalog-items="ctx.ozonCatalogItems"
         :ozon-catalog-loading="ctx.ozonCatalogLoading"
         :ozon-catalog-syncing="ctx.ozonCatalogSyncing"
         :ozon-catalog-error="ctx.ozonCatalogError"
         :ozon-catalog-ok="ctx.ozonCatalogOk"
+      />
+
+      <WorkOzonCatalogDetailsModal
+        :show-ozon-catalog-details="ctx.showOzonCatalogDetails"
+        :close-ozon-catalog-details="ctx.closeOzonCatalogDetails"
+        :ozon-catalog-details="ctx.ozonCatalogDetails"
+        :ozon-catalog-details-loading="ctx.ozonCatalogDetailsLoading"
+        :ozon-catalog-details-error="ctx.ozonCatalogDetailsError"
       />
 
       <WorkProductsTableSection
@@ -114,6 +123,7 @@ import WorkProductsHeader from './WorkProductsHeader.vue'
 import WorkGameFilterChips from './WorkGameFilterChips.vue'
 import WorkGameImportModal from './WorkGameImportModal.vue'
 import WorkOzonCatalogModal from './WorkOzonCatalogModal.vue'
+import WorkOzonCatalogDetailsModal from './WorkOzonCatalogDetailsModal.vue'
 import WorkProductsTableSection from './WorkProductsTableSection.vue'
 import WorkProductsPager from './WorkProductsPager.vue'
 import WorkProductEditorModal from './WorkProductEditorModal.vue'

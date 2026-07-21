@@ -1844,9 +1844,15 @@ const {
   ozonCatalogSyncing,
   ozonCatalogError,
   ozonCatalogOk,
+  showOzonCatalogDetails,
+  ozonCatalogDetails,
+  ozonCatalogDetailsLoading,
+  ozonCatalogDetailsError,
   syncOzonCatalog,
   openOzonCatalog,
   closeOzonCatalog,
+  openOzonCatalogDetails,
+  closeOzonCatalogDetails,
 } = useOzonCatalog({ auth, apiGet, apiPost, mapApiError })
 
 function clearNsGiftMessages() {
@@ -3587,6 +3593,12 @@ const productsSectionCtx = asCtx({
   ozonCatalogSyncing,
   ozonCatalogError,
   ozonCatalogOk,
+  showOzonCatalogDetails,
+  ozonCatalogDetails,
+  ozonCatalogDetailsLoading,
+  ozonCatalogDetailsError,
+  openOzonCatalogDetails,
+  closeOzonCatalogDetails,
   closeProductImport,
   showProductImport,
   downloadProductTemplate,

@@ -42,4 +42,23 @@ describe('useOzonCatalog', () => {
     expect(catalog.ozonCatalogOk.value).toBe('Синхронизировано карточек: 2')
     expect(catalog.ozonCatalogItems.value).toEqual([{ external_product_id: 102, offer_id: 'psn-500' }])
   })
+
+  it('opens selected card details from the local API snapshot', async () => {
+    const { apiGet, apiPost, catalog } = createHarness()
+    apiGet.mockResolvedValueOnce({
+      external_product_id: 103,
+      barcodes: ['4601234567890'],
+      category_id: 123,
+    })
+
+    catalog.showOzonCatalog.value = true
+    catalog.openOzonCatalogDetails({ external_product_id: 103 })
+    await Promise.resolve()
+
+    expect(catalog.showOzonCatalog.value).toBe(false)
+    expect(catalog.showOzonCatalogDetails.value).toBe(true)
+    expect(apiGet).toHaveBeenCalledWith('/marketplaces/ozon/catalog/103', { token: 'ozon-token' })
+    expect(apiPost).not.toHaveBeenCalled()
+    expect(catalog.ozonCatalogDetails.value).toMatchObject({ category_id: 123 })
+  })
 })

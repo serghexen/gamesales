@@ -7,7 +7,12 @@ export function useOzonCatalog({ auth, apiGet, apiPost, mapApiError }) {
   const ozonCatalogSyncing = ref(false)
   const ozonCatalogError = ref('')
   const ozonCatalogOk = ref('')
+  const showOzonCatalogDetails = ref(false)
+  const ozonCatalogDetails = ref(null)
+  const ozonCatalogDetailsLoading = ref(false)
+  const ozonCatalogDetailsError = ref('')
   let catalogRequestSeq = 0
+  let detailsRequestSeq = 0
 
   async function loadOzonCatalog() {
     // Загружает сохраненный снимок, чтобы открытие окна не обращалось к Ozon напрямую.
@@ -56,6 +61,39 @@ export function useOzonCatalog({ auth, apiGet, apiPost, mapApiError }) {
     showOzonCatalog.value = false
   }
 
+  async function loadOzonCatalogDetails(productId) {
+    // Читает детальные поля из нашего снимка, поэтому клик по строке не делает запрос в Ozon.
+    const requestId = ++detailsRequestSeq
+    ozonCatalogDetailsLoading.value = true
+    ozonCatalogDetailsError.value = ''
+    ozonCatalogDetails.value = null
+    try {
+      const data = await apiGet(`/marketplaces/ozon/catalog/${encodeURIComponent(productId)}`, { token: auth.state.token })
+      if (requestId !== detailsRequestSeq) return
+      ozonCatalogDetails.value = data || null
+    } catch (error) {
+      if (requestId !== detailsRequestSeq) return
+      ozonCatalogDetailsError.value = mapApiError(error?.message) || 'Не удалось загрузить параметры карточки Ozon'
+    } finally {
+      if (requestId === detailsRequestSeq) ozonCatalogDetailsLoading.value = false
+    }
+  }
+
+  function openOzonCatalogDetails(item) {
+    // Открывает отдельное окно выбранной карточки, не смешивая список и детальные реквизиты.
+    const productId = Number(item?.external_product_id || 0)
+    if (!productId) return
+    showOzonCatalog.value = false
+    showOzonCatalogDetails.value = true
+    loadOzonCatalogDetails(productId)
+  }
+
+  function closeOzonCatalogDetails() {
+    // Возвращает пользователя к сохраненному списку, чтобы не запускать синхронизацию заново.
+    showOzonCatalogDetails.value = false
+    showOzonCatalog.value = true
+  }
+
   return {
     showOzonCatalog,
     ozonCatalogItems,
@@ -63,9 +101,15 @@ export function useOzonCatalog({ auth, apiGet, apiPost, mapApiError }) {
     ozonCatalogSyncing,
     ozonCatalogError,
     ozonCatalogOk,
+    showOzonCatalogDetails,
+    ozonCatalogDetails,
+    ozonCatalogDetailsLoading,
+    ozonCatalogDetailsError,
     loadOzonCatalog,
     syncOzonCatalog,
     openOzonCatalog,
     closeOzonCatalog,
+    openOzonCatalogDetails,
+    closeOzonCatalogDetails,
   }
 }

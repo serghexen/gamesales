@@ -36,7 +36,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="item in ozonCatalogItems" :key="item.external_product_id">
+              <tr v-for="item in ozonCatalogItems" :key="item.external_product_id" class="clickable-row" @click="openOzonCatalogDetails(item)">
                 <td>
                   <strong>{{ item.title || `Карточка #${item.external_product_id}` }}</strong>
                   <div class="muted">ID: {{ item.external_product_id }}</div>
@@ -58,6 +58,7 @@ defineProps({
   showOzonCatalog: { type: Boolean, required: true },
   closeOzonCatalog: { type: Function, required: true },
   syncOzonCatalog: { type: Function, required: true },
+  openOzonCatalogDetails: { type: Function, required: true },
   ozonCatalogItems: { type: Array, required: true },
   ozonCatalogLoading: { type: Boolean, required: true },
   ozonCatalogSyncing: { type: Boolean, required: true },
