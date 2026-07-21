@@ -69,7 +69,8 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).toContain('Mobile top up')
     expect(wrapper.text()).toContain('Фикс. номинал')
     expect(wrapper.text()).toContain('PIN-код')
-    expect(wrapper.text()).toContain('Лимит')
+    expect(wrapper.findAll('thead th')).toHaveLength(3)
+    expect(wrapper.text()).not.toContain('Лимит:')
     expect(wrapper.text()).not.toContain('Реквизиты')
     expect(wrapper.text()).toContain('10 000 ₽')
   })
@@ -163,7 +164,7 @@ describe('WorkInterhubSection', () => {
 
   it('asks for amount when a TOP_UP service does not provide nominal options', async () => {
     const ctx = buildCtx({
-      services: [{ service_id: 10, title: 'Steam CIS', category: '', type: 'TOP_UP', min_amount: 7.79, fields: [] }],
+      services: [{ service_id: 10, title: 'Steam CIS', category: '', type: 'TOP_UP', min_amount: 7.79, max_amount: 701550, fields: [] }],
     })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
@@ -171,7 +172,7 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.find('.interhub-catalog__form input[type="number"]').exists()).toBe(true)
     expect(wrapper.find('.interhub-catalog__form input:not([type="number"])').attributes('required')).toBeDefined()
     expect(wrapper.text()).toContain('Аккаунт или номер *')
-    expect(wrapper.text()).toContain('Минимум: 7.79')
+    expect(wrapper.text()).toContain('Лимит: 7.79–701550')
   })
 
   it('hides the account field for voucher services', async () => {

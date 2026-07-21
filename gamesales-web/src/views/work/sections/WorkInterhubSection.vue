@@ -42,15 +42,14 @@
               <th>Услуга</th>
               <th>Категория</th>
               <th>Тип</th>
-              <th>Лимит</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="ctx.loading">
-              <td colspan="4" class="muted">Загружаем каталог InterHub…</td>
+              <td colspan="3" class="muted">Загружаем каталог InterHub…</td>
             </tr>
             <tr v-else-if="!filteredServices.length">
-              <td colspan="4" class="muted">Услуги по этому запросу не найдены.</td>
+              <td colspan="3" class="muted">Услуги по этому запросу не найдены.</td>
             </tr>
             <tr v-for="service in pagedServices" :key="service.service_id" class="interhub-catalog__row" :class="{ 'is-selected': selectedService?.service_id === service.service_id }" @click="selectService(service)">
               <td>
@@ -59,7 +58,6 @@
               </td>
               <td>{{ service.category || '—' }}</td>
               <td><span class="interhub-catalog__type">{{ formatType(service.type) }}</span></td>
-              <td>{{ formatLimit(service) }}</td>
             </tr>
           </tbody>
         </table>
@@ -73,11 +71,11 @@
         <div class="interhub-catalog__service-summary"><p class="interhub-catalog__eyebrow">Шаги оплаты</p><h3>{{ selectedService.title }}</h3></div>
         <label v-if="showAccount" class="field"><span class="label">{{ accountLabel }}<i v-if="accountRequired"> *</i></span><input v-model.trim="account" class="input" :required="accountRequired" /><small v-if="!accountRequired" class="muted">Необязательно для этого типа услуги</small></label>
         <div v-if="amountFromNominal" class="interhub-catalog__auto-amount"><span>Сумма пополнения</span><strong>{{ selectedNominalTitle || 'Выберите номинал' }}</strong><small>Подставляется автоматически из номинала</small></div>
-        <label v-else-if="needsAmount" class="field"><span class="label">Сумма пополнения</span><input v-model="amount" class="input" type="number" :min="selectedService.min_amount || 0.01" step="0.01" required /><small class="muted">Минимум: {{ selectedService.min_amount || '—' }}</small></label>
+        <label v-else-if="needsAmount" class="field"><span class="label">Сумма пополнения</span><input v-model="amount" class="input" type="number" :min="selectedService.min_amount || 0.01" step="0.01" required /><small class="muted">{{ formatAmountLimit(selectedService) }}</small></label>
         <label v-for="field in selectedService.fields" :key="field.name" class="field"><span class="label">{{ field.name }}<i v-if="field.required"> *</i></span><select v-if="field.type === 'LIST'" v-model="params[field.name]" class="input" :required="field.required"><option value="">Выберите значение</option><option v-for="option in sortedNominals(field.value_list)" :key="option.id" :value="option.id">{{ option.title }}</option></select><input v-else v-model.trim="params[field.name]" class="input" :required="field.required" /><small v-if="field.name === 'nominal' && selectedCachedPrice" class="muted">Закупочная цена из кэша: {{ formatMoney(selectedCachedPrice.fixed_amount) }} ₽ · {{ formatCachedDate(selectedCachedPrice.calculated_at) }}</small><details v-if="field.name === 'nominal' && selectedCachedPrice" class="interhub-catalog__calculate-response"><summary>Полный ответ calculate</summary><pre>{{ formatProviderResponse(selectedCachedPrice.provider_response) }}</pre></details></label>
         <div class="interhub-catalog__actions">
-          <button v-if="supportsCalculate" class="btn" type="button" :disabled="ctx.calculationLoading" @click="calculate">{{ ctx.calculationLoading ? 'Узнаём…' : 'Узнать цену (calculate)' }}</button>
-          <button class="btn" :disabled="ctx.checkLoading">{{ ctx.checkLoading ? 'Проверяем…' : 'Узнать остаток (check)' }}</button>
+          <button v-if="supportsCalculate" class="btn interhub-catalog__action-btn" type="button" :disabled="ctx.calculationLoading" @click="calculate"><span class="interhub-catalog__action-index">1</span><span><strong>{{ ctx.calculationLoading ? 'Узнаём цену…' : 'Узнать цену' }}</strong><small>calculate</small></span></button>
+          <button class="btn interhub-catalog__action-btn" type="submit" :disabled="ctx.checkLoading"><span class="interhub-catalog__action-index">2</span><span><strong>{{ ctx.checkLoading ? 'Проверяем…' : 'Узнать остаток' }}</strong><small>check</small></span></button>
         </div>
         <div v-if="ctx.calculation" class="interhub-catalog__payment-result">
           <p class="interhub-catalog__result">{{ ctx.calculation.success ? 'Цена получена' : 'Цену получить не удалось' }} · {{ ctx.calculation.message || 'Ответ получен' }}</p>
@@ -221,14 +219,14 @@ function formatType(type) {
   return labels[String(type || '').toUpperCase()] || String(type || '—')
 }
 
-function formatLimit(service) {
-  // Показываем диапазон только когда провайдер передал хотя бы один лимит.
+function formatAmountLimit(service) {
+  // Показываем лимиты рядом с вводом суммы, чтобы оператор видел их в момент заполнения.
   const min = Number(service?.min_amount || 0)
   const max = Number(service?.max_amount || 0)
-  if (!min && !max) return '—'
-  if (!max) return `от ${min}`
-  if (!min) return `до ${max}`
-  return `${min}–${max}`
+  if (!min && !max) return 'Лимит не указан'
+  if (!max) return `Минимум: ${min}`
+  if (!min) return `Максимум: ${max}`
+  return `Лимит: ${min}–${max}`
 }
 
 function formatBalance(value, currency) {
@@ -296,7 +294,7 @@ function nominalSortValue(title) {
 .interhub-catalog__stats span, .interhub-catalog__id { color: var(--muted, #7a766f); font-size: 12px; }
 .interhub-catalog__id { display: block; margin-top: 3px; font-family: ui-monospace, monospace; }
 .interhub-catalog__type { display: inline-flex; padding: 3px 7px; border: 1px solid rgba(232, 134, 19, .35); color: #9b570d; font-size: 12px; font-weight: 700; }
-.interhub-catalog__row { cursor: pointer; }.interhub-catalog__row.is-selected td { background: rgba(232, 134, 19, .08); }.interhub-catalog__form { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(250px, 1fr) minmax(250px, 1fr) minmax(280px, 1fr); gap: 16px 18px; align-items: start; margin-top: 22px; padding: 22px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); scroll-margin-block: 24px; }.interhub-catalog__service-summary { align-self: center; padding-right: 12px; }.interhub-catalog__form h3 { margin: 0; }.interhub-catalog__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }.interhub-catalog__actions .btn { min-height: 48px; }.interhub-catalog__result { margin: 0; font-weight: 700; }.interhub-catalog__payment-result { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(250px, .8fr) minmax(0, 1fr) auto; gap: 10px 18px; align-items: center; padding-top: 14px; border-top: 1px solid rgba(232, 134, 19, .18); }.interhub-catalog__payment-result.is-error { color: #d45f5f; }.interhub-catalog__payment-result .muted { grid-column: 1 / -1; }.interhub-catalog__gift-code { width: fit-content; padding: 8px 10px; border: 1px dashed rgba(232, 134, 19, .7); background: rgba(232, 134, 19, .08); color: inherit; font-weight: 700; letter-spacing: .04em; }
+.interhub-catalog__row { cursor: pointer; }.interhub-catalog__row.is-selected td { background: rgba(232, 134, 19, .08); }.interhub-catalog__form { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(250px, 1fr) minmax(250px, 1fr) minmax(280px, 1fr); gap: 16px 18px; align-items: start; margin-top: 22px; padding: 22px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); scroll-margin-block: 24px; }.interhub-catalog__service-summary { align-self: center; padding-right: 12px; }.interhub-catalog__form h3 { margin: 0; }.interhub-catalog__actions { grid-column: span 2; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }.interhub-catalog__action-btn { display: flex; min-width: 0; min-height: 72px; gap: 11px; align-items: center; justify-content: flex-start; padding: 10px 14px; text-align: left; transition: transform .16s ease, box-shadow .16s ease, filter .16s ease; }.interhub-catalog__action-btn:not(:disabled):hover { box-shadow: 0 8px 20px rgba(70, 224, 185, .16); filter: brightness(1.04); transform: translateY(-1px); }.interhub-catalog__action-btn > span:last-child { display: grid; gap: 2px; min-width: 0; }.interhub-catalog__action-btn strong { font-size: 15px; line-height: 1.08; }.interhub-catalog__action-btn small { color: rgba(9, 18, 27, .68); font-size: 11px; font-weight: 700; letter-spacing: .05em; }.interhub-catalog__action-index { display: grid; width: 26px; height: 26px; flex: 0 0 26px; place-items: center; border: 1px solid rgba(9, 18, 27, .28); border-radius: 50%; font-size: 12px; font-weight: 800; }.interhub-catalog__result { margin: 0; font-weight: 700; }.interhub-catalog__payment-result { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(250px, .8fr) minmax(0, 1fr) auto; gap: 10px 18px; align-items: center; padding-top: 14px; border-top: 1px solid rgba(232, 134, 19, .18); }.interhub-catalog__payment-result.is-error { color: #d45f5f; }.interhub-catalog__payment-result .muted { grid-column: 1 / -1; }.interhub-catalog__gift-code { width: fit-content; padding: 8px 10px; border: 1px dashed rgba(232, 134, 19, .7); background: rgba(232, 134, 19, .08); color: inherit; font-weight: 700; letter-spacing: .04em; }
 .interhub-catalog__pagination { display: flex; gap: 12px; align-items: center; justify-content: end; margin-top: 12px; color: var(--muted, #7a766f); font-size: 13px; }
 .interhub-catalog__auto-amount { display: grid; gap: 3px; min-height: 42px; padding: 8px 10px; border: 1px solid rgba(232, 134, 19, .35); }.interhub-catalog__auto-amount span, .interhub-catalog__auto-amount small { color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__auto-amount strong { font-size: 18px; }
 .interhub-catalog__calculate-response { margin-top: 7px; color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__calculate-response summary { cursor: pointer; color: inherit; }.interhub-catalog__calculate-response pre { max-width: 420px; max-height: 180px; margin: 8px 0 0; padding: 8px; overflow: auto; border: 1px solid rgba(232, 134, 19, .2); background: rgba(9, 12, 25, .38); color: var(--text, #eee); font: 11px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
