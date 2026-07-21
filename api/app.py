@@ -184,6 +184,31 @@ def ensure_analytics_schema():
             )
             exec1(conn, "ALTER TABLE app.interhub_transactions ADD COLUMN IF NOT EXISTS status_check_attempts integer NOT NULL DEFAULT 0")
             exec1(conn, "CREATE INDEX IF NOT EXISTS idx_interhub_transactions_pending ON app.interhub_transactions(state, next_status_check_at)")
+            # Храним результаты массового calculate, чтобы цены и ошибки не требовали повторных запросов поставщику.
+            exec1(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS app.interhub_price_calculations (
+                  id bigserial PRIMARY KEY,
+                  batch_id text NOT NULL,
+                  service_id integer NOT NULL,
+                  service_title text NOT NULL DEFAULT '',
+                  category text NOT NULL DEFAULT '',
+                  service_type text NOT NULL DEFAULT '',
+                  nominal_id integer NOT NULL,
+                  nominal_title text NOT NULL DEFAULT '',
+                  success boolean NOT NULL DEFAULT false,
+                  provider_status integer NOT NULL DEFAULT 0,
+                  provider_message text NOT NULL DEFAULT '',
+                  fixed_amount numeric(14,2) NOT NULL DEFAULT 0,
+                  provider_response jsonb NOT NULL DEFAULT '{}'::jsonb,
+                  created_by text NOT NULL DEFAULT '',
+                  calculated_at timestamptz NOT NULL DEFAULT now()
+                )
+                """,
+            )
+            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_interhub_price_calculations_latest ON app.interhub_price_calculations(service_id, nominal_id, calculated_at DESC)")
+            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_interhub_price_calculations_batch ON app.interhub_price_calculations(batch_id, calculated_at DESC)")
             conn.commit()
     except Exception:
         # Ошибки миграций не валят запуск, но обязательно пишем их в лог для диагностики.
@@ -813,6 +838,7 @@ _INTERHUB_CHECK_PATH = os.getenv("INTERHUB_CHECK_PATH", "/api/agent/payment/chec
 _INTERHUB_PAY_PATH = os.getenv("INTERHUB_PAY_PATH", "/api/agent/payment/pay")
 _INTERHUB_CHECK_STATUS_PATH = os.getenv("INTERHUB_CHECK_STATUS_PATH", "/api/agent/payment/check_status")
 _INTERHUB_DEPOSIT_PATH = os.getenv("INTERHUB_DEPOSIT_PATH", "/api/agent/deposit")
+_INTERHUB_PRICE_CALCULATE_DELAY_MS = int(os.getenv("INTERHUB_PRICE_CALCULATE_DELAY_MS", "700") or "700")
 TELEGRAM_DIALOGS_SYNC_LIMIT = int(os.getenv("TELEGRAM_DIALOGS_SYNC_LIMIT", "0") or "0")
 TELEGRAM_DIALOGS_SYNC_BATCH = int(os.getenv("TELEGRAM_DIALOGS_SYNC_BATCH", "100") or "100")
 TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC = int(os.getenv("TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC", "45") or "45")
@@ -1296,6 +1322,7 @@ interhub_refresh_pending = mount_interhub_routes(
     interhub_check=interhub_check,
     interhub_pay=interhub_pay,
     interhub_check_status=interhub_check_status,
+    price_calculate_delay_ms=_INTERHUB_PRICE_CALCULATE_DELAY_MS,
 )
 
 mount_rbac_routes(

@@ -33,6 +33,8 @@ class InterHubEndpointsTests(unittest.TestCase):
                 response = client.get("/openapi.json")
         self.assertEqual(response.status_code, 200)
         self.assertIn("/integrations/interhub/pay", response.json()["paths"])
+        self.assertIn("/integrations/interhub/prices/refresh", response.json()["paths"])
+        self.assertIn("/integrations/interhub/prices/export", response.json()["paths"])
 
     def test_services_returns_normalized_catalog(self):
         # Endpoint должен передать в UI тип услуги и динамические поля формы.

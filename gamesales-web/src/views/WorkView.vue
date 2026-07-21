@@ -1155,6 +1155,10 @@ const interhubCheck = ref(null)
 const interhubCheckLoading = ref(false)
 const interhubPayment = ref(null)
 const interhubPaymentLoading = ref(false)
+const interhubPrices = ref([])
+const interhubPriceRefresh = ref(null)
+const interhubPriceRefreshLoading = ref(false)
+const interhubPriceError = ref('')
 const canPayInterhub = computed(() => normalizeRole(auth.state.role) === 'owner')
 const editProductState = reactive({
   open: false,
@@ -2122,9 +2126,74 @@ async function loadInterhubBalance() {
   }
 }
 
+async function loadInterhubPrices() {
+  // Подгружаем сохранённые цены из нашей базы, не выполняя calculate при открытии вкладки.
+  try {
+    const data = await apiGet('/integrations/interhub/prices/latest', { token: auth.state.token })
+    interhubPrices.value = Array.isArray(data?.items) ? data.items : []
+  } catch (err) {
+    interhubPriceError.value = mapApiError(err?.message || 'Не удалось загрузить сохранённые цены')
+  }
+}
+
 async function reloadInterhubData() {
-  // Обновляем баланс и каталог одновременно по кнопке в шапке раздела.
-  await Promise.all([loadInterhubServices(), loadInterhubBalance()])
+  // Обновляем каталог и локальный кэш цен одновременно, не запрашивая прайс у поставщика.
+  await Promise.all([loadInterhubServices(), loadInterhubBalance(), loadInterhubPrices()])
+}
+
+function waitForInterhubPriceRefresh(jobId) {
+  // Опросом показываем прогресс фонового расчёта и не блокируем интерфейс на время обхода номиналов.
+  return new Promise((resolve, reject) => {
+    const poll = async () => {
+      try {
+        const job = await apiGet(`/integrations/interhub/prices/refresh/${encodeURIComponent(jobId)}`, { token: auth.state.token })
+        interhubPriceRefresh.value = job
+        if (job?.state === 'running') {
+          window.setTimeout(poll, 1000)
+          return
+        }
+        resolve(job)
+      } catch (err) {
+        reject(err)
+      }
+    }
+    window.setTimeout(poll, 500)
+  })
+}
+
+async function refreshInterhubPrices() {
+  // Запускаем единый ручной обход цен, чтобы собрать ошибки до включения ежедневного расписания.
+  if (!canPayInterhub.value || interhubPriceRefreshLoading.value) return
+  interhubPriceRefreshLoading.value = true
+  interhubPriceError.value = ''
+  try {
+    const job = await apiPost('/integrations/interhub/prices/refresh', {}, { token: auth.state.token })
+    interhubPriceRefresh.value = job
+    const completedJob = await waitForInterhubPriceRefresh(job.job_id)
+    if (completedJob?.state === 'failed') throw new Error(completedJob.message || 'Расчёт цен не завершился')
+    await loadInterhubPrices()
+  } catch (err) {
+    interhubPriceError.value = mapApiError(err?.message || 'Не удалось обновить закупочные цены')
+  } finally {
+    interhubPriceRefreshLoading.value = false
+  }
+}
+
+async function exportInterhubPrices() {
+  // Скачиваем Excel из сохранённых результатов, поэтому выгрузка не создаёт запросов к InterHub.
+  if (!canPayInterhub.value) return
+  interhubPriceError.value = ''
+  try {
+    const blob = await apiGetFile('/integrations/interhub/prices/export', { token: auth.state.token })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'interhub-prices.xlsx'
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    interhubPriceError.value = mapApiError(err?.message || 'Не удалось выгрузить цены в Excel')
+  }
 }
 
 function setInterhubSearchFromEvent(event) {
@@ -3568,9 +3637,16 @@ const interhubSectionCtx = asCtx({
   checkLoading: interhubCheckLoading,
   payment: interhubPayment,
   paymentLoading: interhubPaymentLoading,
+  cachedPrices: interhubPrices,
+  priceRefresh: interhubPriceRefresh,
+  priceRefreshLoading: interhubPriceRefreshLoading,
+  priceError: interhubPriceError,
   canPay: canPayInterhub,
+  canManagePrices: canPayInterhub,
   pay: payInterhub,
   refreshPaymentStatus: refreshInterhubPaymentStatus,
+  refreshPrices: refreshInterhubPrices,
+  exportPrices: exportInterhubPrices,
   reload: reloadInterhubData,
   calculate: calculateInterhub,
   checkPayment: checkInterhub,

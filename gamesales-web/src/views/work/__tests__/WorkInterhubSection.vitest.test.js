@@ -41,8 +41,15 @@ function buildCtx(overrides = {}) {
     payment: null,
     paymentLoading: false,
     canPay: false,
+    canManagePrices: false,
+    cachedPrices: [],
+    priceRefresh: null,
+    priceRefreshLoading: false,
+    priceError: '',
     pay: vi.fn(),
     refreshPaymentStatus: vi.fn(),
+    refreshPrices: vi.fn(),
+    exportPrices: vi.fn(),
     setSearchFromEvent: vi.fn(),
     ...overrides,
   }
@@ -55,7 +62,8 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).toContain('Mobile top up')
     expect(wrapper.text()).toContain('Фикс. номинал')
     expect(wrapper.text()).toContain('PIN-код')
-    expect(wrapper.text()).toContain('nominal')
+    expect(wrapper.text()).toContain('Лимит')
+    expect(wrapper.text()).not.toContain('Реквизиты')
     expect(wrapper.text()).toContain('10 000 ₽')
   })
 
@@ -164,6 +172,46 @@ describe('WorkInterhubSection', () => {
       flow_type: 'TOP_UP_FIXED',
     })
     expect(ctx.checkPayment).not.toHaveBeenCalled()
+  })
+
+  it('shows the cached purchase price for the selected nominal without calculate', async () => {
+    const ctx = buildCtx({
+      cachedPrices: [{ service_id: 7, nominal_id: 15, fixed_amount: 117.47, calculated_at: '2026-07-21T09:10:00+03:00' }],
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await wrapper.find('tbody tr').trigger('click')
+    await wrapper.find('.interhub-catalog__form select').setValue('15')
+
+    expect(wrapper.text()).toContain('Закупочная цена из кэша: 117,47 ₽')
+  })
+
+  it('shows the full saved calculate response for a selected nominal', async () => {
+    const ctx = buildCtx({
+      cachedPrices: [{ service_id: 7, nominal_id: 15, fixed_amount: 117.47, provider_response: { success: true, fixed_amount: 117.47, currency: 'TRY' } }],
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await wrapper.find('tbody tr').trigger('click')
+    await wrapper.find('.interhub-catalog__form select').setValue('15')
+    expect(wrapper.text()).toContain('Полный ответ calculate')
+    expect(wrapper.text()).toContain('"fixed_amount": 117.47')
+  })
+
+  it('allows only the owner to start the cached price refresh and export', async () => {
+    const ctx = buildCtx({
+      canManagePrices: true,
+      priceRefresh: { processed: 4, total: 10, successes: 3, errors: 1, message: 'Расчёт цен завершён' },
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    const buttons = wrapper.findAll('button')
+    await buttons.find((button) => button.text().includes('Обновить закупочные цены')).trigger('click')
+    await buttons.find((button) => button.text() === 'Выгрузить Excel').trigger('click')
+
+    expect(ctx.refreshPrices).toHaveBeenCalledTimes(1)
+    expect(ctx.exportPrices).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('Обновление цен: 4 из 10')
   })
 
   it('explains the documented polling schedule for a processing payment', async () => {

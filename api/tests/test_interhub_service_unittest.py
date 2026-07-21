@@ -1,10 +1,13 @@
 import json
 import unittest
+from io import BytesIO
 from unittest.mock import patch
 
 from fastapi import HTTPException
+from openpyxl import load_workbook
 
 from domains.interhub_api import interhub_status_check_interval
+from domains.interhub_price_cache import build_interhub_prices_xlsx, collect_price_targets
 from domains.interhub_service import build_interhub_service
 
 
@@ -115,6 +118,35 @@ class InterHubServiceTests(unittest.TestCase):
         self.assertEqual(result["params"]["gift_code"], "TESTGIFTCODE")
         request = urlopen_mock.call_args.args[0]
         self.assertTrue(request.full_url.endswith("/api/agent/payment/pay"))
+
+    def test_price_targets_keep_only_active_voucher_and_top_up_fixed_nominals(self):
+        # В массовый calculate берём только поддерживаемые типы и активные номиналы из каталога.
+        targets = collect_price_targets([
+            {
+                "service_id": 11, "title": "Voucher", "category": "Games", "type": "VOUCHER",
+                "fields": [{"name": "nominal", "value_list": [{"id": 101, "title": "TRY 100", "active": True}, {"id": 102, "title": "TRY 200", "active": False}]}],
+            },
+            {
+                "service_id": 12, "title": "Steam", "category": "Games", "type": "TOP_UP",
+                "fields": [{"name": "nominal", "value_list": [{"id": 201, "title": "USD 10", "active": True}]}],
+            },
+        ])
+        self.assertEqual(targets, [{
+            "service_id": 11, "service_title": "Voucher", "category": "Games", "service_type": "VOUCHER",
+            "nominal_id": 101, "nominal_title": "TRY 100",
+        }])
+
+    def test_price_export_has_prices_and_calculate_errors(self):
+        # Excel разделяет полезные цены и ошибки, которые нужно отправить поставщику.
+        content = build_interhub_prices_xlsx(
+            [{"service_id": 11, "service_title": "Voucher", "category": "Games", "service_type": "VOUCHER", "nominal_id": 101, "nominal_title": "TRY 100", "fixed_amount": 117.47, "provider_response": {"success": True, "fixed_amount": 117.47}}],
+            [{"service_id": 12, "service_title": "India", "service_type": "VOUCHER", "nominal_id": 202, "nominal_title": "INR 2500", "provider_status": -142, "provider_message": "The service not active", "provider_response": {"success": False, "status": -142}}],
+        )
+        workbook = load_workbook(BytesIO(content))
+        self.assertEqual(workbook.sheetnames, ["Закупочные цены", "Ошибки calculate"])
+        self.assertEqual(workbook["Закупочные цены"]["G2"].value, 117.47)
+        self.assertEqual(workbook["Закупочные цены"]["I2"].value, '{"fixed_amount": 117.47, "success": true}')
+        self.assertEqual(workbook["Ошибки calculate"]["G2"].value, "The service not active")
 
 
 if __name__ == "__main__":
