@@ -265,9 +265,44 @@ def fetch_ozon_catalog_items(
     else:
         raise HTTPException(502, f"Ozon catalog exceeded {max_pages} pages")
 
+    details_by_product_id: dict[int, dict[str, Any]] = {}
+    for offset in range(0, len(rows), 1000):
+        product_ids = [
+            int(item.get("product_id") or item.get("id"))
+            for item in rows[offset:offset + 1000]
+            if str(item.get("product_id") or item.get("id") or "").isdigit()
+        ]
+        if not product_ids:
+            continue
+        # Запрашиваем полные карточки отдельным методом: список Ozon не содержит названия и статуса.
+        data = _request_json(
+            f"{base_url}/v3/product/info/list",
+            client_id=client_id,
+            api_key=api_key,
+            payload={"offer_id": [], "product_id": product_ids, "sku": []},
+            timeout=timeout,
+        )
+        result = data.get("result") if isinstance(data.get("result"), dict) else {}
+        info_items = data.get("items") if isinstance(data.get("items"), list) else result.get("items")
+        if not isinstance(info_items, list):
+            raise HTTPException(502, "Ozon product info response does not contain items")
+        for item in info_items:
+            if not isinstance(item, dict):
+                continue
+            raw_product_id = item.get("product_id") or item.get("id")
+            if str(raw_product_id or "").isdigit():
+                details_by_product_id[int(raw_product_id)] = item
+
+    # Склеиваем короткий список и детали, сохраняя product_id из основного метода как стабильный ключ.
+    enriched_rows = []
+    for item in rows:
+        raw_product_id = item.get("product_id") or item.get("id")
+        details = details_by_product_id.get(int(raw_product_id)) if str(raw_product_id or "").isdigit() else None
+        enriched_rows.append({**item, **(details or {})})
+
     if progress:
-        progress(f"Загружено карточек Ozon: {len(rows)}")
-    return rows
+        progress(f"Загружено карточек Ozon: {len(enriched_rows)}")
+    return enriched_rows
 
 
 def aggregate_ozon_finance_transactions(

@@ -172,6 +172,10 @@ class OzonServiceTest(unittest.TestCase):
         responses = [
             _Response({"result": {"items": [{"product_id": 101, "offer_id": "steam-1000"}], "last_id": "next"}}),
             _Response({"result": {"items": [{"product_id": 102, "offer_id": "psn-500"}], "last_id": ""}}),
+            _Response({"items": [
+                {"id": 101, "name": "Steam 1000", "status": {"state": "sale"}},
+                {"id": 102, "name": "PSN 500", "status": {"state": "sale"}},
+            ]}),
         ]
         with (
             patch.dict(
@@ -188,11 +192,15 @@ class OzonServiceTest(unittest.TestCase):
             rows = ozon_service.fetch_ozon_catalog_items()
 
         self.assertEqual([row["product_id"] for row in rows], [101, 102])
+        self.assertEqual([row["name"] for row in rows], ["Steam 1000", "PSN 500"])
         self.assertEqual(urlopen.call_args_list[0].args[0].full_url, "https://api-seller.ozon.ru/v3/product/list")
+        self.assertEqual(urlopen.call_args_list[2].args[0].full_url, "https://api-seller.ozon.ru/v3/product/info/list")
         first_payload = json.loads(urlopen.call_args_list[0].args[0].data.decode("utf-8"))
         second_payload = json.loads(urlopen.call_args_list[1].args[0].data.decode("utf-8"))
+        details_payload = json.loads(urlopen.call_args_list[2].args[0].data.decode("utf-8"))
         self.assertEqual(first_payload["filter"]["visibility"], "ALL")
         self.assertEqual(second_payload["last_id"], "next")
+        self.assertEqual(details_payload["product_id"], [101, 102])
 
 
 if __name__ == "__main__":
