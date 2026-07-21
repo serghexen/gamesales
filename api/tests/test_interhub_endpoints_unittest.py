@@ -26,6 +26,14 @@ class InterHubEndpointsTests(unittest.TestCase):
                 response = client.get("/integrations/interhub/services")
         self.assertEqual(response.status_code, 401)
 
+    def test_openapi_builds_interhub_payment_routes(self):
+        # Схема API должна собираться, иначе FastAPI не сможет корректно обработать новые модели оплаты.
+        with patch.object(app_module, "ensure_analytics_schema", return_value=None):
+            with self._client() as client:
+                response = client.get("/openapi.json")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("/integrations/interhub/pay", response.json()["paths"])
+
     def test_services_returns_normalized_catalog(self):
         # Endpoint должен передать в UI тип услуги и динамические поля формы.
         services = [
