@@ -191,13 +191,15 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).not.toContain('Аккаунт (временно необязательно)')
   })
 
-  it('hides the account field for fixed nominal services', async () => {
+  it('shows an optional account field for fixed nominal services', async () => {
     const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx() } })
 
     await selectServiceByTitle(wrapper, 'Mobile top up')
     const formInputs = wrapper.findAll('.interhub-catalog__form input')
-    expect(formInputs).toHaveLength(0)
-    expect(wrapper.text()).not.toContain('Аккаунт (временно необязательно)')
+    expect(formInputs).toHaveLength(1)
+    expect(formInputs[0].attributes('required')).toBeUndefined()
+    expect(wrapper.text()).toContain('Аккаунт (необязательно)')
+    expect(wrapper.find('.interhub-catalog__form').classes()).toContain('has-optional-account')
   })
 
   it('lets only the owner confirm a checked payment and shows the gift code', async () => {
