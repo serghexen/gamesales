@@ -12,6 +12,7 @@
             <p class="muted ozon-catalog-modal__hint">Данные сохранены при последней синхронизации.</p>
           </div>
           <div class="toolbar-actions">
+            <button v-if="ozonCatalogDetails" class="btn btn--primary" type="button" @click="openOzonDigitalSettings">Ключи</button>
             <button class="ghost" type="button" @click="closeOzonCatalogDetails">К каталогу</button>
             <button class="btn btn--icon-plain" type="button" aria-label="Закрыть" title="Закрыть" @click="closeOzonCatalogDetails">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -48,6 +49,7 @@ import { computed } from 'vue'
 const props = defineProps({
   showOzonCatalogDetails: { type: Boolean, required: true },
   closeOzonCatalogDetails: { type: Function, required: true },
+  openOzonDigitalSettings: { type: Function, required: true },
   ozonCatalogDetails: { type: [Object, null], default: null },
   ozonCatalogDetailsLoading: { type: Boolean, required: true },
   ozonCatalogDetailsError: { type: String, default: '' },
@@ -66,6 +68,7 @@ const detailFields = computed(() => {
   const details = props.ozonCatalogDetails || {}
   const barcodes = Array.isArray(details.barcodes) ? details.barcodes.filter(Boolean).join(', ') : ''
   return [
+    { label: 'Артикул продавца', value: details.offer_id || '' },
     { label: 'Штрихкоды', value: barcodes },
     { label: 'Категория Ozon', value: details.category_id ? String(details.category_id) : '' },
     { label: 'FBO SKU', value: details.fbo_sku || '' },

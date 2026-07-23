@@ -238,12 +238,30 @@ async def lifespan(_: FastAPI):
                 logger.exception("InterHub pending payment polling failed")
 
     interhub_polling_task = asyncio.create_task(poll_interhub_pending_transactions())
+    stop_ozon_supplier_polling = asyncio.Event()
+
+    async def poll_ozon_supplier_orders():
+        # Продолжаем выдачу уже оплаченных ключей Interhub, даже если оператор закрыл вкладку Ozon.
+        while not stop_ozon_supplier_polling.is_set():
+            try:
+                await asyncio.wait_for(stop_ozon_supplier_polling.wait(), timeout=_OZON_SUPPLIER_POLL_INTERVAL_SEC)
+                continue
+            except asyncio.TimeoutError:
+                pass
+            try:
+                await asyncio.to_thread(ozon_refresh_digital_supplier_orders)
+            except Exception:
+                logger.exception("Ozon supplier order polling failed")
+
+    ozon_supplier_polling_task = asyncio.create_task(poll_ozon_supplier_orders())
     try:
         yield
     finally:
         # Останавливаем фоновую проверку до закрытия пула, чтобы она не работала с уже закрытой БД.
         stop_interhub_polling.set()
+        stop_ozon_supplier_polling.set()
         await interhub_polling_task
+        await ozon_supplier_polling_task
     # Закрываем пул при остановке приложения.
     _pool.close()
     _pool = None
@@ -840,6 +858,8 @@ _INTERHUB_PAY_PATH = os.getenv("INTERHUB_PAY_PATH", "/api/agent/payment/pay")
 _INTERHUB_CHECK_STATUS_PATH = os.getenv("INTERHUB_CHECK_STATUS_PATH", "/api/agent/payment/check_status")
 _INTERHUB_DEPOSIT_PATH = os.getenv("INTERHUB_DEPOSIT_PATH", "/api/agent/deposit")
 _INTERHUB_PRICE_CALCULATE_DELAY_MS = int(os.getenv("INTERHUB_PRICE_CALCULATE_DELAY_MS", "700") or "700")
+# Интервал фоновой проверки заказов Ozon и незавершённых выдач Interhub, чтобы менять его без правки кода.
+_OZON_SUPPLIER_POLL_INTERVAL_SEC = max(10, int(os.getenv("OZON_SUPPLIER_POLL_INTERVAL_SEC", "60") or "60"))
 TELEGRAM_DIALOGS_SYNC_LIMIT = int(os.getenv("TELEGRAM_DIALOGS_SYNC_LIMIT", "0") or "0")
 TELEGRAM_DIALOGS_SYNC_BATCH = int(os.getenv("TELEGRAM_DIALOGS_SYNC_BATCH", "100") or "100")
 TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC = int(os.getenv("TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC", "45") or "45")
@@ -1280,7 +1300,7 @@ mount_finance_routes(
     require_role=require_role,
 )
 
-mount_marketplaces_routes(
+ozon_refresh_digital_supplier_orders = mount_marketplaces_routes(
     app,
     DB_DSN=DB_DSN,
     psycopg=pooled_psycopg,
@@ -1289,6 +1309,9 @@ mount_marketplaces_routes(
     exec1=exec1,
     get_current_user=get_current_user,
     require_role=require_role,
+    interhub_check=interhub_check,
+    interhub_pay=interhub_pay,
+    interhub_check_status=interhub_check_status,
 )
 
 mount_dashboard_routes(

@@ -361,6 +361,145 @@ def fetch_ozon_catalog_items(
     return enriched_rows
 
 
+def fetch_ozon_catalog_offer_id(product_id: int, store_code: str = "asat") -> str:
+    # Запрашивает один артикул напрямую у Ozon, когда локальный снимок карточки оказался неполным.
+    normalized_store_code = normalize_ozon_store_code(store_code)
+    client_id = _required_store_env("CLIENT_ID", store_code=normalized_store_code)
+    api_key = _required_store_env("API_KEY", store_code=normalized_store_code)
+    base_url = str(os.getenv("OZON_SELLER_BASE_URL", OZON_SELLER_BASE_URL) or OZON_SELLER_BASE_URL).rstrip("/")
+    timeout = max(5, _env_int("OZON_TIMEOUT_SEC", 60))
+    data = _request_json(
+        f"{base_url}/v3/product/info/list",
+        client_id=client_id,
+        api_key=api_key,
+        payload={"offer_id": [], "product_id": [int(product_id)], "sku": []},
+        timeout=timeout,
+    )
+    result = data.get("result") if isinstance(data.get("result"), dict) else {}
+    items = data.get("items") if isinstance(data.get("items"), list) else result.get("items")
+    if not isinstance(items, list):
+        raise HTTPException(502, "Ozon product info response does not contain items")
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if int(item.get("product_id") or item.get("id") or 0) != int(product_id):
+            continue
+        offer_id = str(item.get("offer_id") or item.get("offer_code") or "").strip()
+        if offer_id:
+            return offer_id
+    return ""
+
+
+def update_ozon_digital_stock(
+    offer_id: str,
+    stock: int,
+    store_code: str = "asat",
+) -> dict[str, Any]:
+    # Передает в Ozon только витринный остаток цифровой карточки, а не сами ключи.
+    normalized_store_code = normalize_ozon_store_code(store_code)
+    normalized_offer_id = str(offer_id or "").strip()
+    if not normalized_offer_id:
+        raise HTTPException(400, "Ozon offer_id is required for digital stock")
+    if stock < 0:
+        raise HTTPException(400, "Ozon digital stock must not be negative")
+    client_id = _required_store_env("CLIENT_ID", store_code=normalized_store_code)
+    api_key = _required_store_env("API_KEY", store_code=normalized_store_code)
+    base_url = str(os.getenv("OZON_SELLER_BASE_URL", OZON_SELLER_BASE_URL) or OZON_SELLER_BASE_URL).rstrip("/")
+    timeout = max(5, _env_int("OZON_TIMEOUT_SEC", 60))
+    return _request_json(
+        f"{base_url}/v1/product/digital/stocks/import",
+        client_id=client_id,
+        api_key=api_key,
+        payload={"stocks": [{"offer_id": normalized_offer_id, "stock": int(stock)}]},
+        timeout=timeout,
+    )
+
+
+def fetch_ozon_digital_postings(
+    date_from: datetime,
+    date_to: datetime,
+    store_code: str = "asat",
+) -> list[dict[str, Any]]:
+    # Получает цифровые отправления постранично, чтобы оператор мог выдать ключ вручную.
+    normalized_store_code = normalize_ozon_store_code(store_code)
+    client_id = _required_store_env("CLIENT_ID", store_code=normalized_store_code)
+    api_key = _required_store_env("API_KEY", store_code=normalized_store_code)
+    base_url = str(os.getenv("OZON_SELLER_BASE_URL", OZON_SELLER_BASE_URL) or OZON_SELLER_BASE_URL).rstrip("/")
+    timeout = max(5, _env_int("OZON_TIMEOUT_SEC", 60))
+    # Метод цифровых отправлений принимает не больше 100 строк, это отдельный лимит Ozon.
+    limit = min(100, max(1, _env_int("OZON_DIGITAL_POSTINGS_PAGE_SIZE", 100)))
+    max_pages = max(1, _env_int("OZON_DIGITAL_POSTINGS_MAX_PAGES", 1000))
+    cursor = ""
+    postings: list[dict[str, Any]] = []
+    since = date_from.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    to = date_to.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    for _page in range(max_pages):
+        data = _request_json(
+            f"{base_url}/v2/posting/digital/list",
+            client_id=client_id,
+            api_key=api_key,
+            payload={
+                "cursor": cursor,
+                "filter": {"since": since, "to": to},
+                "limit": limit,
+                "sort_dir": "ASC",
+            },
+            timeout=timeout,
+        )
+        rows = data.get("postings") if isinstance(data.get("postings"), list) else []
+        postings.extend(row for row in rows if isinstance(row, dict))
+        if not data.get("has_next"):
+            break
+        next_cursor = str(data.get("cursor") or "").strip()
+        if not next_cursor or next_cursor == cursor:
+            raise HTTPException(502, "Ozon digital posting pagination did not advance")
+        cursor = next_cursor
+    else:
+        raise HTTPException(502, f"Ozon digital postings exceeded {max_pages} pages")
+    return postings
+
+
+def upload_ozon_digital_codes(
+    *,
+    posting_number: str,
+    sku: int,
+    codes: list[str],
+    store_code: str = "asat",
+) -> dict[str, Any]:
+    # Передает введенные оператором ключи в конкретное цифровое отправление Ozon.
+    normalized_store_code = normalize_ozon_store_code(store_code)
+    normalized_posting_number = str(posting_number or "").strip()
+    cleaned_codes = [str(code or "").strip() for code in codes if str(code or "").strip()]
+    if not normalized_posting_number:
+        raise HTTPException(400, "Ozon posting_number is required")
+    if sku <= 0:
+        raise HTTPException(400, "Ozon SKU is required")
+    if not cleaned_codes:
+        raise HTTPException(400, "At least one digital code is required")
+    client_id = _required_store_env("CLIENT_ID", store_code=normalized_store_code)
+    api_key = _required_store_env("API_KEY", store_code=normalized_store_code)
+    base_url = str(os.getenv("OZON_SELLER_BASE_URL", OZON_SELLER_BASE_URL) or OZON_SELLER_BASE_URL).rstrip("/")
+    timeout = max(5, _env_int("OZON_TIMEOUT_SEC", 60))
+    return _request_json(
+        f"{base_url}/v1/posting/digital/codes/upload",
+        client_id=client_id,
+        api_key=api_key,
+        payload={
+            "posting_number": normalized_posting_number,
+            "exemplars_by_sku": [
+                {
+                    "sku": int(sku),
+                    "exemplar_qty": len(cleaned_codes),
+                    "not_available_exemplar_qty": 0,
+                    "exemplar_keys": cleaned_codes,
+                }
+            ],
+        },
+        timeout=timeout,
+    )
+
+
 def aggregate_ozon_finance_transactions(
     rows: list[dict[str, Any]],
     *,

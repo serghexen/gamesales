@@ -77,9 +77,27 @@
       <WorkOzonCatalogDetailsModal
         :show-ozon-catalog-details="ctx.showOzonCatalogDetails"
         :close-ozon-catalog-details="ctx.closeOzonCatalogDetails"
+        :open-ozon-digital-settings="ctx.openOzonDigitalSettings"
         :ozon-catalog-details="ctx.ozonCatalogDetails"
         :ozon-catalog-details-loading="ctx.ozonCatalogDetailsLoading"
         :ozon-catalog-details-error="ctx.ozonCatalogDetailsError"
+      />
+
+      <WorkOzonDigitalSettingsModal
+        :show-ozon-digital-settings="ctx.showOzonDigitalSettings"
+        :close-ozon-digital-settings="ctx.closeOzonDigitalSettings"
+        :ozon-digital-settings="ctx.ozonDigitalSettings"
+        :ozon-digital-settings-loading="ctx.ozonDigitalSettingsLoading"
+        :ozon-digital-settings-saving="ctx.ozonDigitalSettingsSaving"
+        :ozon-digital-orders-syncing="ctx.ozonDigitalOrdersSyncing"
+        :ozon-digital-settings-error="ctx.ozonDigitalSettingsError"
+        :ozon-digital-settings-ok="ctx.ozonDigitalSettingsOk"
+        :ozon-digital-orders="ctx.ozonDigitalOrders"
+        :interhub-services="ctx.ozonInterhubServices"
+        :interhub-services-loading="ctx.ozonInterhubServicesLoading"
+        :save-ozon-digital-settings="ctx.saveOzonDigitalSettings"
+        :sync-ozon-digital-orders="ctx.syncOzonDigitalOrders"
+        :deliver-ozon-digital-order="ctx.deliverOzonDigitalOrder"
       />
 
       <WorkProductsTableSection
@@ -124,6 +142,7 @@ import WorkGameFilterChips from './WorkGameFilterChips.vue'
 import WorkGameImportModal from './WorkGameImportModal.vue'
 import WorkOzonCatalogModal from './WorkOzonCatalogModal.vue'
 import WorkOzonCatalogDetailsModal from './WorkOzonCatalogDetailsModal.vue'
+import WorkOzonDigitalSettingsModal from './WorkOzonDigitalSettingsModal.vue'
 import WorkProductsTableSection from './WorkProductsTableSection.vue'
 import WorkProductsPager from './WorkProductsPager.vue'
 import WorkProductEditorModal from './WorkProductEditorModal.vue'

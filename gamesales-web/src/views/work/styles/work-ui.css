@@ -615,6 +615,297 @@
   width: min(640px, 92vw);
 }
 
+.work-page .ozon-digital-modal {
+  width: min(860px, 94vw);
+}
+
+.work-page .ozon-digital-modal__card,
+.work-page .ozon-digital-modal__orders {
+  border: 1px solid var(--table-border);
+  border-radius: 16px;
+  background: rgba(16, 25, 44, 0.42);
+  padding: 14px;
+}
+
+.work-page .ozon-digital-modal__card-head,
+.work-page .ozon-digital-modal__orders-head,
+.work-page .ozon-digital-modal__footer,
+.work-page .ozon-digital-order__head,
+.work-page .ozon-digital-order__delivery {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.work-page .ozon-digital-modal__card-head strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.work-page .ozon-digital-modal__eyebrow {
+  color: #53e5ba;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.work-page .ozon-digital-modal__mode {
+  padding: 6px 9px;
+  border: 1px solid rgba(83, 229, 186, 0.3);
+  border-radius: 999px;
+  color: #79ecc8;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.work-page .ozon-digital-modal__setup {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.78fr) minmax(250px, 1fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.work-page .ozon-digital-modal__limit {
+  padding: 12px;
+  border: 1px solid rgba(83, 229, 186, 0.16);
+  border-radius: 12px;
+  background: rgba(83, 229, 186, 0.035);
+}
+
+.work-page .ozon-digital-modal__limit .input {
+  max-width: 180px;
+  margin-top: 5px;
+}
+
+.work-page .ozon-digital-modal__limit .muted {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.work-page .ozon-digital-modal__offer {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.work-page .ozon-digital-modal__offer strong {
+  color: var(--ink);
+}
+
+.work-page .ozon-digital-modal__messages {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.work-page .ozon-digital-modal__supplier {
+  padding: 12px;
+  border: 1px solid rgba(83, 229, 186, 0.16);
+  border-radius: 12px;
+  background: rgba(83, 229, 186, 0.035);
+}
+
+.work-page .ozon-digital-modal__supplier-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.work-page .ozon-digital-modal__supplier-title small {
+  color: #79ecc8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.work-page .ozon-digital-modal__supplier .field + .field {
+  margin-top: 8px;
+}
+
+.work-page .ozon-digital-modal__supplier .field span {
+  font-size: 11px;
+}
+
+.work-page .ozon-digital-modal__check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.work-page .ozon-digital-modal__check input {
+  accent-color: #53e5ba;
+}
+
+.work-page .ozon-digital-modal__supplier .muted {
+  margin: 9px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.work-page .ozon-digital-modal__messages .textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.work-page .ozon-digital-modal__footer {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.work-page .ozon-digital-modal__footer .muted {
+  max-width: 430px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.work-page .ozon-digital-modal__footer strong {
+  color: var(--ink);
+}
+
+.work-page .ozon-digital-modal__stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin: 14px 0 0;
+  border: 1px solid var(--table-border);
+  border-radius: 14px;
+  background: var(--table-border);
+}
+
+.work-page .ozon-digital-modal__stats > div {
+  min-width: 0;
+  padding: 10px 12px;
+  background: rgba(16, 25, 44, 0.56);
+}
+
+.work-page .ozon-digital-modal__stats span,
+.work-page .ozon-digital-order__head p {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.work-page .ozon-digital-modal__stats strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.work-page .ozon-digital-modal__orders h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.work-page .ozon-digital-modal__orders h4 + .muted {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.work-page .ozon-digital-modal__empty {
+  margin: 16px 0 2px;
+  text-align: center;
+}
+
+.work-page .ozon-digital-order {
+  margin-top: 12px;
+  padding: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(8, 15, 31, 0.46);
+}
+
+.work-page .ozon-digital-order__head strong {
+  color: var(--ink);
+}
+
+.work-page .ozon-digital-order__head p {
+  margin: 4px 0 0;
+}
+
+.work-page .ozon-digital-order__status {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: #dfe6ff;
+  background: rgba(151, 169, 214, 0.18);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.work-page .ozon-digital-order__status--manual_required {
+  color: #ffd783;
+  background: rgba(245, 158, 11, 0.16);
+}
+
+.work-page .ozon-digital-order__status--delivered {
+  color: #76ebc4;
+  background: rgba(16, 185, 129, 0.16);
+}
+
+.work-page .ozon-digital-order__status--supplier_processing {
+  color: #9fb4ff;
+  background: rgba(92, 123, 255, 0.17);
+}
+
+.work-page .ozon-digital-order > .muted,
+.work-page .ozon-digital-order > .bad {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.work-page .ozon-digital-order__delivery {
+  align-items: flex-end;
+  margin-top: 12px;
+}
+
+.work-page .ozon-digital-order__delivery .field {
+  flex: 1 1 auto;
+}
+
+@media (max-width: 640px) {
+  .work-page .ozon-digital-modal__setup,
+  .work-page .ozon-digital-modal__messages {
+    grid-template-columns: 1fr;
+  }
+
+  .work-page .ozon-digital-modal__stats {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .work-page .ozon-digital-modal__card-head,
+  .work-page .ozon-digital-modal__orders-head,
+  .work-page .ozon-digital-modal__footer,
+  .work-page .ozon-digital-order__delivery {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .work-page .ozon-catalog-details-modal__image-wrap {
   display: flex;
   align-items: center;

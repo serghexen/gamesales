@@ -3,7 +3,7 @@ import json
 import os
 import unittest
 import urllib.error
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -217,6 +217,72 @@ class OzonServiceTest(unittest.TestCase):
         self.assertEqual(details_payload["product_id"], [101, 102])
         self.assertEqual(prices_payload["filter"]["product_id"], [101, 102])
         self.assertEqual(stocks_payload["filter"]["with_quant"], {"created": True, "exists": True})
+
+    # Для цифровой карточки Ozon должен получить артикул и лимит, а не локальные ключи.
+    def test_update_digital_stock_uses_offer_id(self):
+        with (
+            patch.dict(os.environ, {"OZON_CLIENT_ID": "client-1", "OZON_API_KEY": "secret-1"}, clear=False),
+            patch.object(ozon_service.urllib.request, "urlopen", return_value=_Response({"status": [{"updated": True}]})) as urlopen,
+        ):
+            ozon_service.update_ozon_digital_stock("PS5-6", 1)
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://api-seller.ozon.ru/v1/product/digital/stocks/import")
+        self.assertEqual(json.loads(request.data.decode("utf-8")), {"stocks": [{"offer_id": "PS5-6", "stock": 1}]})
+
+    # При неполном снимке артикул должен восстанавливаться точечным запросом по ID карточки.
+    def test_fetch_catalog_offer_id_reads_single_product(self):
+        with (
+            patch.dict(os.environ, {"OZON_CLIENT_ID": "client-1", "OZON_API_KEY": "secret-1"}, clear=False),
+            patch.object(
+                ozon_service.urllib.request,
+                "urlopen",
+                return_value=_Response({"items": [{"product_id": 5224093734, "offer_id": "Joy1"}]}),
+            ) as urlopen,
+        ):
+            offer_id = ozon_service.fetch_ozon_catalog_offer_id(5224093734)
+
+        self.assertEqual(offer_id, "Joy1")
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://api-seller.ozon.ru/v3/product/info/list")
+        self.assertEqual(json.loads(request.data.decode("utf-8"))["product_id"], [5224093734])
+
+    # Ручная выдача должна передавать код в конкретное отправление и его SKU.
+    def test_upload_digital_codes_targets_posting_and_sku(self):
+        with (
+            patch.dict(os.environ, {"OZON_CLIENT_ID": "client-1", "OZON_API_KEY": "secret-1"}, clear=False),
+            patch.object(ozon_service.urllib.request, "urlopen", return_value=_Response({"exemplars_by_sku": [{"sku": 555, "received_qty": 1}]})) as urlopen,
+        ):
+            ozon_service.upload_ozon_digital_codes(posting_number="123-0001", sku=555, codes=["PSN-CODE-1"])
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://api-seller.ozon.ru/v1/posting/digital/codes/upload")
+        self.assertEqual(
+            json.loads(request.data.decode("utf-8")),
+            {
+                "posting_number": "123-0001",
+                "exemplars_by_sku": [{"sku": 555, "exemplar_qty": 1, "not_available_exemplar_qty": 0, "exemplar_keys": ["PSN-CODE-1"]}],
+            },
+        )
+
+    # Синхронизация цифровых заказов должна читать все страницы с временным фильтром.
+    def test_fetch_digital_postings_reads_cursor_pages(self):
+        responses = [
+            _Response({"postings": [{"posting_number": "first"}], "has_next": True, "cursor": "next"}),
+            _Response({"postings": [{"posting_number": "second"}], "has_next": False, "cursor": ""}),
+        ]
+        with (
+            patch.dict(os.environ, {"OZON_CLIENT_ID": "client-1", "OZON_API_KEY": "secret-1", "OZON_DIGITAL_POSTINGS_PAGE_SIZE": "1000"}, clear=False),
+            patch.object(ozon_service.urllib.request, "urlopen", side_effect=responses) as urlopen,
+        ):
+            postings = ozon_service.fetch_ozon_digital_postings(
+                datetime(2026, 7, 1, tzinfo=timezone.utc),
+                datetime(2026, 7, 2, tzinfo=timezone.utc),
+            )
+
+        self.assertEqual([posting["posting_number"] for posting in postings], ["first", "second"])
+        self.assertEqual(json.loads(urlopen.call_args_list[0].args[0].data.decode("utf-8"))["limit"], 100)
+        self.assertEqual(json.loads(urlopen.call_args_list[1].args[0].data.decode("utf-8"))["cursor"], "next")
 
 
 if __name__ == "__main__":
