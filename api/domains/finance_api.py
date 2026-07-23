@@ -90,6 +90,19 @@ def mount_finance_routes(
         text = (value or "").strip()
         return text.upper() if upper else text.lower()
 
+    def _marketplace_commission_operation_codes() -> list[str]:
+        # Собираем коды комиссий маркетплейсов, которые считаем расходом в отчете по источникам.
+        variable_names = (
+            "YANDEX_MARKET_COMMISSION_OPERATION_CODE",
+            "WILDBERRIES_EXPENSE_OPERATION_CODE",
+            "OZON_EXPENSE_OPERATION_CODE",
+        )
+        codes = {
+            _normalize_code(os.getenv(variable_name, "direct_marketplace_commission_api"))
+            for variable_name in variable_names
+        }
+        return sorted(code for code in codes if code)
+
     def _normalize_channel(value: Optional[str]) -> str:
         # Приводим канал ввода к допустимому значению по умолчанию.
         normalized = _normalize_code(value)
@@ -2900,6 +2913,7 @@ def mount_finance_routes(
             filters.append("operation_code = 'sale'")
         _append_multi_id_filter(filters, params, "source_id", source_id)
         where_sql = " AND ".join(filters)
+        marketplace_commission_codes = _marketplace_commission_operation_codes()
 
         with psycopg.connect(DB_DSN) as conn:
             rows = qall(
@@ -2962,7 +2976,13 @@ def mount_finance_routes(
                       CASE WHEN src.source_id IS NOT NULL THEN 'source' ELSE 'entry' END AS operation_code,
                       CASE WHEN src.source_id IS NOT NULL THEN COALESCE(src.name, 'Без источника') ELSE o.name END AS operation_name,
                       CASE WHEN p.metric_code = 'revenue' THEN p.amount ELSE 0 END AS revenue,
-                      CASE WHEN p.metric_code = 'direct_expense' THEN p.amount ELSE 0 END AS direct_expense,
+                      CASE
+                        WHEN p.metric_code = 'direct_expense' THEN p.amount
+                        WHEN st.code = 'indirect_expense'
+                          AND p.metric_code = 'indirect_expense'
+                          AND lower(o.code) = ANY(%s) THEN p.amount
+                        ELSE 0
+                      END AS direct_expense,
                       ('entry-' || e.entry_id::text) AS row_ref_key
                     FROM finance.entry_postings p
                     JOIN finance.entries e
@@ -2977,6 +2997,11 @@ def mount_finance_routes(
                       AND (
                         (st.code = 'revenue' AND p.metric_code = 'revenue')
                         OR (st.code = 'direct_expense' AND p.metric_code = 'direct_expense')
+                        OR (
+                          st.code = 'indirect_expense'
+                          AND p.metric_code = 'indirect_expense'
+                          AND lower(o.code) = ANY(%s)
+                        )
                       )
                 )
                 SELECT
@@ -2998,7 +3023,7 @@ def mount_finance_routes(
                     OR COALESCE(SUM(direct_expense), 0) <> 0
                 ORDER BY source_name, region_code NULLS LAST
                 """,
-                tuple(params),
+                tuple([marketplace_commission_codes, marketplace_commission_codes, *params]),
             )
 
         items: list[FinanceSourcesReportRowOut] = []
@@ -3088,6 +3113,7 @@ def mount_finance_routes(
             filters.append("operation_code = %s")
             params.append(normalized_operation_code)
         where_sql = " AND ".join(filters)
+        marketplace_commission_codes = _marketplace_commission_operation_codes()
 
         with psycopg.connect(DB_DSN) as conn:
             rows = qall(
@@ -3187,7 +3213,13 @@ def mount_finance_routes(
                     CASE WHEN p.metric_code = 'revenue' THEN p.amount ELSE 0 END AS revenue,
                     0::numeric AS purchase_cost,
                     NULL::numeric AS purchase_cost_rate,
-                    CASE WHEN p.metric_code = 'direct_expense' THEN p.amount ELSE 0 END AS direct_expense,
+                    CASE
+                      WHEN p.metric_code = 'direct_expense' THEN p.amount
+                      WHEN st.code = 'indirect_expense'
+                        AND p.metric_code = 'indirect_expense'
+                        AND lower(o.code) = ANY(%s) THEN p.amount
+                      ELSE 0
+                    END AS direct_expense,
                     e.comment,
                     e.external_key,
                     COALESCE(e.payload_json->'order_ids', '[]'::jsonb) AS order_ids,
@@ -3212,6 +3244,11 @@ def mount_finance_routes(
                     AND (
                       (st.code = 'revenue' AND p.metric_code = 'revenue')
                       OR (st.code = 'direct_expense' AND p.metric_code = 'direct_expense')
+                      OR (
+                        st.code = 'indirect_expense'
+                        AND p.metric_code = 'indirect_expense'
+                        AND lower(o.code) = ANY(%s)
+                      )
                     )
                 )
                 SELECT
@@ -3230,7 +3267,7 @@ def mount_finance_routes(
                   )
                 ORDER BY activity_date, COALESCE(deal_id, entry_id), row_type
                 """,
-                tuple(params),
+                tuple([marketplace_commission_codes, marketplace_commission_codes, *params]),
             )
 
         items: list[FinanceSourcesReportDetailRowOut] = []
