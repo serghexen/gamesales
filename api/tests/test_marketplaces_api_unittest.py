@@ -77,17 +77,12 @@ class MarketplacesApiTests(unittest.TestCase):
         self.assertEqual(response.json()["items"][0]["sku"], "5510101")
         self.assertFalse(writes, "catalog read must not run schema migration")
 
-    # Миграция запускается явно при старте, а не скрыто в каждом обработчике Ozon.
-    def test_marketplaces_schema_is_prepared_by_startup_function(self):
+    # Схема Ozon обновляется отдельной миграцией, поэтому маршруты не содержат startup-DDL.
+    def test_marketplaces_routes_do_not_expose_schema_preparation(self):
         _client, writes = self.create_client()
 
-        self._refresh_orders.prepare_schema()
-
-        self.assertTrue(any("ALTER TABLE app.marketplace_ozon_digital_orders" in sql for sql, _params in writes))
-        # Экранирование нужно psycopg, иначе PostgreSQL-формат %I ошибочно читается как параметр запроса.
-        migration_sql = next(sql for sql, _params in writes if "DROP CONSTRAINT %%I" in sql)
-        self.assertIn("DROP CONSTRAINT %%I", migration_sql)
-        self.assertIn("attribute_row.attname::text", migration_sql)
+        self.assertFalse(hasattr(self._refresh_orders, "prepare_schema"))
+        self.assertFalse(writes)
 
     # История показывает источник и только маску ключа, а полный код остается отдельным защищенным запросом.
     def test_digital_orders_list_masks_codes_and_returns_supplier_source(self):

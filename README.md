@@ -50,6 +50,7 @@ See `docker-compose.prod.yml` and `.env.example`.
 Make sure `.env.prod` exists on the server, then:
 
 ```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml --profile maintenance run --rm migrate
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 ```
 
@@ -134,3 +135,14 @@ crontab -e
 ```cron
 0 23 * * * cd /apps/gamesales && ./scripts/backup_prod_db.sh >> /apps/db_backup/backup.log 2>&1
 ```
+
+# Миграции БД
+
+Структура БД обновляется отдельной одноразовой задачей до перезапуска API. Она не запускается автоматически вместе с API и не выполняет исторические файлы из `db/migrations` повторно: при первом запуске они только фиксируются как базовая линия. Новые миграции добавляются в `db/migrations/runtime`.
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml --profile maintenance run --rm migrate
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build api
+```
+
+Мигратор берёт блокировку на одного исполнителя и прекращает работу, если не смог получить DDL-блокировку за пять секунд. Перед первым production-запуском обязательно сделать и проверить восстановление резервной копии БД.

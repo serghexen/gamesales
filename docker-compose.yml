@@ -30,6 +30,18 @@ services:
       IMPORT_MAX_CONCURRENT_JOBS: ${IMPORT_MAX_CONCURRENT_JOBS:-1}
     mem_limit: 550m
     cpus: "0.90"
+  migrate:
+    build: ./api
+    profiles: ["maintenance"]
+    restart: "no"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    command: ["python", "scripts/run_migrations.py", "/migrations"]
+    volumes:
+      - ./db/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
   postgres:
     image: postgres:16-alpine
     container_name: gamesales-postgres

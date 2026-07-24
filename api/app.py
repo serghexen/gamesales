@@ -22,201 +22,10 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env.dev", override=True)
 logger = logging.getLogger(__name__)
 
+
 def ensure_analytics_schema():
-    try:
-        with psycopg.connect(DB_DSN) as conn:
-            # Поддерживаем схему в актуальном состоянии для локального запуска без ручных миграций.
-            exec1(conn, "ALTER TABLE app.regions ADD COLUMN IF NOT EXISTS purchase_cost_rate numeric(12,6) NOT NULL DEFAULT 1.0")
-            exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS completed_at timestamptz")
-            exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS order_number text")
-            exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS responsible_username text")
-            exec1(conn, "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS lock_version integer NOT NULL DEFAULT 1")
-            exec1(conn, "ALTER TABLE app.accounts ADD COLUMN IF NOT EXISTS is_deactivated boolean NOT NULL DEFAULT false")
-            exec1(conn, "ALTER TABLE app.accounts ADD COLUMN IF NOT EXISTS deactivated_at timestamptz")
-            exec1(conn, "ALTER TABLE app.accounts ADD COLUMN IF NOT EXISTS next_activation_at timestamptz")
-            # Фиксируем копирование резерва отдельно от сделки, чтобы повторная выдача была невозможна.
-            exec1(
-                conn,
-                """
-                CREATE TABLE IF NOT EXISTS app.account_reserve_claims (
-                  claim_token uuid PRIMARY KEY,
-                  account_id bigint NOT NULL REFERENCES app.accounts(account_id) ON DELETE CASCADE,
-                  reserve_key text NOT NULL,
-                  claimed_by text NOT NULL DEFAULT '',
-                  claimed_at timestamptz NOT NULL DEFAULT now(),
-                  UNIQUE (account_id, reserve_key)
-                )
-                """,
-            )
-            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_account_reserve_claims_account ON app.account_reserve_claims(account_id)")
-            # Подготавливаем инфраструктуру сроков подписок, чтобы схема поднималась при деплое без ручного шага.
-            exec1(
-                conn,
-                """
-                CREATE TABLE IF NOT EXISTS app.subscription_terms (
-                  term_id bigserial PRIMARY KEY,
-                  product_id bigint NOT NULL REFERENCES app.subscription_products(product_id) ON DELETE CASCADE,
-                  account_id bigint NOT NULL REFERENCES app.accounts(account_id) ON DELETE RESTRICT,
-                  valid_until date NOT NULL,
-                  notes text,
-                  is_archived boolean NOT NULL DEFAULT false,
-                  created_at timestamptz NOT NULL DEFAULT now()
-                )
-                """,
-            )
-            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_subscription_terms_product ON app.subscription_terms(product_id, valid_until)")
-            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_subscription_terms_account ON app.subscription_terms(account_id)")
-            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_subscription_terms_archived ON app.subscription_terms(is_archived)")
-            exec1(
-                conn,
-                "ALTER TABLE app.deal_items ADD COLUMN IF NOT EXISTS subscription_term_id bigint REFERENCES app.subscription_terms(term_id) ON DELETE RESTRICT",
-            )
-            exec1(
-                conn,
-                "ALTER TABLE app.account_slot_assignments ADD COLUMN IF NOT EXISTS subscription_term_id bigint REFERENCES app.subscription_terms(term_id) ON DELETE RESTRICT",
-            )
-            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_deal_items_subscription_term_id ON app.deal_items(subscription_term_id)")
-            exec1(
-                conn,
-                "CREATE INDEX IF NOT EXISTS idx_slot_assignments_subscription_term_id ON app.account_slot_assignments(subscription_term_id)",
-            )
-            # Готовим справочник мессенджеров и ссылку сделки на него.
-            exec1(
-                conn,
-                """
-                CREATE TABLE IF NOT EXISTS app.messengers (
-                  messenger_id bigserial PRIMARY KEY,
-                  code text NOT NULL,
-                  name text NOT NULL,
-                  is_archived boolean NOT NULL DEFAULT false
-                )
-                """,
-            )
-            exec1(conn, "CREATE INDEX IF NOT EXISTS ix_messengers_archived ON app.messengers (is_archived)")
-            exec1(conn, "CREATE INDEX IF NOT EXISTS ix_messengers_code ON app.messengers (code)")
-            exec1(
-                conn,
-                "ALTER TABLE app.deals ADD COLUMN IF NOT EXISTS messenger_id bigint REFERENCES app.messengers(messenger_id)",
-            )
-            exec1(conn, "CREATE INDEX IF NOT EXISTS ix_deals_messenger_id ON app.deals (messenger_id)")
-            exec1(conn, "CREATE SCHEMA IF NOT EXISTS finance")
-            exec1(
-                conn,
-                """
-                CREATE TABLE IF NOT EXISTS finance.cash_flow_opening_balances (
-                  balance_month date PRIMARY KEY,
-                  amount numeric(14,2) NOT NULL DEFAULT 0,
-                  comment text,
-                  created_by text NOT NULL DEFAULT '',
-                  created_at timestamptz NOT NULL DEFAULT now(),
-                  updated_at timestamptz NOT NULL DEFAULT now()
-                )
-                """,
-            )
-            exec1(
-                conn,
-                """
-                CREATE TABLE IF NOT EXISTS finance.card_balance_snapshots (
-                  snapshot_id bigserial PRIMARY KEY,
-                  card_code text NOT NULL,
-                  region_code text NOT NULL,
-                  currency text NOT NULL DEFAULT 'TRY',
-                  amount numeric(14,2) NOT NULL DEFAULT 0,
-                  comment text,
-                  created_by text NOT NULL DEFAULT '',
-                  created_at timestamptz NOT NULL DEFAULT now()
-                )
-                """,
-            )
-            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_card_balance_snapshots_card_created ON finance.card_balance_snapshots(card_code, created_at DESC, snapshot_id DESC)")
-            # Новая логика подписок считает занятость по типу слота/емкости, поэтому
-            # глобальный unique по subscription_term_id больше не нужен.
-            exec1(conn, "DROP INDEX IF EXISTS app.uq_slot_assignments_active_subscription_term")
-            # Добавляем статус черновика для flow-логики, чтобы можно было сохранять неполные продажи.
-            exec1(
-                conn,
-                """
-                INSERT INTO app.deal_flow_statuses(code, name)
-                VALUES ('draft', 'Черновик')
-                ON CONFLICT (code) DO NOTHING
-                """,
-            )
-            exec1(
-                conn,
-                """
-                CREATE TABLE IF NOT EXISTS tg.dialog_snapshot (
-                  chat_id       bigint PRIMARY KEY,
-                  title         text NOT NULL DEFAULT '',
-                  unread_count  integer NOT NULL DEFAULT 0,
-                  is_group      boolean NOT NULL DEFAULT false,
-                  is_channel    boolean NOT NULL DEFAULT false,
-                  updated_at    timestamptz NOT NULL DEFAULT now()
-                )
-                """,
-            )
-            exec1(
-                conn,
-                "CREATE INDEX IF NOT EXISTS idx_tg_dialog_snapshot_updated_at ON tg.dialog_snapshot(updated_at DESC)",
-            )
-            # Храним операции InterHub до финального статуса, чтобы не потерять ключ ваучера и не повторить списание.
-            exec1(
-                conn,
-                """
-                CREATE TABLE IF NOT EXISTS app.interhub_transactions (
-                  agent_transaction_id text PRIMARY KEY,
-                  service_id integer NOT NULL,
-                  account text NOT NULL DEFAULT '',
-                  amount numeric(14,2) NOT NULL DEFAULT 0,
-                  request_params jsonb NOT NULL DEFAULT '{}'::jsonb,
-                  state text NOT NULL DEFAULT 'checked',
-                  provider_status integer NOT NULL DEFAULT 0,
-                  provider_message text NOT NULL DEFAULT '',
-                  provider_transaction_id text NOT NULL DEFAULT '',
-                  gift_code text NOT NULL DEFAULT '',
-                  provider_response jsonb NOT NULL DEFAULT '{}'::jsonb,
-                  created_by text NOT NULL DEFAULT '',
-                  ozon_order_id bigint,
-                  created_at timestamptz NOT NULL DEFAULT now(),
-                  updated_at timestamptz NOT NULL DEFAULT now(),
-                  status_check_attempts integer NOT NULL DEFAULT 0,
-                  next_status_check_at timestamptz
-                )
-                """,
-            )
-            exec1(conn, "ALTER TABLE app.interhub_transactions ADD COLUMN IF NOT EXISTS status_check_attempts integer NOT NULL DEFAULT 0")
-            # Связываем автоматические покупки с заказом Ozon, чтобы у каждого кода оставался след в журнале поставщика.
-            exec1(conn, "ALTER TABLE app.interhub_transactions ADD COLUMN IF NOT EXISTS ozon_order_id bigint")
-            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_interhub_transactions_ozon_order ON app.interhub_transactions(ozon_order_id, created_at DESC)")
-            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_interhub_transactions_pending ON app.interhub_transactions(state, next_status_check_at)")
-            # Храним результаты массового calculate, чтобы цены и ошибки не требовали повторных запросов поставщику.
-            exec1(
-                conn,
-                """
-                CREATE TABLE IF NOT EXISTS app.interhub_price_calculations (
-                  id bigserial PRIMARY KEY,
-                  batch_id text NOT NULL,
-                  service_id integer NOT NULL,
-                  service_title text NOT NULL DEFAULT '',
-                  category text NOT NULL DEFAULT '',
-                  service_type text NOT NULL DEFAULT '',
-                  nominal_id integer NOT NULL,
-                  nominal_title text NOT NULL DEFAULT '',
-                  success boolean NOT NULL DEFAULT false,
-                  provider_status integer NOT NULL DEFAULT 0,
-                  provider_message text NOT NULL DEFAULT '',
-                  fixed_amount numeric(14,2) NOT NULL DEFAULT 0,
-                  provider_response jsonb NOT NULL DEFAULT '{}'::jsonb,
-                  created_by text NOT NULL DEFAULT '',
-                  calculated_at timestamptz NOT NULL DEFAULT now()
-                )
-                """,
-            )
-            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_interhub_price_calculations_latest ON app.interhub_price_calculations(service_id, nominal_id, calculated_at DESC)")
-            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_interhub_price_calculations_batch ON app.interhub_price_calculations(batch_id, calculated_at DESC)")
-            conn.commit()
-    except Exception:
-        # Ошибки миграций не валят запуск, но обязательно пишем их в лог для диагностики.
-        logger.exception("Startup schema migration failed")
+    # Сохраняет совместимость старых тестов: реальная схема теперь меняется только мигратором.
+    return None
 
 
 @asynccontextmanager
@@ -224,13 +33,6 @@ async def lifespan(_: FastAPI):
     global _pool
     # Создаём и открываем пул соединений при каждом старте (поддерживает повторные запуски в тестах).
     _pool = ConnectionPool(DB_DSN, min_size=2, max_size=10, open=True)
-    # Выполняем легкую инициализацию схемы при старте приложения.
-    ensure_analytics_schema()
-    try:
-        # Миграции Ozon выполняются один раз до запуска фонового опроса, а не внутри пользовательских запросов.
-        ozon_prepare_marketplaces_schema()
-    except Exception:
-        logger.exception("Ozon marketplaces schema migration failed")
     stop_interhub_polling = asyncio.Event()
 
     async def poll_interhub_pending_transactions():
@@ -1323,9 +1125,6 @@ ozon_refresh_digital_supplier_orders = mount_marketplaces_routes(
     interhub_pay=interhub_pay,
     interhub_check_status=interhub_check_status,
 )
-# Берем стартовую миграцию у модуля Ozon, сохраняя саму функцию опроса без изменений.
-ozon_prepare_marketplaces_schema = ozon_refresh_digital_supplier_orders.prepare_schema
-
 mount_dashboard_routes(
     app,
     DB_DSN=DB_DSN,
