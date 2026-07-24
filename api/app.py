@@ -175,6 +175,7 @@ def ensure_analytics_schema():
                   gift_code text NOT NULL DEFAULT '',
                   provider_response jsonb NOT NULL DEFAULT '{}'::jsonb,
                   created_by text NOT NULL DEFAULT '',
+                  ozon_order_id bigint,
                   created_at timestamptz NOT NULL DEFAULT now(),
                   updated_at timestamptz NOT NULL DEFAULT now(),
                   status_check_attempts integer NOT NULL DEFAULT 0,
@@ -183,6 +184,9 @@ def ensure_analytics_schema():
                 """,
             )
             exec1(conn, "ALTER TABLE app.interhub_transactions ADD COLUMN IF NOT EXISTS status_check_attempts integer NOT NULL DEFAULT 0")
+            # Связываем автоматические покупки с заказом Ozon, чтобы у каждого кода оставался след в журнале поставщика.
+            exec1(conn, "ALTER TABLE app.interhub_transactions ADD COLUMN IF NOT EXISTS ozon_order_id bigint")
+            exec1(conn, "CREATE INDEX IF NOT EXISTS idx_interhub_transactions_ozon_order ON app.interhub_transactions(ozon_order_id, created_at DESC)")
             exec1(conn, "CREATE INDEX IF NOT EXISTS idx_interhub_transactions_pending ON app.interhub_transactions(state, next_status_check_at)")
             # Храним результаты массового calculate, чтобы цены и ошибки не требовали повторных запросов поставщику.
             exec1(

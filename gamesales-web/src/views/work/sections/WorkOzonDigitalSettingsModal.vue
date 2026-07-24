@@ -111,7 +111,7 @@
                 <p v-if="order.last_error" class="bad">{{ order.last_error }}</p>
                 <div class="ozon-digital-order__delivery">
                   <label class="field">
-                    <span>Ключ{{ order.required_qty > 1 ? `и — по одному в строке (${order.required_qty})` : '' }}</span>
+                    <span>{{ manualDeliveryLabel(order) }}</span>
                     <textarea v-model="deliveryDrafts[order.id]" class="input textarea" rows="2" placeholder="Вставьте ключ для покупателя"></textarea>
                   </label>
                   <button class="btn btn--primary" type="button" :disabled="deliveryBusy[order.id]" @click="submitDelivery(order)">
@@ -193,6 +193,16 @@ function formatOzonDate(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return String(value)
   return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+}
+
+function manualDeliveryLabel(order) {
+  // Подсказывает только недостающее число кодов, если часть заказа уже получила автовыдача.
+  const requiredQty = Math.max(1, Number(order?.required_qty || 1))
+  const remainingQty = Math.max(0, Number(order?.remaining_qty ?? requiredQty))
+  if (requiredQty === 1) return 'Ключ'
+  return remainingQty === requiredQty
+    ? `Ключи — по одному в строке (${requiredQty})`
+    : `Добавьте ключи — по одному в строке (осталось ${remainingQty} из ${requiredQty})`
 }
 
 async function submitDelivery(order) {

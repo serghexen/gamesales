@@ -101,7 +101,26 @@ class MarketplacesApiTests(unittest.TestCase):
         item = response.json()["items"][0]
         self.assertEqual(item["delivery_source"], "interhub")
         self.assertEqual(item["delivered_codes_masked"], ["••••IJKL"])
+        self.assertEqual(item["collected_qty"], 1)
+        self.assertEqual(item["remaining_qty"], 0)
         self.assertNotIn("delivered_codes", item)
+
+    # Частично полученные ключи должны показывать оператору только оставшееся количество для ручной выдачи.
+    def test_digital_orders_list_returns_remaining_quantity_after_partial_supplier_issue(self):
+        client, _writes = self.create_client(
+            rows=[(
+                42, "04259716-0125-1", "04259716-0125", "PUBG", 5196324554, 3,
+                "manual_required", "awaiting_packaging", None, datetime(2026, 7, 24, tzinfo=timezone.utc),
+                None, "Поставщик не выдал следующий ключ", "interhub", ["CODE-ONE", "CODE-TWO"],
+            )]
+        )
+        with client:
+            response = client.get("/marketplaces/ozon/catalog/103/digital-orders")
+
+        self.assertEqual(response.status_code, 200)
+        item = response.json()["items"][0]
+        self.assertEqual(item["collected_qty"], 2)
+        self.assertEqual(item["remaining_qty"], 1)
 
     # Полный ключ выдается только отдельным маршрутом, чтобы не попадать в общий список заказов.
     def test_digital_order_codes_returns_full_codes_for_privileged_request(self):

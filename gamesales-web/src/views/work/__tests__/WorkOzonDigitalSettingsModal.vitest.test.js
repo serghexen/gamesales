@@ -110,4 +110,24 @@ describe('WorkOzonDigitalSettingsModal', () => {
     expect(wrapper.text()).not.toContain('Выданный товар')
     expect(wrapper.findAll('.ozon-digital-order')).toHaveLength(1)
   })
+
+  it('asks only for the codes missing after a partial supplier issue', () => {
+    const props = buildProps()
+    props.ozonDigitalOrders = [{
+      id: 1,
+      product_name: 'PUBG 300 NC',
+      posting_number: '04259716-0123-1',
+      sku: 5196324554,
+      status: 'manual_required',
+      required_qty: 3,
+      collected_qty: 2,
+      remaining_qty: 1,
+    }]
+    const wrapper = mount(WorkOzonDigitalSettingsModal, {
+      props,
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(wrapper.find('.ozon-digital-order__delivery').text()).toContain('осталось 1 из 3')
+  })
 })
