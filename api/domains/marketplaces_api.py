@@ -296,7 +296,7 @@ def mount_marketplaces_routes(
                 = ARRAY['order_id', 'supplier_id']
               LIMIT 1;
               IF constraint_name IS NOT NULL THEN
-                EXECUTE format('ALTER TABLE app.marketplace_ozon_digital_supplier_attempts DROP CONSTRAINT %I', constraint_name);
+                EXECUTE format('ALTER TABLE app.marketplace_ozon_digital_supplier_attempts DROP CONSTRAINT %%I', constraint_name);
               END IF;
             END $$
             """,

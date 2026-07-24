@@ -84,6 +84,9 @@ class MarketplacesApiTests(unittest.TestCase):
         self._refresh_orders.prepare_schema()
 
         self.assertTrue(any("ALTER TABLE app.marketplace_ozon_digital_orders" in sql for sql, _params in writes))
+        # Экранирование нужно psycopg, иначе PostgreSQL-формат %I ошибочно читается как параметр запроса.
+        migration_sql = next(sql for sql, _params in writes if "DROP CONSTRAINT %%I" in sql)
+        self.assertIn("DROP CONSTRAINT %%I", migration_sql)
 
     # История показывает источник и только маску ключа, а полный код остается отдельным защищенным запросом.
     def test_digital_orders_list_masks_codes_and_returns_supplier_source(self):
