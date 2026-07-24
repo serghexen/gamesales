@@ -167,22 +167,26 @@ class OzonServiceTest(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "must be asat"):
             ozon_service.normalize_ozon_store_code("sps")
 
-    # Каталог должен читаться постранично, чтобы первый импорт не терял карточки большого магазина.
-    def test_fetch_catalog_reads_all_pages(self):
+    # Каталог и архив должны читаться постранично, чтобы UI не смешивал активные карточки со снятыми с продажи.
+    def test_fetch_catalog_reads_active_and_archived_pages(self):
         responses = [
             _Response({"result": {"items": [{"product_id": 101, "offer_id": "steam-1000"}], "last_id": "next"}}),
             _Response({"result": {"items": [{"product_id": 102, "offer_id": "psn-500"}], "last_id": ""}}),
+            _Response({"result": {"items": [{"product_id": 103, "offer_id": "psn-old", "archived": True}], "last_id": ""}}),
             _Response({"items": [
                 {"id": 101, "name": "Steam 1000", "status": {"state": "sale"}},
                 {"id": 102, "name": "PSN 500", "status": {"state": "sale"}},
+                {"id": 103, "name": "PSN old", "status": {"state": "sale"}},
             ]}),
             _Response({"items": [
                 {"product_id": 101, "price": {"price": 1000, "currency_code": "RUB"}},
                 {"product_id": 102, "price": {"price": 500, "currency_code": "RUB"}},
+                {"product_id": 103, "price": {"price": 100, "currency_code": "RUB"}},
             ]}),
             _Response({"items": [
                 {"product_id": 101, "stocks": [{"type": "fbs", "present": 3}]},
                 {"product_id": 102, "stocks": [{"type": "fbo", "present": 2}]},
+                {"product_id": 103, "stocks": []},
             ]}),
         ]
         with (
@@ -199,23 +203,26 @@ class OzonServiceTest(unittest.TestCase):
         ):
             rows = ozon_service.fetch_ozon_catalog_items()
 
-        self.assertEqual([row["product_id"] for row in rows], [101, 102])
-        self.assertEqual([row["name"] for row in rows], ["Steam 1000", "PSN 500"])
+        self.assertEqual([row["product_id"] for row in rows], [101, 102, 103])
+        self.assertEqual([row["name"] for row in rows], ["Steam 1000", "PSN 500", "PSN old"])
+        self.assertEqual(rows[2]["visibility"], "ARCHIVED")
         self.assertEqual(rows[0]["ozon_price"], {"price": 1000, "currency_code": "RUB"})
         self.assertEqual(rows[1]["ozon_stocks"], [{"type": "fbo", "present": 2}])
         self.assertEqual(urlopen.call_args_list[0].args[0].full_url, "https://api-seller.ozon.ru/v3/product/list")
-        self.assertEqual(urlopen.call_args_list[2].args[0].full_url, "https://api-seller.ozon.ru/v3/product/info/list")
-        self.assertEqual(urlopen.call_args_list[3].args[0].full_url, "https://api-seller.ozon.ru/v5/product/info/prices")
-        self.assertEqual(urlopen.call_args_list[4].args[0].full_url, "https://api-seller.ozon.ru/v4/product/info/stocks")
+        self.assertEqual(urlopen.call_args_list[3].args[0].full_url, "https://api-seller.ozon.ru/v3/product/info/list")
+        self.assertEqual(urlopen.call_args_list[4].args[0].full_url, "https://api-seller.ozon.ru/v5/product/info/prices")
+        self.assertEqual(urlopen.call_args_list[5].args[0].full_url, "https://api-seller.ozon.ru/v4/product/info/stocks")
         first_payload = json.loads(urlopen.call_args_list[0].args[0].data.decode("utf-8"))
         second_payload = json.loads(urlopen.call_args_list[1].args[0].data.decode("utf-8"))
-        details_payload = json.loads(urlopen.call_args_list[2].args[0].data.decode("utf-8"))
-        prices_payload = json.loads(urlopen.call_args_list[3].args[0].data.decode("utf-8"))
-        stocks_payload = json.loads(urlopen.call_args_list[4].args[0].data.decode("utf-8"))
+        archive_payload = json.loads(urlopen.call_args_list[2].args[0].data.decode("utf-8"))
+        details_payload = json.loads(urlopen.call_args_list[3].args[0].data.decode("utf-8"))
+        prices_payload = json.loads(urlopen.call_args_list[4].args[0].data.decode("utf-8"))
+        stocks_payload = json.loads(urlopen.call_args_list[5].args[0].data.decode("utf-8"))
         self.assertEqual(first_payload["filter"]["visibility"], "ALL")
         self.assertEqual(second_payload["last_id"], "next")
-        self.assertEqual(details_payload["product_id"], [101, 102])
-        self.assertEqual(prices_payload["filter"]["product_id"], [101, 102])
+        self.assertEqual(archive_payload["filter"]["visibility"], "ARCHIVED")
+        self.assertEqual(details_payload["product_id"], [101, 102, 103])
+        self.assertEqual(prices_payload["filter"]["product_id"], [101, 102, 103])
         self.assertEqual(stocks_payload["filter"]["with_quant"], {"created": True, "exists": True})
 
     # Для цифровой карточки Ozon должен получить артикул и лимит, а не локальные ключи.
@@ -229,6 +236,18 @@ class OzonServiceTest(unittest.TestCase):
         request = urlopen.call_args.args[0]
         self.assertEqual(request.full_url, "https://api-seller.ozon.ru/v1/product/digital/stocks/import")
         self.assertEqual(json.loads(request.data.decode("utf-8")), {"stocks": [{"offer_id": "PS5-6", "stock": 1}]})
+
+    # Архивация и восстановление должны использовать один ID карточки, а не артикул продавца.
+    def test_update_catalog_archive_uses_product_id_and_expected_endpoint(self):
+        with (
+            patch.dict(os.environ, {"OZON_CLIENT_ID": "client-1", "OZON_API_KEY": "secret-1"}, clear=False),
+            patch.object(ozon_service.urllib.request, "urlopen", return_value=_Response({})) as urlopen,
+        ):
+            ozon_service.update_ozon_catalog_archive(5224093734, archived=True)
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://api-seller.ozon.ru/v1/product/archive")
+        self.assertEqual(json.loads(request.data.decode("utf-8")), {"product_id": [5224093734]})
 
     # При неполном снимке артикул должен восстанавливаться точечным запросом по ID карточки.
     def test_fetch_catalog_offer_id_reads_single_product(self):

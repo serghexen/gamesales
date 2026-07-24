@@ -65,7 +65,7 @@ class MarketplacesApiTests(unittest.TestCase):
     # Чтение снимка не должно выполнять запрос к внешнему кабинету Ozon.
     def test_list_catalog_returns_local_snapshot(self):
         client, writes = self.create_client(
-            rows=[(101, "steam-1000", "Steam 1000", "VISIBLE", "sale", datetime(2026, 7, 21, tzinfo=timezone.utc))]
+            rows=[(101, "steam-1000", "Steam 1000", "VISIBLE", "sale", {"sku": 5510101, "fbs_sku": 4410101}, datetime(2026, 7, 21, tzinfo=timezone.utc))]
         )
         with client:
             response = client.get("/marketplaces/ozon/catalog")
@@ -73,7 +73,64 @@ class MarketplacesApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["items"][0]["external_product_id"], 101)
         self.assertEqual(response.json()["items"][0]["offer_id"], "steam-1000")
+        self.assertEqual(response.json()["items"][0]["sku"], "5510101")
         self.assertTrue(writes, "schema was not prepared")
+
+    # История показывает источник и только маску ключа, а полный код остается отдельным защищенным запросом.
+    def test_digital_orders_list_masks_codes_and_returns_supplier_source(self):
+        client, _writes = self.create_client(
+            rows=[(
+                41, "04259716-0124-1", "04259716-0124", "PUBG", 5196324554, 1,
+                "delivered", "done", None, datetime(2026, 7, 24, tzinfo=timezone.utc),
+                datetime(2026, 7, 24, tzinfo=timezone.utc), "", "interhub", ["ABCD-EFGH-IJKL"],
+            )]
+        )
+        with client:
+            response = client.get("/marketplaces/ozon/catalog/103/digital-orders")
+
+        self.assertEqual(response.status_code, 200)
+        item = response.json()["items"][0]
+        self.assertEqual(item["delivery_source"], "interhub")
+        self.assertEqual(item["delivered_codes_masked"], ["••••IJKL"])
+        self.assertNotIn("delivered_codes", item)
+
+    # Полный ключ выдается только отдельным маршрутом, чтобы не попадать в общий список заказов.
+    def test_digital_order_codes_returns_full_codes_for_privileged_request(self):
+        def q1_handler(sql, _params):
+            if "SELECT id, delivered_codes" in sql:
+                return (41, ["ABCD-EFGH-IJKL"])
+            return None
+
+        client, _writes = self.create_client(q1_handler=q1_handler)
+        with client:
+            response = client.get("/marketplaces/ozon/digital-orders/41/codes")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"id": 41, "codes": ["ABCD-EFGH-IJKL"]})
+
+    # Карточка операции должна брать именно успешную попытку поставщика, связанную с заказом Ozon.
+    def test_digital_order_supplier_operation_returns_interhub_transaction(self):
+        created_at = datetime(2026, 7, 24, 9, 20, tzinfo=timezone.utc)
+
+        def q1_handler(sql, _params):
+            if "FROM app.marketplace_ozon_digital_supplier_attempts AS attempt" in sql:
+                return (
+                    41, "interhub", "gamesales-check-17848657118956-c99e758d099fd", "interhub-3921",
+                    802, "300", 100.0, "paid", 0, "Успешно", created_at, created_at,
+                    "PUBG: New State - Global", "300 NC",
+                )
+            return None
+
+        client, _writes = self.create_client(q1_handler=q1_handler)
+        with client:
+            response = client.get("/marketplaces/ozon/digital-orders/41/supplier-operation")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["agent_transaction_id"], "gamesales-check-17848657118956-c99e758d099fd")
+        self.assertEqual(response.json()["provider_transaction_id"], "interhub-3921")
+        self.assertEqual(response.json()["service_title"], "PUBG: New State - Global")
+        self.assertEqual(response.json()["nominal_title"], "300 NC")
+        self.assertEqual(response.json()["amount"], 100.0)
 
     # Синхронизация сохраняет данные локально и не отдает клиенту секреты или сырой payload.
     def test_sync_catalog_saves_remote_items_locally(self):
@@ -91,12 +148,26 @@ class MarketplacesApiTests(unittest.TestCase):
         self.assertEqual(len(insert_calls), 1)
         self.assertEqual(insert_calls[0][1:4], (202, "psn-500", "PSN 500"))
 
+    # Архивирование должно отправляться в Ozon и сразу менять локальный снимок для списка карточек.
+    def test_archive_catalog_item_updates_remote_and_local_snapshot(self):
+        client, writes = self.create_client()
+        with patch("api.domains.marketplaces_api.update_ozon_catalog_archive", return_value={}) as update_archive:
+            with client:
+                response = client.post("/marketplaces/ozon/catalog/202/archive")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"external_product_id": 202, "archived": True})
+        update_archive.assert_called_once_with(202, archived=True, store_code="asat")
+        update_calls = [params for sql, params in writes if "UPDATE app.marketplace_ozon_catalog_items" in sql]
+        self.assertEqual(update_calls[0], ("ARCHIVED", "asat", 202))
+
     # Детали должны браться из локального jsonb и не дублировать неважный сырой ответ Ozon в UI.
     def test_catalog_details_returns_selected_product_fields(self):
         client, _writes = self.create_client(
             detail_row=({
                 "name": "Гта 6 PS5",
                 "offer_id": "ASAT110",
+                "sku": 5196324554,
                 "primary_image": "https://example.test/ps5.jpg",
                 "barcodes": ["4601234567890"],
                 "category_id": 123,
@@ -113,6 +184,7 @@ class MarketplacesApiTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["external_product_id"], 101)
         self.assertEqual(body["offer_id"], "ASAT110")
+        self.assertEqual(body["sku"], "5196324554")
         self.assertEqual(body["title"], "Гта 6 PS5")
         self.assertEqual(body["barcodes"], ["4601234567890"])
         self.assertEqual(body["fbo_sku"], "1001")
@@ -287,6 +359,7 @@ class MarketplacesApiTests(unittest.TestCase):
         self.assertEqual(response.json()["available_stock"], 1)
         order_inserts = [params for sql, params in writes if "INSERT INTO app.marketplace_ozon_digital_orders" in sql]
         self.assertEqual(order_inserts[-1][7], "delivered")
+        self.assertEqual(order_inserts[-1][8], "done")
         update_stock.assert_not_called()
 
     # Пустой список складов Ozon означает нулевой остаток, а не отсутствие значения в карточке.

@@ -232,38 +232,46 @@ def fetch_ozon_catalog_items(
     timeout = max(5, _env_int("OZON_TIMEOUT_SEC", 60))
     page_size = min(1000, max(1, _env_int("OZON_CATALOG_PAGE_SIZE", 1000)))
     max_pages = max(1, _env_int("OZON_CATALOG_MAX_PAGES", 1000))
-    rows: list[dict[str, Any]] = []
-    last_id = ""
 
-    for page in range(1, max_pages + 1):
-        if progress:
-            progress(f"Загружаем каталог Ozon: страница {page}")
-        data = _request_json(
-            f"{base_url}/v3/product/list",
-            client_id=client_id,
-            api_key=api_key,
-            payload={
-                "filter": {"offer_id": [], "product_id": [], "visibility": "ALL"},
-                "last_id": last_id,
-                "limit": page_size,
-            },
-            timeout=timeout,
-        )
-        result = data.get("result")
-        if not isinstance(result, dict):
-            raise HTTPException(502, "Ozon catalog response does not contain result")
-        items = result.get("items")
-        if not isinstance(items, list):
-            raise HTTPException(502, "Ozon catalog response does not contain items")
-        rows.extend(item for item in items if isinstance(item, dict))
-        next_last_id = str(result.get("last_id") or "").strip()
-        if not next_last_id or not items:
-            break
-        if next_last_id == last_id:
-            raise HTTPException(502, "Ozon catalog pagination did not advance")
-        last_id = next_last_id
-    else:
+    def fetch_catalog_segment(visibility: str, label: str) -> list[dict[str, Any]]:
+        # Читает отдельный сегмент, потому что Ozon не включает архивные товары в выборку ALL.
+        segment_rows: list[dict[str, Any]] = []
+        last_id = ""
+        for page in range(1, max_pages + 1):
+            if progress:
+                progress(f"Загружаем {label} Ozon: страница {page}")
+            data = _request_json(
+                f"{base_url}/v3/product/list",
+                client_id=client_id,
+                api_key=api_key,
+                payload={
+                    "filter": {"offer_id": [], "product_id": [], "visibility": visibility},
+                    "last_id": last_id,
+                    "limit": page_size,
+                },
+                timeout=timeout,
+            )
+            result = data.get("result")
+            if not isinstance(result, dict):
+                raise HTTPException(502, "Ozon catalog response does not contain result")
+            items = result.get("items")
+            if not isinstance(items, list):
+                raise HTTPException(502, "Ozon catalog response does not contain items")
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                # Сохраняем признак явно: подробный ответ может не вернуть visibility архивной карточки.
+                segment_rows.append({**item, "visibility": "ARCHIVED"} if visibility == "ARCHIVED" else item)
+            next_last_id = str(result.get("last_id") or "").strip()
+            if not next_last_id or not items:
+                return segment_rows
+            if next_last_id == last_id:
+                raise HTTPException(502, "Ozon catalog pagination did not advance")
+            last_id = next_last_id
         raise HTTPException(502, f"Ozon catalog exceeded {max_pages} pages")
+
+    # ALL у Ozon возвращает рабочий каталог без архива, поэтому читаем оба сегмента и объединяем их.
+    rows = fetch_catalog_segment("ALL", "каталог") + fetch_catalog_segment("ARCHIVED", "архив")
 
     details_by_product_id: dict[int, dict[str, Any]] = {}
     for offset in range(0, len(rows), 1000):
@@ -298,7 +306,10 @@ def fetch_ozon_catalog_items(
     for item in rows:
         raw_product_id = item.get("product_id") or item.get("id")
         details = details_by_product_id.get(int(raw_product_id)) if str(raw_product_id or "").isdigit() else None
-        enriched_rows.append({**item, **(details or {})})
+        enriched = {**item, **(details or {})}
+        if str(item.get("visibility") or "").upper() == "ARCHIVED":
+            enriched["visibility"] = "ARCHIVED"
+        enriched_rows.append(enriched)
 
     prices_by_product_id: dict[int, dict[str, Any]] = {}
     stocks_by_product_id: dict[int, list[dict[str, Any]]] = {}
@@ -411,6 +422,30 @@ def update_ozon_digital_stock(
         client_id=client_id,
         api_key=api_key,
         payload={"stocks": [{"offer_id": normalized_offer_id, "stock": int(stock)}]},
+        timeout=timeout,
+    )
+
+
+def update_ozon_catalog_archive(
+    product_id: int,
+    archived: bool,
+    store_code: str = "asat",
+) -> dict[str, Any]:
+    # Переносит карточку в архив или возвращает ее в продажу по стабильному ID Ozon.
+    normalized_store_code = normalize_ozon_store_code(store_code)
+    normalized_product_id = int(product_id or 0)
+    if normalized_product_id <= 0:
+        raise HTTPException(400, "Ozon product_id is required")
+    client_id = _required_store_env("CLIENT_ID", store_code=normalized_store_code)
+    api_key = _required_store_env("API_KEY", store_code=normalized_store_code)
+    base_url = str(os.getenv("OZON_SELLER_BASE_URL", OZON_SELLER_BASE_URL) or OZON_SELLER_BASE_URL).rstrip("/")
+    timeout = max(5, _env_int("OZON_TIMEOUT_SEC", 60))
+    endpoint = "/v1/product/archive" if archived else "/v1/product/unarchive"
+    return _request_json(
+        f"{base_url}{endpoint}",
+        client_id=client_id,
+        api_key=api_key,
+        payload={"product_id": [normalized_product_id]},
         timeout=timeout,
     )
 

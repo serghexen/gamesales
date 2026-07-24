@@ -66,10 +66,12 @@
         :show-ozon-catalog="ctx.showOzonCatalog"
         :close-ozon-catalog="ctx.closeOzonCatalog"
         :sync-ozon-catalog="ctx.syncOzonCatalog"
+        :update-ozon-catalog-archive="ctx.updateOzonCatalogArchive"
         :open-ozon-catalog-details="ctx.openOzonCatalogDetails"
         :ozon-catalog-items="ctx.ozonCatalogItems"
         :ozon-catalog-loading="ctx.ozonCatalogLoading"
         :ozon-catalog-syncing="ctx.ozonCatalogSyncing"
+        :ozon-catalog-item-action-id="ctx.ozonCatalogItemActionId"
         :ozon-catalog-error="ctx.ozonCatalogError"
         :ozon-catalog-ok="ctx.ozonCatalogOk"
       />
@@ -81,6 +83,19 @@
         :ozon-catalog-details="ctx.ozonCatalogDetails"
         :ozon-catalog-details-loading="ctx.ozonCatalogDetailsLoading"
         :ozon-catalog-details-error="ctx.ozonCatalogDetailsError"
+        :ozon-digital-settings="ctx.ozonDigitalSettings"
+        :ozon-digital-settings-loading="ctx.ozonDigitalSettingsLoading"
+        :ozon-digital-settings-saving="ctx.ozonDigitalSettingsSaving"
+        :ozon-digital-settings-error="ctx.ozonDigitalSettingsError"
+        :ozon-digital-settings-ok="ctx.ozonDigitalSettingsOk"
+        :ozon-digital-orders="ctx.ozonDigitalOrders"
+        :ozon-digital-orders-syncing="ctx.ozonDigitalOrdersSyncing"
+        :load-ozon-digital-settings="ctx.loadOzonDigitalSettings"
+        :save-ozon-digital-settings="ctx.saveOzonDigitalSettings"
+        :sync-ozon-digital-orders="ctx.syncOzonDigitalOrders"
+        :can-reveal-ozon-digital-codes="ctx.isAdmin"
+        :reveal-ozon-digital-order-codes="ctx.revealOzonDigitalOrderCodes"
+        :load-ozon-digital-supplier-operation="ctx.loadOzonDigitalSupplierOperation"
       />
 
       <WorkOzonDigitalSettingsModal
@@ -89,14 +104,12 @@
         :ozon-digital-settings="ctx.ozonDigitalSettings"
         :ozon-digital-settings-loading="ctx.ozonDigitalSettingsLoading"
         :ozon-digital-settings-saving="ctx.ozonDigitalSettingsSaving"
-        :ozon-digital-orders-syncing="ctx.ozonDigitalOrdersSyncing"
         :ozon-digital-settings-error="ctx.ozonDigitalSettingsError"
         :ozon-digital-settings-ok="ctx.ozonDigitalSettingsOk"
         :ozon-digital-orders="ctx.ozonDigitalOrders"
         :interhub-services="ctx.ozonInterhubServices"
         :interhub-services-loading="ctx.ozonInterhubServicesLoading"
         :save-ozon-digital-settings="ctx.saveOzonDigitalSettings"
-        :sync-ozon-digital-orders="ctx.syncOzonDigitalOrders"
         :deliver-ozon-digital-order="ctx.deliverOzonDigitalOrder"
       />
 

@@ -9,44 +9,66 @@
         <div class="panel__head panel__head--tight modal__head">
           <div>
             <h3>Ключи Ozon</h3>
-            <p class="muted ozon-catalog-modal__hint">Сначала ручная выдача: ключ отправляется только после вашего подтверждения.</p>
           </div>
-          <div class="toolbar-actions">
-            <button class="ghost" type="button" @click="closeOzonDigitalSettings">К карточке</button>
-            <button class="btn btn--icon-plain" type="button" aria-label="Закрыть" title="Закрыть" @click="closeOzonDigitalSettings">
+          <div class="toolbar-actions ozon-digital-modal__head-actions">
+            <button
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save"
+              type="button"
+              :disabled="ozonDigitalSettingsSaving"
+              aria-label="Сохранить настройки"
+              title="Сохранить настройки"
+              @click="saveOzonDigitalSettings"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 4h12l4 4v12H4z" />
+                <path d="M7 4v6h8V4" />
+                <path d="M7 20v-6h10v6" />
+              </svg>
+            </button>
+            <button
+              class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--edit"
+              type="button"
+              aria-label="Вернуться к карточке"
+              title="К карточке"
+              @click="closeOzonDigitalSettings"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5" /><path d="m11 18-6-6 6-6" /></svg>
+            </button>
+            <button class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close" type="button" aria-label="Закрыть" title="Закрыть" @click="closeOzonDigitalSettings">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6l-12 12" /></svg>
             </button>
           </div>
         </div>
-        <div class="modal__body">
-          <p v-if="ozonDigitalSettingsLoading" class="muted">Загружаем настройки ручной выдачи…</p>
-          <template v-else>
+        <div class="modal__body" :class="{ 'modal__body--locked': isOzonDigitalBusy, 'modal__body--loader': isOzonDigitalBusy }">
+          <div v-if="isOzonDigitalBusy" class="modal__body-overlay">
+            <WorkHamsterLoader :label="ozonDigitalBusyLabel" />
+          </div>
+          <template v-if="!ozonDigitalSettingsLoading">
             <p v-if="ozonDigitalSettingsError" class="bad">{{ ozonDigitalSettingsError }}</p>
             <p v-if="ozonDigitalSettingsOk" class="good">{{ ozonDigitalSettingsOk }}</p>
 
             <section class="ozon-digital-modal__card">
               <div class="ozon-digital-modal__card-head">
                 <div>
-                  <span class="ozon-digital-modal__eyebrow">Настройка выдачи</span>
-                  <strong>{{ automaticSupplierEnabled ? 'Interhub выдаёт ключ автоматически' : 'Ручная выдача — резервный режим' }}</strong>
+                  <span class="ozon-digital-modal__eyebrow">Поставщик ключей</span>
+                  <strong>Interhub</strong>
                 </div>
-                <span class="ozon-digital-modal__mode">{{ automaticSupplierEnabled ? 'Поставщик №1' : 'Без автоотправки' }}</span>
+                <div class="ozon-digital-modal__auto-switch">
+                  <span>Автовыдача</span>
+                  <label class="switch">
+                    <input v-model="autoIssueEnabled" type="checkbox" :disabled="!ozonDigitalSettings.interhub_service_id" />
+                    <span class="slider">
+                      <span class="circle">
+                        <svg class="cross" viewBox="0 0 365.696 365.696" aria-hidden="true"><path fill="currentColor" d="M243.188 182.86 356.32 69.726c12.5-12.5 12.5-32.766 0-45.247L341.238 9.398c-12.504-12.503-32.77-12.503-45.25 0L182.86 122.528 69.727 9.374c-12.5-12.5-32.766-12.5-45.247 0L9.375 24.457c-12.5 12.504-12.5 32.77 0 45.25l113.152 113.152L9.398 295.99c-12.503 12.503-12.503 32.769 0 45.25L24.48 356.32c12.5 12.5 32.766 12.5 45.247 0l113.132-113.132L295.99 356.32c12.503 12.5 32.769 12.5 45.25 0l15.081-15.082c12.5-12.504 12.5-32.77 0-45.25zm0 0" /></svg>
+                        <svg class="checkmark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.707 19.121a.997.997 0 0 1-1.414 0l-5.646-5.647a1.5 1.5 0 0 1 0-2.121l.707-.707a1.5 1.5 0 0 1 2.121 0L9 14.171l9.525-9.525a1.5 1.5 0 0 1 2.121 0l.707.707a1.5 1.5 0 0 1 0 2.121z" /></svg>
+                      </span>
+                    </span>
+                  </label>
+                </div>
               </div>
 
-              <div class="ozon-digital-modal__setup">
-                <div class="ozon-digital-modal__limit">
-                  <label class="field">
-                    <span>Остаток для Ozon</span>
-                    <input v-model.number="ozonDigitalSettings.manual_stock_limit" class="input" type="number" min="0" max="100000" step="1" />
-                  </label>
-                  <p class="muted">Сколько укажете, столько отправим в Ozon. Меняется только после нового сохранения.</p>
-                  <p class="ozon-digital-modal__offer">Артикул: <strong>{{ ozonDigitalSettings.offer_id || '—' }}</strong></p>
-                </div>
-                <div class="ozon-digital-modal__supplier">
-                  <div class="ozon-digital-modal__supplier-title">
-                    <span>Поставщик ключей</span>
-                    <small>Приоритет №1</small>
-                  </div>
+              <div class="ozon-digital-modal__supplier">
+                <div class="ozon-digital-modal__supplier-fields">
                   <label class="field">
                     <span>Услуга Interhub</span>
                     <select v-model="ozonDigitalSettings.interhub_service_id" class="input" :disabled="interhubServicesLoading">
@@ -63,65 +85,31 @@
                       <option v-for="nominal in interhubNominals" :key="nominal.value" :value="nominal.value">{{ nominal.label }}</option>
                     </select>
                   </label>
-                  <label class="ozon-digital-modal__check">
-                    <input v-model="ozonDigitalSettings.interhub_enabled" type="checkbox" :disabled="!ozonDigitalSettings.interhub_service_id" />
-                    <span>Пробовать Interhub первым</span>
-                  </label>
-                  <label class="ozon-digital-modal__check">
-                    <input v-model="ozonDigitalSettings.auto_issue_enabled" type="checkbox" :disabled="!ozonDigitalSettings.interhub_enabled" />
-                    <span>Выдавать автоматически</span>
-                  </label>
-                  <p class="muted">Если ключа нет или нет баланса, заказ останется для ручной выдачи.</p>
-                </div>
-                <div class="ozon-digital-modal__messages">
-                  <label class="field">
-                    <span>Инструкция покупателю</span>
-                    <textarea v-model="ozonDigitalSettings.activation_instruction" class="input textarea" rows="2" placeholder="Например: активируйте ключ в PlayStation Store."></textarea>
-                  </label>
-                  <label class="field">
-                    <span>Сообщение при проблеме</span>
-                    <textarea v-model="ozonDigitalSettings.support_error_message" class="input textarea" rows="2" placeholder="Произошла ошибка, обратитесь в поддержку."></textarea>
-                  </label>
                 </div>
               </div>
-              <div class="ozon-digital-modal__footer">
-                <span class="muted">Сохраняйте, когда хотите вручную изменить остаток в Ozon.</span>
-                <button class="btn btn--primary" type="button" :disabled="ozonDigitalSettingsSaving" @click="saveOzonDigitalSettings">
-                  {{ ozonDigitalSettingsSaving ? 'Публикуем…' : 'Сохранить и отправить остаток' }}
-                </button>
-              </div>
-
-              <section class="ozon-digital-modal__stats" aria-label="Статистика ключей Ozon">
-                <div><span>Отправлено в Ozon</span><strong>{{ ozonDigitalSettings.published_stock }}</strong></div>
-                <div><span>Текущий остаток</span><strong>{{ ozonDigitalSettings.available_stock }}</strong></div>
-                <div><span>Требуют выдачи</span><strong>{{ ozonDigitalSettings.pending_orders }}</strong></div>
-                <div><span>Выдано</span><strong>{{ ozonDigitalSettings.delivered_orders }}</strong></div>
-              </section>
             </section>
 
             <section class="ozon-digital-modal__orders">
               <div class="ozon-digital-modal__orders-head">
                 <div>
-                  <h4>Заказы на выдачу</h4>
-                  <p class="muted">Заказы Ozon резервирует сам; остаток меняется только вручную выше.</p>
+                  <h4>Ручная выдача</h4>
+                  <p class="muted">Заказы, для которых поставщик не выдал ключ.</p>
                 </div>
-                <button class="ghost" type="button" :disabled="ozonDigitalOrdersSyncing" @click="syncOzonDigitalOrders">
-                  {{ ozonDigitalOrdersSyncing ? 'Проверяем…' : 'Проверить Ozon' }}
-                </button>
+                <span class="ozon-digital-modal__manual-count">{{ manualOzonDigitalOrders.length }}</span>
               </div>
 
-              <p v-if="!ozonDigitalOrders.length" class="ozon-digital-modal__empty muted">Заказов на ручную выдачу пока нет.</p>
-              <article v-for="order in ozonDigitalOrders" :key="order.id" class="ozon-digital-order">
+              <p v-if="!manualOzonDigitalOrders.length" class="ozon-digital-modal__empty muted">Заказов, требующих ручного ключа, пока нет.</p>
+              <article v-for="order in manualOzonDigitalOrders" :key="order.id" class="ozon-digital-order">
                 <div class="ozon-digital-order__head">
                   <div>
                     <strong>{{ order.product_name || 'Цифровой товар' }}</strong>
                     <p>Отправление {{ order.posting_number }} · SKU {{ order.sku }}</p>
                   </div>
-                  <span :class="['ozon-digital-order__status', `ozon-digital-order__status--${order.status}`]">{{ orderStatusLabel(order.status) }}</span>
+                  <span class="ozon-digital-order__status ozon-digital-order__status--manual_required">Нужен ключ</span>
                 </div>
                 <p v-if="order.waiting_deadline_at" class="muted">Код ожидается до: {{ formatOzonDate(order.waiting_deadline_at) }}</p>
                 <p v-if="order.last_error" class="bad">{{ order.last_error }}</p>
-                <div v-if="order.status === 'manual_required'" class="ozon-digital-order__delivery">
+                <div class="ozon-digital-order__delivery">
                   <label class="field">
                     <span>Ключ{{ order.required_qty > 1 ? `и — по одному в строке (${order.required_qty})` : '' }}</span>
                     <textarea v-model="deliveryDrafts[order.id]" class="input textarea" rows="2" placeholder="Вставьте ключ для покупателя"></textarea>
@@ -141,6 +129,7 @@
 
 <script setup>
 import { computed, reactive } from 'vue'
+import WorkHamsterLoader from './WorkHamsterLoader.vue'
 
 const props = defineProps({
   showOzonDigitalSettings: { type: Boolean, required: true },
@@ -148,22 +137,44 @@ const props = defineProps({
   ozonDigitalSettings: { type: Object, required: true },
   ozonDigitalSettingsLoading: { type: Boolean, required: true },
   ozonDigitalSettingsSaving: { type: Boolean, required: true },
-  ozonDigitalOrdersSyncing: { type: Boolean, required: true },
   ozonDigitalSettingsError: { type: String, default: '' },
   ozonDigitalSettingsOk: { type: String, default: '' },
   ozonDigitalOrders: { type: Array, default: () => [] },
   interhubServices: { type: Array, default: () => [] },
   interhubServicesLoading: { type: Boolean, default: false },
   saveOzonDigitalSettings: { type: Function, required: true },
-  syncOzonDigitalOrders: { type: Function, required: true },
   deliverOzonDigitalOrder: { type: Function, required: true },
 })
 const deliveryDrafts = reactive({})
 const deliveryBusy = reactive({})
 
-const automaticSupplierEnabled = computed(() => Boolean(
-  props.ozonDigitalSettings.interhub_enabled && props.ozonDigitalSettings.auto_issue_enabled && props.ozonDigitalSettings.interhub_service_id,
+const isOzonDigitalBusy = computed(() => Boolean(
+  props.ozonDigitalSettingsLoading
+  || props.ozonDigitalSettingsSaving
+  || Object.values(deliveryBusy).some(Boolean),
 ))
+
+const ozonDigitalBusyLabel = computed(() => {
+  // Объясняет текущую операцию, пока хомяк блокирует повторные действия в модалке.
+  if (props.ozonDigitalSettingsSaving) return 'Сохраняем настройки и отправляем остаток…'
+  if (Object.values(deliveryBusy).some(Boolean)) return 'Отправляем ключ покупателю…'
+  return 'Загружаем настройки ключей…'
+})
+
+const autoIssueEnabled = computed({
+  get: () => Boolean(props.ozonDigitalSettings.auto_issue_enabled),
+  set: (enabled) => {
+    // Один переключатель управляет всей автовыдачей и синхронно включает выбранного поставщика.
+    const value = Boolean(enabled)
+    props.ozonDigitalSettings.auto_issue_enabled = value
+    props.ozonDigitalSettings.interhub_enabled = value
+  },
+})
+
+const manualOzonDigitalOrders = computed(() => {
+  // Оставляет здесь только заказы с ручной выдачей: история выданных заказов находится в карточке товара.
+  return props.ozonDigitalOrders.filter((order) => String(order?.status || '').trim().toLowerCase() === 'manual_required')
+})
 
 const interhubNominals = computed(() => {
   // Берёт номиналы выбранной услуги из каталога поставщика, не требуя ручного ввода технического ID.
@@ -182,17 +193,6 @@ function formatOzonDate(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return String(value)
   return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
-}
-
-function orderStatusLabel(status) {
-  // Переводит технический статус в короткую подсказку для ручной обработки заказа.
-  return {
-    manual_required: 'Нужен ключ',
-    delivering: 'Отправляем',
-    delivered: 'Выдан',
-    supplier_processing: 'Interhub обрабатывает',
-    cancelled: 'Отменён',
-  }[status] || status
 }
 
 async function submitDelivery(order) {

@@ -5,6 +5,7 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError }) {
   const ozonCatalogItems = ref([])
   const ozonCatalogLoading = ref(false)
   const ozonCatalogSyncing = ref(false)
+  const ozonCatalogItemActionId = ref(0)
   const ozonCatalogError = ref('')
   const ozonCatalogOk = ref('')
   const showOzonCatalogDetails = ref(false)
@@ -76,6 +77,32 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError }) {
     }
   }
 
+  async function updateOzonCatalogArchive(item, archived) {
+    // Меняет архивный статус одной карточки и обновляет локальный список без полной синхронизации.
+    const productId = Number(item?.external_product_id || 0)
+    if (!productId || ozonCatalogItemActionId.value) return
+    ozonCatalogItemActionId.value = productId
+    ozonCatalogError.value = ''
+    ozonCatalogOk.value = ''
+    try {
+      await apiPost(
+        `/marketplaces/ozon/catalog/${encodeURIComponent(productId)}/${archived ? 'archive' : 'unarchive'}`,
+        {},
+        { token: auth.state.token },
+      )
+      ozonCatalogItems.value = ozonCatalogItems.value.map((current) => (
+        Number(current?.external_product_id || 0) === productId
+          ? { ...current, visibility: archived ? 'ARCHIVED' : 'VISIBLE' }
+          : current
+      ))
+      ozonCatalogOk.value = archived ? 'Карточка перенесена в архив' : 'Карточка восстановлена из архива'
+    } catch (error) {
+      ozonCatalogError.value = mapApiError(error?.message) || 'Не удалось изменить статус карточки в Ozon'
+    } finally {
+      ozonCatalogItemActionId.value = 0
+    }
+  }
+
   function openOzonCatalog() {
     // Открывает каталог и показывает последнюю сохраненную версию до ручной синхронизации.
     showOzonCatalog.value = true
@@ -107,9 +134,11 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError }) {
   }
 
   function openOzonCatalogDetails(item) {
-    // Открывает отдельное окно выбранной карточки, не смешивая список и детальные реквизиты.
+    // Открывает только снимок карточки: настройки и заказы загружаются после раскрытия нужного блока.
     const productId = Number(item?.external_product_id || 0)
     if (!productId) return
+    ozonDigitalProductId.value = productId
+    ozonDigitalOrders.value = []
     showOzonCatalog.value = false
     showOzonCatalogDetails.value = true
     loadOzonCatalogDetails(productId)
@@ -158,20 +187,19 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError }) {
     }
   }
 
-  async function loadOzonDigitalSettings(productId = ozonDigitalProductId.value) {
-    // Загружает настройки и очередь отдельно от каталога, чтобы не обновлять карточки Ozon без явного действия.
+  async function loadOzonDigitalSettings(productId = ozonDigitalProductId.value, { includeOrders = true } = {}) {
+    // Загружает настройки для карточки, а очередь заказов — только когда оператор открывает раздел ключей.
     const normalizedProductId = Number(productId || 0)
     if (!normalizedProductId) return
     ozonDigitalSettingsLoading.value = true
     ozonDigitalSettingsError.value = ''
     try {
-      const [settings, orders] = await Promise.all([
-        apiGet(`/marketplaces/ozon/catalog/${encodeURIComponent(normalizedProductId)}/digital-settings`, { token: auth.state.token }),
-        apiGet(`/marketplaces/ozon/catalog/${encodeURIComponent(normalizedProductId)}/digital-orders`, { token: auth.state.token }),
-      ])
+      const requests = [apiGet(`/marketplaces/ozon/catalog/${encodeURIComponent(normalizedProductId)}/digital-settings`, { token: auth.state.token })]
+      if (includeOrders) requests.push(apiGet(`/marketplaces/ozon/catalog/${encodeURIComponent(normalizedProductId)}/digital-orders`, { token: auth.state.token }))
+      const [settings, orders] = await Promise.all(requests)
       if (normalizedProductId !== ozonDigitalProductId.value) return
       applyOzonDigitalSettings(settings)
-      ozonDigitalOrders.value = Array.isArray(orders?.items) ? orders.items : []
+      if (includeOrders) ozonDigitalOrders.value = Array.isArray(orders?.items) ? orders.items : []
     } catch (error) {
       if (normalizedProductId !== ozonDigitalProductId.value) return
       ozonDigitalSettingsError.value = mapApiError(error?.message) || 'Не удалось загрузить настройки ключей Ozon'
@@ -238,8 +266,7 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError }) {
     ozonDigitalSettingsError.value = ''
     ozonDigitalSettingsOk.value = ''
     try {
-      const result = await apiPost(`/marketplaces/ozon/catalog/${encodeURIComponent(productId)}/digital-orders/sync`, {}, { token: auth.state.token })
-      ozonDigitalSettingsOk.value = `Заказы синхронизированы: ${Number(result?.imported_orders || 0)}`
+      await apiPost(`/marketplaces/ozon/catalog/${encodeURIComponent(productId)}/digital-orders/sync`, {}, { token: auth.state.token })
       await loadOzonDigitalSettings()
     } catch (error) {
       ozonDigitalSettingsError.value = mapApiError(error?.message) || 'Не удалось получить цифровые заказы Ozon'
@@ -269,11 +296,57 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError }) {
     }
   }
 
+  async function revealOzonDigitalOrderCodes(order) {
+    // Запрашивает полный ключ только после явного действия администратора в истории заказов.
+    const orderId = Number(order?.id || 0)
+    if (!orderId) return { ok: false, codes: [], message: 'Не удалось определить заказ' }
+    try {
+      const result = await apiGet(
+        `/marketplaces/ozon/digital-orders/${encodeURIComponent(orderId)}/codes`,
+        { token: auth.state.token },
+      )
+      const codes = Array.isArray(result?.codes)
+        ? result.codes.map((code) => String(code || '').trim()).filter(Boolean)
+        : []
+      if (!codes.length) return { ok: false, codes: [], message: 'Для этого заказа ключ не найден' }
+      return { ok: true, codes, message: '' }
+    } catch (error) {
+      return {
+        ok: false,
+        codes: [],
+        message: mapApiError(error?.message) || 'Не удалось получить ключ заказа',
+      }
+    }
+  }
+
+  async function loadOzonDigitalSupplierOperation(order) {
+    // Загружает реквизиты успешной операции поставщика только при открытии карточки из истории заказа.
+    const orderId = Number(order?.id || 0)
+    if (!orderId) return { ok: false, operation: null, message: 'Не удалось определить заказ' }
+    try {
+      const operation = await apiGet(
+        `/marketplaces/ozon/digital-orders/${encodeURIComponent(orderId)}/supplier-operation`,
+        { token: auth.state.token },
+      )
+      if (!operation || typeof operation !== 'object') {
+        return { ok: false, operation: null, message: 'Операция поставщика не найдена' }
+      }
+      return { ok: true, operation, message: '' }
+    } catch (error) {
+      return {
+        ok: false,
+        operation: null,
+        message: mapApiError(error?.message) || 'Не удалось загрузить операцию поставщика',
+      }
+    }
+  }
+
   return {
     showOzonCatalog,
     ozonCatalogItems,
     ozonCatalogLoading,
     ozonCatalogSyncing,
+    ozonCatalogItemActionId,
     ozonCatalogError,
     ozonCatalogOk,
     showOzonCatalogDetails,
@@ -282,6 +355,7 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError }) {
     ozonCatalogDetailsError,
     loadOzonCatalog,
     syncOzonCatalog,
+    updateOzonCatalogArchive,
     openOzonCatalog,
     closeOzonCatalog,
     openOzonCatalogDetails,
@@ -298,8 +372,11 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError }) {
     ozonInterhubServicesLoading,
     openOzonDigitalSettings,
     closeOzonDigitalSettings,
+    loadOzonDigitalSettings,
     saveOzonDigitalSettings,
     syncOzonDigitalOrders,
     deliverOzonDigitalOrder,
+    revealOzonDigitalOrderCodes,
+    loadOzonDigitalSupplierOperation,
   }
 }

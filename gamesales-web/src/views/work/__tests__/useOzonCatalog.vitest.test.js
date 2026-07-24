@@ -45,6 +45,19 @@ describe('useOzonCatalog', () => {
     expect(catalog.ozonCatalogItems.value).toEqual([{ external_product_id: 102, offer_id: 'psn-500' }])
   })
 
+  it('moves one catalog card to the archive without reloading the full snapshot', async () => {
+    const { apiGet, apiPost, catalog } = createHarness()
+    catalog.ozonCatalogItems.value = [{ external_product_id: 102, visibility: 'VISIBLE' }]
+    apiPost.mockResolvedValueOnce({ external_product_id: 102, archived: true })
+
+    await catalog.updateOzonCatalogArchive(catalog.ozonCatalogItems.value[0], true)
+
+    expect(apiPost).toHaveBeenCalledWith('/marketplaces/ozon/catalog/102/archive', {}, { token: 'ozon-token' })
+    expect(apiGet).not.toHaveBeenCalled()
+    expect(catalog.ozonCatalogItems.value[0].visibility).toBe('ARCHIVED')
+    expect(catalog.ozonCatalogOk.value).toBe('Карточка перенесена в архив')
+  })
+
   it('opens selected card details from the local API snapshot', async () => {
     const { apiGet, apiPost, catalog } = createHarness()
     apiGet.mockResolvedValueOnce({
@@ -52,16 +65,20 @@ describe('useOzonCatalog', () => {
       barcodes: ['4601234567890'],
       category_id: 123,
     })
-
     catalog.showOzonCatalog.value = true
     catalog.openOzonCatalogDetails({ external_product_id: 103 })
+    await Promise.resolve()
+    await Promise.resolve()
     await Promise.resolve()
 
     expect(catalog.showOzonCatalog.value).toBe(false)
     expect(catalog.showOzonCatalogDetails.value).toBe(true)
     expect(apiGet).toHaveBeenCalledWith('/marketplaces/ozon/catalog/103', { token: 'ozon-token' })
+    expect(apiGet).not.toHaveBeenCalledWith('/marketplaces/ozon/catalog/103/digital-settings', { token: 'ozon-token' })
+    expect(apiGet).not.toHaveBeenCalledWith('/marketplaces/ozon/catalog/103/digital-orders', { token: 'ozon-token' })
     expect(apiPost).not.toHaveBeenCalled()
     expect(catalog.ozonCatalogDetails.value).toMatchObject({ category_id: 123 })
+    expect(catalog.ozonDigitalOrders.value).toEqual([])
   })
 
   it('publishes a manual limit only after opening the digital key settings', async () => {
@@ -105,5 +122,26 @@ describe('useOzonCatalog', () => {
 
     expect(apiPost).toHaveBeenCalledWith('/marketplaces/ozon/catalog/103/digital-orders/sync', {}, { token: 'ozon-token' })
     expect(catalog.ozonDigitalOrders.value).toEqual([{ id: 88, posting_number: '123-1' }])
+    expect(catalog.ozonDigitalSettingsOk.value).toBe('')
+  })
+
+  it('gets a full key only through the separate order request', async () => {
+    const { apiGet, catalog } = createHarness()
+    apiGet.mockResolvedValueOnce({ id: 88, codes: ['ABCD-EFGH-IJKL'] })
+
+    const result = await catalog.revealOzonDigitalOrderCodes({ id: 88 })
+
+    expect(apiGet).toHaveBeenCalledWith('/marketplaces/ozon/digital-orders/88/codes', { token: 'ozon-token' })
+    expect(result).toEqual({ ok: true, codes: ['ABCD-EFGH-IJKL'], message: '' })
+  })
+
+  it('loads the provider operation only for the selected Ozon order', async () => {
+    const { apiGet, catalog } = createHarness()
+    apiGet.mockResolvedValueOnce({ agent_transaction_id: 'gamesales-check-123', provider_code: 'interhub', state: 'paid' })
+
+    const result = await catalog.loadOzonDigitalSupplierOperation({ id: 88 })
+
+    expect(apiGet).toHaveBeenCalledWith('/marketplaces/ozon/digital-orders/88/supplier-operation', { token: 'ozon-token' })
+    expect(result).toMatchObject({ ok: true, operation: { agent_transaction_id: 'gamesales-check-123' } })
   })
 })

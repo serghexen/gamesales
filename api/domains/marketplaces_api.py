@@ -13,6 +13,7 @@ from .ozon_service import (
     fetch_ozon_catalog_items,
     fetch_ozon_digital_postings,
     normalize_ozon_store_code,
+    update_ozon_catalog_archive,
     update_ozon_digital_stock,
     upload_ozon_digital_codes,
 )
@@ -21,6 +22,7 @@ from .ozon_service import (
 class OzonCatalogItemOut(BaseModel):
     external_product_id: int
     offer_id: str = ""
+    sku: str = ""
     title: str = ""
     visibility: str = ""
     state: str = ""
@@ -38,9 +40,15 @@ class OzonCatalogSyncOut(BaseModel):
     synced_at: datetime
 
 
+class OzonCatalogArchiveOut(BaseModel):
+    external_product_id: int
+    archived: bool
+
+
 class OzonCatalogDetailsOut(BaseModel):
     external_product_id: int
     offer_id: str = ""
+    sku: str = ""
     title: str = ""
     primary_image: str = ""
     barcodes: list[str] = Field(default_factory=list)
@@ -92,14 +100,39 @@ class OzonDigitalOrderOut(BaseModel):
     sku: int
     required_qty: int = 1
     status: str
+    ozon_status: str = ""
     waiting_deadline_at: datetime | None = None
     created_at: datetime | None = None
     delivered_at: datetime | None = None
     last_error: str = ""
+    delivery_source: str = ""
+    delivered_codes_masked: list[str] = Field(default_factory=list)
 
 
 class OzonDigitalOrdersOut(BaseModel):
     items: list[OzonDigitalOrderOut] = Field(default_factory=list)
+
+
+class OzonDigitalOrderCodesOut(BaseModel):
+    id: int
+    codes: list[str] = Field(default_factory=list)
+
+
+class OzonDigitalSupplierOperationOut(BaseModel):
+    order_id: int
+    provider_code: str
+    agent_transaction_id: str
+    provider_transaction_id: str = ""
+    service_id: int
+    nominal_id: str = ""
+    service_title: str = ""
+    nominal_title: str = ""
+    amount: float | None = None
+    state: str
+    provider_status: int = 0
+    provider_message: str = ""
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class OzonDigitalSyncOut(BaseModel):
@@ -184,6 +217,7 @@ def mount_marketplaces_routes(
               sku bigint NOT NULL,
               required_qty integer NOT NULL DEFAULT 1,
               status text NOT NULL DEFAULT 'manual_required',
+              ozon_status text NOT NULL DEFAULT '',
               waiting_deadline_at timestamptz,
               created_at timestamptz,
               delivered_at timestamptz,
@@ -193,6 +227,11 @@ def mount_marketplaces_routes(
               UNIQUE (store_code, posting_number, sku)
             )
             """,
+        )
+        exec1(
+            conn,
+            # Добавляет исходный статус Ozon в уже созданные таблицы без потери истории заказов.
+            "ALTER TABLE app.marketplace_ozon_digital_orders ADD COLUMN IF NOT EXISTS ozon_status text NOT NULL DEFAULT ''",
         )
         exec1(
             conn,
@@ -256,6 +295,8 @@ def mount_marketplaces_routes(
         offer_id = first_text(item.get("offer_id"), item.get("offer_code"))
         title = str(item.get("name") or item.get("title") or "").strip()
         visibility = str(item.get("visibility") or "").strip()
+        if bool(item.get("archived")) or visibility.upper() == "ARCHIVED":
+            visibility = "ARCHIVED"
         status = item.get("status") if isinstance(item.get("status"), dict) else {}
         state = str(status.get("state") or item.get("state") or "").strip()
         return external_product_id, offer_id, title, visibility, state
@@ -271,6 +312,13 @@ def mount_marketplaces_routes(
         except json.JSONDecodeError:
             return {}
         return parsed if isinstance(parsed, dict) else {}
+
+    def catalog_item_sku(raw_payload: Any) -> str:
+        # Берет основной SKU Ozon, а для старых ответов использует SKU источника или схемы поставки.
+        payload = read_catalog_payload(raw_payload)
+        sources = payload.get("sources") if isinstance(payload.get("sources"), list) else []
+        source_skus = [source.get("sku") for source in sources if isinstance(source, dict)]
+        return first_text(payload.get("sku"), source_skus, payload.get("fbs_sku"), payload.get("fbo_sku"))
 
     def first_text(*values: Any) -> str:
         # Берет первое непустое текстовое значение, в том числе из массивов ссылок или штрихкодов.
@@ -302,6 +350,7 @@ def mount_marketplaces_routes(
         return OzonCatalogDetailsOut(
             external_product_id=product_id,
             offer_id=first_text(payload.get("offer_id"), payload.get("offer_code")),
+            sku=catalog_item_sku(payload),
             title=first_text(payload.get("name"), payload.get("title")),
             primary_image=first_text(payload.get("primary_image"), payload.get("images")),
             barcodes=barcodes,
@@ -464,8 +513,28 @@ def mount_marketplaces_routes(
             return "paid"
         return "failed"
 
+    def delivered_codes_from_row(value: Any) -> list[str]:
+        # Приводит сохраненный JSON с кодами к списку строк, не допуская служебные значения в ответ API.
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                value = []
+        return [str(code or "").strip() for code in value] if isinstance(value, list) else []
+
+    def mask_digital_code(code: str) -> str:
+        # Оставляет только последние символы ключа, чтобы история помогала сверке, но не раскрывала секрет.
+        normalized = str(code or "").strip()
+        if not normalized:
+            return ""
+        return f"••••{normalized[-4:]}" if len(normalized) > 4 else "••••"
+
     def make_order_out(row) -> OzonDigitalOrderOut:
         # Собирает единый ответ заказа после ручной или автоматической выдачи, не раскрывая сам ключ.
+        delivered_codes = delivered_codes_from_row(row[13] if len(row) > 13 else [])
+        delivery_source = str(row[12] or "").strip() if len(row) > 12 else ""
+        if not delivery_source and delivered_codes:
+            delivery_source = "manual"
         return OzonDigitalOrderOut(
             id=int(row[0]),
             posting_number=str(row[1] or ""),
@@ -474,10 +543,13 @@ def mount_marketplaces_routes(
             sku=int(row[4] or 0),
             required_qty=int(row[5] or 1),
             status=str(row[6] or "manual_required"),
-            waiting_deadline_at=row[7],
-            created_at=row[8],
-            delivered_at=row[9],
-            last_error=str(row[10] or ""),
+            ozon_status=str(row[7] or ""),
+            waiting_deadline_at=row[8],
+            created_at=row[9],
+            delivered_at=row[10],
+            last_error=str(row[11] or ""),
+            delivery_source=delivery_source,
+            delivered_codes_masked=[mask_digital_code(code) for code in delivered_codes],
         )
 
     def read_order_out(conn, order_id: int) -> OzonDigitalOrderOut:
@@ -485,9 +557,19 @@ def mount_marketplaces_routes(
         row = q1(
             conn,
             """
-            SELECT id, posting_number, order_number, product_name, sku, required_qty, status,
-                   waiting_deadline_at, created_at, delivered_at, last_error
-            FROM app.marketplace_ozon_digital_orders WHERE id=%s
+            SELECT orders.id, orders.posting_number, orders.order_number, orders.product_name, orders.sku,
+                   orders.required_qty, orders.status, orders.ozon_status, orders.waiting_deadline_at,
+                   orders.created_at, orders.delivered_at, orders.last_error,
+                   COALESCE((
+                     SELECT supplier.provider_code
+                     FROM app.marketplace_ozon_digital_supplier_attempts AS attempt
+                     JOIN app.marketplace_ozon_digital_suppliers AS supplier ON supplier.id=attempt.supplier_id
+                     WHERE attempt.order_id=orders.id AND attempt.state='paid'
+                     ORDER BY attempt.updated_at DESC, attempt.id DESC
+                     LIMIT 1
+                   ), ''),
+                   orders.delivered_codes
+            FROM app.marketplace_ozon_digital_orders AS orders WHERE orders.id=%s
             """,
             (order_id,),
         )
@@ -654,7 +736,8 @@ def mount_marketplaces_routes(
                 continue
             if str(supplier[1] or "") != "interhub":
                 continue
-            transaction_id = f"ozon-{order_id}-{supplier_id}-{uuid.uuid4().hex[:12]}"
+            # Используем общий формат Interhub, а связь с заказом Ozon храним отдельно в журнале попыток.
+            transaction_id = f"gamesales-check-{int(datetime.now(timezone.utc).timestamp() * 1000)}-{uuid.uuid4().hex[:12]}"
             params = read_catalog_payload(supplier[6])
             nominal_id = str(supplier[5] or "").strip()
             if nominal_id:
@@ -844,7 +927,7 @@ def mount_marketplaces_routes(
             rows = qall(
                 conn,
                 """
-                SELECT external_product_id, offer_id, title, visibility, state, synced_at
+                SELECT external_product_id, offer_id, title, visibility, state, raw_payload, synced_at
                 FROM app.marketplace_ozon_catalog_items
                 WHERE store_code=%s
                 ORDER BY title ASC, external_product_id ASC
@@ -857,10 +940,11 @@ def mount_marketplaces_routes(
                 OzonCatalogItemOut(
                     external_product_id=int(row[0]),
                     offer_id=str(row[1] or ""),
+                    sku=catalog_item_sku(row[5]),
                     title=str(row[2] or ""),
                     visibility=str(row[3] or ""),
                     state=str(row[4] or ""),
-                    synced_at=row[5],
+                    synced_at=row[6],
                 )
                 for row in rows
             ],
@@ -884,6 +968,35 @@ def mount_marketplaces_routes(
         if not row:
             raise HTTPException(404, "Ozon catalog item is not found")
         return make_catalog_details(product_id, read_catalog_payload(row[0]), row[1])
+
+    def set_ozon_catalog_archive(product_id: int, archived: bool, store_code: str) -> OzonCatalogArchiveOut:
+        # Сначала меняет статус у Ozon, затем помечает локальный снимок для мгновенного обновления интерфейса.
+        normalized_store_code = normalize_ozon_store_code(store_code)
+        update_ozon_catalog_archive(product_id, archived=archived, store_code=normalized_store_code)
+        local_visibility = "ARCHIVED" if archived else "VISIBLE"
+        with psycopg.connect(DB_DSN) as conn:
+            ensure_marketplaces_schema(conn)
+            exec1(
+                conn,
+                """
+                UPDATE app.marketplace_ozon_catalog_items
+                SET visibility=%s
+                WHERE store_code=%s AND external_product_id=%s
+                """,
+                (local_visibility, normalized_store_code, product_id),
+            )
+            conn.commit()
+        return OzonCatalogArchiveOut(external_product_id=product_id, archived=archived)
+
+    @app.post("/marketplaces/ozon/catalog/{product_id}/archive", response_model=OzonCatalogArchiveOut)
+    def archive_ozon_catalog_item(product_id: int, store_code: str = "asat", user=Depends(require_role("admin", "owner"))):
+        # Переносит выбранную карточку в архив, чтобы ее нельзя было использовать в текущей витрине.
+        return set_ozon_catalog_archive(product_id, archived=True, store_code=store_code)
+
+    @app.post("/marketplaces/ozon/catalog/{product_id}/unarchive", response_model=OzonCatalogArchiveOut)
+    def unarchive_ozon_catalog_item(product_id: int, store_code: str = "asat", user=Depends(require_role("admin", "owner"))):
+        # Возвращает карточку из архива, не меняя ее цену и настройки выдачи ключей.
+        return set_ozon_catalog_archive(product_id, archived=False, store_code=store_code)
 
     @app.get("/marketplaces/ozon/catalog/{product_id}/digital-settings", response_model=OzonDigitalSettingsOut)
     def get_ozon_digital_settings(product_id: int, store_code: str = "asat", user=Depends(get_current_user)):
@@ -982,31 +1095,118 @@ def mount_marketplaces_routes(
             rows = qall(
                 conn,
                 """
-                SELECT id, posting_number, order_number, product_name, sku, required_qty, status,
-                       waiting_deadline_at, created_at, delivered_at, last_error
-                FROM app.marketplace_ozon_digital_orders
-                WHERE store_code=%s AND external_product_id=%s
-                ORDER BY CASE WHEN status='manual_required' THEN 0 ELSE 1 END, created_at DESC NULLS LAST, id DESC
+                SELECT orders.id, orders.posting_number, orders.order_number, orders.product_name, orders.sku,
+                       orders.required_qty, orders.status, orders.ozon_status, orders.waiting_deadline_at,
+                       orders.created_at, orders.delivered_at, orders.last_error,
+                       COALESCE((
+                         SELECT supplier.provider_code
+                         FROM app.marketplace_ozon_digital_supplier_attempts AS attempt
+                         JOIN app.marketplace_ozon_digital_suppliers AS supplier ON supplier.id=attempt.supplier_id
+                         WHERE attempt.order_id=orders.id AND attempt.state='paid'
+                         ORDER BY attempt.updated_at DESC, attempt.id DESC
+                         LIMIT 1
+                       ), ''),
+                       orders.delivered_codes
+                FROM app.marketplace_ozon_digital_orders AS orders
+                WHERE orders.store_code=%s AND orders.external_product_id=%s
+                ORDER BY CASE WHEN orders.status='manual_required' THEN 0 ELSE 1 END, orders.created_at DESC NULLS LAST, orders.id DESC
                 """,
                 (normalized_store_code, product_id),
             )
         return OzonDigitalOrdersOut(
             items=[
-                OzonDigitalOrderOut(
-                    id=int(row[0]),
-                    posting_number=str(row[1] or ""),
-                    order_number=str(row[2] or ""),
-                    product_name=str(row[3] or ""),
-                    sku=int(row[4] or 0),
-                    required_qty=int(row[5] or 1),
-                    status=str(row[6] or "manual_required"),
-                    waiting_deadline_at=row[7],
-                    created_at=row[8],
-                    delivered_at=row[9],
-                    last_error=str(row[10] or ""),
-                )
+                make_order_out(row)
                 for row in rows
             ]
+        )
+
+    @app.get("/marketplaces/ozon/digital-orders/{order_id}/codes", response_model=OzonDigitalOrderCodesOut)
+    def get_ozon_digital_order_codes(
+        order_id: int,
+        store_code: str = "asat",
+        user=Depends(require_role("admin", "owner")),
+    ):
+        # Возвращает полный ключ только привилегированному пользователю и только после явного запроса из истории.
+        normalized_store_code = normalize_ozon_store_code(store_code)
+        with psycopg.connect(DB_DSN) as conn:
+            ensure_marketplaces_schema(conn)
+            row = q1(
+                conn,
+                """
+                SELECT id, delivered_codes
+                FROM app.marketplace_ozon_digital_orders
+                WHERE id=%s AND store_code=%s
+                """,
+                (order_id, normalized_store_code),
+            )
+        if not row:
+            raise HTTPException(404, "Цифровой заказ Ozon не найден")
+        codes = delivered_codes_from_row(row[1])
+        if not codes:
+            raise HTTPException(409, "Для этого заказа ключ еще не был отправлен")
+        return OzonDigitalOrderCodesOut(id=int(row[0]), codes=codes)
+
+    @app.get("/marketplaces/ozon/digital-orders/{order_id}/supplier-operation", response_model=OzonDigitalSupplierOperationOut)
+    def get_ozon_digital_order_supplier_operation(
+        order_id: int,
+        store_code: str = "asat",
+        user=Depends(require_role("admin", "owner")),
+    ):
+        # Возвращает операцию поставщика, которая действительно выдала ключ для выбранного заказа Ozon.
+        normalized_store_code = normalize_ozon_store_code(store_code)
+        with psycopg.connect(DB_DSN) as conn:
+            ensure_marketplaces_schema(conn)
+            row = q1(
+                conn,
+                """
+                SELECT attempt.order_id, supplier.provider_code, attempt.agent_transaction_id,
+                       COALESCE(transaction.provider_transaction_id, ''), supplier.service_id, supplier.nominal_id,
+                       transaction.amount, attempt.state, attempt.provider_status, attempt.provider_message,
+                       attempt.created_at, attempt.updated_at,
+                       COALESCE(calculation.service_title, ''), COALESCE(calculation.nominal_title, '')
+                FROM app.marketplace_ozon_digital_supplier_attempts AS attempt
+                JOIN app.marketplace_ozon_digital_suppliers AS supplier ON supplier.id=attempt.supplier_id
+                JOIN app.marketplace_ozon_digital_orders AS orders ON orders.id=attempt.order_id
+                LEFT JOIN app.interhub_transactions AS transaction
+                  ON transaction.agent_transaction_id=attempt.agent_transaction_id
+                LEFT JOIN LATERAL (
+                  -- Берём последнюю успешную цену calculate, чтобы в истории показать названия услуги и номинала.
+                  SELECT prices.service_title, prices.nominal_title
+                  FROM app.interhub_price_calculations AS prices
+                  WHERE prices.success=true
+                    AND prices.service_id=supplier.service_id
+                    AND prices.nominal_id=CASE
+                      WHEN supplier.nominal_id ~ '^[0-9]+$' THEN supplier.nominal_id::integer
+                      ELSE NULL
+                    END
+                  ORDER BY prices.calculated_at DESC, prices.id DESC
+                  LIMIT 1
+                ) AS calculation ON supplier.provider_code='interhub'
+                WHERE attempt.order_id=%s
+                  AND orders.store_code=%s
+                  AND attempt.state='paid'
+                ORDER BY attempt.updated_at DESC, attempt.id DESC
+                LIMIT 1
+                """,
+                (order_id, normalized_store_code),
+            )
+        if not row:
+            raise HTTPException(404, "Операция поставщика для этого заказа не найдена")
+        return OzonDigitalSupplierOperationOut(
+            order_id=int(row[0]),
+            provider_code=str(row[1] or ""),
+            agent_transaction_id=str(row[2] or ""),
+            provider_transaction_id=str(row[3] or ""),
+            service_id=int(row[4] or 0),
+            nominal_id=str(row[5] or ""),
+            service_title=str(row[12] or ""),
+            nominal_title=str(row[13] or ""),
+            amount=float(row[6]) if row[6] is not None else None,
+            state=str(row[7] or ""),
+            provider_status=int(row[8] or 0),
+            provider_message=str(row[9] or ""),
+            created_at=row[10],
+            updated_at=row[11],
         )
 
     @app.post("/marketplaces/ozon/catalog/{product_id}/digital-orders/sync", response_model=OzonDigitalSyncOut)
@@ -1068,17 +1268,20 @@ def mount_marketplaces_routes(
                         """
                         INSERT INTO app.marketplace_ozon_digital_orders(
                           store_code, external_product_id, posting_number, order_number, product_name, sku,
-                          required_qty, status, waiting_deadline_at, created_at
+                          required_qty, status, ozon_status, waiting_deadline_at, created_at
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (store_code, posting_number, sku) DO UPDATE
                         SET order_number=excluded.order_number,
                             product_name=excluded.product_name,
                             required_qty=excluded.required_qty,
+                            ozon_status=excluded.ozon_status,
                             waiting_deadline_at=excluded.waiting_deadline_at,
                             created_at=excluded.created_at,
                             status=CASE
+                              WHEN excluded.status='cancelled' THEN 'cancelled'
                               WHEN app.marketplace_ozon_digital_orders.status='delivered' OR excluded.status='delivered' THEN 'delivered'
+                              WHEN app.marketplace_ozon_digital_orders.status IN ('supplier_processing', 'delivering') THEN app.marketplace_ozon_digital_orders.status
                               ELSE excluded.status
                             END,
                             delivered_at=CASE
@@ -1096,6 +1299,7 @@ def mount_marketplaces_routes(
                             sku,
                             required_qty,
                             local_status,
+                            remote_status,
                             posting.get("waiting_deadline_for_digital_code") or None,
                             posting.get("created_at") or None,
                         ),
