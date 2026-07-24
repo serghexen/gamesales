@@ -36,10 +36,10 @@
               <div class="ozon-digital-modal__setup">
                 <div class="ozon-digital-modal__limit">
                   <label class="field">
-                    <span>Лимит продаж</span>
+                    <span>Остаток для Ozon</span>
                     <input v-model.number="ozonDigitalSettings.manual_stock_limit" class="input" type="number" min="0" max="100000" step="1" />
                   </label>
-                  <p class="muted">Максимум продаж в Ozon. После заказа единица резервируется до выдачи ключа.</p>
+                  <p class="muted">Сколько укажете, столько отправим в Ozon. Меняется только после нового сохранения.</p>
                   <p class="ozon-digital-modal__offer">Артикул: <strong>{{ ozonDigitalSettings.offer_id || '—' }}</strong></p>
                 </div>
                 <div class="ozon-digital-modal__supplier">
@@ -85,15 +85,15 @@
                 </div>
               </div>
               <div class="ozon-digital-modal__footer">
-                <span class="muted">Сначала сохраните настройки, затем в Ozon появится доступный остаток.</span>
+                <span class="muted">Сохраняйте, когда хотите вручную изменить остаток в Ozon.</span>
                 <button class="btn btn--primary" type="button" :disabled="ozonDigitalSettingsSaving" @click="saveOzonDigitalSettings">
                   {{ ozonDigitalSettingsSaving ? 'Публикуем…' : 'Сохранить и отправить остаток' }}
                 </button>
               </div>
 
               <section class="ozon-digital-modal__stats" aria-label="Статистика ключей Ozon">
-                <div><span>Лимит в Ozon</span><strong>{{ ozonDigitalSettings.published_stock }}</strong></div>
-                <div><span>Доступно по лимиту</span><strong>{{ ozonDigitalSettings.available_stock }}</strong></div>
+                <div><span>Отправлено в Ozon</span><strong>{{ ozonDigitalSettings.published_stock }}</strong></div>
+                <div><span>Текущий остаток</span><strong>{{ ozonDigitalSettings.available_stock }}</strong></div>
                 <div><span>Требуют выдачи</span><strong>{{ ozonDigitalSettings.pending_orders }}</strong></div>
                 <div><span>Выдано</span><strong>{{ ozonDigitalSettings.delivered_orders }}</strong></div>
               </section>
@@ -103,7 +103,7 @@
               <div class="ozon-digital-modal__orders-head">
                 <div>
                   <h4>Заказы на выдачу</h4>
-                  <p class="muted">Новые заказы резервируют единицу лимита до выдачи ключа.</p>
+                  <p class="muted">Заказы Ozon резервирует сам; остаток меняется только вручную выше.</p>
                 </div>
                 <button class="ghost" type="button" :disabled="ozonDigitalOrdersSyncing" @click="syncOzonDigitalOrders">
                   {{ ozonDigitalOrdersSyncing ? 'Проверяем…' : 'Проверить Ozon' }}

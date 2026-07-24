@@ -45,7 +45,7 @@ describe('WorkOzonDigitalSettingsModal', () => {
     expect(wrapper.find('.ozon-digital-modal__setup').exists()).toBe(true)
     expect(wrapper.findAll('.ozon-digital-modal__messages textarea')).toHaveLength(2)
     expect(wrapper.find('.ozon-digital-modal__stats').text()).toContain('Требуют выдачи')
-    expect(wrapper.find('.ozon-digital-modal__stats').text()).toContain('Лимит в Ozon')
+    expect(wrapper.find('.ozon-digital-modal__stats').text()).toContain('Отправлено в Ozon')
     expect(wrapper.find('.ozon-digital-modal__stats').text()).toContain('2')
   })
 

@@ -409,7 +409,7 @@ def mount_marketplaces_routes(
         if not row:
             offer_id = catalog_offer_id(conn, store_code, product_id)
             return OzonDigitalSettingsOut(external_product_id=product_id, offer_id=offer_id)
-        reserved_units, pending_orders, delivered_orders = get_order_counters(conn, store_code, product_id)
+        _reserved_units, pending_orders, delivered_orders = get_order_counters(conn, store_code, product_id)
         suppliers = [make_supplier_out(item) for item in supplier_rows(conn, store_code, product_id)]
         interhub = next((item for item in suppliers if item.provider_code == "interhub" and item.priority == 1), None)
         manual_stock_limit = int(row[1] or 0)
@@ -421,7 +421,8 @@ def mount_marketplaces_routes(
             activation_instruction=str(row[3] or ""),
             support_error_message=str(row[4] or ""),
             published_stock=int(row[5] or 0),
-            available_stock=max(0, manual_stock_limit - reserved_units),
+            # Оператор задаёт точный остаток для Ozon: заказы не меняют его без нового ручного сохранения.
+            available_stock=manual_stock_limit,
             pending_orders=pending_orders,
             delivered_orders=delivered_orders,
             last_stock_sync_at=row[6],
@@ -445,7 +446,7 @@ def mount_marketplaces_routes(
         )
 
     def publish_available_stock(conn, store_code: str, product_id: int) -> OzonDigitalSettingsOut:
-        # Отправляет ручной лимит за вычетом уже полученных заказов и только после успеха обновляет локальный статус.
+        # Отправляет в Ozon ровно введенный оператором остаток и только после успеха обновляет локальный статус.
         settings = make_digital_settings_out(conn, store_code, product_id)
         response = update_ozon_digital_stock(settings.offer_id, settings.available_stock, store_code=store_code)
         statuses = response.get("status") if isinstance(response.get("status"), list) else []

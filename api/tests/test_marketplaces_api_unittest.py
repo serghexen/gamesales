@@ -284,6 +284,7 @@ class MarketplacesApiTests(unittest.TestCase):
                 response = client.post("/marketplaces/ozon/catalog/103/digital-orders/sync")
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["available_stock"], 1)
         order_inserts = [params for sql, params in writes if "INSERT INTO app.marketplace_ozon_digital_orders" in sql]
         self.assertEqual(order_inserts[-1][7], "delivered")
         update_stock.assert_not_called()
