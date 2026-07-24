@@ -12,7 +12,6 @@ from .ozon_service import (
     fetch_ozon_catalog_offer_id,
     fetch_ozon_catalog_items,
     fetch_ozon_digital_postings,
-    fetch_ozon_fbs_posting,
     normalize_ozon_store_code,
     update_ozon_catalog_archive,
     update_ozon_digital_stock,
@@ -559,8 +558,8 @@ def mount_marketplaces_routes(
             return "delivered"
         return "manual_required"
 
-    def refresh_known_digital_order_statuses(store_code: str, product_id: int) -> None:
-        # Сверяет незавершенные заказы по одному: Ozon может не показать отмененный заказ в цифровом списке.
+    def cancel_missing_digital_orders(store_code: str, product_id: int, active_postings: set[str]) -> None:
+        # Ozon исключает отмененные digital-отправления из списка, поэтому закрываем отсутствующие незавершенные заказы.
         with psycopg.connect(DB_DSN) as conn:
             known_orders = qall(
                 conn,
@@ -574,38 +573,21 @@ def mount_marketplaces_routes(
                 """,
                 (store_code, product_id),
             )
-
-        status_updates: list[tuple[int, str, str]] = []
-        for known_order in known_orders:
-            order_id = int(known_order[0])
-            posting_number = str(known_order[1] or "").strip()
-            if not posting_number:
-                continue
-            try:
-                remote_posting = fetch_ozon_fbs_posting(posting_number, store_code=store_code)
-            except HTTPException:
-                # Не скрываем основной список из-за временной ошибки сверки одного старого отправления.
-                continue
-            remote_status = str(remote_posting.get("status") or "").strip().lower()
-            resolved_status = local_digital_order_status(remote_status)
-            if remote_status and resolved_status in {"cancelled", "delivered"}:
-                status_updates.append((order_id, remote_status, resolved_status))
-
-        if not status_updates:
-            return
-        with psycopg.connect(DB_DSN) as conn:
-            for order_id, remote_status, resolved_status in status_updates:
+            for known_order in known_orders:
+                order_id = int(known_order[0])
+                posting_number = str(known_order[1] or "").strip()
+                if not posting_number or posting_number in active_postings:
+                    continue
                 exec1(
                     conn,
                     """
                     UPDATE app.marketplace_ozon_digital_orders
-                    SET ozon_status=%s,
-                        status=%s,
-                        delivered_at=CASE WHEN %s='delivered' THEN COALESCE(delivered_at, now()) ELSE delivered_at END,
+                    SET ozon_status='cancelled',
+                        status='cancelled',
                         updated_at=now()
                     WHERE id=%s
                     """,
-                    (remote_status, resolved_status, resolved_status, order_id),
+                    (order_id,),
                 )
             conn.commit()
 
@@ -1371,6 +1353,11 @@ def mount_marketplaces_routes(
         normalized_store_code = normalize_ozon_store_code(store_code)
         synced_at = datetime.now(timezone.utc)
         remote_postings = fetch_ozon_digital_postings(synced_at - timedelta(days=14), synced_at, store_code=normalized_store_code)
+        active_posting_numbers = {
+            str(posting.get("posting_number") or "").strip()
+            for posting in remote_postings
+            if str(posting.get("posting_number") or "").strip()
+        }
         imported_orders = 0
 
         with psycopg.connect(DB_DSN) as conn:
@@ -1470,7 +1457,7 @@ def mount_marketplaces_routes(
             )
             conn.commit()
 
-        refresh_known_digital_order_statuses(normalized_store_code, selected_product_id)
+        cancel_missing_digital_orders(normalized_store_code, selected_product_id, active_posting_numbers)
 
         with psycopg.connect(DB_DSN) as conn:
             # Берем только неиспытанные новые заказы: ручной резерв не будет внезапно списывать средства у поставщика.
