@@ -43,6 +43,20 @@ services:
     mem_limit: 450m
     cpus: "0.70"
 
+  migrate:
+    build: ./api
+    profiles: ["maintenance"]
+    restart: "no"
+    env_file: .env.staging
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    command: ["python", "scripts/run_migrations.py", "/migrations"]
+    volumes:
+      - ./db/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   web:
     build:
       context: ./gamesales-web
