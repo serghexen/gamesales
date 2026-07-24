@@ -26,9 +26,7 @@ STOP_REQUESTED = False
 class Settings:
     database_url: str
     bot_token: str
-    chat_id: str
     poll_interval_sec: int
-    notify_existing: bool
 
 
 def env_required(name: str) -> str:
@@ -50,22 +48,12 @@ def env_int(name: str, default: int, minimum: int) -> int:
         raise RuntimeError(f"{name} must be an integer") from exc
 
 
-def env_bool(name: str, default: bool = False) -> bool:
-    # Разрешает явно включить уведомления по старой истории только при первом запуске сервиса.
-    raw = str(os.getenv(name, "") or "").strip().lower()
-    if not raw:
-        return default
-    return raw in {"1", "true", "yes", "on"}
-
-
 def load_settings() -> Settings:
     # Собирает все настройки в одном месте, чтобы контейнер одинаково работал в dev, staging и production.
     return Settings(
         database_url=env_required("DATABASE_URL"),
         bot_token=env_required("OZON_NOTIFIER_BOT_TOKEN"),
-        chat_id=env_required("OZON_NOTIFIER_CHAT_ID"),
         poll_interval_sec=env_int("OZON_NOTIFIER_POLL_INTERVAL_SEC", default=15, minimum=5),
-        notify_existing=env_bool("OZON_NOTIFIER_NOTIFY_EXISTING"),
     )
 
 
@@ -125,9 +113,9 @@ def telegram_request(settings: Settings, method: str, payload: dict[str, Any]) -
     return data
 
 
-def send_message(settings: Settings, order: dict[str, Any]) -> int:
-    # Создаёт первое сообщение о заказе и возвращает его ID для дальнейшего редактирования.
-    data = telegram_request(settings, "sendMessage", {"chat_id": settings.chat_id, "text": message_text(order)})
+def send_text(settings: Settings, chat_id: int, text: str) -> int:
+    # Отправляет служебный ответ или первое уведомление и возвращает его ID для последующего редактирования.
+    data = telegram_request(settings, "sendMessage", {"chat_id": chat_id, "text": text})
     result = data.get("result") if isinstance(data.get("result"), dict) else {}
     message_id = int(result.get("message_id") or 0)
     if message_id <= 0:
@@ -135,21 +123,26 @@ def send_message(settings: Settings, order: dict[str, Any]) -> int:
     return message_id
 
 
-def edit_message(settings: Settings, message_id: int, order: dict[str, Any]) -> None:
+def send_message(settings: Settings, chat_id: int, order: dict[str, Any]) -> int:
+    # Создаёт первое сообщение о заказе и возвращает его ID для дальнейшего редактирования.
+    return send_text(settings, chat_id, message_text(order))
+
+
+def edit_message(settings: Settings, chat_id: int, message_id: int, order: dict[str, Any]) -> None:
     # Обновляет исходное сообщение, чтобы один заказ не засорял чат несколькими уведомлениями.
     try:
         telegram_request(
             settings,
             "editMessageText",
-            {"chat_id": settings.chat_id, "message_id": message_id, "text": message_text(order)},
+            {"chat_id": chat_id, "message_id": message_id, "text": message_text(order)},
         )
     except RuntimeError as exc:
         if "message is not modified" not in str(exc).lower():
             raise
 
 
-def initialize_tracking(conn: psycopg.Connection[Any], settings: Settings) -> bool:
-    # На первом запуске запоминает текущую историю без рассылки, чтобы чат не получил старые заказы.
+def initialize_tracking(conn: psycopg.Connection[Any]) -> None:
+    # На первом запуске запоминает границу старой истории, чтобы новые подписчики не получили накопившиеся заказы.
     with conn.cursor() as cursor:
         cursor.execute(
             """
@@ -160,60 +153,155 @@ def initialize_tracking(conn: psycopg.Connection[Any], settings: Settings) -> bo
             """,
             (NOTIFIER_CODE,),
         )
-        initialized_now = cursor.fetchone() is not None
-        if initialized_now and not settings.notify_existing:
-            cursor.execute(
-                """
-                INSERT INTO app.marketplace_ozon_order_notifications(order_id, last_status, is_baseline)
-                SELECT orders.id, orders.status, true
-                FROM app.marketplace_ozon_digital_orders AS orders
-                ON CONFLICT (order_id) DO NOTHING
-                """
-            )
+        cursor.execute(
+            """
+            UPDATE app.ozon_order_notifier_state
+            SET baseline_order_id=(SELECT COALESCE(MAX(id), 0) FROM app.marketplace_ozon_digital_orders)
+            WHERE notifier_code=%s AND baseline_order_id=0
+            """,
+            (NOTIFIER_CODE,),
+        )
     conn.commit()
-    return initialized_now
+
+
+def command_kind(text: Any) -> str:
+    # Распознаёт команды подписки с суффиксом имени бота, который Telegram добавляет в групповых чатах.
+    command = str(text or "").strip().split(maxsplit=1)[0].lower().split("@", 1)[0]
+    if command in {"/start", "/subscribe"}:
+        return "subscribe"
+    if command in {"/stop", "/unsubscribe"}:
+        return "unsubscribe"
+    return ""
+
+
+def save_update_offset(conn: psycopg.Connection[Any], update_offset: int) -> None:
+    # Запоминает обработанное обновление Telegram, чтобы после рестарта команда не выполнилась повторно.
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE app.ozon_order_notifier_state
+            SET telegram_update_offset=GREATEST(telegram_update_offset, %s)
+            WHERE notifier_code=%s
+            """,
+            (update_offset, NOTIFIER_CODE),
+        )
+    conn.commit()
+
+
+def subscribe_recipient(conn: psycopg.Connection[Any], chat: dict[str, Any]) -> None:
+    # Включает уведомления для личного или группового чата только о заказах, пришедших после подписки.
+    chat_id = int(chat["id"])
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT COALESCE(MAX(id), 0) FROM app.marketplace_ozon_digital_orders")
+        order_watermark = int(cursor.fetchone()[0] or 0)
+        cursor.execute(
+            """
+            INSERT INTO app.ozon_order_notifier_recipients(chat_id, chat_type, title, orders_from_id, is_active, updated_at)
+            VALUES (%s, %s, %s, %s, true, now())
+            ON CONFLICT (chat_id) DO UPDATE
+            SET chat_type=excluded.chat_type,
+                title=excluded.title,
+                orders_from_id=CASE
+                  WHEN app.ozon_order_notifier_recipients.is_active THEN app.ozon_order_notifier_recipients.orders_from_id
+                  ELSE excluded.orders_from_id
+                END,
+                is_active=true,
+                updated_at=now()
+            """,
+            (chat_id, str(chat.get("type") or ""), str(chat.get("title") or chat.get("username") or ""), order_watermark),
+        )
+    conn.commit()
+
+
+def unsubscribe_recipient(conn: psycopg.Connection[Any], chat_id: int) -> None:
+    # Выключает уведомления, сохраняя запись чата для безопасного повторного включения через /start.
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "UPDATE app.ozon_order_notifier_recipients SET is_active=false, updated_at=now() WHERE chat_id=%s",
+            (chat_id,),
+        )
+    conn.commit()
+
+
+def sync_recipients(settings: Settings) -> None:
+    # Читает команды Bot API и самостоятельно ведёт список получателей, поэтому ID чата не нужно задавать в env.
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT telegram_update_offset FROM app.ozon_order_notifier_state WHERE notifier_code=%s",
+                (NOTIFIER_CODE,),
+            )
+            state = cursor.fetchone() or {}
+        offset = int(state.get("telegram_update_offset") or 0)
+
+    data = telegram_request(settings, "getUpdates", {"offset": offset, "timeout": 0, "allowed_updates": ["message"]})
+    updates = data.get("result") if isinstance(data.get("result"), list) else []
+    for update in updates:
+        if not isinstance(update, dict):
+            continue
+        update_id = int(update.get("update_id") or 0)
+        message = update.get("message") if isinstance(update.get("message"), dict) else {}
+        chat = message.get("chat") if isinstance(message.get("chat"), dict) else {}
+        action = command_kind(message.get("text"))
+        chat_id = int(chat.get("id") or 0)
+        if action == "subscribe" and chat_id:
+            with psycopg.connect(settings.database_url) as conn:
+                subscribe_recipient(conn, chat)
+            send_text(settings, chat_id, "Уведомления о новых заказах Ozon включены. Для остановки отправьте /stop.")
+        elif action == "unsubscribe" and chat_id:
+            with psycopg.connect(settings.database_url) as conn:
+                unsubscribe_recipient(conn, chat_id)
+            send_text(settings, chat_id, "Уведомления о новых заказах Ozon отключены. Чтобы включить снова, отправьте /start.")
+        if update_id:
+            with psycopg.connect(settings.database_url) as conn:
+                save_update_offset(conn, update_id + 1)
 
 
 def read_pending_orders(conn: psycopg.Connection[Any]) -> list[dict[str, Any]]:
-    # Выбирает только новые заказы и сменившиеся статусы, оставляя историю без повторной рассылки.
+    # Выбирает только новые заказы и сменившиеся статусы для каждого активного получателя без повторной рассылки.
     with conn.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
             SELECT orders.id, orders.posting_number, orders.order_number, orders.product_name, orders.required_qty,
-                   orders.status, orders.waiting_deadline_at, notification.telegram_message_id,
-                   notification.last_status, notification.is_baseline
-            FROM app.marketplace_ozon_digital_orders AS orders
-            LEFT JOIN app.marketplace_ozon_order_notifications AS notification ON notification.order_id=orders.id
-            WHERE COALESCE(notification.is_baseline, false)=false
+                   orders.status, orders.waiting_deadline_at, recipient.chat_id, delivery.telegram_message_id,
+                   delivery.last_status
+            FROM app.ozon_order_notifier_recipients AS recipient
+            JOIN app.ozon_order_notifier_state AS state ON state.notifier_code=%s
+            JOIN app.marketplace_ozon_digital_orders AS orders
+              ON orders.id > GREATEST(state.baseline_order_id, recipient.orders_from_id)
+            LEFT JOIN app.ozon_order_notifier_deliveries AS delivery
+              ON delivery.order_id=orders.id AND delivery.chat_id=recipient.chat_id
+            WHERE recipient.is_active=true
               AND (
-                notification.order_id IS NULL
-                OR notification.telegram_message_id IS NULL
-                OR notification.last_status IS DISTINCT FROM orders.status
+                delivery.order_id IS NULL
+                OR delivery.telegram_message_id IS NULL
+                OR delivery.last_status IS DISTINCT FROM orders.status
               )
             ORDER BY orders.created_at ASC NULLS LAST, orders.id ASC
             LIMIT 100
-            """
+            """,
+            (NOTIFIER_CODE,),
         )
         return list(cursor.fetchall())
 
 
 def remember_success(conn: psycopg.Connection[Any], order: dict[str, Any], message_id: int) -> None:
-    # Фиксирует ID Telegram-сообщения и текущий статус только после успешной отправки или редактирования.
+    # Фиксирует ID Telegram-сообщения и текущий статус отдельно для каждого получателя после успешной доставки.
     with conn.cursor() as cursor:
         cursor.execute(
             """
-            INSERT INTO app.marketplace_ozon_order_notifications(
-              order_id, telegram_message_id, last_status, notified_at, last_error, updated_at
+            INSERT INTO app.ozon_order_notifier_deliveries(
+              order_id, chat_id, telegram_message_id, last_status, notified_at, last_error, updated_at
             )
-            VALUES (%s, %s, %s, now(), '', now())
-            ON CONFLICT (order_id) DO UPDATE
+            VALUES (%s, %s, %s, %s, now(), '', now())
+            ON CONFLICT (order_id, chat_id) DO UPDATE
             SET telegram_message_id=excluded.telegram_message_id,
                 last_status=excluded.last_status,
-                notified_at=COALESCE(app.marketplace_ozon_order_notifications.notified_at, excluded.notified_at),
+                notified_at=COALESCE(app.ozon_order_notifier_deliveries.notified_at, excluded.notified_at),
                 last_error='',
                 updated_at=now()
             """,
-            (int(order["id"]), message_id, str(order.get("status") or "")),
+            (int(order["id"]), int(order["chat_id"]), message_id, str(order.get("status") or "")),
         )
     conn.commit()
 
@@ -223,12 +311,12 @@ def remember_error(conn: psycopg.Connection[Any], order: dict[str, Any], error: 
     with conn.cursor() as cursor:
         cursor.execute(
             """
-            INSERT INTO app.marketplace_ozon_order_notifications(order_id, last_status, last_error, updated_at)
-            VALUES (%s, '', %s, now())
-            ON CONFLICT (order_id) DO UPDATE
+            INSERT INTO app.ozon_order_notifier_deliveries(order_id, chat_id, last_status, last_error, updated_at)
+            VALUES (%s, %s, '', %s, now())
+            ON CONFLICT (order_id, chat_id) DO UPDATE
             SET last_error=excluded.last_error, updated_at=now()
             """,
-            (int(order["id"]), str(error)[:2000]),
+            (int(order["id"]), int(order["chat_id"]), str(error)[:2000]),
         )
     conn.commit()
 
@@ -236,19 +324,19 @@ def remember_error(conn: psycopg.Connection[Any], order: dict[str, Any], error: 
 def run_cycle(settings: Settings) -> None:
     # Выполняет одну короткую проверку БД, не удерживая соединение во время вызова Telegram API.
     with psycopg.connect(settings.database_url) as conn:
-        initialized_now = initialize_tracking(conn, settings)
-        if initialized_now and not settings.notify_existing:
-            LOGGER.info("Existing Ozon orders were saved as baseline without notifications")
-            return
+        initialize_tracking(conn)
+    sync_recipients(settings)
+    with psycopg.connect(settings.database_url) as conn:
         orders = read_pending_orders(conn)
 
     for order in orders:
         message_id = int(order.get("telegram_message_id") or 0)
+        chat_id = int(order["chat_id"])
         try:
             if message_id:
-                edit_message(settings, message_id, order)
+                edit_message(settings, chat_id, message_id, order)
             else:
-                message_id = send_message(settings, order)
+                message_id = send_message(settings, chat_id, order)
             with psycopg.connect(settings.database_url) as conn:
                 remember_success(conn, order, message_id)
             LOGGER.info("Order %s was notified with status %s", order["id"], order["status"])

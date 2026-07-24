@@ -36,6 +36,11 @@ class OzonNotifierMessageTests(unittest.TestCase):
         # Оставляет нейтральный понятный статус, пока новый технический код Ozon не добавлен в словарь.
         self.assertEqual(APP.status_title("new_ozon_status"), "Обрабатывается")
 
+    def test_subscription_commands_support_group_suffix(self):
+        # Принимает команду из группы, где Telegram дописывает имя бота после символа @.
+        self.assertEqual(APP.command_kind("/subscribe@ozon_orders_bot"), "subscribe")
+        self.assertEqual(APP.command_kind("/stop"), "unsubscribe")
+
     def test_minimum_poll_interval_protects_database(self):
         # Не даёт настройкой опустить опрос БД ниже безопасного минимального интервала.
         previous = APP.os.environ.get("OZON_NOTIFIER_TEST_INTERVAL")
