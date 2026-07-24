@@ -505,6 +505,29 @@ def fetch_ozon_digital_postings(
     return postings
 
 
+def fetch_ozon_fbs_posting(posting_number: str, store_code: str = "asat") -> dict[str, Any]:
+    # Запрашивает одно отправление, потому что отмененные цифровые заказы могут исчезать из общего списка.
+    normalized_store_code = normalize_ozon_store_code(store_code)
+    normalized_posting_number = str(posting_number or "").strip()
+    if not normalized_posting_number:
+        raise HTTPException(400, "Ozon posting_number is required")
+    client_id = _required_store_env("CLIENT_ID", store_code=normalized_store_code)
+    api_key = _required_store_env("API_KEY", store_code=normalized_store_code)
+    base_url = str(os.getenv("OZON_SELLER_BASE_URL", OZON_SELLER_BASE_URL) or OZON_SELLER_BASE_URL).rstrip("/")
+    timeout = max(5, _env_int("OZON_TIMEOUT_SEC", 60))
+    data = _request_json(
+        f"{base_url}/v3/posting/fbs/get",
+        client_id=client_id,
+        api_key=api_key,
+        payload={"posting_number": normalized_posting_number},
+        timeout=timeout,
+    )
+    result = data.get("result")
+    if not isinstance(result, dict):
+        raise HTTPException(502, "Ozon Seller API returned posting without result")
+    return result
+
+
 def upload_ozon_digital_codes(
     *,
     posting_number: str,

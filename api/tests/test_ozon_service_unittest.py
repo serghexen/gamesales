@@ -304,6 +304,23 @@ class OzonServiceTest(unittest.TestCase):
         self.assertEqual(json.loads(urlopen.call_args_list[0].args[0].data.decode("utf-8"))["limit"], 100)
         self.assertEqual(json.loads(urlopen.call_args_list[1].args[0].data.decode("utf-8"))["cursor"], "next")
 
+    # Отмененное цифровое отправление может исчезнуть из общего списка, поэтому сверяем его отдельно.
+    def test_fetch_fbs_posting_reads_single_posting_status(self):
+        with (
+            patch.dict(os.environ, {"OZON_CLIENT_ID": "client-1", "OZON_API_KEY": "secret-1"}, clear=False),
+            patch.object(
+                ozon_service.urllib.request,
+                "urlopen",
+                return_value=_Response({"result": {"posting_number": "123-0001", "status": "cancelled"}}),
+            ) as urlopen,
+        ):
+            posting = ozon_service.fetch_ozon_fbs_posting("123-0001")
+
+        self.assertEqual(posting["status"], "cancelled")
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://api-seller.ozon.ru/v3/posting/fbs/get")
+        self.assertEqual(json.loads(request.data.decode("utf-8")), {"posting_number": "123-0001"})
+
 
 if __name__ == "__main__":
     unittest.main()

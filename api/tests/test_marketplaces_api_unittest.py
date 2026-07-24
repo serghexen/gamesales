@@ -394,6 +394,35 @@ class MarketplacesApiTests(unittest.TestCase):
         self.assertEqual(order_inserts[-1][8], "done")
         update_stock.assert_not_called()
 
+    # Отмененное отправление сверяется отдельно, если его больше нет в цифровом списке Ozon.
+    def test_digital_orders_sync_marks_known_cancelled_posting(self):
+        def q1_handler(sql, _params):
+            if "COALESCE(SUM" in sql:
+                return (0, 0, 0)
+            if "FROM app.marketplace_ozon_digital_settings" in sql:
+                return ("Joy1", 1, False, "", "", 0, None, None)
+            return None
+
+        def qall_handler(sql, _params):
+            if "FROM app.marketplace_ozon_digital_settings AS settings" in sql:
+                return [(103, "Joy1", {"sku": 4844194840})]
+            if "status NOT IN ('delivered', 'cancelled')" in sql:
+                return [(77, "04259716-0123-1")]
+            return []
+
+        client, writes = self.create_client(q1_handler=q1_handler, qall_handler=qall_handler)
+        with (
+            patch("api.domains.marketplaces_api.fetch_ozon_digital_postings", return_value=[]),
+            patch("api.domains.marketplaces_api.fetch_ozon_fbs_posting", return_value={"status": "cancelled"}),
+            patch("api.domains.marketplaces_api.update_ozon_digital_stock", return_value={"status": [{"updated": True}]}),
+        ):
+            with client:
+                response = client.post("/marketplaces/ozon/catalog/103/digital-orders/sync")
+
+        self.assertEqual(response.status_code, 200)
+        status_updates = [params for sql, params in writes if "SET ozon_status=%s" in sql]
+        self.assertEqual(status_updates[-1], ("cancelled", "cancelled", "cancelled", 77))
+
     # Пустой список складов Ozon означает нулевой остаток, а не отсутствие значения в карточке.
     def test_catalog_details_returns_zero_for_empty_stock(self):
         client, _writes = self.create_client(

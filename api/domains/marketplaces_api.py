@@ -12,6 +12,7 @@ from .ozon_service import (
     fetch_ozon_catalog_offer_id,
     fetch_ozon_catalog_items,
     fetch_ozon_digital_postings,
+    fetch_ozon_fbs_posting,
     normalize_ozon_store_code,
     update_ozon_catalog_archive,
     update_ozon_digital_stock,
@@ -548,6 +549,65 @@ def mount_marketplaces_routes(
             raise HTTPException(502, f"Ozon не подтвердил обновление остатка. {'; '.join(message for message in messages if message) or 'Проверьте карточку и настройки цифрового товара.'}")
         update_local_published_stock(conn, store_code, product_id, settings.available_stock, datetime.now(timezone.utc))
         return make_digital_settings_out(conn, store_code, product_id)
+
+    def local_digital_order_status(ozon_status: str) -> str:
+        # Переводит финальные статусы Ozon в наши, чтобы отмененный заказ не оставался в обработке.
+        normalized_status = str(ozon_status or "").strip().lower()
+        if "cancel" in normalized_status:
+            return "cancelled"
+        if normalized_status == "done":
+            return "delivered"
+        return "manual_required"
+
+    def refresh_known_digital_order_statuses(store_code: str, product_id: int) -> None:
+        # Сверяет незавершенные заказы по одному: Ozon может не показать отмененный заказ в цифровом списке.
+        with psycopg.connect(DB_DSN) as conn:
+            known_orders = qall(
+                conn,
+                """
+                SELECT id, posting_number
+                FROM app.marketplace_ozon_digital_orders
+                WHERE store_code=%s
+                  AND external_product_id=%s
+                  AND status NOT IN ('delivered', 'cancelled')
+                ORDER BY id ASC
+                """,
+                (store_code, product_id),
+            )
+
+        status_updates: list[tuple[int, str, str]] = []
+        for known_order in known_orders:
+            order_id = int(known_order[0])
+            posting_number = str(known_order[1] or "").strip()
+            if not posting_number:
+                continue
+            try:
+                remote_posting = fetch_ozon_fbs_posting(posting_number, store_code=store_code)
+            except HTTPException:
+                # Не скрываем основной список из-за временной ошибки сверки одного старого отправления.
+                continue
+            remote_status = str(remote_posting.get("status") or "").strip().lower()
+            resolved_status = local_digital_order_status(remote_status)
+            if remote_status and resolved_status in {"cancelled", "delivered"}:
+                status_updates.append((order_id, remote_status, resolved_status))
+
+        if not status_updates:
+            return
+        with psycopg.connect(DB_DSN) as conn:
+            for order_id, remote_status, resolved_status in status_updates:
+                exec1(
+                    conn,
+                    """
+                    UPDATE app.marketplace_ozon_digital_orders
+                    SET ozon_status=%s,
+                        status=%s,
+                        delivered_at=CASE WHEN %s='delivered' THEN COALESCE(delivered_at, now()) ELSE delivered_at END,
+                        updated_at=now()
+                    WHERE id=%s
+                    """,
+                    (remote_status, resolved_status, resolved_status, order_id),
+                )
+            conn.commit()
 
     def provider_state(result: dict[str, Any]) -> str:
         # Приводит ответ Interhub к трем состояниям, от которых зависит дальнейшая выдача заказа.
@@ -1344,8 +1404,8 @@ def mount_marketplaces_routes(
                 if not posting_number:
                     continue
                 remote_status = str(posting.get("status") or "").strip().lower()
-                # Финальный Done в цифровом отправлении означает, что Ozon уже завершил выдачу покупателю.
-                local_status = "cancelled" if "cancel" in remote_status else "delivered" if remote_status == "done" else "manual_required"
+                # Финальный статус Ozon сразу отражаем в нашей очереди, чтобы не предлагать выдачу по отмене.
+                local_status = local_digital_order_status(remote_status)
                 products = posting.get("products") if isinstance(posting.get("products"), list) else []
                 for product in products:
                     if not isinstance(product, dict):
@@ -1409,6 +1469,8 @@ def mount_marketplaces_routes(
                 (synced_at, normalized_store_code, selected_product_id),
             )
             conn.commit()
+
+        refresh_known_digital_order_statuses(normalized_store_code, selected_product_id)
 
         with psycopg.connect(DB_DSN) as conn:
             # Берем только неиспытанные новые заказы: ручной резерв не будет внезапно списывать средства у поставщика.
