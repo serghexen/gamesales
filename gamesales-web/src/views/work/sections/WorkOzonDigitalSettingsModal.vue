@@ -92,8 +92,8 @@
               </div>
 
               <section class="ozon-digital-modal__stats" aria-label="Статистика ключей Ozon">
-                <div><span>В Ozon</span><strong>{{ ozonDigitalSettings.published_stock }}</strong></div>
-                <div><span>Доступно</span><strong>{{ ozonDigitalSettings.available_stock }}</strong></div>
+                <div><span>Лимит в Ozon</span><strong>{{ ozonDigitalSettings.published_stock }}</strong></div>
+                <div><span>Доступно по лимиту</span><strong>{{ ozonDigitalSettings.available_stock }}</strong></div>
                 <div><span>Требуют выдачи</span><strong>{{ ozonDigitalSettings.pending_orders }}</strong></div>
                 <div><span>Выдано</span><strong>{{ ozonDigitalSettings.delivered_orders }}</strong></div>
               </section>

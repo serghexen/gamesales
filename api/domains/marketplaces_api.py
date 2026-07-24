@@ -122,6 +122,7 @@ def mount_marketplaces_routes(
     exec1,
     get_current_user,
     require_role,
+    interhub_calculate=None,
     interhub_check=None,
     interhub_pay=None,
     interhub_check_status=None,
@@ -493,6 +494,29 @@ def mount_marketplaces_routes(
             raise HTTPException(404, "Цифровой заказ Ozon не найден")
         return make_order_out(row)
 
+    def is_ozon_posting_done_error(error: HTTPException) -> bool:
+        # Распознает финальный статус Ozon после отправки ключа, когда ответ на повторный запрос уже не принимает коды.
+        message = str(error.detail or "").lower()
+        return "статусе done" in message or "status done" in message
+
+    def finish_ozon_delivery(order_id: int, order_row, codes: list[str]) -> OzonDigitalOrderOut:
+        # Фиксирует выдачу локально, а резерв Ozon уменьшает сам без повторной публикации остатка.
+        delivered_at = datetime.now(timezone.utc)
+        with psycopg.connect(DB_DSN) as conn:
+            ensure_marketplaces_schema(conn)
+            exec1(
+                conn,
+                """
+                UPDATE app.marketplace_ozon_digital_orders
+                SET status='delivered', delivered_at=%s, delivered_codes=%s::jsonb, last_error='', updated_at=now()
+                WHERE id=%s
+                """,
+                (delivered_at, json.dumps(codes, ensure_ascii=False), order_id),
+            )
+            delivered_order = read_order_out(conn, order_id)
+            conn.commit()
+        return delivered_order
+
     def deliver_ozon_codes(order_id: int, codes: list[str]) -> OzonDigitalOrderOut:
         # Передает коды в Ozon одинаково для ручного ввода и ключа, который выдал поставщик.
         with psycopg.connect(DB_DSN) as conn:
@@ -523,28 +547,16 @@ def mount_marketplaces_routes(
             if not delivered or int(delivered.get("received_qty") or 0) != len(codes) or int(delivered.get("rejected_qty") or 0) != 0:
                 raise HTTPException(502, "Ozon не подтвердил передачу всех ключей для заказа")
         except HTTPException as exc:
+            if is_ozon_posting_done_error(exc):
+                # Ozon мог успеть принять ключ до ответа: Done для цифрового отправления считаем подтвержденной выдачей.
+                return finish_ozon_delivery(order_id, row, codes)
             with psycopg.connect(DB_DSN) as conn:
                 ensure_marketplaces_schema(conn)
                 exec1(conn, "UPDATE app.marketplace_ozon_digital_orders SET status='manual_required', last_error=%s, updated_at=now() WHERE id=%s", (str(exc.detail)[:2000], order_id))
                 conn.commit()
             raise
 
-        delivered_at = datetime.now(timezone.utc)
-        with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
-            exec1(
-                conn,
-                """
-                UPDATE app.marketplace_ozon_digital_orders
-                SET status='delivered', delivered_at=%s, delivered_codes=%s::jsonb, last_error='', updated_at=now()
-                WHERE id=%s
-                """,
-                (delivered_at, json.dumps(codes, ensure_ascii=False), order_id),
-            )
-            publish_available_stock(conn, str(row[0]), int(row[1]))
-            delivered_order = read_order_out(conn, order_id)
-            conn.commit()
-        return delivered_order
+        return finish_ozon_delivery(order_id, row, codes)
 
     def mark_order_for_manual_delivery(order_id: int, message: str) -> None:
         # Оставляет заказ оператору, только когда поставщики не дали пригодный ключ без списания дубля.
@@ -553,9 +565,62 @@ def mount_marketplaces_routes(
             exec1(conn, "UPDATE app.marketplace_ozon_digital_orders SET status='manual_required', last_error=%s, updated_at=now() WHERE id=%s", (message[:2000], order_id))
             conn.commit()
 
+    def save_auto_interhub_check(request: dict[str, Any], amount: float, result: dict[str, Any]) -> None:
+        # Добавляет автоматическую проверку в общий журнал Interhub, чтобы она была видна рядом с ручными платежами.
+        state = "checked" if bool(result.get("success")) else "failed"
+        with psycopg.connect(DB_DSN) as conn:
+            exec1(
+                conn,
+                """
+                INSERT INTO app.interhub_transactions(
+                  agent_transaction_id, service_id, account, amount, request_params, state,
+                  provider_status, provider_message, provider_transaction_id, provider_response, created_by, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s::jsonb, 'ozon-auto', now())
+                ON CONFLICT (agent_transaction_id) DO UPDATE
+                SET state=excluded.state,
+                    amount=excluded.amount,
+                    request_params=excluded.request_params,
+                    provider_status=excluded.provider_status,
+                    provider_message=excluded.provider_message,
+                    provider_transaction_id=excluded.provider_transaction_id,
+                    provider_response=excluded.provider_response,
+                    updated_at=now()
+                """,
+                (
+                    str(request["agent_transaction_id"]), int(request["service_id"]), str(request.get("account") or ""), amount,
+                    json.dumps(request.get("params") or {}), state, int(result.get("status") or 0), str(result.get("message") or ""),
+                    str(result.get("transaction_id") or ""), json.dumps(result.get("raw") or {}),
+                ),
+            )
+            conn.commit()
+
+    def save_auto_interhub_result(agent_transaction_id: str, result: dict[str, Any]) -> None:
+        # Обновляет общий журнал результатом pay или check_status, не сохраняя ключ в отдельном месте вне Interhub-истории.
+        state = provider_state(result)
+        params = result.get("params") if isinstance(result.get("params"), dict) else {}
+        with psycopg.connect(DB_DSN) as conn:
+            exec1(
+                conn,
+                """
+                UPDATE app.interhub_transactions
+                SET state=%s, provider_status=%s, provider_message=%s,
+                    provider_transaction_id=COALESCE(NULLIF(%s, ''), provider_transaction_id),
+                    gift_code=COALESCE(NULLIF(%s, ''), gift_code), provider_response=%s::jsonb,
+                    updated_at=now()
+                WHERE agent_transaction_id=%s
+                """,
+                (
+                    state, int(result.get("status") or 0), str(result.get("message") or ""),
+                    str(result.get("transaction_id") or ""), str(params.get("gift_code") or ""),
+                    json.dumps(result.get("raw") or {}), agent_transaction_id,
+                ),
+            )
+            conn.commit()
+
     def process_order_with_suppliers(order_id: int) -> None:
         # Пробует поставщиков по приоритету и переходит к ручной выдаче только после их окончательной ошибки.
-        if not interhub_check or not interhub_pay:
+        if not interhub_calculate or not interhub_check or not interhub_pay:
             mark_order_for_manual_delivery(order_id, "Автовыдача Interhub пока недоступна на сервере.")
             return
         with psycopg.connect(DB_DSN) as conn:
@@ -608,7 +673,13 @@ def mount_marketplaces_routes(
                 )
                 conn.commit()
             try:
-                checked = interhub_check(request)
+                # Сначала получаем цену ваучера: Interhub требует её в обязательном поле amount на check.
+                calculated = interhub_calculate({**request, "agent_transaction_id": f"{transaction_id}-calculate"})
+                amount = float(calculated.get("fixed_amount") or 0)
+                if not bool(calculated.get("success")) or amount <= 0:
+                    raise HTTPException(502, str(calculated.get("message") or "Interhub не вернул цену для выдачи ключа"))
+                checked = interhub_check({**request, "amount": amount})
+                save_auto_interhub_check(request, amount, checked)
                 if not bool(checked.get("success")):
                     raise HTTPException(502, str(checked.get("message") or "Interhub не подтвердил выдачу ключа"))
                 paid = interhub_pay({"agent_transaction_id": transaction_id})
@@ -621,6 +692,7 @@ def mount_marketplaces_routes(
                 continue
             state = provider_state(paid)
             provider_message = str(paid.get("message") or "")
+            save_auto_interhub_result(transaction_id, paid)
             with psycopg.connect(DB_DSN) as conn:
                 ensure_marketplaces_schema(conn)
                 exec1(
@@ -674,6 +746,7 @@ def mount_marketplaces_routes(
                 result = {"success": False, "status": -1, "message": str(getattr(exc, "detail", exc)), "raw": {}}
             state = provider_state(result)
             message = str(result.get("message") or "")
+            save_auto_interhub_result(transaction_id, result)
             with psycopg.connect(DB_DSN) as conn:
                 ensure_marketplaces_schema(conn)
                 exec1(
@@ -976,7 +1049,8 @@ def mount_marketplaces_routes(
                 if not posting_number:
                     continue
                 remote_status = str(posting.get("status") or "").strip().lower()
-                local_status = "cancelled" if "cancel" in remote_status else "manual_required"
+                # Финальный Done в цифровом отправлении означает, что Ozon уже завершил выдачу покупателю.
+                local_status = "cancelled" if "cancel" in remote_status else "delivered" if remote_status == "done" else "manual_required"
                 products = posting.get("products") if isinstance(posting.get("products"), list) else []
                 for product in products:
                     if not isinstance(product, dict):
@@ -1003,8 +1077,12 @@ def mount_marketplaces_routes(
                             waiting_deadline_at=excluded.waiting_deadline_at,
                             created_at=excluded.created_at,
                             status=CASE
-                              WHEN app.marketplace_ozon_digital_orders.status='delivered' THEN 'delivered'
+                              WHEN app.marketplace_ozon_digital_orders.status='delivered' OR excluded.status='delivered' THEN 'delivered'
                               ELSE excluded.status
+                            END,
+                            delivered_at=CASE
+                              WHEN excluded.status='delivered' THEN COALESCE(app.marketplace_ozon_digital_orders.delivered_at, now())
+                              ELSE app.marketplace_ozon_digital_orders.delivered_at
                             END,
                             updated_at=now()
                         """,
@@ -1068,9 +1146,9 @@ def mount_marketplaces_routes(
         available_stock = 0
         with psycopg.connect(DB_DSN) as conn:
             ensure_marketplaces_schema(conn)
-            settings = publish_available_stock(conn, normalized_store_code, selected_product_id)
+            # После заказа Ozon сам держит единицу в резерве, поэтому только пересчитываем локальный показатель.
+            settings = make_digital_settings_out(conn, normalized_store_code, selected_product_id)
             available_stock = settings.available_stock
-            conn.commit()
         return OzonDigitalSyncOut(imported_orders=imported_orders, available_stock=available_stock, last_orders_sync_at=synced_at)
 
     @app.post("/marketplaces/ozon/digital-orders/{order_id}/deliver", response_model=OzonDigitalOrderOut)

@@ -1309,6 +1309,7 @@ ozon_refresh_digital_supplier_orders = mount_marketplaces_routes(
     exec1=exec1,
     get_current_user=get_current_user,
     require_role=require_role,
+    interhub_calculate=interhub_calculate,
     interhub_check=interhub_check,
     interhub_pay=interhub_pay,
     interhub_check_status=interhub_check_status,

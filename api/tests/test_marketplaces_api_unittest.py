@@ -261,6 +261,33 @@ class MarketplacesApiTests(unittest.TestCase):
         order_inserts = [params for sql, params in writes if "INSERT INTO app.marketplace_ozon_digital_orders" in sql]
         self.assertEqual(order_inserts[-1][1], 103)
 
+    # Финальный Done от Ozon означает, что цифровой ключ уже доставлен и не должен вернуться в ручную выдачу.
+    def test_digital_orders_sync_marks_done_posting_as_delivered(self):
+        def q1_handler(sql, _params):
+            if "COALESCE(SUM" in sql:
+                return (1, 0, 1)
+            if "FROM app.marketplace_ozon_digital_settings" in sql:
+                return ("Joy1", 1, False, "", "", 0, None, None)
+            return None
+
+        def qall_handler(sql, _params):
+            if "FROM app.marketplace_ozon_digital_settings AS settings" in sql:
+                return [(103, "Joy1", {"sku": 4844194840})]
+            return []
+
+        client, writes = self.create_client(q1_handler=q1_handler, qall_handler=qall_handler)
+        with (
+            patch("api.domains.marketplaces_api.fetch_ozon_digital_postings", return_value=[{"posting_number": "04259716-0123-1", "status": "done", "products": [{"offer_id": "ASAT110", "sku": 4844194840, "quantity": 1}]}]),
+            patch("api.domains.marketplaces_api.update_ozon_digital_stock", return_value={"status": [{"updated": True}]}) as update_stock,
+        ):
+            with client:
+                response = client.post("/marketplaces/ozon/catalog/103/digital-orders/sync")
+
+        self.assertEqual(response.status_code, 200)
+        order_inserts = [params for sql, params in writes if "INSERT INTO app.marketplace_ozon_digital_orders" in sql]
+        self.assertEqual(order_inserts[-1][7], "delivered")
+        update_stock.assert_not_called()
+
     # Пустой список складов Ozon означает нулевой остаток, а не отсутствие значения в карточке.
     def test_catalog_details_returns_zero_for_empty_stock(self):
         client, _writes = self.create_client(
