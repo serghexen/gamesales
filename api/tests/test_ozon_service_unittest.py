@@ -176,7 +176,7 @@ class OzonServiceTest(unittest.TestCase):
             _Response({"items": [
                 {"id": 101, "name": "Steam 1000", "status": {"state": "sale"}},
                 {"id": 102, "name": "PSN 500", "status": {"state": "sale"}},
-                {"id": 103, "name": "PSN old", "status": {"state": "sale"}},
+                {"id": 103, "name": "PSN old", "status": {"state": "sale"}, "stocks": {"stocks": [{"source": "fbo", "present": 4}]}},
             ]}),
             _Response({"items": [
                 {"product_id": 101, "price": {"price": 1000, "currency_code": "RUB"}},
@@ -208,6 +208,7 @@ class OzonServiceTest(unittest.TestCase):
         self.assertEqual(rows[2]["visibility"], "ARCHIVED")
         self.assertEqual(rows[0]["ozon_price"], {"price": 1000, "currency_code": "RUB"})
         self.assertEqual(rows[1]["ozon_stocks"], [{"type": "fbo", "present": 2}])
+        self.assertEqual(rows[2]["ozon_stocks"], [{"source": "fbo", "present": 4}])
         self.assertEqual(urlopen.call_args_list[0].args[0].full_url, "https://api-seller.ozon.ru/v3/product/list")
         self.assertEqual(urlopen.call_args_list[3].args[0].full_url, "https://api-seller.ozon.ru/v3/product/info/list")
         self.assertEqual(urlopen.call_args_list[4].args[0].full_url, "https://api-seller.ozon.ru/v5/product/info/prices")

@@ -285,6 +285,13 @@ def mount_marketplaces_routes(
             """,
         )
 
+    def prepare_marketplaces_schema() -> None:
+        # Выполняет изменения структуры один раз при запуске API, чтобы рабочие запросы не блокировали таблицы DDL-командами.
+        with psycopg.connect(DB_DSN) as conn:
+            exec1(conn, "SELECT pg_advisory_xact_lock(hashtext('gamesales_marketplaces_schema'))")
+            ensure_marketplaces_schema(conn)
+            conn.commit()
+
     def normalize_catalog_item(item: dict[str, Any]) -> tuple[int, str, str, str, str]:
         # Выбирает стабильные поля карточки из ответа Ozon и отбрасывает неполные элементы.
         raw_product_id = item.get("product_id") or item.get("id")
@@ -346,6 +353,12 @@ def mount_marketplaces_routes(
             barcodes.insert(0, barcode)
         price = payload.get("ozon_price") if isinstance(payload.get("ozon_price"), dict) else {}
         stock_rows = payload.get("ozon_stocks") if isinstance(payload.get("ozon_stocks"), list) else []
+        if not stock_rows:
+            # Поддерживаем снимки, где цифровой остаток Ozon лежит внутри подробной карточки, а не в отдельном поле.
+            native_stocks = payload.get("stocks")
+            if isinstance(native_stocks, dict):
+                native_stocks = native_stocks.get("stocks")
+            stock_rows = native_stocks if isinstance(native_stocks, list) else []
         available_stock = sum(optional_int(stock.get("present")) or 0 for stock in stock_rows if isinstance(stock, dict))
         return OzonCatalogDetailsOut(
             external_product_id=product_id,
@@ -586,7 +599,6 @@ def mount_marketplaces_routes(
         # Фиксирует выдачу локально, а резерв Ozon уменьшает сам без повторной публикации остатка.
         delivered_at = datetime.now(timezone.utc)
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             exec1(
                 conn,
                 """
@@ -603,7 +615,6 @@ def mount_marketplaces_routes(
     def deliver_ozon_codes(order_id: int, codes: list[str]) -> OzonDigitalOrderOut:
         # Передает коды в Ozon одинаково для ручного ввода и ключа, который выдал поставщик.
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             row = q1(
                 conn,
                 """
@@ -634,7 +645,6 @@ def mount_marketplaces_routes(
                 # Ozon мог успеть принять ключ до ответа: Done для цифрового отправления считаем подтвержденной выдачей.
                 return finish_ozon_delivery(order_id, row, codes)
             with psycopg.connect(DB_DSN) as conn:
-                ensure_marketplaces_schema(conn)
                 exec1(conn, "UPDATE app.marketplace_ozon_digital_orders SET status='manual_required', last_error=%s, updated_at=now() WHERE id=%s", (str(exc.detail)[:2000], order_id))
                 conn.commit()
             raise
@@ -644,7 +654,6 @@ def mount_marketplaces_routes(
     def mark_order_for_manual_delivery(order_id: int, message: str) -> None:
         # Оставляет заказ оператору, только когда поставщики не дали пригодный ключ без списания дубля.
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             exec1(conn, "UPDATE app.marketplace_ozon_digital_orders SET status='manual_required', last_error=%s, updated_at=now() WHERE id=%s", (message[:2000], order_id))
             conn.commit()
 
@@ -706,8 +715,10 @@ def mount_marketplaces_routes(
         if not interhub_calculate or not interhub_check or not interhub_pay:
             mark_order_for_manual_delivery(order_id, "Автовыдача Interhub пока недоступна на сервере.")
             return
+        manual_delivery_message = ""
+        suppliers = []
+        attempted: set[int] = set()
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             order = q1(
                 conn,
                 """
@@ -717,18 +728,26 @@ def mount_marketplaces_routes(
                 (order_id,),
             )
             if not order or str(order[3] or "") not in {"manual_required", "supplier_processing"}:
+                # Явно завершаем даже транзакцию только на чтение, чтобы пул не возвращал ее с удержанной блокировкой.
+                conn.commit()
                 return
             if int(order[2] or 1) != 1:
-                mark_order_for_manual_delivery(order_id, "Автовыдача поставщиком пока доступна для заказа из одного ключа.")
-                return
-            suppliers = supplier_rows(conn, str(order[0]), int(order[1]), enabled_only=True)
-            attempted = {
-                int(row[0]) for row in qall(
-                    conn,
-                    "SELECT supplier_id FROM app.marketplace_ozon_digital_supplier_attempts WHERE order_id=%s",
-                    (order_id,),
-                )
-            }
+                manual_delivery_message = "Автовыдача поставщиком пока доступна для заказа из одного ключа."
+            else:
+                suppliers = supplier_rows(conn, str(order[0]), int(order[1]), enabled_only=True)
+                attempted = {
+                    int(row[0]) for row in qall(
+                        conn,
+                        "SELECT supplier_id FROM app.marketplace_ozon_digital_supplier_attempts WHERE order_id=%s",
+                        (order_id,),
+                    )
+                }
+            # Завершаем транзакцию чтения до внешних вызовов, чтобы она не удерживала блокировку таблицы.
+            conn.commit()
+
+        if manual_delivery_message:
+            mark_order_for_manual_delivery(order_id, manual_delivery_message)
+            return
 
         for supplier in suppliers:
             supplier_id = int(supplier[0])
@@ -744,7 +763,6 @@ def mount_marketplaces_routes(
                 params["nominal"] = nominal_id
             request = {"service_id": int(supplier[4]), "account": "", "agent_transaction_id": transaction_id, "params": params}
             with psycopg.connect(DB_DSN) as conn:
-                ensure_marketplaces_schema(conn)
                 # Резервируем одну попытку до вызова поставщика, чтобы повторная синхронизация не создала двойную оплату.
                 exec1(conn, "UPDATE app.marketplace_ozon_digital_orders SET status='supplier_processing', last_error='', updated_at=now() WHERE id=%s", (order_id,))
                 exec1(
@@ -770,7 +788,6 @@ def mount_marketplaces_routes(
             except Exception as exc:
                 message = str(getattr(exc, "detail", exc))
                 with psycopg.connect(DB_DSN) as conn:
-                    ensure_marketplaces_schema(conn)
                     exec1(conn, "UPDATE app.marketplace_ozon_digital_supplier_attempts SET state='failed', provider_message=%s, updated_at=now() WHERE agent_transaction_id=%s", (message[:2000], transaction_id))
                     conn.commit()
                 continue
@@ -778,7 +795,6 @@ def mount_marketplaces_routes(
             provider_message = str(paid.get("message") or "")
             save_auto_interhub_result(transaction_id, paid)
             with psycopg.connect(DB_DSN) as conn:
-                ensure_marketplaces_schema(conn)
                 exec1(
                     conn,
                     """
@@ -811,7 +827,6 @@ def mount_marketplaces_routes(
         if not interhub_check_status:
             return
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             attempts = qall(
                 conn,
                 """
@@ -822,6 +837,8 @@ def mount_marketplaces_routes(
                 LIMIT 50
                 """,
             )
+            # Освобождаем блокировку чтения до опроса поставщика, который может отвечать долго.
+            conn.commit()
         for attempt in attempts:
             attempt_id, order_id, transaction_id = int(attempt[0]), int(attempt[1]), str(attempt[2])
             try:
@@ -832,7 +849,6 @@ def mount_marketplaces_routes(
             message = str(result.get("message") or "")
             save_auto_interhub_result(transaction_id, result)
             with psycopg.connect(DB_DSN) as conn:
-                ensure_marketplaces_schema(conn)
                 exec1(
                     conn,
                     """
@@ -863,7 +879,6 @@ def mount_marketplaces_routes(
     def refresh_ozon_digital_supplier_orders() -> None:
         # Раз в минуту забирает заказы только у карточек с включенной авто-выдачей и продолжает ответы поставщика.
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             active_products = qall(
                 conn,
                 """
@@ -878,6 +893,8 @@ def mount_marketplaces_routes(
                   )
                 """,
             )
+            # Закрываем транзакцию до сетевых запросов к Ozon и Interhub.
+            conn.commit()
         for store_code, product_id in active_products:
             try:
                 # Переиспользуем тот же импорт, что и кнопка «Проверить Ozon», чтобы правила сопоставления были одни.
@@ -894,7 +911,6 @@ def mount_marketplaces_routes(
         synced_at = datetime.now(timezone.utc)
 
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             for item in remote_items:
                 product_id, offer_id, title, visibility, state = normalize_catalog_item(item)
                 exec1(
@@ -923,7 +939,6 @@ def mount_marketplaces_routes(
         # Отдает последний локальный снимок, чтобы UI не дергал Ozon при каждом открытии экрана.
         normalized_store_code = normalize_ozon_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             rows = qall(
                 conn,
                 """
@@ -955,7 +970,6 @@ def mount_marketplaces_routes(
         # Возвращает важные поля уже сохраненного ответа, не повторяя запрос к Ozon при клике в UI.
         normalized_store_code = normalize_ozon_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             row = q1(
                 conn,
                 """
@@ -975,7 +989,6 @@ def mount_marketplaces_routes(
         update_ozon_catalog_archive(product_id, archived=archived, store_code=normalized_store_code)
         local_visibility = "ARCHIVED" if archived else "VISIBLE"
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             exec1(
                 conn,
                 """
@@ -1003,7 +1016,6 @@ def mount_marketplaces_routes(
         # Отдает настройки ручной выдачи до публикации остатка, чтобы карточку можно было подготовить безопасно.
         normalized_store_code = normalize_ozon_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             return make_digital_settings_out(conn, normalized_store_code, product_id)
 
     @app.put("/marketplaces/ozon/catalog/{product_id}/digital-settings", response_model=OzonDigitalSettingsOut)
@@ -1016,7 +1028,6 @@ def mount_marketplaces_routes(
         # Сохраняет ручной лимит и сразу публикует безопасный остаток только в выбранную цифровую карточку.
         normalized_store_code = normalize_ozon_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             offer_id = catalog_offer_id(conn, normalized_store_code, product_id, payload.offer_id)
             exec1(
                 conn,
@@ -1081,7 +1092,6 @@ def mount_marketplaces_routes(
             conn.commit()
 
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             settings = publish_available_stock(conn, normalized_store_code, product_id)
             conn.commit()
             return settings
@@ -1091,7 +1101,6 @@ def mount_marketplaces_routes(
         # Показывает только заказы выбранной карточки и никогда не возвращает введенные ключи обратно в браузер.
         normalized_store_code = normalize_ozon_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             rows = qall(
                 conn,
                 """
@@ -1129,7 +1138,6 @@ def mount_marketplaces_routes(
         # Возвращает полный ключ только привилегированному пользователю и только после явного запроса из истории.
         normalized_store_code = normalize_ozon_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             row = q1(
                 conn,
                 """
@@ -1155,7 +1163,6 @@ def mount_marketplaces_routes(
         # Возвращает операцию поставщика, которая действительно выдала ключ для выбранного заказа Ozon.
         normalized_store_code = normalize_ozon_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             row = q1(
                 conn,
                 """
@@ -1219,7 +1226,6 @@ def mount_marketplaces_routes(
         imported_orders = 0
 
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             settings_rows = qall(
                 conn,
                 """
@@ -1317,7 +1323,6 @@ def mount_marketplaces_routes(
             conn.commit()
 
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             # Берем только неиспытанные новые заказы: ручной резерв не будет внезапно списывать средства у поставщика.
             queued_rows = qall(
                 conn,
@@ -1345,12 +1350,13 @@ def mount_marketplaces_routes(
                 """,
                 (normalized_store_code, selected_product_id),
             )
+            # Не держим транзакцию, пока ниже запускается автовыдача через внешнего поставщика.
+            conn.commit()
         for queued_row in queued_rows:
             process_order_with_suppliers(int(queued_row[0]))
 
         available_stock = 0
         with psycopg.connect(DB_DSN) as conn:
-            ensure_marketplaces_schema(conn)
             # После заказа Ozon сам держит единицу в резерве, поэтому только пересчитываем локальный показатель.
             settings = make_digital_settings_out(conn, normalized_store_code, selected_product_id)
             available_stock = settings.available_stock
@@ -1366,4 +1372,6 @@ def mount_marketplaces_routes(
         codes = [str(code or "").strip() for code in payload.codes if str(code or "").strip()]
         return deliver_ozon_codes(order_id, codes)
 
+    # Передаем стартеру отдельную миграцию, не меняя контракт фоновой функции опроса.
+    refresh_ozon_digital_supplier_orders.prepare_schema = prepare_marketplaces_schema
     return refresh_ozon_digital_supplier_orders

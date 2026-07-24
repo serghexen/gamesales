@@ -149,6 +149,28 @@ describe('WorkOzonCatalogDetailsModal', () => {
     expect(wrapper.get('.ozon-catalog-details-modal__stock-submit').text()).toBe('Отправить')
   })
 
+  it('shows delivery after our key issue even when Ozon keeps an intermediate status', async () => {
+    const props = buildProps()
+    props.ozonDigitalOrders = [{
+      id: 94,
+      order_number: '04259716-0125',
+      posting_number: '04259716-0125-1',
+      sku: 5196324554,
+      status: 'delivered',
+      ozon_status: 'awaiting_packaging',
+      delivery_source: 'interhub',
+    }]
+    const wrapper = mount(WorkOzonCatalogDetailsModal, {
+      props,
+      global: { stubs: { teleport: true } },
+    })
+
+    await wrapper.findAll('.ozon-catalog-details-modal__work-block-toggle').at(1).trigger('click')
+
+    expect(wrapper.find('.ozon-catalog-details-modal__order-history-table').text()).toContain('Доставлено')
+    expect(wrapper.text()).not.toContain('Ozon: awaiting_packaging')
+  })
+
   it('filters order history by order number, SKU and date, then sorts a selected column', async () => {
     const props = buildProps()
     props.ozonDigitalOrders[1] = {

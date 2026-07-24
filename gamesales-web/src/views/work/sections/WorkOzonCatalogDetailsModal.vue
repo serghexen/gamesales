@@ -406,12 +406,12 @@ function formatOzonDate(value) {
 }
 
 function ozonStatusLabel(ozonStatus, localStatus) {
-  // Для старых заказов без сохраненного статуса Ozon показывает уже известный рабочий статус, а не техническую пустоту.
+  // Подтвержденная выдача важнее промежуточного ответа Ozon, который может обновляться с задержкой.
   const normalized = String(ozonStatus || '').trim().toLowerCase()
   const normalizedLocal = String(localStatus || '').trim().toLowerCase()
+  if (normalizedLocal === 'delivered') return 'Доставлено'
+  if (normalizedLocal === 'cancelled') return 'Отменено'
   if (!normalized) {
-    if (normalizedLocal === 'delivered') return 'Доставлено'
-    if (normalizedLocal === 'cancelled') return 'Отменено'
     if (normalizedLocal === 'supplier_processing') return 'Обрабатывается поставщиком'
     if (normalizedLocal === 'delivering') return 'Ключ отправляется'
     return 'Ожидает ключ'

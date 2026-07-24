@@ -356,6 +356,15 @@ def fetch_ozon_catalog_items(
             stocks = item.get("stocks") if isinstance(item.get("stocks"), list) else []
             stocks_by_product_id[int(raw_product_id)] = [stock for stock in stocks if isinstance(stock, dict)]
 
+    def stock_rows_from_product_info(item: dict[str, Any]) -> list[dict[str, Any]]:
+        # Берет запас из подробной карточки, потому что для цифровых товаров общий складской метод может вернуть пустой список.
+        raw_stocks = item.get("stocks")
+        if isinstance(raw_stocks, dict):
+            raw_stocks = raw_stocks.get("stocks")
+        if not isinstance(raw_stocks, list):
+            return []
+        return [stock for stock in raw_stocks if isinstance(stock, dict)]
+
     # Дополняем сохраненный снимок ценой и остатком, чтобы карточка UI не зависела от формата API Ozon.
     for item in enriched_rows:
         raw_product_id = item.get("product_id") or item.get("id")
@@ -365,7 +374,8 @@ def fetch_ozon_catalog_items(
         price_item = prices_by_product_id.get(product_id, {})
         price = price_item.get("price") if isinstance(price_item.get("price"), dict) else {}
         item["ozon_price"] = price
-        item["ozon_stocks"] = stocks_by_product_id.get(product_id, [])
+        # Для цифровой карточки present приходит в product/info/list, а v4/product/info/stocks может быть пустым.
+        item["ozon_stocks"] = stocks_by_product_id.get(product_id) or stock_rows_from_product_info(item)
 
     if progress:
         progress(f"Загружено карточек Ozon: {len(enriched_rows)}")

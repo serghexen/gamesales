@@ -222,6 +222,11 @@ async def lifespan(_: FastAPI):
     _pool = ConnectionPool(DB_DSN, min_size=2, max_size=10, open=True)
     # Выполняем легкую инициализацию схемы при старте приложения.
     ensure_analytics_schema()
+    try:
+        # Миграции Ozon выполняются один раз до запуска фонового опроса, а не внутри пользовательских запросов.
+        ozon_prepare_marketplaces_schema()
+    except Exception:
+        logger.exception("Ozon marketplaces schema migration failed")
     stop_interhub_polling = asyncio.Event()
 
     async def poll_interhub_pending_transactions():
@@ -1314,6 +1319,8 @@ ozon_refresh_digital_supplier_orders = mount_marketplaces_routes(
     interhub_pay=interhub_pay,
     interhub_check_status=interhub_check_status,
 )
+# Берем стартовую миграцию у модуля Ozon, сохраняя саму функцию опроса без изменений.
+ozon_prepare_marketplaces_schema = ozon_refresh_digital_supplier_orders.prepare_schema
 
 mount_dashboard_routes(
     app,

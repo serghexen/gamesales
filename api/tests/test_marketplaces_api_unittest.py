@@ -50,7 +50,7 @@ class MarketplacesApiTests(unittest.TestCase):
         def fake_exec1(_conn, sql, params=None):
             write_log.append((sql, params))
 
-        mount_marketplaces_routes(
+        refresh_orders = mount_marketplaces_routes(
             app,
             DB_DSN="postgresql://test",
             psycopg=_FakePsycopg(),
@@ -60,6 +60,7 @@ class MarketplacesApiTests(unittest.TestCase):
             get_current_user=lambda: SimpleNamespace(username="owner", role="owner"),
             require_role=lambda *_roles: (lambda: SimpleNamespace(username="owner", role="owner")),
         )
+        self._refresh_orders = refresh_orders
         return TestClient(app), write_log
 
     # Чтение снимка не должно выполнять запрос к внешнему кабинету Ozon.
@@ -74,7 +75,15 @@ class MarketplacesApiTests(unittest.TestCase):
         self.assertEqual(response.json()["items"][0]["external_product_id"], 101)
         self.assertEqual(response.json()["items"][0]["offer_id"], "steam-1000")
         self.assertEqual(response.json()["items"][0]["sku"], "5510101")
-        self.assertTrue(writes, "schema was not prepared")
+        self.assertFalse(writes, "catalog read must not run schema migration")
+
+    # Миграция запускается явно при старте, а не скрыто в каждом обработчике Ozon.
+    def test_marketplaces_schema_is_prepared_by_startup_function(self):
+        _client, writes = self.create_client()
+
+        self._refresh_orders.prepare_schema()
+
+        self.assertTrue(any("ALTER TABLE app.marketplace_ozon_digital_orders" in sql for sql, _params in writes))
 
     # История показывает источник и только маску ключа, а полный код остается отдельным защищенным запросом.
     def test_digital_orders_list_masks_codes_and_returns_supplier_source(self):
@@ -372,6 +381,17 @@ class MarketplacesApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["available_stock"], 0)
+
+    # Цифровые карточки могут хранить остаток только в поле stocks подробного ответа Ozon.
+    def test_catalog_details_reads_stock_from_native_product_info(self):
+        client, _writes = self.create_client(
+            detail_row=({"stocks": {"stocks": [{"source": "fbo", "present": 4}]}}, datetime(2026, 7, 24, tzinfo=timezone.utc)),
+        )
+        with client:
+            response = client.get("/marketplaces/ozon/catalog/102")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["available_stock"], 4)
 
     # До первого включения ручного режима карточка должна вернуть нулевой лимит и свой артикул Ozon.
     def test_digital_settings_start_in_manual_mode_without_publishing_stock(self):
