@@ -292,7 +292,7 @@ def mount_marketplaces_routes(
               WHERE constraint_row.conrelid='app.marketplace_ozon_digital_supplier_attempts'::regclass
                 AND constraint_row.contype='u'
               GROUP BY constraint_row.conname, constraint_row.conkey
-              HAVING array_agg(attribute_row.attname ORDER BY array_position(constraint_row.conkey, attribute_row.attnum))
+              HAVING array_agg(attribute_row.attname::text ORDER BY array_position(constraint_row.conkey, attribute_row.attnum))
                 = ARRAY['order_id', 'supplier_id']
               LIMIT 1;
               IF constraint_name IS NOT NULL THEN

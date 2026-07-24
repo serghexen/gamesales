@@ -87,6 +87,7 @@ class MarketplacesApiTests(unittest.TestCase):
         # Экранирование нужно psycopg, иначе PostgreSQL-формат %I ошибочно читается как параметр запроса.
         migration_sql = next(sql for sql, _params in writes if "DROP CONSTRAINT %%I" in sql)
         self.assertIn("DROP CONSTRAINT %%I", migration_sql)
+        self.assertIn("attribute_row.attname::text", migration_sql)
 
     # История показывает источник и только маску ключа, а полный код остается отдельным защищенным запросом.
     def test_digital_orders_list_masks_codes_and_returns_supplier_source(self):
