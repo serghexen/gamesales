@@ -3,7 +3,7 @@ import { reactive } from 'vue'
 
 import { useOzonCatalog } from '../useOzonCatalog.js'
 
-function createHarness() {
+function createHarness({ requestDealConfirm = vi.fn().mockResolvedValue(true) } = {}) {
   const apiGet = vi.fn()
   const apiPost = vi.fn()
   const apiPut = vi.fn()
@@ -14,8 +14,9 @@ function createHarness() {
     apiPost,
     apiPut,
     mapApiError: (value) => String(value || ''),
+    requestDealConfirm,
   })
-  return { apiGet, apiPost, apiPut, catalog }
+  return { apiGet, apiPost, apiPut, catalog, requestDealConfirm }
 }
 
 describe('useOzonCatalog', () => {
@@ -46,16 +47,35 @@ describe('useOzonCatalog', () => {
   })
 
   it('moves one catalog card to the archive without reloading the full snapshot', async () => {
-    const { apiGet, apiPost, catalog } = createHarness()
+    const { apiGet, apiPost, catalog, requestDealConfirm } = createHarness()
     catalog.ozonCatalogItems.value = [{ external_product_id: 102, visibility: 'VISIBLE' }]
     apiPost.mockResolvedValueOnce({ external_product_id: 102, archived: true })
 
     await catalog.updateOzonCatalogArchive(catalog.ozonCatalogItems.value[0], true)
 
+    expect(requestDealConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Архивировать карточку?',
+      confirmText: 'Архивировать',
+      cancelText: 'Отмена',
+    }))
     expect(apiPost).toHaveBeenCalledWith('/marketplaces/ozon/catalog/102/archive', {}, { token: 'ozon-token' })
     expect(apiGet).not.toHaveBeenCalled()
     expect(catalog.ozonCatalogItems.value[0].visibility).toBe('ARCHIVED')
     expect(catalog.ozonCatalogOk.value).toBe('Карточка перенесена в архив')
+  })
+
+  it('does not archive a card when the operator cancels the warning', async () => {
+    const requestDealConfirm = vi.fn().mockResolvedValue(false)
+    const { apiPost, catalog } = createHarness({ requestDealConfirm })
+    catalog.ozonCatalogItems.value = [{ external_product_id: 102, title: 'Steam 1000', visibility: 'VISIBLE' }]
+
+    await catalog.updateOzonCatalogArchive(catalog.ozonCatalogItems.value[0], true)
+
+    expect(requestDealConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining('Steam 1000'),
+    }))
+    expect(apiPost).not.toHaveBeenCalled()
+    expect(catalog.ozonCatalogItems.value[0].visibility).toBe('VISIBLE')
   })
 
   it('opens selected card details from the local API snapshot', async () => {

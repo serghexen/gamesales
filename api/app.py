@@ -671,6 +671,9 @@ _INTERHUB_DEPOSIT_PATH = os.getenv("INTERHUB_DEPOSIT_PATH", "/api/agent/deposit"
 _INTERHUB_PRICE_CALCULATE_DELAY_MS = int(os.getenv("INTERHUB_PRICE_CALCULATE_DELAY_MS", "700") or "700")
 # Интервал фоновой проверки заказов Ozon и незавершённых выдач Interhub, чтобы менять его без правки кода.
 _OZON_SUPPLIER_POLL_INTERVAL_SEC = max(10, int(os.getenv("OZON_SUPPLIER_POLL_INTERVAL_SEC", "60") or "60"))
+# Ограничивает ожидание неопределенной оплаты, не разрешая повторную покупку без финального ответа поставщика.
+_OZON_SUPPLIER_MAX_STATUS_CHECKS = max(1, int(os.getenv("OZON_SUPPLIER_MAX_STATUS_CHECKS", "30") or "30"))
+_OZON_SUPPLIER_DEADLINE_BUFFER_SEC = max(0, int(os.getenv("OZON_SUPPLIER_DEADLINE_BUFFER_SEC", "600") or "600"))
 TELEGRAM_DIALOGS_SYNC_LIMIT = int(os.getenv("TELEGRAM_DIALOGS_SYNC_LIMIT", "0") or "0")
 TELEGRAM_DIALOGS_SYNC_BATCH = int(os.getenv("TELEGRAM_DIALOGS_SYNC_BATCH", "100") or "100")
 TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC = int(os.getenv("TELEGRAM_DIALOGS_SYNC_COOLDOWN_SEC", "45") or "45")
@@ -1124,6 +1127,8 @@ ozon_refresh_digital_supplier_orders = mount_marketplaces_routes(
     interhub_check=interhub_check,
     interhub_pay=interhub_pay,
     interhub_check_status=interhub_check_status,
+    max_supplier_status_checks=_OZON_SUPPLIER_MAX_STATUS_CHECKS,
+    supplier_deadline_buffer_sec=_OZON_SUPPLIER_DEADLINE_BUFFER_SEC,
 )
 mount_dashboard_routes(
     app,

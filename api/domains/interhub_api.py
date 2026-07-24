@@ -136,7 +136,9 @@ def mount_interhub_routes(
                     """
                     WITH due AS (
                       SELECT agent_transaction_id FROM app.interhub_transactions
-                      WHERE state='processing' AND next_status_check_at <= now()
+                      WHERE state='processing'
+                        AND next_status_check_at <= now()
+                        AND COALESCE(created_by, '') <> 'ozon-auto'
                       ORDER BY next_status_check_at
                       FOR UPDATE SKIP LOCKED
                       LIMIT 50

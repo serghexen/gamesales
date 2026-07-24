@@ -1872,7 +1872,7 @@ const {
   deliverOzonDigitalOrder,
   revealOzonDigitalOrderCodes,
   loadOzonDigitalSupplierOperation,
-} = useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError })
+} = useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, requestDealConfirm })
 
 function clearNsGiftMessages() {
   // Сбрасываем прошлые сообщения перед новым запросом к NS Gift.

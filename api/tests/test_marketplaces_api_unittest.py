@@ -10,7 +10,7 @@ try:
 except Exception:  # pragma: no cover
     TestClient = None
 
-from api.domains.marketplaces_api import claim_due_supplier_attempts, mount_marketplaces_routes
+from api.domains.marketplaces_api import auto_supplier_wait_expired, claim_due_supplier_attempts, digital_code_hash, mount_marketplaces_routes
 
 
 class _FakeConn:
@@ -31,6 +31,21 @@ class _FakePsycopg:
 
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
 class MarketplacesApiTests(unittest.TestCase):
+    # Отпечаток ключа должен быть стабильным и не раскрывать сам ключ в реестре дублей.
+    def test_digital_code_hash_is_stable_and_not_plaintext(self):
+        code = "ABCD-EFGH-IJKL"
+
+        self.assertEqual(digital_code_hash(code), digital_code_hash(code))
+        self.assertNotIn(code, digital_code_hash(code))
+
+    # Неопределенная оплата должна остановиться до дедлайна Ozon, не переходя к следующему поставщику.
+    def test_auto_supplier_wait_stops_by_attempt_limit_or_deadline(self):
+        now = datetime(2026, 7, 24, 12, 0, tzinfo=timezone.utc)
+
+        self.assertTrue(auto_supplier_wait_expired(30, None, max_status_checks=30, deadline_buffer_sec=600, now=now))
+        self.assertTrue(auto_supplier_wait_expired(2, datetime(2026, 7, 24, 12, 9, tzinfo=timezone.utc), max_status_checks=30, deadline_buffer_sec=600, now=now))
+        self.assertFalse(auto_supplier_wait_expired(2, datetime(2026, 7, 24, 12, 11, tzinfo=timezone.utc), max_status_checks=30, deadline_buffer_sec=600, now=now))
+
     # Поднимает маршрут с памятью вместо БД, чтобы проверять контракт без доступа к Ozon.
     def create_client(self, rows=None, writes=None, detail_row=None, q1_handler=None, qall_handler=None):
         app = FastAPI()

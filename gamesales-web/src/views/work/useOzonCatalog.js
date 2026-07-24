@@ -1,6 +1,6 @@
 import { reactive, ref } from 'vue'
 
-export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError }) {
+export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, requestDealConfirm }) {
   const showOzonCatalog = ref(false)
   const ozonCatalogItems = ref([])
   const ozonCatalogLoading = ref(false)
@@ -78,9 +78,19 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError }) {
   }
 
   async function updateOzonCatalogArchive(item, archived) {
-    // Меняет архивный статус одной карточки и обновляет локальный список без полной синхронизации.
+    // Запрашивает подтверждение архивации, чтобы случайный клик не остановил продажи карточки.
     const productId = Number(item?.external_product_id || 0)
     if (!productId || ozonCatalogItemActionId.value) return
+    if (archived) {
+      const title = String(item?.title || `Карточка #${productId}`).trim()
+      const confirmed = typeof requestDealConfirm === 'function' && await requestDealConfirm({
+        title: 'Архивировать карточку?',
+        message: `«${title}» станет недоступна для продаж в Ozon. Цены и остатки не изменятся.`,
+        confirmText: 'Архивировать',
+        cancelText: 'Отмена',
+      })
+      if (!confirmed) return
+    }
     ozonCatalogItemActionId.value = productId
     ozonCatalogError.value = ''
     ozonCatalogOk.value = ''
