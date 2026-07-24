@@ -10,7 +10,7 @@ try:
 except Exception:  # pragma: no cover
     TestClient = None
 
-from api.domains.marketplaces_api import mount_marketplaces_routes
+from api.domains.marketplaces_api import claim_due_supplier_attempts, mount_marketplaces_routes
 
 
 class _FakeConn:
@@ -83,6 +83,23 @@ class MarketplacesApiTests(unittest.TestCase):
 
         self.assertFalse(hasattr(self._refresh_orders, "prepare_schema"))
         self.assertFalse(writes)
+
+    # Проверяет, что два воркера могут безопасно поделить просроченные проверки через SKIP LOCKED и lease.
+    def test_claim_due_supplier_attempts_uses_skip_locked_lease(self):
+        sql_calls = []
+
+        def fake_qall(_conn, sql, params=None):
+            sql_calls.append((sql, params))
+            return [(17, 42, "transaction-17")]
+
+        claimed = claim_due_supplier_attempts(object(), fake_qall, "9baed8dc-5a0b-441e-938a-a4b6d39bee22")
+
+        self.assertEqual(claimed, [(17, 42, "transaction-17")])
+        sql, params = sql_calls[0]
+        self.assertIn("FOR UPDATE SKIP LOCKED", sql)
+        self.assertIn("status_check_lock_token", sql)
+        self.assertIn("status_check_locked_until", sql)
+        self.assertEqual(params, ("9baed8dc-5a0b-441e-938a-a4b6d39bee22",))
 
     # История показывает источник и только маску ключа, а полный код остается отдельным защищенным запросом.
     def test_digital_orders_list_masks_codes_and_returns_supplier_source(self):

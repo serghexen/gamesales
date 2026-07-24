@@ -19,6 +19,36 @@ from .ozon_service import (
 )
 
 
+def claim_due_supplier_attempts(conn, qall, lock_token: str):
+    # Атомарно передает просроченные проверки одному воркеру, чтобы не дублировать запросы к поставщику.
+    return qall(
+        conn,
+        """
+        WITH due_attempts AS (
+          SELECT attempt.id
+          FROM app.marketplace_ozon_digital_supplier_attempts AS attempt
+          WHERE attempt.state='processing'
+            AND attempt.next_status_check_at <= now()
+            AND (
+              attempt.status_check_locked_until IS NULL
+              OR attempt.status_check_locked_until <= now()
+            )
+          ORDER BY attempt.next_status_check_at ASC, attempt.id ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT 50
+        )
+        UPDATE app.marketplace_ozon_digital_supplier_attempts AS attempt
+        SET status_check_lock_token=%s::uuid,
+            status_check_locked_until=now() + interval '5 minutes',
+            updated_at=now()
+        FROM due_attempts
+        WHERE attempt.id=due_attempts.id
+        RETURNING attempt.id, attempt.order_id, attempt.agent_transaction_id
+        """,
+        (lock_token,),
+    )
+
+
 class OzonCatalogItemOut(BaseModel):
     external_product_id: int
     offer_id: str = ""
@@ -790,18 +820,10 @@ def mount_marketplaces_routes(
         # Проверяет отложенные оплаты Interhub в фоне и не требует от оператора повторно открывать заказ.
         if not interhub_check_status:
             return
+        lock_token = str(uuid.uuid4())
         with psycopg.connect(DB_DSN) as conn:
-            attempts = qall(
-                conn,
-                """
-                SELECT attempt.id, attempt.order_id, attempt.agent_transaction_id
-                FROM app.marketplace_ozon_digital_supplier_attempts AS attempt
-                WHERE attempt.state='processing' AND attempt.next_status_check_at <= now()
-                ORDER BY attempt.next_status_check_at ASC
-                LIMIT 50
-                """,
-            )
-            # Освобождаем блокировку чтения до опроса поставщика, который может отвечать долго.
+            attempts = claim_due_supplier_attempts(conn, qall, lock_token)
+            # Сохраняем lease до внешнего запроса, чтобы другой процесс не взял ту же попытку.
             conn.commit()
         for attempt in attempts:
             attempt_id, order_id, transaction_id = int(attempt[0]), int(attempt[1]), str(attempt[2])
@@ -811,20 +833,33 @@ def mount_marketplaces_routes(
                 result = {"success": False, "status": -1, "message": str(getattr(exc, "detail", exc)), "raw": {}}
             state = provider_state(result)
             message = str(result.get("message") or "")
-            save_auto_interhub_result(transaction_id, result)
             with psycopg.connect(DB_DSN) as conn:
-                exec1(
+                updated_rows = exec1(
                     conn,
                     """
                     UPDATE app.marketplace_ozon_digital_supplier_attempts
                     SET state=%s, provider_status=%s, provider_message=%s, provider_response=%s::jsonb,
                         next_status_check_at=CASE WHEN %s='processing' THEN now() + interval '5 minutes' ELSE NULL END,
+                        status_check_lock_token=NULL,
+                        status_check_locked_until=NULL,
                         updated_at=now()
-                    WHERE id=%s
+                    WHERE id=%s AND status_check_lock_token=%s::uuid
                     """,
-                    (state, int(result.get("status") or 0), message[:2000], json.dumps(result.get("raw") or {}), state, attempt_id),
+                    (
+                        state,
+                        int(result.get("status") or 0),
+                        message[:2000],
+                        json.dumps(result.get("raw") or {}),
+                        state,
+                        attempt_id,
+                        lock_token,
+                    ),
                 )
                 conn.commit()
+            if updated_rows <= 0:
+                # Lease уже перешел другому воркеру, поэтому устаревший ответ не должен менять заказ.
+                continue
+            save_auto_interhub_result(transaction_id, result)
             if state == "processing":
                 continue
             if state == "paid":
