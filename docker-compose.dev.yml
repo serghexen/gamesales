@@ -28,6 +28,18 @@ services:
       - ./api:/app
       - ./db/migrations:/migrations:ro
 
+  ozon-notifier:
+    build: ./ozon-notifier
+    container_name: gamesales-ozon-notifier-dev
+    restart: unless-stopped
+    env_file: .env.dev
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      OZON_NOTIFIER_BOT_TOKEN: ${OZON_NOTIFIER_BOT_TOKEN}
+      OZON_NOTIFIER_CHAT_ID: ${OZON_NOTIFIER_CHAT_ID}
+      OZON_NOTIFIER_POLL_INTERVAL_SEC: ${OZON_NOTIFIER_POLL_INTERVAL_SEC:-15}
+      OZON_NOTIFIER_NOTIFY_EXISTING: ${OZON_NOTIFIER_NOTIFY_EXISTING:-false}
+
   web:
     image: node:20-alpine
     container_name: gamesales-web-dev
