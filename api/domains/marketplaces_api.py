@@ -1253,9 +1253,10 @@ def mount_marketplaces_routes(
         payload: OzonDigitalSettingsIn,
         store_code: str = "asat",
         publish_stock: bool = False,
+        update_supplier: bool = True,
         user=Depends(require_role("owner")),
     ):
-        # Сохраняет настройки отдельно: остаток уходит в Ozon только по явному ручному запросу из карточки.
+        # При отправке остатка не меняет привязку поставщика из отдельной формы.
         if publish_stock:
             require_ozon_live()
         normalized_store_code = normalize_ozon_store_code(store_code)
@@ -1287,7 +1288,7 @@ def mount_marketplaces_routes(
                     payload.support_error_message.strip(),
                 ),
             )
-            if payload.interhub_service_id:
+            if update_supplier and payload.interhub_service_id:
                 # Связывает карточку с услугой Interhub, но не делает оплату во время сохранения формы.
                 exec1(
                     conn,
@@ -1310,7 +1311,7 @@ def mount_marketplaces_routes(
                         payload.interhub_nominal_id.strip(),
                     ),
                 )
-            else:
+            elif update_supplier:
                 # Отключает прежнюю связку, если оператор очистил услугу, не удаляя историю попыток.
                 exec1(
                     conn,

@@ -186,7 +186,7 @@ class MarketplacesApiTests(unittest.TestCase):
                 return (41, ["ABCD-EFGH-IJKL"])
             return None
 
-        client, _writes = self.create_client(q1_handler=q1_handler)
+        client, writes = self.create_client(q1_handler=q1_handler)
         with client:
             response = client.get("/marketplaces/ozon/digital-orders/41/codes")
 
@@ -341,16 +341,18 @@ class MarketplacesApiTests(unittest.TestCase):
                 return ("Joy1", 1, False, "", "", 0, None, None)
             return None
 
-        client, _writes = self.create_client(q1_handler=q1_handler)
+        client, writes = self.create_client(q1_handler=q1_handler)
         with (
             patch("api.domains.marketplaces_api.fetch_ozon_catalog_offer_id", return_value=""),
             patch("api.domains.marketplaces_api.update_ozon_digital_stock", return_value={"status": [{"updated": True}]}) as update_stock,
         ):
             with client:
-                response = client.put("/marketplaces/ozon/catalog/103/digital-settings?publish_stock=true", json={"offer_id": "Joy1", "manual_stock_limit": 1})
+                response = client.put("/marketplaces/ozon/catalog/103/digital-settings?publish_stock=true&update_supplier=false", json={"offer_id": "Joy1", "manual_stock_limit": 1})
 
         self.assertEqual(response.status_code, 200)
         update_stock.assert_called_once_with("Joy1", 1, store_code="asat")
+        supplier_calls = [sql for sql, _params in writes if "marketplace_ozon_digital_suppliers" in sql]
+        self.assertEqual(supplier_calls, [])
 
     # Связка с поставщиком должна сохраняться отдельно от лимита и не вызывать оплату при нажатии «Сохранить».
     def test_digital_settings_saves_interhub_mapping_without_calling_supplier(self):

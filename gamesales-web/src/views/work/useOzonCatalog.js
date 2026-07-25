@@ -144,11 +144,12 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, req
   }
 
   function openOzonCatalogDetails(item) {
-    // Открывает только снимок карточки: настройки и заказы загружаются после раскрытия нужного блока.
+    // Очищает настройки прошлой карточки, чтобы они не могли сохраниться для новой до загрузки блока.
     const productId = Number(item?.external_product_id || 0)
     if (!productId) return
     ozonDigitalProductId.value = productId
     ozonDigitalOrders.value = []
+    applyOzonDigitalSettings({ external_product_id: productId })
     showOzonCatalog.value = false
     showOzonCatalogDetails.value = true
     loadOzonCatalogDetails(productId)
@@ -237,8 +238,8 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, req
     showOzonCatalogDetails.value = true
   }
 
-  async function saveOzonDigitalSettings({ publishStock = false } = {}) {
-    // Сохраняет настройки поставщика, а остаток отправляет в Ozon только по отдельной кнопке карточки.
+  async function saveOzonDigitalSettings({ publishStock = false, updateSupplier = true } = {}) {
+    // Отправляет остаток без перезаписи поставщика, если действие пришло из карточки товара.
     const productId = ozonDigitalProductId.value
     if (!productId || ozonDigitalSettingsSaving.value) return
     ozonDigitalSettingsSaving.value = true
@@ -246,7 +247,7 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, req
     ozonDigitalSettingsOk.value = ''
     try {
       const saved = await apiPut(
-        `/marketplaces/ozon/catalog/${encodeURIComponent(productId)}/digital-settings${publishStock ? '?publish_stock=true' : ''}`,
+        `/marketplaces/ozon/catalog/${encodeURIComponent(productId)}/digital-settings${publishStock ? `?publish_stock=true&update_supplier=${updateSupplier}` : ''}`,
         {
           offer_id: String(ozonDigitalSettings.offer_id || ''),
           manual_stock_limit: Math.max(0, Number(ozonDigitalSettings.manual_stock_limit || 0)),
