@@ -712,6 +712,10 @@ const isAdmin = computed(() => {
   const role = normalizeRole(auth.state.role)
   return role === 'admin' || role === 'owner'
 })
+const canManageOzon = computed(() => {
+  // Каталог и выдача Ozon доступны только владельцу, потому что они управляют внешними продажами.
+  return normalizeRole(auth.state.role) === 'owner'
+})
 const canManageRolePermissions = computed(() => {
   // Ролевой моделью управляют владелец и администратор.
   const role = normalizeRole(auth.state.role)
@@ -3604,6 +3608,7 @@ const productsSectionCtx = asCtx({
   resetProductFilter,
   openProductImport,
   openOzonCatalog,
+  canManageOzon,
   closeOzonCatalog,
   syncOzonCatalog,
   updateOzonCatalogArchive,

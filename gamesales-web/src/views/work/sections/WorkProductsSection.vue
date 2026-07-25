@@ -7,6 +7,7 @@
       :open-create-subscription-product-modal="ctx.openCreateSubscriptionProductModal"
       :open-product-import="ctx.openProductImport"
       :open-ozon-catalog="ctx.openOzonCatalog"
+      :can-manage-ozon="ctx.canManageOzon"
       :load-products="ctx.loadProducts"
       :products-loading="ctx.productsLoading"
     />
@@ -63,6 +64,7 @@
       />
 
       <WorkOzonCatalogModal
+        v-if="ctx.canManageOzon"
         :show-ozon-catalog="ctx.showOzonCatalog"
         :close-ozon-catalog="ctx.closeOzonCatalog"
         :sync-ozon-catalog="ctx.syncOzonCatalog"
@@ -77,6 +79,7 @@
       />
 
       <WorkOzonCatalogDetailsModal
+        v-if="ctx.canManageOzon"
         :show-ozon-catalog-details="ctx.showOzonCatalogDetails"
         :close-ozon-catalog-details="ctx.closeOzonCatalogDetails"
         :open-ozon-digital-settings="ctx.openOzonDigitalSettings"
@@ -99,6 +102,7 @@
       />
 
       <WorkOzonDigitalSettingsModal
+        v-if="ctx.canManageOzon"
         :show-ozon-digital-settings="ctx.showOzonDigitalSettings"
         :close-ozon-digital-settings="ctx.closeOzonDigitalSettings"
         :ozon-digital-settings="ctx.ozonDigitalSettings"

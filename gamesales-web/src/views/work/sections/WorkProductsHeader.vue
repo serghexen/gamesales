@@ -40,6 +40,7 @@
     </div>
     <div class="toolbar-actions">
       <button
+        v-if="canManageOzon"
         class="product-ozon-btn"
         type="button"
         title="Каталог Ozon"
@@ -105,6 +106,7 @@ defineProps({
   openCreateSubscriptionProductModal: { type: Function, required: true },
   openProductImport: { type: Function, required: true },
   openOzonCatalog: { type: Function, required: true },
+  canManageOzon: { type: Boolean, default: false },
   loadProducts: { type: Function, required: true },
   productsLoading: { type: Boolean, required: true },
 })

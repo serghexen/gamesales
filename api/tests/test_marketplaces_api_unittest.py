@@ -47,7 +47,7 @@ class MarketplacesApiTests(unittest.TestCase):
         self.assertFalse(auto_supplier_wait_expired(2, datetime(2026, 7, 24, 12, 11, tzinfo=timezone.utc), max_status_checks=30, deadline_buffer_sec=600, now=now))
 
     # Поднимает маршрут с памятью вместо БД, чтобы проверять контракт без доступа к Ozon.
-    def create_client(self, rows=None, writes=None, detail_row=None, q1_handler=None, qall_handler=None):
+    def create_client(self, rows=None, writes=None, detail_row=None, q1_handler=None, qall_handler=None, required_roles=None):
         app = FastAPI()
         stored_rows = list(rows or [])
         write_log = writes if writes is not None else []
@@ -65,6 +65,12 @@ class MarketplacesApiTests(unittest.TestCase):
         def fake_exec1(_conn, sql, params=None):
             write_log.append((sql, params))
 
+        def fake_require_role(*roles):
+            # Запоминает роли маршрутов, чтобы Ozon не открылся через прямой API-вызов.
+            if required_roles is not None:
+                required_roles.append(roles)
+            return lambda: SimpleNamespace(username="owner", role="owner")
+
         refresh_orders = mount_marketplaces_routes(
             app,
             DB_DSN="postgresql://test",
@@ -73,10 +79,18 @@ class MarketplacesApiTests(unittest.TestCase):
             qall=fake_qall,
             exec1=fake_exec1,
             get_current_user=lambda: SimpleNamespace(username="owner", role="owner"),
-            require_role=lambda *_roles: (lambda: SimpleNamespace(username="owner", role="owner")),
+            require_role=fake_require_role,
         )
         self._refresh_orders = refresh_orders
         return TestClient(app), write_log
+
+    # Все ручные операции Ozon разрешены только владельцу, включая чтение истории и настроек.
+    def test_ozon_routes_require_only_owner_role(self):
+        required_roles = []
+        self.create_client(required_roles=required_roles)
+
+        self.assertGreaterEqual(len(required_roles), 11)
+        self.assertTrue(all(roles == ("owner",) for roles in required_roles))
 
     # Чтение снимка не должно выполнять запрос к внешнему кабинету Ozon.
     def test_list_catalog_returns_local_snapshot(self):

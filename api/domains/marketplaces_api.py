@@ -1123,7 +1123,7 @@ def mount_marketplaces_routes(
         refresh_supplier_attempts()
 
     @app.post("/marketplaces/ozon/catalog/sync", response_model=OzonCatalogSyncOut)
-    def sync_ozon_catalog(store_code: str = "asat", user=Depends(require_role("admin", "owner"))):
+    def sync_ozon_catalog(store_code: str = "asat", user=Depends(require_role("owner"))):
         # Читает карточки Ozon и сохраняет снимок для последующего ручного сопоставления с товарами.
         normalized_store_code = normalize_ozon_store_code(store_code)
         remote_items = fetch_ozon_catalog_items(normalized_store_code)
@@ -1154,7 +1154,7 @@ def mount_marketplaces_routes(
         return OzonCatalogSyncOut(store_code=normalized_store_code, synced_items=len(remote_items), synced_at=synced_at)
 
     @app.get("/marketplaces/ozon/catalog", response_model=OzonCatalogListOut)
-    def list_ozon_catalog(store_code: str = "asat", user=Depends(get_current_user)):
+    def list_ozon_catalog(store_code: str = "asat", user=Depends(require_role("owner"))):
         # Отдает последний локальный снимок, чтобы UI не дергал Ozon при каждом открытии экрана.
         normalized_store_code = normalize_ozon_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
@@ -1185,7 +1185,7 @@ def mount_marketplaces_routes(
         )
 
     @app.get("/marketplaces/ozon/catalog/{product_id}", response_model=OzonCatalogDetailsOut)
-    def get_ozon_catalog_details(product_id: int, store_code: str = "asat", user=Depends(get_current_user)):
+    def get_ozon_catalog_details(product_id: int, store_code: str = "asat", user=Depends(require_role("owner"))):
         # Возвращает важные поля уже сохраненного ответа, не повторяя запрос к Ozon при клике в UI.
         normalized_store_code = normalize_ozon_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
@@ -1221,17 +1221,17 @@ def mount_marketplaces_routes(
         return OzonCatalogArchiveOut(external_product_id=product_id, archived=archived)
 
     @app.post("/marketplaces/ozon/catalog/{product_id}/archive", response_model=OzonCatalogArchiveOut)
-    def archive_ozon_catalog_item(product_id: int, store_code: str = "asat", user=Depends(require_role("admin", "owner"))):
+    def archive_ozon_catalog_item(product_id: int, store_code: str = "asat", user=Depends(require_role("owner"))):
         # Переносит выбранную карточку в архив, чтобы ее нельзя было использовать в текущей витрине.
         return set_ozon_catalog_archive(product_id, archived=True, store_code=store_code)
 
     @app.post("/marketplaces/ozon/catalog/{product_id}/unarchive", response_model=OzonCatalogArchiveOut)
-    def unarchive_ozon_catalog_item(product_id: int, store_code: str = "asat", user=Depends(require_role("admin", "owner"))):
+    def unarchive_ozon_catalog_item(product_id: int, store_code: str = "asat", user=Depends(require_role("owner"))):
         # Возвращает карточку из архива, не меняя ее цену и настройки выдачи ключей.
         return set_ozon_catalog_archive(product_id, archived=False, store_code=store_code)
 
     @app.get("/marketplaces/ozon/catalog/{product_id}/digital-settings", response_model=OzonDigitalSettingsOut)
-    def get_ozon_digital_settings(product_id: int, store_code: str = "asat", user=Depends(get_current_user)):
+    def get_ozon_digital_settings(product_id: int, store_code: str = "asat", user=Depends(require_role("owner"))):
         # Отдает настройки ручной выдачи до публикации остатка, чтобы карточку можно было подготовить безопасно.
         normalized_store_code = normalize_ozon_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
@@ -1242,7 +1242,7 @@ def mount_marketplaces_routes(
         product_id: int,
         payload: OzonDigitalSettingsIn,
         store_code: str = "asat",
-        user=Depends(require_role("admin", "owner")),
+        user=Depends(require_role("owner")),
     ):
         # Сохраняет ручной лимит и сразу публикует безопасный остаток только в выбранную цифровую карточку.
         normalized_store_code = normalize_ozon_store_code(store_code)
@@ -1316,7 +1316,7 @@ def mount_marketplaces_routes(
             return settings
 
     @app.get("/marketplaces/ozon/catalog/{product_id}/digital-orders", response_model=OzonDigitalOrdersOut)
-    def list_ozon_digital_orders(product_id: int, store_code: str = "asat", user=Depends(get_current_user)):
+    def list_ozon_digital_orders(product_id: int, store_code: str = "asat", user=Depends(require_role("owner"))):
         # Показывает только заказы выбранной карточки и никогда не возвращает введенные ключи обратно в браузер.
         normalized_store_code = normalize_ozon_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
@@ -1352,7 +1352,7 @@ def mount_marketplaces_routes(
     def get_ozon_digital_order_codes(
         order_id: int,
         store_code: str = "asat",
-        user=Depends(require_role("admin", "owner")),
+        user=Depends(require_role("owner")),
     ):
         # Возвращает полный ключ только привилегированному пользователю и только после явного запроса из истории.
         normalized_store_code = normalize_ozon_store_code(store_code)
@@ -1377,7 +1377,7 @@ def mount_marketplaces_routes(
     def get_ozon_digital_order_supplier_operation(
         order_id: int,
         store_code: str = "asat",
-        user=Depends(require_role("admin", "owner")),
+        user=Depends(require_role("owner")),
     ):
         # Возвращает операцию поставщика, которая действительно выдала ключ для выбранного заказа Ozon.
         normalized_store_code = normalize_ozon_store_code(store_code)
@@ -1436,7 +1436,7 @@ def mount_marketplaces_routes(
         )
 
     @app.post("/marketplaces/ozon/catalog/{product_id}/digital-orders/sync", response_model=OzonDigitalSyncOut)
-    def sync_ozon_digital_orders(product_id: int, store_code: str = "asat", user=Depends(require_role("admin", "owner"))):
+    def sync_ozon_digital_orders(product_id: int, store_code: str = "asat", user=Depends(require_role("owner"))):
         # Забирает заказы только выбранной карточки, чтобы работа из окна товара не затрагивала другие ключи.
         selected_product_id = int(product_id)
         normalized_store_code = normalize_ozon_store_code(store_code)
@@ -1592,7 +1592,7 @@ def mount_marketplaces_routes(
     def deliver_ozon_digital_order(
         order_id: int,
         payload: OzonDigitalDeliveryIn,
-        user=Depends(require_role("admin", "owner")),
+        user=Depends(require_role("owner")),
     ):
         # Передает вручную введенный ключ через общий безопасный путь выдачи поставщика или оператора.
         codes = [str(code or "").strip() for code in payload.codes if str(code or "").strip()]
