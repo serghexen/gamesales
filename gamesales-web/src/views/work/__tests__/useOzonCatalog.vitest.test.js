@@ -116,12 +116,28 @@ describe('useOzonCatalog', () => {
     await catalog.saveOzonDigitalSettings({ publishStock: true })
 
     expect(apiPut).toHaveBeenCalledWith(
-      '/marketplaces/ozon/catalog/103/digital-settings?publish_stock=true',
-      expect.objectContaining({ offer_id: 'PS5-6', manual_stock_limit: 1, auto_issue_enabled: false }),
+      '/marketplaces/ozon/catalog/103/digital-settings?publish_stock=true&update_supplier=true',
+      expect.objectContaining({ offer_id: 'PS5-6', manual_stock_limit: 1, auto_issue_enabled: false, pool_issue_enabled: false }),
       { token: 'ozon-token' },
     )
     expect(catalog.ozonDigitalSettings.published_stock).toBe(1)
     expect(catalog.ozonDigitalSettingsOk.value).toBe('В Ozon опубликован остаток: 1')
+  })
+
+  it('clears another card settings before its sale block loads them', async () => {
+    const { apiGet, catalog } = createHarness()
+    apiGet.mockResolvedValueOnce({ external_product_id: 104, title: 'Steam 1000' })
+    catalog.ozonDigitalSettings.interhub_service_id = 91
+    catalog.ozonDigitalSettings.interhub_nominal_id = '500'
+
+    catalog.openOzonCatalogDetails({ external_product_id: 104 })
+    await Promise.resolve()
+
+    expect(catalog.ozonDigitalSettings).toMatchObject({
+      external_product_id: 104,
+      interhub_service_id: null,
+      interhub_nominal_id: '',
+    })
   })
 
   it('saves supplier settings without sending the stock to Ozon', async () => {

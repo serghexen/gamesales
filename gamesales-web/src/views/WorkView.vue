@@ -182,6 +182,8 @@ import { useCatalogs } from './work/useCatalogs'
 import { useAccountsFlow } from './work/useAccountsFlow'
 import { useProductsFlow } from './work/useProductsFlow'
 import { useOzonCatalog } from './work/useOzonCatalog'
+import { useYandexMarketCatalog } from './work/useYandexMarketCatalog'
+import { useMarketplaceKeyPool } from './work/useMarketplaceKeyPool'
 import { useProductsViewState } from './work/useProductsViewState'
 import { useAccountsViewState } from './work/useAccountsViewState'
 import { useAccountsDerivedState } from './work/useAccountsDerivedState'
@@ -714,6 +716,10 @@ const isAdmin = computed(() => {
 })
 const canManageOzon = computed(() => {
   // Каталог и выдача Ozon доступны только владельцу, потому что они управляют внешними продажами.
+  return normalizeRole(auth.state.role) === 'owner'
+})
+const canManageYandexMarket = computed(() => {
+  // Каталог и публикация остатка Маркета доступны владельцу, потому что они меняют внешнюю витрину.
   return normalizeRole(auth.state.role) === 'owner'
 })
 const canManageRolePermissions = computed(() => {
@@ -1877,6 +1883,62 @@ const {
   revealOzonDigitalOrderCodes,
   loadOzonDigitalSupplierOperation,
 } = useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, requestDealConfirm })
+
+const {
+  showYandexMarketCatalog,
+  yandexMarketCatalogItems,
+  yandexMarketCatalogLoading,
+  yandexMarketCatalogSyncing,
+  yandexMarketCatalogItemActionId,
+  yandexMarketCatalogError,
+  yandexMarketCatalogOk,
+  showYandexMarketCatalogDetails,
+  yandexMarketCatalogDetails,
+  yandexMarketCatalogDetailsLoading,
+  yandexMarketCatalogDetailsError,
+  showYandexMarketDigitalSettings,
+  yandexMarketSelectedOfferId,
+  yandexMarketStockSettings,
+  yandexMarketStockSettingsLoading,
+  yandexMarketStockSettingsSaving,
+  yandexMarketOrders,
+  yandexMarketOrdersLoading,
+  yandexMarketOrdersSyncing,
+  yandexMarketOrdersLastSyncedAt,
+  openYandexMarketCatalog,
+  closeYandexMarketCatalog,
+  syncYandexMarketCatalog,
+  openYandexMarketCatalogDetails,
+  closeYandexMarketCatalogDetails,
+  openYandexMarketDigitalSettings,
+  closeYandexMarketDigitalSettings,
+  loadYandexMarketOrders,
+  syncYandexMarketOrders,
+  updateYandexMarketCatalogArchive,
+  selectYandexMarketCatalogItem,
+  closeYandexMarketStockSettings,
+  saveYandexMarketStockSettings,
+} = useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, requestDealConfirm })
+
+const {
+  showMarketplaceKeyPool,
+  marketplaceKeyPool,
+  marketplaceKeyPoolLoading,
+  marketplaceKeyPoolSaving,
+  marketplaceKeyPoolError,
+  marketplaceKeyPoolOk,
+  marketplaceKeyPoolTotalPages,
+  marketplaceKeyPoolRevealingId,
+  marketplaceKeyPoolRevealedCode,
+  loadMarketplaceKeyPoolFor,
+  openMarketplaceKeyPool,
+  closeMarketplaceKeyPool,
+  loadMarketplaceKeyPool,
+  addMarketplaceKeyPoolKeys,
+  revealMarketplaceKeyPoolKey,
+  deleteMarketplaceKeyPoolKey,
+  deleteAllFreeMarketplaceKeyPoolKeys,
+} = useMarketplaceKeyPool({ auth, apiGet, apiPost, apiDelete, mapApiError, requestDealConfirm })
 
 function clearNsGiftMessages() {
   // Сбрасываем прошлые сообщения перед новым запросом к NS Gift.
@@ -3609,6 +3671,8 @@ const productsSectionCtx = asCtx({
   openProductImport,
   openOzonCatalog,
   canManageOzon,
+  openYandexMarketCatalog,
+  canManageYandexMarket,
   closeOzonCatalog,
   syncOzonCatalog,
   updateOzonCatalogArchive,
@@ -3642,6 +3706,55 @@ const productsSectionCtx = asCtx({
   deliverOzonDigitalOrder,
   revealOzonDigitalOrderCodes,
   loadOzonDigitalSupplierOperation,
+  closeYandexMarketCatalog,
+  syncYandexMarketCatalog,
+  updateYandexMarketCatalogArchive,
+  showYandexMarketCatalog,
+  yandexMarketCatalogItems,
+  yandexMarketCatalogLoading,
+  yandexMarketCatalogSyncing,
+  yandexMarketCatalogItemActionId,
+  yandexMarketCatalogError,
+  yandexMarketCatalogOk,
+  showYandexMarketCatalogDetails,
+  yandexMarketCatalogDetails,
+  yandexMarketCatalogDetailsLoading,
+  yandexMarketCatalogDetailsError,
+  showYandexMarketDigitalSettings,
+  yandexMarketSelectedOfferId,
+  yandexMarketStockSettings,
+  yandexMarketStockSettingsLoading,
+  yandexMarketStockSettingsSaving,
+  yandexMarketOrders,
+  yandexMarketOrdersLoading,
+  yandexMarketOrdersSyncing,
+  yandexMarketOrdersLastSyncedAt,
+  selectYandexMarketCatalogItem,
+  openYandexMarketCatalogDetails,
+  closeYandexMarketCatalogDetails,
+  openYandexMarketDigitalSettings,
+  closeYandexMarketDigitalSettings,
+  loadYandexMarketOrders,
+  syncYandexMarketOrders,
+  closeYandexMarketStockSettings,
+  saveYandexMarketStockSettings,
+  showMarketplaceKeyPool,
+  marketplaceKeyPool,
+  marketplaceKeyPoolLoading,
+  marketplaceKeyPoolSaving,
+  marketplaceKeyPoolError,
+  marketplaceKeyPoolOk,
+  marketplaceKeyPoolTotalPages,
+  marketplaceKeyPoolRevealingId,
+  marketplaceKeyPoolRevealedCode,
+  loadMarketplaceKeyPoolFor,
+  openMarketplaceKeyPool,
+  closeMarketplaceKeyPool,
+  loadMarketplaceKeyPool,
+  addMarketplaceKeyPoolKeys,
+  revealMarketplaceKeyPoolKey,
+  deleteMarketplaceKeyPoolKey,
+  deleteAllFreeMarketplaceKeyPoolKeys,
   isAdmin,
   closeProductImport,
   showProductImport,

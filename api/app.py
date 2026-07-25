@@ -279,6 +279,8 @@ from domains.imports_models import ImportReportIn
 from domains.analytics_api import mount_analytics_routes
 from domains.finance_api import mount_finance_routes
 from domains.marketplaces_api import mount_marketplaces_routes
+from domains.marketplace_key_pools_api import mount_marketplace_key_pool_routes
+from domains.yandex_market_catalog_api import mount_yandex_market_catalog_routes
 from domains.dashboard_api import mount_dashboard_routes
 from domains.products_api import mount_products_routes
 from domains.products_import_api import mount_products_import_routes
@@ -675,6 +677,8 @@ _INTERHUB_PRICE_CALCULATE_DELAY_MS = int(os.getenv("INTERHUB_PRICE_CALCULATE_DEL
 _OZON_SUPPLIER_POLL_INTERVAL_SEC = max(10, int(os.getenv("OZON_SUPPLIER_POLL_INTERVAL_SEC", "60") or "60"))
 # Разрешает живые действия Ozon отдельно от общего доступа к Interhub для других маркетплейсов.
 _OZON_LIVE_ENABLED = str(os.getenv("OZON_LIVE_ENABLED", "true") or "true").strip().lower() in ("1", "true", "yes", "on")
+# Разрешает отдельно остановить товарные действия Яндекс Маркета, не отключая финансовую синхронизацию.
+_YANDEX_MARKET_CATALOG_LIVE_ENABLED = str(os.getenv("YANDEX_MARKET_CATALOG_LIVE_ENABLED", "true") or "true").strip().lower() in ("1", "true", "yes", "on")
 # Ограничивает ожидание неопределенной оплаты, не разрешая повторную покупку без финального ответа поставщика.
 _OZON_SUPPLIER_MAX_STATUS_CHECKS = max(1, int(os.getenv("OZON_SUPPLIER_MAX_STATUS_CHECKS", "30") or "30"))
 _OZON_SUPPLIER_DEADLINE_BUFFER_SEC = max(0, int(os.getenv("OZON_SUPPLIER_DEADLINE_BUFFER_SEC", "600") or "600"))
@@ -1134,6 +1138,25 @@ ozon_refresh_digital_supplier_orders = mount_marketplaces_routes(
     ozon_live_enabled=_OZON_LIVE_ENABLED,
     max_supplier_status_checks=_OZON_SUPPLIER_MAX_STATUS_CHECKS,
     supplier_deadline_buffer_sec=_OZON_SUPPLIER_DEADLINE_BUFFER_SEC,
+)
+mount_yandex_market_catalog_routes(
+    app,
+    DB_DSN=DB_DSN,
+    psycopg=pooled_psycopg,
+    q1=q1,
+    qall=qall,
+    exec1=exec1,
+    require_role=require_role,
+    yandex_market_live_enabled=_YANDEX_MARKET_CATALOG_LIVE_ENABLED,
+)
+mount_marketplace_key_pool_routes(
+    app,
+    DB_DSN=DB_DSN,
+    psycopg=pooled_psycopg,
+    q1=q1,
+    qall=qall,
+    exec1=exec1,
+    require_role=require_role,
 )
 mount_dashboard_routes(
     app,

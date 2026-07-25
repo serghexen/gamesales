@@ -8,6 +8,8 @@
       :open-product-import="ctx.openProductImport"
       :open-ozon-catalog="ctx.openOzonCatalog"
       :can-manage-ozon="ctx.canManageOzon"
+      :open-yandex-market-catalog="ctx.openYandexMarketCatalog"
+      :can-manage-yandex-market="ctx.canManageYandexMarket"
       :load-products="ctx.loadProducts"
       :products-loading="ctx.productsLoading"
     />
@@ -78,6 +80,57 @@
         :ozon-catalog-ok="ctx.ozonCatalogOk"
       />
 
+      <WorkYandexMarketCatalogModal
+        v-if="ctx.canManageYandexMarket"
+        :show-yandex-market-catalog="ctx.showYandexMarketCatalog"
+        :close-yandex-market-catalog="ctx.closeYandexMarketCatalog"
+        :sync-yandex-market-catalog="ctx.syncYandexMarketCatalog"
+        :open-yandex-market-catalog-details="ctx.openYandexMarketCatalogDetails"
+        :yandex-market-catalog-items="ctx.yandexMarketCatalogItems"
+        :yandex-market-catalog-loading="ctx.yandexMarketCatalogLoading"
+        :yandex-market-catalog-syncing="ctx.yandexMarketCatalogSyncing"
+        :yandex-market-catalog-error="ctx.yandexMarketCatalogError"
+        :yandex-market-catalog-ok="ctx.yandexMarketCatalogOk"
+      />
+
+      <WorkYandexMarketCatalogDetailsModal
+        v-if="ctx.canManageYandexMarket"
+        :show-yandex-market-catalog-details="ctx.showYandexMarketCatalogDetails"
+        :close-yandex-market-catalog-details="ctx.closeYandexMarketCatalogDetails"
+        :open-yandex-market-digital-settings="ctx.openYandexMarketDigitalSettings"
+        :yandex-market-catalog-details="ctx.yandexMarketCatalogDetails"
+        :yandex-market-catalog-details-loading="ctx.yandexMarketCatalogDetailsLoading"
+        :yandex-market-catalog-details-error="ctx.yandexMarketCatalogDetailsError"
+        :yandex-market-stock-settings="ctx.yandexMarketStockSettings"
+        :yandex-market-orders="ctx.yandexMarketOrders"
+        :yandex-market-orders-loading="ctx.yandexMarketOrdersLoading"
+        :yandex-market-orders-syncing="ctx.yandexMarketOrdersSyncing"
+        :yandex-market-orders-last-synced-at="ctx.yandexMarketOrdersLastSyncedAt"
+        :load-yandex-market-orders="ctx.loadYandexMarketOrders"
+        :sync-yandex-market-orders="ctx.syncYandexMarketOrders"
+      />
+
+      <WorkYandexMarketDigitalSettingsModal
+        v-if="ctx.canManageYandexMarket"
+        :show-yandex-market-digital-settings="ctx.showYandexMarketDigitalSettings"
+        :close-yandex-market-digital-settings="ctx.closeYandexMarketDigitalSettings"
+        :yandex-market-offer-id="ctx.yandexMarketCatalogDetails?.offer_id || ''"
+        :yandex-market-title="ctx.yandexMarketCatalogDetails?.title || ''"
+        :open-marketplace-key-pool="ctx.openMarketplaceKeyPool"
+        :load-marketplace-key-pool-for="ctx.loadMarketplaceKeyPoolFor"
+        :marketplace-key-pool="ctx.marketplaceKeyPool"
+        :marketplace-key-pool-loading="ctx.marketplaceKeyPoolLoading"
+        :marketplace-key-pool-saving="ctx.marketplaceKeyPoolSaving"
+        :marketplace-key-pool-error="ctx.marketplaceKeyPoolError"
+        :marketplace-key-pool-total-pages="ctx.marketplaceKeyPoolTotalPages"
+        :marketplace-key-pool-revealing-id="ctx.marketplaceKeyPoolRevealingId"
+        :marketplace-key-pool-revealed-code="ctx.marketplaceKeyPoolRevealedCode"
+        :load-marketplace-key-pool="ctx.loadMarketplaceKeyPool"
+        :reveal-marketplace-key-pool-key="ctx.revealMarketplaceKeyPoolKey"
+        :delete-marketplace-key-pool-key="ctx.deleteMarketplaceKeyPoolKey"
+        :delete-all-free-marketplace-key-pool-keys="ctx.deleteAllFreeMarketplaceKeyPoolKeys"
+      />
+
       <WorkOzonCatalogDetailsModal
         v-if="ctx.canManageOzon"
         :show-ozon-catalog-details="ctx.showOzonCatalogDetails"
@@ -106,6 +159,7 @@
         :show-ozon-digital-settings="ctx.showOzonDigitalSettings"
         :close-ozon-digital-settings="ctx.closeOzonDigitalSettings"
         :ozon-digital-settings="ctx.ozonDigitalSettings"
+        :ozon-digital-product-title="ctx.ozonCatalogDetails?.title || ''"
         :ozon-digital-settings-loading="ctx.ozonDigitalSettingsLoading"
         :ozon-digital-settings-saving="ctx.ozonDigitalSettingsSaving"
         :ozon-digital-settings-error="ctx.ozonDigitalSettingsError"
@@ -115,6 +169,30 @@
         :interhub-services-loading="ctx.ozonInterhubServicesLoading"
         :save-ozon-digital-settings="ctx.saveOzonDigitalSettings"
         :deliver-ozon-digital-order="ctx.deliverOzonDigitalOrder"
+        :open-marketplace-key-pool="ctx.openMarketplaceKeyPool"
+        :load-marketplace-key-pool-for="ctx.loadMarketplaceKeyPoolFor"
+        :marketplace-key-pool="ctx.marketplaceKeyPool"
+        :marketplace-key-pool-loading="ctx.marketplaceKeyPoolLoading"
+        :marketplace-key-pool-saving="ctx.marketplaceKeyPoolSaving"
+        :marketplace-key-pool-error="ctx.marketplaceKeyPoolError"
+        :marketplace-key-pool-total-pages="ctx.marketplaceKeyPoolTotalPages"
+        :marketplace-key-pool-revealing-id="ctx.marketplaceKeyPoolRevealingId"
+        :marketplace-key-pool-revealed-code="ctx.marketplaceKeyPoolRevealedCode"
+        :load-marketplace-key-pool="ctx.loadMarketplaceKeyPool"
+        :reveal-marketplace-key-pool-key="ctx.revealMarketplaceKeyPoolKey"
+        :delete-marketplace-key-pool-key="ctx.deleteMarketplaceKeyPoolKey"
+        :delete-all-free-marketplace-key-pool-keys="ctx.deleteAllFreeMarketplaceKeyPoolKeys"
+      />
+
+      <WorkMarketplaceKeyPoolModal
+        :show-marketplace-key-pool="ctx.showMarketplaceKeyPool"
+        :close-marketplace-key-pool="ctx.closeMarketplaceKeyPool"
+        :marketplace-key-pool="ctx.marketplaceKeyPool"
+        :marketplace-key-pool-loading="ctx.marketplaceKeyPoolLoading"
+        :marketplace-key-pool-saving="ctx.marketplaceKeyPoolSaving"
+        :marketplace-key-pool-error="ctx.marketplaceKeyPoolError"
+        :marketplace-key-pool-ok="ctx.marketplaceKeyPoolOk"
+        :add-marketplace-key-pool-keys="ctx.addMarketplaceKeyPoolKeys"
       />
 
       <WorkProductsTableSection
@@ -158,8 +236,12 @@ import WorkProductsHeader from './WorkProductsHeader.vue'
 import WorkGameFilterChips from './WorkGameFilterChips.vue'
 import WorkGameImportModal from './WorkGameImportModal.vue'
 import WorkOzonCatalogModal from './WorkOzonCatalogModal.vue'
+import WorkYandexMarketCatalogModal from './WorkYandexMarketCatalogModal.vue'
+import WorkYandexMarketCatalogDetailsModal from './WorkYandexMarketCatalogDetailsModal.vue'
+import WorkYandexMarketDigitalSettingsModal from './WorkYandexMarketDigitalSettingsModal.vue'
 import WorkOzonCatalogDetailsModal from './WorkOzonCatalogDetailsModal.vue'
 import WorkOzonDigitalSettingsModal from './WorkOzonDigitalSettingsModal.vue'
+import WorkMarketplaceKeyPoolModal from './WorkMarketplaceKeyPoolModal.vue'
 import WorkProductsTableSection from './WorkProductsTableSection.vue'
 import WorkProductsPager from './WorkProductsPager.vue'
 import WorkProductEditorModal from './WorkProductEditorModal.vue'

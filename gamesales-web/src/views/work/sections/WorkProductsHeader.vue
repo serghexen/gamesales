@@ -50,6 +50,16 @@
         <span class="product-ozon-btn__content" aria-hidden="true">O</span>
       </button>
       <button
+        v-if="canManageYandexMarket"
+        class="product-yandex-btn"
+        type="button"
+        title="Каталог Яндекс Маркета"
+        aria-label="Каталог Яндекс Маркета"
+        @click="openYandexMarketCatalog"
+      >
+        <span class="product-yandex-btn__content" aria-hidden="true">Я</span>
+      </button>
+      <button
         class="product-import-btn"
         type="button"
         title="Импорт товаров"
@@ -107,6 +117,8 @@ defineProps({
   openProductImport: { type: Function, required: true },
   openOzonCatalog: { type: Function, required: true },
   canManageOzon: { type: Boolean, default: false },
+  openYandexMarketCatalog: { type: Function, required: true },
+  canManageYandexMarket: { type: Boolean, default: false },
   loadProducts: { type: Function, required: true },
   productsLoading: { type: Boolean, required: true },
 })

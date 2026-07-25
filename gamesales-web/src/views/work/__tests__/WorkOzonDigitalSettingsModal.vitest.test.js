@@ -47,13 +47,37 @@ describe('WorkOzonDigitalSettingsModal', () => {
     expect(wrapper.get('.modal__body').classes()).toContain('modal__body--loader')
   })
 
-  it('keeps supplier setup and the delivery queue in the keys screen', () => {
+  it('uses the Ozon card title for the manual key pool', () => {
+    const props = buildProps()
+    props.ozonDigitalSettings.external_product_id = 17162
+    props.ozonDigitalProductTitle = 'PUBG: New State 300 NC (Global) Мгновенная доставка'
+    props.loadMarketplaceKeyPoolFor = vi.fn()
+
+    mount(WorkOzonDigitalSettingsModal, {
+      props,
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(props.loadMarketplaceKeyPoolFor).toHaveBeenCalledWith(expect.objectContaining({
+      marketplace: 'ozon',
+      productKey: '17162',
+      productTitle: 'PUBG: New State 300 NC (Global) Мгновенная доставка',
+    }))
+  })
+
+  it('keeps supplier setup and the delivery queue in the keys screen', async () => {
     const wrapper = mount(WorkOzonDigitalSettingsModal, {
       props: buildProps(),
       global: { stubs: { teleport: true } },
     })
 
+    expect(wrapper.find('.ozon-digital-modal__supplier-fields').exists()).toBe(false)
+    await wrapper.get('.ozon-key-settings__block .ozon-catalog-details-modal__work-block-toggle').trigger('click')
     expect(wrapper.find('.ozon-digital-modal__supplier-fields').exists()).toBe(true)
+    expect(wrapper.find('.ozon-digital-modal__supplier').text()).toContain('Товар')
+    expect(wrapper.find('.ozon-digital-modal__supplier').text()).not.toContain('Номинал')
+    expect(wrapper.find('.marketplace-key-pool-panel .marketplace-key-pool-panel__issue-switch').exists()).toBe(true)
+    expect(wrapper.find('.ozon-digital-modal__card .marketplace-key-pool-panel__issue-switch').exists()).toBe(false)
     expect(wrapper.findAll('.ozon-digital-modal__messages textarea')).toHaveLength(0)
     expect(wrapper.find('.ozon-digital-modal__orders').exists()).toBe(true)
     expect(wrapper.get('[title="Сохранить настройки"]').classes()).toContain('deal-create-action-btn--save')
@@ -69,22 +93,27 @@ describe('WorkOzonDigitalSettingsModal', () => {
       global: { stubs: { teleport: true } },
     })
 
-    expect(wrapper.find('.ozon-digital-modal__card').text()).toContain('Автовыдача')
+    expect(wrapper.get('[aria-label="Автовыдача через Interhub"]').exists()).toBe(true)
+    await wrapper.get('.ozon-key-settings__block .ozon-catalog-details-modal__work-block-toggle').trigger('click')
     expect(wrapper.find('.ozon-digital-modal__supplier').text()).toContain('PlayStation Wallet')
+    expect(wrapper.find('.ozon-digital-modal__supplier').text()).toContain('Номинал')
     expect(wrapper.find('.ozon-digital-modal__supplier').text()).toContain('500 RUB')
   })
 
-  it('uses one auto-issue switch for the selected Interhub supplier', async () => {
+  it('keeps the Interhub and pool switches independent', async () => {
     const props = buildProps()
     props.ozonDigitalSettings.interhub_service_id = 91
     props.ozonDigitalSettings.interhub_enabled = false
     props.ozonDigitalSettings.auto_issue_enabled = false
+    props.ozonDigitalSettings.pool_issue_enabled = false
     const wrapper = mount(WorkOzonDigitalSettingsModal, {
       props,
       global: { stubs: { teleport: true } },
     })
 
-    const autoIssue = wrapper.get('.ozon-digital-modal__auto-switch input')
+    await wrapper.get('.marketplace-key-pool-panel .ozon-catalog-details-modal__work-block-toggle').trigger('click')
+    const switches = wrapper.findAll('.ozon-digital-modal__auto-switch input')
+    const autoIssue = switches[0]
     await autoIssue.setValue(true)
     expect(props.ozonDigitalSettings.auto_issue_enabled).toBe(true)
     expect(props.ozonDigitalSettings.interhub_enabled).toBe(true)
@@ -92,6 +121,26 @@ describe('WorkOzonDigitalSettingsModal', () => {
     await autoIssue.setValue(false)
     expect(props.ozonDigitalSettings.auto_issue_enabled).toBe(false)
     expect(props.ozonDigitalSettings.interhub_enabled).toBe(false)
+
+    await switches[1].setValue(true)
+    expect(props.ozonDigitalSettings.pool_issue_enabled).toBe(true)
+    expect(props.ozonDigitalSettings.auto_issue_enabled).toBe(false)
+  })
+
+  it('opens the supplier block on demand while keeping its auto-issue switch visible', async () => {
+    const wrapper = mount(WorkOzonDigitalSettingsModal, {
+      props: buildProps(),
+      global: { stubs: { teleport: true } },
+    })
+
+    const block = wrapper.find('.ozon-key-settings__block')
+    expect(block.classes()).not.toContain('is-open')
+    expect(block.find('.ozon-digital-modal__auto-switch').exists()).toBe(true)
+    await block.get('.ozon-catalog-details-modal__work-block-toggle').trigger('click')
+
+    expect(wrapper.find('.ozon-key-settings__block').classes()).toContain('is-open')
+    expect(wrapper.find('.ozon-key-settings__block .ozon-digital-modal__auto-switch').exists()).toBe(true)
+    expect(wrapper.find('.ozon-key-settings__block #ozon-key-supplier-content').exists()).toBe(true)
   })
 
   it('keeps only manual-required orders in the manual delivery section', () => {

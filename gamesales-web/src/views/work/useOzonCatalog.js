@@ -32,6 +32,7 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, req
     interhub_service_id: null,
     interhub_nominal_id: '',
     interhub_enabled: false,
+    pool_issue_enabled: false,
     published_stock: 0,
     available_stock: 0,
     pending_orders: 0,
@@ -144,11 +145,12 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, req
   }
 
   function openOzonCatalogDetails(item) {
-    // Открывает только снимок карточки: настройки и заказы загружаются после раскрытия нужного блока.
+    // Очищает настройки прошлой карточки, чтобы они не могли сохраниться для новой до явной загрузки блока.
     const productId = Number(item?.external_product_id || 0)
     if (!productId) return
     ozonDigitalProductId.value = productId
     ozonDigitalOrders.value = []
+    applyOzonDigitalSettings({ external_product_id: productId })
     showOzonCatalog.value = false
     showOzonCatalogDetails.value = true
     loadOzonCatalogDetails(productId)
@@ -173,6 +175,7 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, req
       interhub_service_id: source.interhub_service_id ? Number(source.interhub_service_id) : null,
       interhub_nominal_id: String(source.interhub_nominal_id || ''),
       interhub_enabled: Boolean(source.interhub_enabled),
+      pool_issue_enabled: Boolean(source.pool_issue_enabled),
       published_stock: Math.max(0, Number(source.published_stock || 0)),
       available_stock: Math.max(0, Number(source.available_stock || 0)),
       pending_orders: Math.max(0, Number(source.pending_orders || 0)),
@@ -237,8 +240,8 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, req
     showOzonCatalogDetails.value = true
   }
 
-  async function saveOzonDigitalSettings({ publishStock = false } = {}) {
-    // Сохраняет настройки поставщика, а остаток отправляет в Ozon только по отдельной кнопке карточки.
+  async function saveOzonDigitalSettings({ publishStock = false, updateSupplier = true } = {}) {
+    // Отправляет остаток без перезаписи привязки, если действие пришло из блока продаж карточки.
     const productId = ozonDigitalProductId.value
     if (!productId || ozonDigitalSettingsSaving.value) return
     ozonDigitalSettingsSaving.value = true
@@ -246,7 +249,7 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, req
     ozonDigitalSettingsOk.value = ''
     try {
       const saved = await apiPut(
-        `/marketplaces/ozon/catalog/${encodeURIComponent(productId)}/digital-settings${publishStock ? '?publish_stock=true' : ''}`,
+        `/marketplaces/ozon/catalog/${encodeURIComponent(productId)}/digital-settings${publishStock ? `?publish_stock=true&update_supplier=${updateSupplier}` : ''}`,
         {
           offer_id: String(ozonDigitalSettings.offer_id || ''),
           manual_stock_limit: Math.max(0, Number(ozonDigitalSettings.manual_stock_limit || 0)),
@@ -256,6 +259,7 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, req
           interhub_service_id: ozonDigitalSettings.interhub_service_id ? Number(ozonDigitalSettings.interhub_service_id) : null,
           interhub_nominal_id: String(ozonDigitalSettings.interhub_nominal_id || ''),
           interhub_enabled: Boolean(ozonDigitalSettings.interhub_enabled),
+          pool_issue_enabled: Boolean(ozonDigitalSettings.pool_issue_enabled),
         },
         { token: auth.state.token },
       )
