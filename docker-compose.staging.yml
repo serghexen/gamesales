@@ -60,6 +60,7 @@ services:
   ozon-notifier:
     build: ./ozon-notifier
     container_name: gamesales-ozon-notifier-staging
+    profiles: ["ozon-live"]
     restart: unless-stopped
     env_file: .env.staging
     environment:

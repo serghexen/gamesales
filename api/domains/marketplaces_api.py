@@ -215,9 +215,15 @@ def mount_marketplaces_routes(
     interhub_check=None,
     interhub_pay=None,
     interhub_check_status=None,
+    ozon_live_enabled: bool = True,
     max_supplier_status_checks: int = 30,
     supplier_deadline_buffer_sec: int = 600,
 ):
+    def require_ozon_live() -> None:
+        # Блокирует внешние действия Ozon в тестовом окружении до сетевого запроса.
+        if not ozon_live_enabled:
+            raise HTTPException(503, "Интеграция Ozon отключена для этого окружения")
+
     def normalize_catalog_item(item: dict[str, Any]) -> tuple[int, str, str, str, str]:
         # Выбирает стабильные поля карточки из ответа Ozon и отбрасывает неполные элементы.
         raw_product_id = item.get("product_id") or item.get("id")
@@ -1097,6 +1103,8 @@ def mount_marketplaces_routes(
 
     def refresh_ozon_digital_supplier_orders() -> None:
         # Раз в минуту забирает заказы только у карточек с включенной авто-выдачей и продолжает ответы поставщика.
+        if not ozon_live_enabled:
+            return
         with psycopg.connect(DB_DSN) as conn:
             active_products = qall(
                 conn,
@@ -1125,6 +1133,7 @@ def mount_marketplaces_routes(
     @app.post("/marketplaces/ozon/catalog/sync", response_model=OzonCatalogSyncOut)
     def sync_ozon_catalog(store_code: str = "asat", user=Depends(require_role("owner"))):
         # Читает карточки Ozon и сохраняет снимок для последующего ручного сопоставления с товарами.
+        require_ozon_live()
         normalized_store_code = normalize_ozon_store_code(store_code)
         remote_items = fetch_ozon_catalog_items(normalized_store_code)
         synced_at = datetime.now(timezone.utc)
@@ -1204,6 +1213,7 @@ def mount_marketplaces_routes(
 
     def set_ozon_catalog_archive(product_id: int, archived: bool, store_code: str) -> OzonCatalogArchiveOut:
         # Сначала меняет статус у Ozon, затем помечает локальный снимок для мгновенного обновления интерфейса.
+        require_ozon_live()
         normalized_store_code = normalize_ozon_store_code(store_code)
         update_ozon_catalog_archive(product_id, archived=archived, store_code=normalized_store_code)
         local_visibility = "ARCHIVED" if archived else "VISIBLE"
@@ -1246,6 +1256,8 @@ def mount_marketplaces_routes(
         user=Depends(require_role("owner")),
     ):
         # Сохраняет настройки отдельно: остаток уходит в Ozon только по явному ручному запросу из карточки.
+        if publish_stock:
+            require_ozon_live()
         normalized_store_code = normalize_ozon_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
             offer_id = catalog_offer_id(conn, normalized_store_code, product_id, payload.offer_id)
@@ -1444,6 +1456,7 @@ def mount_marketplaces_routes(
     @app.post("/marketplaces/ozon/catalog/{product_id}/digital-orders/sync", response_model=OzonDigitalSyncOut)
     def sync_ozon_digital_orders(product_id: int, store_code: str = "asat", user=Depends(require_role("owner"))):
         # Забирает заказы только выбранной карточки, чтобы работа из окна товара не затрагивала другие ключи.
+        require_ozon_live()
         selected_product_id = int(product_id)
         normalized_store_code = normalize_ozon_store_code(store_code)
         synced_at = datetime.now(timezone.utc)
@@ -1601,6 +1614,7 @@ def mount_marketplaces_routes(
         user=Depends(require_role("owner")),
     ):
         # Передает вручную введенный ключ через общий безопасный путь выдачи поставщика или оператора.
+        require_ozon_live()
         codes = [str(code or "").strip() for code in payload.codes if str(code or "").strip()]
         return deliver_ozon_codes(order_id, codes)
 

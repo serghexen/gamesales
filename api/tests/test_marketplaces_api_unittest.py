@@ -47,7 +47,7 @@ class MarketplacesApiTests(unittest.TestCase):
         self.assertFalse(auto_supplier_wait_expired(2, datetime(2026, 7, 24, 12, 11, tzinfo=timezone.utc), max_status_checks=30, deadline_buffer_sec=600, now=now))
 
     # Поднимает маршрут с памятью вместо БД, чтобы проверять контракт без доступа к Ozon.
-    def create_client(self, rows=None, writes=None, detail_row=None, q1_handler=None, qall_handler=None, required_roles=None):
+    def create_client(self, rows=None, writes=None, detail_row=None, q1_handler=None, qall_handler=None, required_roles=None, ozon_live_enabled=True):
         app = FastAPI()
         stored_rows = list(rows or [])
         write_log = writes if writes is not None else []
@@ -80,6 +80,7 @@ class MarketplacesApiTests(unittest.TestCase):
             exec1=fake_exec1,
             get_current_user=lambda: SimpleNamespace(username="owner", role="owner"),
             require_role=fake_require_role,
+            ozon_live_enabled=ozon_live_enabled,
         )
         self._refresh_orders = refresh_orders
         return TestClient(app), write_log
@@ -91,6 +92,17 @@ class MarketplacesApiTests(unittest.TestCase):
 
         self.assertGreaterEqual(len(required_roles), 11)
         self.assertTrue(all(roles == ("owner",) for roles in required_roles))
+
+    # Отключенный тестовый контур не должен обращаться к Ozon даже по ручной синхронизации.
+    def test_disabled_ozon_live_mode_blocks_external_catalog_sync(self):
+        client, _writes = self.create_client(ozon_live_enabled=False)
+        with patch("api.domains.marketplaces_api.fetch_ozon_catalog_items") as fetch_catalog:
+            with client:
+                response = client.post("/marketplaces/ozon/catalog/sync")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("отключена", response.json()["detail"])
+        fetch_catalog.assert_not_called()
 
     # Чтение снимка не должно выполнять запрос к внешнему кабинету Ozon.
     def test_list_catalog_returns_local_snapshot(self):
