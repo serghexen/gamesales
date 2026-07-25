@@ -237,8 +237,8 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, req
     showOzonCatalogDetails.value = true
   }
 
-  async function saveOzonDigitalSettings() {
-    // Сохраняет лимит и публикует рассчитанный остаток только после готовности ручной выдачи.
+  async function saveOzonDigitalSettings({ publishStock = false } = {}) {
+    // Сохраняет настройки поставщика, а остаток отправляет в Ozon только по отдельной кнопке карточки.
     const productId = ozonDigitalProductId.value
     if (!productId || ozonDigitalSettingsSaving.value) return
     ozonDigitalSettingsSaving.value = true
@@ -246,7 +246,7 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, req
     ozonDigitalSettingsOk.value = ''
     try {
       const saved = await apiPut(
-        `/marketplaces/ozon/catalog/${encodeURIComponent(productId)}/digital-settings`,
+        `/marketplaces/ozon/catalog/${encodeURIComponent(productId)}/digital-settings${publishStock ? '?publish_stock=true' : ''}`,
         {
           offer_id: String(ozonDigitalSettings.offer_id || ''),
           manual_stock_limit: Math.max(0, Number(ozonDigitalSettings.manual_stock_limit || 0)),
@@ -260,9 +260,14 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, req
         { token: auth.state.token },
       )
       applyOzonDigitalSettings(saved)
-      ozonDigitalSettingsOk.value = `В Ozon опубликован остаток: ${ozonDigitalSettings.published_stock}`
+      ozonDigitalSettingsOk.value = publishStock
+        ? `В Ozon опубликован остаток: ${ozonDigitalSettings.published_stock}`
+        : 'Настройки выдачи сохранены'
     } catch (error) {
-      ozonDigitalSettingsError.value = mapApiError(error?.message) || 'Не удалось обновить остаток в Ozon'
+      // Показывает причину именно того действия, которое выполнил оператор.
+      ozonDigitalSettingsError.value = mapApiError(error?.message) || (
+        publishStock ? 'Не удалось обновить остаток в Ozon' : 'Не удалось сохранить настройки выдачи'
+      )
     } finally {
       ozonDigitalSettingsSaving.value = false
     }

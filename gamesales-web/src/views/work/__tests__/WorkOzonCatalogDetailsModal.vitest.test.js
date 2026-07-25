@@ -149,6 +149,19 @@ describe('WorkOzonCatalogDetailsModal', () => {
     expect(wrapper.get('.ozon-catalog-details-modal__stock-submit').text()).toBe('Отправить')
   })
 
+  it('publishes stock only from the explicit stock button', async () => {
+    const props = buildProps()
+    const wrapper = mount(WorkOzonCatalogDetailsModal, {
+      props,
+      global: { stubs: { teleport: true } },
+    })
+
+    await wrapper.findAll('.ozon-catalog-details-modal__work-block-toggle').at(0).trigger('click')
+    await wrapper.get('.ozon-catalog-details-modal__stock-submit').trigger('click')
+
+    expect(props.saveOzonDigitalSettings).toHaveBeenCalledWith({ publishStock: true })
+  })
+
   it('shows delivery after our key issue even when Ozon keeps an intermediate status', async () => {
     const props = buildProps()
     props.ozonDigitalOrders = [{

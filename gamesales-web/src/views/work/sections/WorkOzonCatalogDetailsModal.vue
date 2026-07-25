@@ -91,7 +91,7 @@
                     <label class="field ozon-catalog-details-modal__stock-field">
                       <span>Остаток для Ozon</span>
                       <input v-model.number="ozonDigitalSettings.manual_stock_limit" class="input" type="number" min="0" max="100000" step="1" />
-                      <button class="btn btn--primary ozon-catalog-details-modal__stock-submit" type="button" :disabled="ozonDigitalSettingsSaving" @click="saveOzonDigitalSettings">
+                      <button class="btn btn--primary ozon-catalog-details-modal__stock-submit" type="button" :disabled="ozonDigitalSettingsSaving" @click="saveOzonDigitalSettings({ publishStock: true })">
                         {{ ozonDigitalSettingsSaving ? 'Отправляем…' : 'Отправить' }}
                       </button>
                     </label>

@@ -43,7 +43,7 @@ describe('WorkOzonDigitalSettingsModal', () => {
     })
 
     expect(wrapper.find('.modal__body-overlay .wheel-and-hamster').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Сохраняем настройки и отправляем остаток…')
+    expect(wrapper.text()).toContain('Сохраняем настройки выдачи…')
     expect(wrapper.get('.modal__body').classes()).toContain('modal__body--loader')
   })
 

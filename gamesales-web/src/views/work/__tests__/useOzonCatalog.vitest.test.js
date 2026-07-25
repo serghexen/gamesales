@@ -101,7 +101,7 @@ describe('useOzonCatalog', () => {
     expect(catalog.ozonDigitalOrders.value).toEqual([])
   })
 
-  it('publishes a manual limit only after opening the digital key settings', async () => {
+  it('publishes a manual limit only after the explicit stock action', async () => {
     const { apiGet, apiPut, catalog } = createHarness()
     apiGet
       .mockResolvedValueOnce({ external_product_id: 103, offer_id: 'PS5-6', manual_stock_limit: 0 })
@@ -113,15 +113,36 @@ describe('useOzonCatalog', () => {
     await Promise.resolve()
     await Promise.resolve()
     catalog.ozonDigitalSettings.manual_stock_limit = 1
-    await catalog.saveOzonDigitalSettings()
+    await catalog.saveOzonDigitalSettings({ publishStock: true })
 
     expect(apiPut).toHaveBeenCalledWith(
-      '/marketplaces/ozon/catalog/103/digital-settings',
+      '/marketplaces/ozon/catalog/103/digital-settings?publish_stock=true',
       expect.objectContaining({ offer_id: 'PS5-6', manual_stock_limit: 1, auto_issue_enabled: false }),
       { token: 'ozon-token' },
     )
     expect(catalog.ozonDigitalSettings.published_stock).toBe(1)
     expect(catalog.ozonDigitalSettingsOk.value).toBe('В Ozon опубликован остаток: 1')
+  })
+
+  it('saves supplier settings without sending the stock to Ozon', async () => {
+    const { apiGet, apiPut, catalog } = createHarness()
+    apiGet
+      .mockResolvedValueOnce({ external_product_id: 103, offer_id: 'PS5-6', manual_stock_limit: 1 })
+      .mockResolvedValueOnce({ items: [] })
+    apiPut.mockResolvedValueOnce({ external_product_id: 103, offer_id: 'PS5-6', manual_stock_limit: 1, published_stock: 0, available_stock: 1 })
+
+    catalog.ozonCatalogDetails.value = { external_product_id: 103 }
+    catalog.openOzonDigitalSettings()
+    await Promise.resolve()
+    await Promise.resolve()
+    await catalog.saveOzonDigitalSettings()
+
+    expect(apiPut).toHaveBeenCalledWith(
+      '/marketplaces/ozon/catalog/103/digital-settings',
+      expect.objectContaining({ offer_id: 'PS5-6', manual_stock_limit: 1 }),
+      { token: 'ozon-token' },
+    )
+    expect(catalog.ozonDigitalSettingsOk.value).toBe('Настройки выдачи сохранены')
   })
 
   it('checks digital orders only for the card opened by the operator', async () => {

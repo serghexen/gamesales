@@ -1242,9 +1242,10 @@ def mount_marketplaces_routes(
         product_id: int,
         payload: OzonDigitalSettingsIn,
         store_code: str = "asat",
+        publish_stock: bool = False,
         user=Depends(require_role("owner")),
     ):
-        # Сохраняет ручной лимит и сразу публикует безопасный остаток только в выбранную цифровую карточку.
+        # Сохраняет настройки отдельно: остаток уходит в Ozon только по явному ручному запросу из карточки.
         normalized_store_code = normalize_ozon_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
             offer_id = catalog_offer_id(conn, normalized_store_code, product_id, payload.offer_id)
@@ -1311,7 +1312,12 @@ def mount_marketplaces_routes(
             conn.commit()
 
         with psycopg.connect(DB_DSN) as conn:
-            settings = publish_available_stock(conn, normalized_store_code, product_id)
+            # Не отправляем одинаковый остаток вместе с настройками поставщика, чтобы не превысить лимит Ozon.
+            settings = (
+                publish_available_stock(conn, normalized_store_code, product_id)
+                if publish_stock
+                else make_digital_settings_out(conn, normalized_store_code, product_id)
+            )
             conn.commit()
             return settings
 
@@ -1583,7 +1589,7 @@ def mount_marketplaces_routes(
 
         available_stock = 0
         with psycopg.connect(DB_DSN) as conn:
-            # После заказа Ozon сам держит единицу в резерве, поэтому только пересчитываем локальный показатель.
+            # После заказа Ozon сам держит единицу в резерве: синхронизация только читает показатель, не публикуя остаток.
             settings = make_digital_settings_out(conn, normalized_store_code, selected_product_id)
             available_stock = settings.available_stock
         return OzonDigitalSyncOut(imported_orders=imported_orders, available_stock=available_stock, last_orders_sync_at=synced_at)

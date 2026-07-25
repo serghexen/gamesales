@@ -299,8 +299,8 @@ class MarketplacesApiTests(unittest.TestCase):
         self.assertEqual(response.json()["offer_id"], "Joy1")
         self.assertTrue(any("SET offer_id=%s" in sql for sql, _params in writes))
 
-    # Сохранение использует артикул открытой карточки, если снимок и Ozon временно не вернули его повторно.
-    def test_digital_settings_saves_with_offer_id_from_opened_card(self):
+    # Сохранение настроек не должно отправлять остаток: это делает только отдельная кнопка в карточке.
+    def test_digital_settings_saves_without_publishing_stock(self):
         def q1_handler(sql, _params):
             if "FROM app.marketplace_ozon_catalog_items" in sql:
                 return ("", {})
@@ -311,13 +311,34 @@ class MarketplacesApiTests(unittest.TestCase):
         client, _writes = self.create_client(q1_handler=q1_handler)
         with (
             patch("api.domains.marketplaces_api.fetch_ozon_catalog_offer_id", return_value=""),
-            patch("api.domains.marketplaces_api.update_ozon_digital_stock", return_value={"status": [{"updated": True}]}),
+            patch("api.domains.marketplaces_api.update_ozon_digital_stock", return_value={"status": [{"updated": True}]}) as update_stock,
         ):
             with client:
                 response = client.put("/marketplaces/ozon/catalog/103/digital-settings", json={"offer_id": "Joy1", "manual_stock_limit": 1})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["offer_id"], "Joy1")
+        update_stock.assert_not_called()
+
+    # Только явный флаг из кнопки «Отправить» публикует введенный остаток в Ozon.
+    def test_digital_settings_publishes_stock_only_when_requested(self):
+        def q1_handler(sql, _params):
+            if "FROM app.marketplace_ozon_catalog_items" in sql:
+                return ("", {})
+            if "FROM app.marketplace_ozon_digital_settings" in sql:
+                return ("Joy1", 1, False, "", "", 0, None, None)
+            return None
+
+        client, _writes = self.create_client(q1_handler=q1_handler)
+        with (
+            patch("api.domains.marketplaces_api.fetch_ozon_catalog_offer_id", return_value=""),
+            patch("api.domains.marketplaces_api.update_ozon_digital_stock", return_value={"status": [{"updated": True}]}) as update_stock,
+        ):
+            with client:
+                response = client.put("/marketplaces/ozon/catalog/103/digital-settings?publish_stock=true", json={"offer_id": "Joy1", "manual_stock_limit": 1})
+
+        self.assertEqual(response.status_code, 200)
+        update_stock.assert_called_once_with("Joy1", 1, store_code="asat")
 
     # Связка с поставщиком должна сохраняться отдельно от лимита и не вызывать оплату при нажатии «Сохранить».
     def test_digital_settings_saves_interhub_mapping_without_calling_supplier(self):
@@ -333,7 +354,7 @@ class MarketplacesApiTests(unittest.TestCase):
         client, writes = self.create_client(q1_handler=q1_handler, qall_handler=lambda *_args: [])
         with (
             patch("api.domains.marketplaces_api.fetch_ozon_catalog_offer_id", return_value=""),
-            patch("api.domains.marketplaces_api.update_ozon_digital_stock", return_value={"status": [{"updated": True}]}),
+            patch("api.domains.marketplaces_api.update_ozon_digital_stock", return_value={"status": [{"updated": True}]}) as update_stock,
         ):
             with client:
                 response = client.put(
@@ -351,6 +372,7 @@ class MarketplacesApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         supplier_calls = [params for sql, params in writes if "INSERT INTO app.marketplace_ozon_digital_suppliers" in sql]
         self.assertEqual(supplier_calls[-1][2:5], (True, 91, "500"))
+        update_stock.assert_not_called()
 
     # Заказ другой карточки не должен сбрасывать ID выбранного товара перед публикацией остатка.
     def test_digital_orders_sync_keeps_selected_product_id_when_posting_is_not_matched(self):
@@ -369,7 +391,7 @@ class MarketplacesApiTests(unittest.TestCase):
         client, writes = self.create_client(q1_handler=q1_handler, qall_handler=qall_handler)
         with (
             patch("api.domains.marketplaces_api.fetch_ozon_digital_postings", return_value=[{"posting_number": "100-1", "products": [{"offer_id": "other", "sku": 7}]}]),
-            patch("api.domains.marketplaces_api.update_ozon_digital_stock", return_value={"status": [{"updated": True}]}),
+            patch("api.domains.marketplaces_api.update_ozon_digital_stock", return_value={"status": [{"updated": True}]}) as update_stock,
         ):
             with client:
                 response = client.post("/marketplaces/ozon/catalog/103/digital-orders/sync")
@@ -378,6 +400,7 @@ class MarketplacesApiTests(unittest.TestCase):
         self.assertEqual(response.json()["available_stock"], 1)
         sync_updates = [params for sql, params in writes if "SET last_orders_sync_at=%s" in sql]
         self.assertEqual(sync_updates[-1][2], 103)
+        update_stock.assert_not_called()
 
     # Старый артикул в заказе должен находить карточку по неизменному SKU из снимка каталога.
     def test_digital_orders_sync_matches_order_by_catalog_sku_when_offer_id_changed(self):

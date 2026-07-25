@@ -156,7 +156,7 @@ const isOzonDigitalBusy = computed(() => Boolean(
 
 const ozonDigitalBusyLabel = computed(() => {
   // Объясняет текущую операцию, пока хомяк блокирует повторные действия в модалке.
-  if (props.ozonDigitalSettingsSaving) return 'Сохраняем настройки и отправляем остаток…'
+  if (props.ozonDigitalSettingsSaving) return 'Сохраняем настройки выдачи…'
   if (Object.values(deliveryBusy).some(Boolean)) return 'Отправляем ключ покупателю…'
   return 'Загружаем настройки ключей…'
 })
