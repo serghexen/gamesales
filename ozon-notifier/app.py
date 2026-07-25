@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 import json
 import logging
 import os
@@ -69,25 +68,17 @@ def status_title(status: str) -> str:
     return labels.get(str(status or "").strip().lower(), "Обрабатывается")
 
 
-def format_datetime(value: Any) -> str:
-    # Показывает дедлайн без технического формата PostgreSQL и не падает на неполной дате от Ozon.
-    if isinstance(value, datetime):
-        return value.astimezone().strftime("%d.%m.%Y %H:%M")
-    return "—"
-
-
 def message_text(order: dict[str, Any]) -> str:
-    # Формирует одно компактное сообщение, которое затем редактируется при изменении статуса заказа.
+    # Сохраняет факт поступления в заголовке и отдельно показывает актуальную стадию обработки заказа.
     order_number = str(order.get("order_number") or order.get("posting_number") or "—")
     product_name = str(order.get("product_name") or "Товар не указан").strip()[:1000]
     return "\n".join(
         (
-            "🛍 Новый заказ Ozon",
+            "🛍 Поступил новый заказ Ozon",
             f"Заказ: {order_number}",
             f"Товар: {product_name}",
             f"Количество: {int(order.get('required_qty') or 1)}",
-            f"Статус: {status_title(str(order.get('status') or ''))}",
-            f"Дедлайн выдачи: {format_datetime(order.get('waiting_deadline_at'))}",
+            f"Текущий статус: {status_title(str(order.get('status') or ''))}",
         )
     )
 

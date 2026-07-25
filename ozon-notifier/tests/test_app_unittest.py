@@ -14,8 +14,8 @@ SPEC.loader.exec_module(APP)
 
 
 class OzonNotifierMessageTests(unittest.TestCase):
-    def test_new_order_message_contains_processing_status_and_deadline(self):
-        # Проверяет, что оператор видит в первом уведомлении реквизиты и фактическую стадию обработки.
+    def test_new_order_message_confirms_arrival_and_shows_actual_status_without_deadline(self):
+        # Проверяет, что уведомление сохраняет факт поступления и не скрывает быструю автовыдачу.
         order = {
             "posting_number": "123-456",
             "order_number": "OZN-7",
@@ -27,10 +27,17 @@ class OzonNotifierMessageTests(unittest.TestCase):
 
         text = APP.message_text(order)
 
+        self.assertIn("Поступил новый заказ Ozon", text)
         self.assertIn("Заказ: OZN-7", text)
         self.assertIn("Количество: 2", text)
-        self.assertIn("Статус: Обрабатывается поставщиком", text)
-        self.assertIn("Дедлайн выдачи:", text)
+        self.assertIn("Текущий статус: Обрабатывается поставщиком", text)
+        self.assertNotIn("Дедлайн выдачи:", text)
+
+    def test_status_update_shows_actual_order_state(self):
+        # Проверяет, что после первого сообщения бот по-прежнему показывает текущий технический результат заказа.
+        text = APP.message_text({"status": "delivered"})
+
+        self.assertIn("Текущий статус: Выполнен", text)
 
     def test_unknown_status_is_shown_as_processing(self):
         # Оставляет нейтральный понятный статус, пока новый технический код Ozon не добавлен в словарь.
