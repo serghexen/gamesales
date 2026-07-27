@@ -6,6 +6,7 @@
         <h2 class="interhub-catalog__title">Платежи</h2>
       </div>
       <div class="interhub-catalog__head-actions">
+        <button class="ghost interhub-catalog__history-action" type="button" @click="openSalesHistory">История продаж</button>
         <button v-if="ctx.canManagePrices" class="ghost interhub-catalog__price-action" type="button" :disabled="ctx.priceRefreshLoading" @click="ctx.refreshPrices">
           {{ ctx.priceRefreshLoading ? 'Обновляем цены…' : 'Обновить закупочные цены' }}
         </button>
@@ -95,6 +96,53 @@
       </form>
     </div>
   </section>
+
+  <teleport to="body">
+    <div v-if="salesHistoryOpen" class="work-page modal-backdrop interhub-history-backdrop" @click.self="closeSalesHistory">
+      <section class="modal interhub-history" role="dialog" aria-modal="true" aria-labelledby="interhub-history-title">
+        <div class="panel__head panel__head--tight interhub-history__head">
+          <div>
+            <p class="interhub-catalog__eyebrow">InterHub · оплаченные операции</p>
+            <h3 id="interhub-history-title">История продаж</h3>
+          </div>
+          <button class="ghost" type="button" @click="closeSalesHistory">Закрыть</button>
+        </div>
+        <div class="modal__body interhub-history__body">
+          <form class="interhub-history__filters" @submit.prevent="applySalesHistoryFilter">
+            <label class="field"><span class="label">Дата с</span><input v-model="salesHistoryDateFrom" class="input" type="date" /></label>
+            <label class="field"><span class="label">Дата по</span><input v-model="salesHistoryDateTo" class="input" type="date" /></label>
+            <button class="btn" type="submit" :disabled="ctx.salesHistoryLoading">{{ ctx.salesHistoryLoading ? 'Загружаем…' : 'Показать' }}</button>
+          </form>
+          <p v-if="ctx.salesHistoryError" class="error">{{ ctx.salesHistoryError }}</p>
+          <div class="interhub-history__summary"><strong>{{ sortedSalesHistory.length }}</strong><span>оплаченных операций</span></div>
+          <div class="table-wrap interhub-history__table-wrap">
+            <table class="table table--compact">
+              <thead>
+                <tr>
+                  <th><button class="interhub-history__sort" type="button" @click="sortSalesHistory('service')">Название сервиса <span>{{ sortMark('service') }}</span></button></th>
+                  <th><button class="interhub-history__sort" type="button" @click="sortSalesHistory('nominal')">Номинал <span>{{ sortMark('nominal') }}</span></button></th>
+                  <th><button class="interhub-history__sort" type="button" @click="sortSalesHistory('price')">Цена <span>{{ sortMark('price') }}</span></button></th>
+                  <th><button class="interhub-history__sort" type="button" @click="sortSalesHistory('giftCode')">Гифт-код <span>{{ sortMark('giftCode') }}</span></button></th>
+                  <th><button class="interhub-history__sort" type="button" @click="sortSalesHistory('createdAt')">Дата <span>{{ sortMark('createdAt') }}</span></button></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="ctx.salesHistoryLoading"><td colspan="5" class="muted">Загружаем историю продаж…</td></tr>
+                <tr v-else-if="!sortedSalesHistory.length"><td colspan="5" class="muted">За выбранный период оплаченных операций нет.</td></tr>
+                <tr v-for="item in sortedSalesHistory" :key="`${item.serviceId}-${item.createdAt}-${item.giftCode}`">
+                  <td>{{ item.service }}</td>
+                  <td>{{ item.nominal || '—' }}</td>
+                  <td>{{ formatMoney(item.price) }} ₽</td>
+                  <td><code v-if="item.giftCode" class="interhub-history__gift-code">{{ item.giftCode }}</code><span v-else>—</span></td>
+                  <td>{{ formatHistoryDate(item.createdAt) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+  </teleport>
 </template>
 
 <script setup>
@@ -128,6 +176,10 @@ const paymentForm = ref(null)
 const account = ref('')
 const amount = ref('')
 const params = reactive({})
+const salesHistoryOpen = ref(false)
+const salesHistoryDateFrom = ref('')
+const salesHistoryDateTo = ref('')
+const salesHistorySort = reactive({ field: 'createdAt', direction: 'desc' })
 const overdraftBalance = computed(() => Number(props.ctx.overBalance || 0))
 const overdraftLimit = computed(() => Math.max(0, Number(props.ctx.overLimit || 0)))
 const hasOverdraft = computed(() => overdraftLimit.value > 0)
@@ -169,6 +221,31 @@ const paymentMessage = computed(() => {
   if (props.ctx.payment?.success) return giftCode.value ? 'Оплата успешна. Код ваучера:' : 'Оплата успешно подтверждена.'
   return `Оплата не прошла · ${props.ctx.payment?.message || 'Ответ InterHub не получен'}`
 })
+const salesHistoryRows = computed(() => {
+  // Подставляем название из уже загруженного каталога, не вызывая InterHub при открытии истории.
+  const serviceNames = new Map((Array.isArray(props.ctx.services) ? props.ctx.services : []).map((service) => [Number(service?.service_id), String(service?.title || '')]))
+  return (Array.isArray(props.ctx.salesHistory) ? props.ctx.salesHistory : []).map((item) => {
+    const serviceId = Number(item?.service_id || 0)
+    return {
+      serviceId,
+      service: serviceNames.get(serviceId) || `Услуга #${serviceId || '—'}`,
+      nominal: String(item?.nominal || ''),
+      price: Number(item?.price || 0),
+      giftCode: String(item?.gift_code || ''),
+      createdAt: String(item?.created_at || ''),
+    }
+  })
+})
+const sortedSalesHistory = computed(() => {
+  // Сортируем уже загруженную выборку по любому видимому столбцу без повторного запроса.
+  const { field, direction } = salesHistorySort
+  const multiplier = direction === 'asc' ? 1 : -1
+  return [...salesHistoryRows.value].sort((left, right) => {
+    if (field === 'price') return multiplier * (left.price - right.price)
+    if (field === 'createdAt') return multiplier * (new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
+    return multiplier * titleCollator.compare(String(left[field] || ''), String(right[field] || ''))
+  })
+})
 
 watch(() => props.ctx.search, () => {
   // Возвращаемся на первую страницу после поиска, иначе выдача может выглядеть пустой.
@@ -196,6 +273,37 @@ function toggleServicesSort() {
   // Меняем порядок услуг и возвращаемся к началу списка, чтобы не потерять выбранную страницу.
   servicesSortDirection.value = servicesSortDirection.value === 'asc' ? 'desc' : 'asc'
   currentPage.value = 1
+}
+
+function openSalesHistory() {
+  // Открываем историю и сразу запрашиваем оплаченные операции с текущими границами дат.
+  salesHistoryOpen.value = true
+  applySalesHistoryFilter()
+}
+
+function closeSalesHistory() {
+  // Закрываем окно без сброса фильтра, чтобы оператор мог быстро вернуться к тому же периоду.
+  salesHistoryOpen.value = false
+}
+
+function applySalesHistoryFilter() {
+  // Передаём пустые границы как отсутствие фильтра, а заполненные — как включительный период.
+  props.ctx.loadSalesHistory({ dateFrom: salesHistoryDateFrom.value, dateTo: salesHistoryDateTo.value })
+}
+
+function sortSalesHistory(field) {
+  // Повторный клик по столбцу меняет направление, другой столбец начинает с прямого порядка.
+  if (salesHistorySort.field === field) salesHistorySort.direction = salesHistorySort.direction === 'asc' ? 'desc' : 'asc'
+  else {
+    salesHistorySort.field = field
+    salesHistorySort.direction = field === 'createdAt' ? 'desc' : 'asc'
+  }
+}
+
+function sortMark(field) {
+  // Показываем направление только у активного столбца, чтобы заголовки не перегружали таблицу.
+  if (salesHistorySort.field !== field) return ''
+  return salesHistorySort.direction === 'asc' ? '↑' : '↓'
 }
 
 function buildPayload() {
@@ -266,6 +374,12 @@ function formatCachedDate(value) {
   return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
 }
 
+function formatHistoryDate(value) {
+  // Выводим время оплаты в локальном формате оператора вместо технической ISO-строки.
+  if (!value) return '—'
+  return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
+}
+
 function formatProviderResponse(value) {
   // Показываем сохранённый JSON как есть, чтобы оператор видел все поля ответа calculate.
   try {
@@ -317,6 +431,7 @@ function nominalSortValue(title) {
 .interhub-catalog__pagination { display: flex; gap: 12px; align-items: center; justify-content: end; margin-top: 12px; color: var(--muted, #7a766f); font-size: 13px; }
 .interhub-catalog__auto-amount { display: grid; gap: 3px; min-height: 42px; padding: 8px 10px; border: 1px solid rgba(232, 134, 19, .35); }.interhub-catalog__auto-amount span, .interhub-catalog__auto-amount small { color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__auto-amount strong { font-size: 18px; }
 .interhub-catalog__calculate-response { margin-top: 7px; color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__calculate-response summary { cursor: pointer; color: inherit; }.interhub-catalog__calculate-response pre { max-width: 420px; max-height: 180px; margin: 8px 0 0; padding: 8px; overflow: auto; border: 1px solid rgba(232, 134, 19, .2); background: rgba(9, 12, 25, .38); color: var(--text, #eee); font: 11px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
+.interhub-history-backdrop { z-index: 80; }.interhub-history { width: min(1180px, calc(100vw - 32px)); max-height: min(780px, calc(100vh - 32px)); overflow: auto; }.interhub-history__head { position: sticky; top: 0; z-index: 1; background: var(--panel, #fff); }.interhub-history__head h3 { margin: 0; }.interhub-history__body { display: grid; gap: 16px; }.interhub-history__filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; padding: 14px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); }.interhub-history__filters .field { min-width: 170px; }.interhub-history__filters .btn { min-height: 40px; }.interhub-history__summary { display: flex; gap: 7px; align-items: baseline; color: var(--muted, #7a766f); font-size: 13px; }.interhub-history__summary strong { color: var(--text, #202020); font-size: 21px; }.interhub-history__table-wrap { max-height: 460px; }.interhub-history__table-wrap thead { position: sticky; top: 0; z-index: 1; background: var(--panel, #fff); }.interhub-history__sort { display: inline-flex; width: 100%; gap: 5px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }.interhub-history__sort span { color: #b86b12; }.interhub-history__gift-code { font: 12px/1.35 ui-monospace, monospace; white-space: nowrap; }
 @media (max-width: 1120px) { .interhub-catalog__form { grid-template-columns: repeat(2, minmax(240px, 1fr)); }.interhub-catalog__actions, .interhub-catalog__actions.is-single, .interhub-catalog__form.has-optional-account .interhub-catalog__actions { grid-column: 1 / -1; }.interhub-catalog__payment-result { grid-template-columns: 1fr auto; } }
-@media (max-width: 680px) { .interhub-catalog__head { align-items: start; flex-direction: column; } .interhub-catalog__head-actions { justify-content: start; } .interhub-catalog__toolbar { align-items: stretch; flex-direction: column; } .interhub-catalog__search { width: 100%; } .interhub-catalog__stats { width: fit-content; } .interhub-catalog__form { grid-template-columns: 1fr; padding: 16px; } .interhub-catalog__actions, .interhub-catalog__form.has-optional-account .interhub-catalog__actions, .interhub-catalog__payment-result { grid-column: auto; grid-template-columns: 1fr; } }
+@media (max-width: 680px) { .interhub-catalog__head { align-items: start; flex-direction: column; } .interhub-catalog__head-actions { justify-content: start; } .interhub-catalog__toolbar { align-items: stretch; flex-direction: column; } .interhub-catalog__search { width: 100%; } .interhub-catalog__stats { width: fit-content; } .interhub-catalog__form { grid-template-columns: 1fr; padding: 16px; } .interhub-catalog__actions, .interhub-catalog__form.has-optional-account .interhub-catalog__actions, .interhub-catalog__payment-result { grid-column: auto; grid-template-columns: 1fr; } .interhub-history { width: calc(100vw - 16px); } .interhub-history__filters { align-items: stretch; }.interhub-history__filters .field, .interhub-history__filters .btn { width: 100%; } }
 </style>

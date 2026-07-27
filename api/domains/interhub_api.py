@@ -2,8 +2,9 @@ import json
 import threading
 import time
 import uuid
+from datetime import date
 
-from fastapi import Body, Depends, HTTPException
+from fastapi import Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from domains.interhub_price_cache import build_interhub_prices_xlsx, collect_price_targets
@@ -280,6 +281,52 @@ def mount_interhub_routes(
         # Отдаём баланс агентского счёта без раскрытия токена внешнего провайдера.
         _ = user
         return InterHubBalanceOut(**interhub_get_balance())
+
+    @app.get("/integrations/interhub/transactions/paid")
+    def list_paid_interhub_transactions(
+        date_from: date | None = Query(default=None),
+        date_to: date | None = Query(default=None),
+        user: UserOut = Depends(get_current_user),
+    ):
+        # Выдаём только завершённые продажи и ограничиваем выборку периодом без передачи SQL из браузера.
+        _ = user
+        if date_from and date_to and date_from > date_to:
+            raise HTTPException(422, "Дата «с» не может быть позже даты «по»")
+        clauses = ["state='paid'"]
+        params: list[object] = []
+        if date_from:
+            clauses.append("created_at >= %s")
+            params.append(date_from)
+        if date_to:
+            clauses.append("created_at < %s + interval '1 day'")
+            params.append(date_to)
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT service_id, COALESCE(request_params->>'nominal', ''), amount,
+                           gift_code, created_at
+                    FROM app.interhub_transactions
+                    WHERE {' AND '.join(clauses)}
+                    ORDER BY created_at DESC, agent_transaction_id DESC
+                    LIMIT 5000
+                    """,
+                    params,
+                )
+                rows = cur.fetchall()
+        # Преобразуем сумму в float, чтобы контракт JSON оставался одинаковым для PostgreSQL numeric.
+        return {
+            "items": [
+                {
+                    "service_id": int(row[0]),
+                    "nominal": str(row[1] or ''),
+                    "price": float(row[2] or 0),
+                    "gift_code": str(row[3] or ''),
+                    "created_at": row[4],
+                }
+                for row in rows
+            ]
+        }
 
     @app.post("/integrations/interhub/prices/refresh")
     def refresh_interhub_prices(user: UserOut = Depends(require_role("owner"))):

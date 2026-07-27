@@ -48,10 +48,14 @@ function buildCtx(overrides = {}) {
     priceRefresh: null,
     priceRefreshLoading: false,
     priceError: '',
+    salesHistory: [],
+    salesHistoryLoading: false,
+    salesHistoryError: '',
     pay: vi.fn(),
     refreshPaymentStatus: vi.fn(),
     refreshPrices: vi.fn(),
     exportPrices: vi.fn(),
+    loadSalesHistory: vi.fn(),
     resetPaymentFlow: vi.fn(),
     setSearchFromEvent: vi.fn(),
     ...overrides,
@@ -106,6 +110,49 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.findAll('tbody tr')[0].text()).toContain('Gift PIN')
     await wrapper.find('.interhub-catalog__sort').trigger('click')
     expect(wrapper.findAll('tbody tr')[0].text()).toContain('Mobile top up')
+  })
+
+  it('opens paid sales history with a date range filter', async () => {
+    const ctx = buildCtx({
+      salesHistory: [{ service_id: 7, nominal: '15', price: 12.5, gift_code: 'GIFT-15', created_at: '2026-07-27T10:30:00Z' }],
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx }, attachTo: document.body })
+
+    await wrapper.get('.interhub-catalog__history-action').trigger('click')
+    expect(ctx.loadSalesHistory).toHaveBeenCalledWith({ dateFrom: '', dateTo: '' })
+    expect(document.body.textContent).toContain('История продаж')
+    expect(document.body.textContent).toContain('Mobile top up')
+    expect(document.body.textContent).toContain('GIFT-15')
+
+    const dates = document.body.querySelectorAll('.interhub-history input[type="date"]')
+    dates[0].value = '2026-07-01'
+    await dates[0].dispatchEvent(new Event('input'))
+    dates[1].value = '2026-07-27'
+    await dates[1].dispatchEvent(new Event('input'))
+    await document.body.querySelector('.interhub-history__filters').dispatchEvent(new Event('submit', { cancelable: true }))
+    expect(ctx.loadSalesHistory).toHaveBeenLastCalledWith({ dateFrom: '2026-07-01', dateTo: '2026-07-27' })
+    wrapper.unmount()
+  })
+
+  it('sorts paid sales history by visible table columns', async () => {
+    const wrapper = mount(WorkInterhubSection, {
+      props: {
+        ctx: buildCtx({
+          salesHistory: [
+            { service_id: 8, nominal: '50', price: 40, gift_code: 'Z-CODE', created_at: '2026-07-26T10:30:00Z' },
+            { service_id: 7, nominal: '15', price: 12.5, gift_code: 'A-CODE', created_at: '2026-07-27T10:30:00Z' },
+          ],
+        }),
+      },
+      attachTo: document.body,
+    })
+    await wrapper.get('.interhub-catalog__history-action').trigger('click')
+    const priceHeader = document.body.querySelectorAll('.interhub-history__sort')[2]
+    await priceHeader.dispatchEvent(new Event('click'))
+
+    const rows = [...document.body.querySelectorAll('.interhub-history tbody tr')]
+    expect(rows[0].textContent).toContain('12,50 ₽')
+    wrapper.unmount()
   })
 
   it('opens a fixed nominal form and sends its params to a separate check', async () => {

@@ -1167,6 +1167,9 @@ const interhubPrices = ref([])
 const interhubPriceRefresh = ref(null)
 const interhubPriceRefreshLoading = ref(false)
 const interhubPriceError = ref('')
+const interhubSalesHistory = ref([])
+const interhubSalesHistoryLoading = ref(false)
+const interhubSalesHistoryError = ref('')
 const canPayInterhub = computed(() => normalizeRole(auth.state.role) === 'owner')
 const editProductState = reactive({
   open: false,
@@ -2180,6 +2183,25 @@ async function loadInterhubPrices() {
     interhubPrices.value = Array.isArray(data?.items) ? data.items : []
   } catch (err) {
     interhubPriceError.value = mapApiError(err?.message || 'Не удалось загрузить сохранённые цены')
+  }
+}
+
+async function loadInterhubSalesHistory({ dateFrom = '', dateTo = '' } = {}) {
+  // Загружаем только оплаченные операции за выбранный период из внутреннего журнала.
+  interhubSalesHistoryLoading.value = true
+  interhubSalesHistoryError.value = ''
+  try {
+    const query = new URLSearchParams()
+    if (dateFrom) query.set('date_from', dateFrom)
+    if (dateTo) query.set('date_to', dateTo)
+    const suffix = query.size ? `?${query.toString()}` : ''
+    const data = await apiGet(`/integrations/interhub/transactions/paid${suffix}`, { token: auth.state.token })
+    interhubSalesHistory.value = Array.isArray(data?.items) ? data.items : []
+  } catch (err) {
+    interhubSalesHistory.value = []
+    interhubSalesHistoryError.value = mapApiError(err?.message || 'Не удалось загрузить историю продаж')
+  } finally {
+    interhubSalesHistoryLoading.value = false
   }
 }
 
@@ -3745,12 +3767,16 @@ const interhubSectionCtx = asCtx({
   priceRefresh: interhubPriceRefresh,
   priceRefreshLoading: interhubPriceRefreshLoading,
   priceError: interhubPriceError,
+  salesHistory: interhubSalesHistory,
+  salesHistoryLoading: interhubSalesHistoryLoading,
+  salesHistoryError: interhubSalesHistoryError,
   canPay: canPayInterhub,
   canManagePrices: canPayInterhub,
   pay: payInterhub,
   refreshPaymentStatus: refreshInterhubPaymentStatus,
   refreshPrices: refreshInterhubPrices,
   exportPrices: exportInterhubPrices,
+  loadSalesHistory: loadInterhubSalesHistory,
   reload: reloadInterhubData,
   calculate: calculateInterhub,
   checkPayment: checkInterhub,
