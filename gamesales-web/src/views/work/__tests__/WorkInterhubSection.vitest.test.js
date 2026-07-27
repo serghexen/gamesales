@@ -127,6 +127,8 @@ describe('WorkInterhubSection', () => {
     expect(document.body.textContent).toContain('Steam Wallet')
     expect(document.body.textContent).toContain('15 USD')
     expect(document.body.textContent).toContain('GIFT-15')
+    expect(document.body.querySelector('.interhub-history__cards').textContent).toContain('Сумма платежей')
+    expect(document.body.querySelector('.interhub-history__cards').textContent).toContain('12,50 ₽')
 
     const dates = document.body.querySelectorAll('.interhub-history input[type="date"]')
     dates[0].value = '2026-07-01'
