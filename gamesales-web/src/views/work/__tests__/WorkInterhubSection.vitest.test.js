@@ -11,6 +11,8 @@ function buildCtx(overrides = {}) {
     search: '',
     balance: 10000,
     currency: 'RUB',
+    overBalance: 0,
+    overLimit: 0,
     services: [
       {
         service_id: 7,
@@ -73,6 +75,14 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).not.toContain('Лимит:')
     expect(wrapper.text()).not.toContain('Реквизиты')
     expect(wrapper.text()).toContain('10 000 ₽')
+  })
+
+  it('shows used and available overdraft next to the InterHub deposit', () => {
+    const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx({ overBalance: 0, overLimit: 100000 }) } })
+
+    expect(wrapper.text()).toContain('Депозит InterHub')
+    expect(wrapper.text()).toContain('Овердрафт: использовано 0 ₽ из 100 000 ₽')
+    expect(wrapper.text()).toContain('Доступно для оплат: 110 000 ₽')
   })
 
   it('filters catalog locally and reloads on demand', async () => {

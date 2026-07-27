@@ -1154,6 +1154,8 @@ const interhubServices = ref([])
 const interhubSearch = ref('')
 const interhubBalance = ref(0)
 const interhubCurrency = ref('')
+const interhubOverBalance = ref(0)
+const interhubOverLimit = ref(0)
 const interhubCalculation = ref(null)
 const interhubCalculationLoading = ref(false)
 const interhubCheck = ref(null)
@@ -2164,6 +2166,8 @@ async function loadInterhubBalance() {
     const data = await apiGet('/integrations/interhub/balance', { token: auth.state.token })
     interhubBalance.value = Number(data?.balance || 0)
     interhubCurrency.value = String(data?.currency || '')
+    interhubOverBalance.value = Number(data?.over_balance || 0)
+    interhubOverLimit.value = Number(data?.over_limit || 0)
   } catch (err) {
     interhubError.value = mapApiError(err?.message || 'Не удалось загрузить баланс InterHub')
   }
@@ -3728,6 +3732,8 @@ const interhubSectionCtx = asCtx({
   services: interhubServices,
   balance: interhubBalance,
   currency: interhubCurrency,
+  overBalance: interhubOverBalance,
+  overLimit: interhubOverLimit,
   search: interhubSearch,
   calculation: interhubCalculation,
   calculationLoading: interhubCalculationLoading,
