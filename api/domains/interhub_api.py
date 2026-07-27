@@ -304,11 +304,30 @@ def mount_interhub_routes(
             with conn.cursor() as cur:
                 cur.execute(
                     f"""
-                    SELECT service_id, COALESCE(request_params->>'nominal', ''), amount,
-                           gift_code, created_at
-                    FROM app.interhub_transactions
-                    WHERE {' AND '.join(clauses)}
-                    ORDER BY created_at DESC, agent_transaction_id DESC
+                    SELECT history_transaction.service_id,
+                           COALESCE(service_calculation.service_title, ''),
+                           COALESCE(history_transaction.request_params->>'nominal', ''),
+                           COALESCE(nominal_calculation.nominal_title, ''),
+                           history_transaction.amount, history_transaction.gift_code, history_transaction.created_at
+                    FROM app.interhub_transactions AS history_transaction
+                    LEFT JOIN LATERAL (
+                      SELECT service_title
+                      FROM app.interhub_price_calculations
+                      WHERE success=true AND service_id=history_transaction.service_id
+                      ORDER BY calculated_at DESC, id DESC
+                      LIMIT 1
+                    ) AS service_calculation ON true
+                    LEFT JOIN LATERAL (
+                      SELECT nominal_title
+                      FROM app.interhub_price_calculations
+                      WHERE success=true
+                        AND service_id=history_transaction.service_id
+                        AND nominal_id::text=COALESCE(history_transaction.request_params->>'nominal', '')
+                      ORDER BY calculated_at DESC, id DESC
+                      LIMIT 1
+                    ) AS nominal_calculation ON true
+                    WHERE {' AND '.join(f'history_transaction.{clause}' for clause in clauses)}
+                    ORDER BY history_transaction.created_at DESC, history_transaction.agent_transaction_id DESC
                     LIMIT 5000
                     """,
                     params,
@@ -319,10 +338,12 @@ def mount_interhub_routes(
             "items": [
                 {
                     "service_id": int(row[0]),
-                    "nominal": str(row[1] or ''),
-                    "price": float(row[2] or 0),
-                    "gift_code": str(row[3] or ''),
-                    "created_at": row[4],
+                    "service_title": str(row[1] or ''),
+                    "nominal": str(row[2] or ''),
+                    "nominal_title": str(row[3] or ''),
+                    "price": float(row[4] or 0),
+                    "gift_code": str(row[5] or ''),
+                    "created_at": row[6],
                 }
                 for row in rows
             ]
