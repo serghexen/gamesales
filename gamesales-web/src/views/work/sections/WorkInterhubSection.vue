@@ -18,7 +18,7 @@
 
       <div class="panel__body">
       <p class="interhub-catalog__lead">Выберите услугу, проверьте реквизиты и сумму. Подтверждение оплаты доступно только владельцу.</p>
-      <div class="interhub-catalog__balance"><span>Депозит InterHub</span><strong>{{ formatBalance(ctx.balance, ctx.currency) }}</strong><small v-if="hasOverdraft">Овердрафт: использовано {{ formatBalance(overdraftUsed, ctx.currency) }} из {{ formatBalance(overdraftLimit, ctx.currency) }}</small><small v-if="hasOverdraft">Доступно для оплат: {{ formatBalance(availableForPayments, ctx.currency) }}</small><small v-else>Агентский счёт</small></div>
+      <div class="interhub-catalog__balance"><span>Депозит InterHub</span><strong>{{ formatBalance(ctx.balance, ctx.currency) }}</strong><small v-if="hasOverdraft">Овердрафт: {{ formatBalance(overdraftBalance, ctx.currency) }} из {{ formatBalance(overdraftLimit, ctx.currency) }}</small><small v-if="hasOverdraft">Доступно для оплат: {{ formatBalance(availableForPayments, ctx.currency) }}</small><small v-else>Агентский счёт</small></div>
       <p v-if="ctx.error" class="error">{{ ctx.error }}</p>
       <p v-if="ctx.priceError" class="error">{{ ctx.priceError }}</p>
       <p v-if="ctx.priceRefresh" class="muted interhub-catalog__price-progress">Обновление цен: {{ ctx.priceRefresh.processed }} из {{ ctx.priceRefresh.total }} · успешно {{ ctx.priceRefresh.successes }} · ошибок {{ ctx.priceRefresh.errors }}<span v-if="ctx.priceRefresh.message"> · {{ ctx.priceRefresh.message }}</span></p>
@@ -128,12 +128,12 @@ const paymentForm = ref(null)
 const account = ref('')
 const amount = ref('')
 const params = reactive({})
-const overdraftUsed = computed(() => Math.max(0, Number(props.ctx.overBalance || 0)))
+const overdraftBalance = computed(() => Number(props.ctx.overBalance || 0))
 const overdraftLimit = computed(() => Math.max(0, Number(props.ctx.overLimit || 0)))
 const hasOverdraft = computed(() => overdraftLimit.value > 0)
 const availableForPayments = computed(() => {
-  // Складываем депозит и неиспользованную часть овердрафта, чтобы показать реальный лимит оплат.
-  return Math.max(0, Number(props.ctx.balance || 0)) + Math.max(0, overdraftLimit.value - overdraftUsed.value)
+  // Учитываем знак over_balance из InterHub: отрицательное значение уменьшает доступный лимит.
+  return Math.max(0, Number(props.ctx.balance || 0)) + Math.max(0, overdraftLimit.value + overdraftBalance.value)
 })
 const needsAmount = computed(() => ['TOP_UP'].includes(String(selectedService.value?.type || '').toUpperCase()))
 const hasNominal = computed(() => Boolean(selectedService.value?.fields?.some((field) => field?.name === 'nominal')))

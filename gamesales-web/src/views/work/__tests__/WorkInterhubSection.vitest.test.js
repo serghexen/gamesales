@@ -77,12 +77,12 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).toContain('10 000 ₽')
   })
 
-  it('shows used and available overdraft next to the InterHub deposit', () => {
-    const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx({ overBalance: 0, overLimit: 100000 }) } })
+  it('shows the signed overdraft balance and available amount next to the InterHub deposit', () => {
+    const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx({ balance: 0, overBalance: -2328.76, overLimit: 100000 }) } })
 
     expect(wrapper.text()).toContain('Депозит InterHub')
-    expect(wrapper.text()).toContain('Овердрафт: использовано 0 ₽ из 100 000 ₽')
-    expect(wrapper.text()).toContain('Доступно для оплат: 110 000 ₽')
+    expect(wrapper.text()).toContain('Овердрафт: -2 328,76 ₽ из 100 000 ₽')
+    expect(wrapper.text()).toContain('Доступно для оплат: 97 671,24 ₽')
   })
 
   it('filters catalog locally and reloads on demand', async () => {
