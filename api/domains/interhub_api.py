@@ -35,6 +35,7 @@ def mount_interhub_routes(
     InterHubPaymentRequestIn,
     InterHubPaymentCheckOut,
     InterHubPayRequestIn,
+    InterHubVoucherBatchPayRequestIn,
     interhub_get_services,
     interhub_get_balance,
     interhub_calculate,
@@ -98,6 +99,39 @@ def mount_interhub_routes(
         if str(row[0]) != "checked":
             raise HTTPException(409, "InterHub payment cannot be paid in its current state")
 
+    def start_provider_payment(agent_transaction_id: str) -> None:
+        # Помечаем оплату начатой до сетевого вызова, чтобы после обрыва не отправить pay второй раз.
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE app.interhub_transactions
+                    SET state='processing', provider_message='Оплата отправлена в InterHub; ожидается ответ',
+                        next_status_check_at=now() + interval '1 minute', updated_at=now()
+                    WHERE agent_transaction_id=%s AND state='checked'
+                    RETURNING agent_transaction_id
+                    """,
+                    (agent_transaction_id,),
+                )
+                started = cur.fetchone()
+            conn.commit()
+        if not started:
+            ensure_checked_transaction(agent_transaction_id)
+
+    def mark_payment_uncertain(agent_transaction_id: str, message: str) -> None:
+        # Оставляем неопределённую оплату на сверку статуса и никогда не пытаемся оплатить её повторно.
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE app.interhub_transactions
+                    SET state='processing', provider_message=%s, next_status_check_at=now() + interval '1 minute', updated_at=now()
+                    WHERE agent_transaction_id=%s
+                    """,
+                    (message[:2000], agent_transaction_id),
+                )
+            conn.commit()
+
     def save_provider_result(agent_transaction_id: str, result: dict, *, is_status_check: bool = False) -> None:
         # Сохраняем финальный ответ и ключ сразу, потому что check_status может не повторить gift_code.
         state = response_state(result)
@@ -128,6 +162,318 @@ def mount_interhub_routes(
                     ),
                 )
             conn.commit()
+
+    def voucher_batch_response(batch_id: str) -> dict:
+        # Собираем итог из операций, чтобы число ключей всегда совпадало с фактически сохранёнными ответами.
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT requested_quantity, state, message, active_agent_transaction_id
+                    FROM app.interhub_voucher_purchase_batches
+                    WHERE batch_id=%s::uuid
+                    """,
+                    (batch_id,),
+                )
+                batch = cur.fetchone()
+                if not batch:
+                    raise HTTPException(404, "InterHub voucher batch not found")
+                cur.execute(
+                    """
+                    SELECT
+                      COUNT(*) FILTER (WHERE state='paid'),
+                      COUNT(*) FILTER (WHERE state='paid' AND gift_code<>''),
+                      COALESCE(array_agg(gift_code ORDER BY voucher_batch_position) FILTER (WHERE state='paid' AND gift_code<>''), ARRAY[]::text[])
+                    FROM app.interhub_transactions
+                    WHERE voucher_batch_id=%s::uuid
+                    """,
+                    (batch_id,),
+                )
+                paid_quantity, received_quantity, gift_codes = cur.fetchone()
+            conn.commit()
+        state = str(batch[1] or "")
+        return {
+            "success": state == "completed",
+            "status": 0 if state == "completed" else (1 if state in {"running", "awaiting_status"} else 2),
+            "batch_id": batch_id,
+            "state": state,
+            "message": str(batch[2] or ""),
+            "requested_quantity": int(batch[0] or 0),
+            "paid_quantity": int(paid_quantity or 0),
+            "received_quantity": int(received_quantity or 0),
+            "gift_codes": [str(code) for code in (gift_codes or [])],
+            "active_agent_transaction_id": str(batch[3] or ""),
+        }
+
+    def set_voucher_batch_state(batch_id: str, state: str, message: str, active_agent_transaction_id: str = "") -> None:
+        # Фиксируем этап пачки после каждого внешнего действия, чтобы её можно было безопасно продолжить позже.
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE app.interhub_voucher_purchase_batches
+                    SET state=%s, message=%s, active_agent_transaction_id=%s, updated_at=now()
+                    WHERE batch_id=%s::uuid
+                    """,
+                    (state, message[:2000], active_agent_transaction_id, batch_id),
+                )
+            conn.commit()
+
+    def release_voucher_batch(batch_id: str, lease_token: str) -> None:
+        # Освобождаем аренду после ответа, чтобы следующий безопасный шаг не ждал её полного срока.
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE app.interhub_voucher_purchase_batches
+                    SET lease_token=NULL, lease_expires_at=NULL, updated_at=now()
+                    WHERE batch_id=%s::uuid AND lease_token=%s::uuid
+                    """,
+                    (batch_id, lease_token),
+                )
+            conn.commit()
+
+    def claim_voucher_batch(batch_id: str) -> str | None:
+        # Берём пачку в работу атомарно, чтобы два клика или повтор HTTP-запроса не купили один ключ дважды.
+        lease_token = str(uuid.uuid4())
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE app.interhub_voucher_purchase_batches
+                    SET lease_token=%s::uuid, lease_expires_at=now() + interval '30 minutes',
+                        state=CASE WHEN state='awaiting_status' THEN state ELSE 'running' END,
+                        updated_at=now()
+                    WHERE batch_id=%s::uuid
+                      AND (lease_expires_at IS NULL OR lease_expires_at < now())
+                      AND state NOT IN ('completed', 'stopped')
+                    RETURNING batch_id
+                    """,
+                    (lease_token, batch_id),
+                )
+                claimed = cur.fetchone()
+            conn.commit()
+        return lease_token if claimed else None
+
+    def prepare_voucher_batch(batch_id: str, first_agent_transaction_id: str, quantity: int, username: str) -> tuple[str, int]:
+        # Создаём одну долговечную пачку из уже проверенной операции и привязываем к ней первый ключ.
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                # Сериализуем два одновременных старта по одной проверке ещё до появления строки пачки.
+                cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (first_agent_transaction_id,))
+                cur.execute(
+                    """
+                    SELECT batch_id::text, requested_quantity
+                    FROM app.interhub_voucher_purchase_batches
+                    WHERE first_agent_transaction_id=%s
+                    FOR UPDATE
+                    """,
+                    (first_agent_transaction_id,),
+                )
+                existing = cur.fetchone()
+                if existing:
+                    conn.commit()
+                    if int(existing[1]) != quantity:
+                        raise HTTPException(409, "InterHub voucher batch quantity does not match the first request")
+                    return str(existing[0]), int(existing[1])
+                cur.execute(
+                    """
+                    SELECT service_id, account, amount, request_params, state
+                    FROM app.interhub_transactions
+                    WHERE agent_transaction_id=%s
+                    FOR UPDATE
+                    """,
+                    (first_agent_transaction_id,),
+                )
+                transaction = cur.fetchone()
+                if not transaction or str(transaction[4] or "") != "checked":
+                    conn.commit()
+                    raise HTTPException(409, "InterHub voucher payment must be checked before batch pay")
+                cur.execute(
+                    """
+                    INSERT INTO app.interhub_voucher_purchase_batches(
+                      batch_id, first_agent_transaction_id, service_id, account, amount, request_params,
+                      requested_quantity, state, created_by
+                    ) VALUES (%s::uuid, %s, %s, %s, %s, %s::jsonb, %s, 'ready', %s)
+                    """,
+                    (
+                        batch_id, first_agent_transaction_id, int(transaction[0]), str(transaction[1] or ""),
+                        float(transaction[2] or 0), json.dumps(transaction[3] or {}), quantity, username,
+                    ),
+                )
+                cur.execute(
+                    """
+                    UPDATE app.interhub_transactions
+                    SET voucher_batch_id=%s::uuid, voucher_batch_position=1, updated_at=now()
+                    WHERE agent_transaction_id=%s AND state='checked'
+                    """,
+                    (batch_id, first_agent_transaction_id),
+                )
+            conn.commit()
+        return batch_id, quantity
+
+    def read_voucher_batch(batch_id: str) -> dict:
+        # Читаем исходные реквизиты пачки только из БД, чтобы повтор не зависел от состояния формы в браузере.
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT service_id, account, amount, request_params, requested_quantity, first_agent_transaction_id
+                    FROM app.interhub_voucher_purchase_batches
+                    WHERE batch_id=%s::uuid
+                    """,
+                    (batch_id,),
+                )
+                row = cur.fetchone()
+            conn.commit()
+        if not row:
+            raise HTTPException(404, "InterHub voucher batch not found")
+        params = row[3] if isinstance(row[3], dict) else json.loads(row[3] or "{}")
+        return {
+            "service_id": int(row[0]), "account": str(row[1] or ""), "amount": float(row[2] or 0),
+            "params": params, "quantity": int(row[4]), "first_agent_transaction_id": str(row[5]),
+        }
+
+    def read_voucher_transaction(batch_id: str, position: int) -> tuple[str, str, str] | None:
+        # Находим ровно одну операцию позиции, потому что уникальный индекс не допускает дубля ключа.
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT agent_transaction_id, state, gift_code
+                    FROM app.interhub_transactions
+                    WHERE voucher_batch_id=%s::uuid AND voucher_batch_position=%s
+                    """,
+                    (batch_id, position),
+                )
+                row = cur.fetchone()
+            conn.commit()
+        return (str(row[0]), str(row[1]), str(row[2] or "")) if row else None
+
+    def attach_voucher_transaction(batch_id: str, position: int, agent_transaction_id: str) -> None:
+        # Привязываем успешный check к позиции до pay, чтобы повторный запуск увидел уже созданную операцию.
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE app.interhub_transactions
+                    SET voucher_batch_id=%s::uuid, voucher_batch_position=%s, updated_at=now()
+                    WHERE agent_transaction_id=%s AND state='checked'
+                    """,
+                    (batch_id, position, agent_transaction_id),
+                )
+                if cur.rowcount != 1:
+                    conn.commit()
+                    raise HTTPException(409, "InterHub voucher check cannot be attached to batch")
+            conn.commit()
+
+    def check_voucher_service(service_id: int) -> None:
+        # Не доверяем типу из браузера: массовая покупка доступна только реальному типу VOUCHER у поставщика.
+        services = interhub_get_services()
+        service = next((item for item in services if int(item.get("service_id") or 0) == service_id), None)
+        if not service or str(service.get("type") or "").upper() != "VOUCHER":
+            raise HTTPException(422, "InterHub batch payment is available only for VOUCHER services")
+
+    def resolve_uncertain_voucher_payment(agent_transaction_id: str) -> tuple[str, str]:
+        # Сверяем начатую оплату по её прежнему идентификатору и не создаём вместо неё новую.
+        try:
+            result = interhub_check_status({"agent_transaction_id": agent_transaction_id})
+        except Exception as exc:
+            message = str(getattr(exc, "detail", exc))
+            mark_payment_uncertain(agent_transaction_id, message)
+            return "processing", message
+        save_provider_result(agent_transaction_id, result, is_status_check=True)
+        return response_state(result), str(result.get("message") or "")
+
+    def pay_voucher_transaction(batch_id: str, agent_transaction_id: str) -> tuple[str, str]:
+        # Выполняем только один pay для позиции; исключение сети переводит её в безопасное ожидание статуса.
+        set_voucher_batch_state(batch_id, "running", "Отправляем запрос на получение ключа", agent_transaction_id)
+        start_provider_payment(agent_transaction_id)
+        try:
+            result = interhub_pay({"agent_transaction_id": agent_transaction_id})
+        except Exception as exc:
+            message = str(getattr(exc, "detail", exc))
+            mark_payment_uncertain(agent_transaction_id, message)
+            return "processing", message
+        save_provider_result(agent_transaction_id, result)
+        return response_state(result), str(result.get("message") or "")
+
+    def create_checked_voucher_transaction(batch_id: str, position: int, batch: dict, username: str) -> tuple[str | None, str]:
+        # Создаём следующие ключи отдельными check-операциями, чтобы у каждого был свой устойчивый идентификатор.
+        agent_transaction_id = f"gamesales-voucher-{batch_id[:8]}-{position}-{uuid.uuid4().hex[:12]}"
+        request = {
+            "service_id": batch["service_id"], "account": batch["account"], "params": batch["params"],
+            "agent_transaction_id": agent_transaction_id,
+        }
+        try:
+            calculated = interhub_calculate({**request, "agent_transaction_id": f"{agent_transaction_id}-calculate"})
+            amount = float(calculated.get("fixed_amount") or 0)
+            if not bool(calculated.get("success")) or amount <= 0:
+                return None, str(calculated.get("message") or "InterHub не вернул цену ваучера")
+            checked = interhub_check({**request, "amount": amount})
+        except Exception as exc:
+            return None, str(getattr(exc, "detail", exc))
+        save_checked_transaction({**request, "amount": amount}, checked, username)
+        if not bool(checked.get("success")):
+            return None, str(checked.get("message") or "InterHub не подтвердил выдачу ваучера")
+        attach_voucher_transaction(batch_id, position, agent_transaction_id)
+        return agent_transaction_id, ""
+
+    def run_voucher_batch(batch_id: str, username: str) -> dict:
+        # Идём по ограниченному циклу позиций и завершаем пачку при первом неясном или неуспешном ответе.
+        lease_token = claim_voucher_batch(batch_id)
+        if not lease_token:
+            return voucher_batch_response(batch_id)
+        try:
+            batch = read_voucher_batch(batch_id)
+            for position in range(1, batch["quantity"] + 1):
+                transaction = read_voucher_transaction(batch_id, position)
+                if transaction:
+                    agent_transaction_id, state, gift_code = transaction
+                    if state == "paid":
+                        if not gift_code:
+                            set_voucher_batch_state(batch_id, "stopped", "InterHub подтвердил оплату, но не вернул ключ", agent_transaction_id)
+                            return voucher_batch_response(batch_id)
+                        continue
+                    if state == "failed":
+                        set_voucher_batch_state(batch_id, "stopped", "InterHub не выдал следующий ваучер", agent_transaction_id)
+                        return voucher_batch_response(batch_id)
+                    if state == "processing":
+                        state, message = resolve_uncertain_voucher_payment(agent_transaction_id)
+                        if state == "processing":
+                            set_voucher_batch_state(batch_id, "awaiting_status", f"Ожидаем статус уже отправленной оплаты: {message}", agent_transaction_id)
+                            return voucher_batch_response(batch_id)
+                        if state != "paid":
+                            set_voucher_batch_state(batch_id, "stopped", f"InterHub не подтвердил оплату: {message}", agent_transaction_id)
+                            return voucher_batch_response(batch_id)
+                        transaction = read_voucher_transaction(batch_id, position)
+                        if not transaction or not transaction[2]:
+                            set_voucher_batch_state(batch_id, "stopped", "InterHub подтвердил оплату, но не вернул ключ", agent_transaction_id)
+                            return voucher_batch_response(batch_id)
+                        continue
+                    if state != "checked":
+                        set_voucher_batch_state(batch_id, "awaiting_status", "Операция ожидает безопасной сверки статуса", agent_transaction_id)
+                        return voucher_batch_response(batch_id)
+                else:
+                    agent_transaction_id, message = create_checked_voucher_transaction(batch_id, position, batch, username)
+                    if not agent_transaction_id:
+                        set_voucher_batch_state(batch_id, "stopped", f"Получено ключей: {voucher_batch_response(batch_id)['received_quantity']}. {message}")
+                        return voucher_batch_response(batch_id)
+                state, message = pay_voucher_transaction(batch_id, agent_transaction_id)
+                if state == "processing":
+                    set_voucher_batch_state(batch_id, "awaiting_status", f"Оплата отправлена, ждём статус: {message}", agent_transaction_id)
+                    return voucher_batch_response(batch_id)
+                if state != "paid":
+                    set_voucher_batch_state(batch_id, "stopped", f"Получено ключей: {voucher_batch_response(batch_id)['received_quantity']}. {message}", agent_transaction_id)
+                    return voucher_batch_response(batch_id)
+                transaction = read_voucher_transaction(batch_id, position)
+                if not transaction or not transaction[2]:
+                    set_voucher_batch_state(batch_id, "stopped", "InterHub подтвердил оплату, но не вернул ключ", agent_transaction_id)
+                    return voucher_batch_response(batch_id)
+            set_voucher_batch_state(batch_id, "completed", f"Успешно получено ключей: {batch['quantity']}")
+            return voucher_batch_response(batch_id)
+        finally:
+            release_voucher_batch(batch_id, lease_token)
 
     def refresh_pending_transactions() -> None:
         # Выбираем просроченные processing-операции и опрашиваем InterHub не чаще раза в пять минут.
@@ -419,6 +765,19 @@ def mount_interhub_routes(
         result = interhub_pay({"agent_transaction_id": agent_transaction_id})
         save_provider_result(agent_transaction_id, result)
         return InterHubPaymentCheckOut(**result)
+
+    @app.post("/integrations/interhub/vouchers/pay-batch")
+    def pay_interhub_voucher_batch(payload: InterHubVoucherBatchPayRequestIn = Body(...), user: UserOut = Depends(require_role("owner"))):
+        # Покупаем указанное число ваучеров строго по одной сохранённой операции за раз.
+        try:
+            batch_id = str(uuid.UUID(str(payload.batch_id)))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise HTTPException(422, "InterHub voucher batch_id must be a UUID") from exc
+        first_agent_transaction_id = str(payload.agent_transaction_id or "").strip()
+        prepared_batch_id, _ = prepare_voucher_batch(batch_id, first_agent_transaction_id, int(payload.quantity), str(user.username or ""))
+        batch = read_voucher_batch(prepared_batch_id)
+        check_voucher_service(batch["service_id"])
+        return run_voucher_batch(prepared_batch_id, str(user.username or ""))
 
     @app.post("/integrations/interhub/check-status", response_model=InterHubPaymentCheckOut)
     def check_interhub_payment_status(payload: InterHubPayRequestIn = Body(...), user: UserOut = Depends(require_role("owner"))):

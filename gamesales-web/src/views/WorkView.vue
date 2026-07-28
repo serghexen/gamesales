@@ -2343,6 +2343,16 @@ function resetInterhubPaymentFlow() {
   interhubPaymentLoading.value = false
 }
 
+function createInterhubVoucherBatchId() {
+  // Создаём устойчивый UUID до первого запроса, чтобы повторный клик продолжал ту же пачку, а не создавал новую.
+  if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID()
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
 async function calculateInterhub(payload) {
   // Узнаём актуальную цену через calculate отдельно, не создавая операцию check и не запуская оплату.
   const flowVersion = interhubPaymentFlowVersion.value
@@ -2375,7 +2385,9 @@ async function checkInterhub(payload) {
   try {
     const requestPayload = { ...payload }
     const flowType = String(requestPayload.flow_type || '').toUpperCase()
+    const voucherQuantity = flowType === 'VOUCHER' ? Math.min(20, Math.max(1, Math.trunc(Number(requestPayload.quantity) || 1))) : 1
     delete requestPayload.flow_type
+    delete requestPayload.quantity
     if (flowType !== 'TOP_UP') {
       const fixedAmount = Number(interhubCalculation.value?.fixed_amount || 0)
       if (!(fixedAmount > 0)) {
@@ -2389,7 +2401,15 @@ async function checkInterhub(payload) {
       ...requestPayload,
       agent_transaction_id: checkTransactionId,
     }, { token: auth.state.token })
-    if (flowVersion === interhubPaymentFlowVersion.value) interhubCheck.value = { ...check, agent_transaction_id: checkTransactionId }
+    if (flowVersion === interhubPaymentFlowVersion.value) {
+      // Сохраняем идентификатор пачки рядом с check, чтобы повторный запуск не мог открыть новую покупку.
+      interhubCheck.value = {
+        ...check,
+        agent_transaction_id: checkTransactionId,
+        voucher_quantity: voucherQuantity,
+        voucher_batch_id: flowType === 'VOUCHER' ? createInterhubVoucherBatchId() : '',
+      }
+    }
   } catch (err) {
     if (flowVersion === interhubPaymentFlowVersion.value) interhubCheck.value = { success: false, message: mapApiError(err?.message || 'Не удалось проверить доступность') }
   } finally {
@@ -2402,16 +2422,29 @@ async function payInterhub() {
   const agentTransactionId = String(interhubCheck.value?.agent_transaction_id || '')
   if (!agentTransactionId || !canPayInterhub.value) return
   const flowVersion = interhubPaymentFlowVersion.value
+  const voucherQuantity = Number(interhubCheck.value?.voucher_quantity || 0)
+  const voucherBatchId = String(interhubCheck.value?.voucher_batch_id || '')
   interhubPaymentLoading.value = true
   interhubPayment.value = null
   try {
-    const payment = await apiPost('/integrations/interhub/pay', {
-      agent_transaction_id: agentTransactionId,
-    }, { token: auth.state.token })
+    const payment = voucherQuantity > 0 && voucherBatchId
+      ? await apiPost('/integrations/interhub/vouchers/pay-batch', {
+        agent_transaction_id: agentTransactionId,
+        batch_id: voucherBatchId,
+        quantity: voucherQuantity,
+      }, { token: auth.state.token })
+      : await apiPost('/integrations/interhub/pay', {
+        agent_transaction_id: agentTransactionId,
+      }, { token: auth.state.token })
     if (flowVersion === interhubPaymentFlowVersion.value) interhubPayment.value = payment
-    if (Number(payment?.status) === 1) void loadInterhubBalance()
+    if (Number(payment?.status) === 1 || Number(payment?.paid_quantity) > 0) void loadInterhubBalance()
   } catch (err) {
-    if (flowVersion === interhubPaymentFlowVersion.value) interhubPayment.value = { success: false, message: mapApiError(err?.message || 'Не удалось подтвердить оплату') }
+    if (flowVersion === interhubPaymentFlowVersion.value) {
+      // После потери ответа по пачке повторяем тот же batch_id: сервер сначала сверит уже начатую оплату.
+      interhubPayment.value = voucherQuantity > 0 && voucherBatchId
+        ? { success: false, status: 1, batch_id: voucherBatchId, state: 'awaiting_status', requested_quantity: voucherQuantity, received_quantity: 0, message: 'Ответ сервера не получен. Проверяем прежнюю оплату без повторного списания.' }
+        : { success: false, message: mapApiError(err?.message || 'Не удалось подтвердить оплату') }
+    }
   } finally {
     if (flowVersion === interhubPaymentFlowVersion.value) interhubPaymentLoading.value = false
   }

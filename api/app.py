@@ -560,6 +560,12 @@ class InterHubPaymentCheckOut(BaseModel):
 class InterHubPayRequestIn(BaseModel):
     agent_transaction_id: str
 
+
+class InterHubVoucherBatchPayRequestIn(BaseModel):
+    batch_id: str = Field(min_length=1, max_length=80)
+    agent_transaction_id: str = Field(min_length=1, max_length=200)
+    quantity: int = Field(ge=1, le=20)
+
 # ----------------------------
 # DB helpers
 # ----------------------------
@@ -668,6 +674,7 @@ _INTERHUB_TOKEN = os.getenv("INTERHUB_TOKEN", "")
 _INTERHUB_TIMEOUT_SEC = int(os.getenv("INTERHUB_TIMEOUT_SEC", "20") or "20")
 _INTERHUB_SSL_VERIFY = str(os.getenv("INTERHUB_SSL_VERIFY", "true") or "true").strip().lower() in ("1", "true", "yes", "on")
 _INTERHUB_CA_CERT_PATH = os.getenv("INTERHUB_CA_CERT_PATH", "")
+_INTERHUB_PROXY_URL = os.getenv("INTERHUB_PROXY_URL", "")
 _INTERHUB_CALCULATE_PATH = os.getenv("INTERHUB_CALCULATE_PATH", "/api/agent/payment/check/calculate")
 _INTERHUB_CHECK_PATH = os.getenv("INTERHUB_CHECK_PATH", "/api/agent/payment/check")
 _INTERHUB_PAY_PATH = os.getenv("INTERHUB_PAY_PATH", "/api/agent/payment/pay")
@@ -800,6 +807,7 @@ interhub_service = build_interhub_service(
     timeout_sec=_INTERHUB_TIMEOUT_SEC,
     ssl_verify=_INTERHUB_SSL_VERIFY,
     ca_cert_path=_INTERHUB_CA_CERT_PATH,
+    proxy_url=_INTERHUB_PROXY_URL,
     calculate_path=_INTERHUB_CALCULATE_PATH,
     check_path=_INTERHUB_CHECK_PATH,
     pay_path=_INTERHUB_PAY_PATH,
@@ -1203,6 +1211,7 @@ interhub_refresh_pending = mount_interhub_routes(
     InterHubPaymentRequestIn=InterHubPaymentRequestIn,
     InterHubPaymentCheckOut=InterHubPaymentCheckOut,
     InterHubPayRequestIn=InterHubPayRequestIn,
+    InterHubVoucherBatchPayRequestIn=InterHubVoucherBatchPayRequestIn,
     interhub_get_services=interhub_get_services,
     interhub_get_balance=interhub_get_balance,
     interhub_calculate=interhub_calculate,

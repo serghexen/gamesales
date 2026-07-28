@@ -293,15 +293,39 @@ describe('WorkInterhubSection', () => {
     expect(actions.find('.interhub-catalog__action-btn').attributes('disabled')).toBeUndefined()
   })
 
-  it('hides the account field for voucher services', async () => {
+  it('hides the account field and shows a bounded quantity for voucher services', async () => {
     const ctx = buildCtx({
       services: [{ service_id: 11, title: 'Steam voucher', category: '', type: 'VOUCHER', fields: [{ name: 'nominal', type: 'LIST', required: true, value_list: [{ id: 25, title: 'USD 25' }] }] }],
     })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
     await wrapper.find('tbody tr').trigger('click')
-    expect(wrapper.find('.interhub-catalog__form input').exists()).toBe(false)
+    expect(wrapper.find('.interhub-catalog__form input:not([type="number"])').exists()).toBe(false)
+    const quantityInput = wrapper.find('.interhub-catalog__form input[type="number"]')
+    expect(quantityInput.attributes('min')).toBe('1')
+    expect(quantityInput.attributes('max')).toBe('20')
+    expect(wrapper.text()).toContain('Количество ключей')
     expect(wrapper.text()).not.toContain('Аккаунт (временно необязательно)')
+  })
+
+  it('passes the selected voucher quantity only to the internal payment flow', async () => {
+    const ctx = buildCtx({
+      services: [{ service_id: 12, title: 'Three keys', category: '', type: 'VOUCHER', fields: [] }],
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await wrapper.find('tbody tr').trigger('click')
+    await wrapper.find('.interhub-catalog__form input[type="number"]').setValue('3')
+    const calculateButton = wrapper.findAll('button').find((button) => button.text().includes('Узнать цену'))
+    await calculateButton.trigger('click')
+
+    expect(ctx.calculate).toHaveBeenCalledWith({
+      service_id: 12,
+      account: '',
+      params: {},
+      flow_type: 'VOUCHER',
+      quantity: 3,
+    })
   })
 
   it('shows an optional account field for fixed nominal services', async () => {

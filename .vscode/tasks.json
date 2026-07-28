@@ -28,10 +28,36 @@
       "problemMatcher": []
     },
     {
+      "label": "InterHub Tunnel",
+      "type": "shell",
+      "command": "source ${workspaceFolder}/.venv/bin/activate && python api/scripts/run_interhub_tunnel.py",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": [
+            "-lc"
+          ]
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
       "label": "Run Frontend + Backend",
       "dependsOn": [
         "Backend Dev",
         "Frontend Dev"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Frontend + Backend + InterHub Tunnel",
+      "dependsOn": [
+        "Backend Dev",
+        "Frontend Dev",
+        "InterHub Tunnel"
       ],
       "dependsOrder": "parallel",
       "problemMatcher": []

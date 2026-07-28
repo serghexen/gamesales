@@ -73,6 +73,7 @@
         <label v-if="showAccount" class="field"><span class="label">{{ accountLabel }}<i v-if="accountRequired"> *</i></span><input v-model.trim="account" class="input" :required="accountRequired" @input="resetPaymentAfterInputChange" /><small v-if="!accountRequired" class="muted">Необязательно для этого типа услуги</small></label>
         <div v-if="amountFromNominal" class="interhub-catalog__auto-amount"><span>Сумма пополнения</span><strong>{{ selectedNominalTitle || 'Выберите номинал' }}</strong><small>Подставляется автоматически из номинала</small></div>
         <label v-else-if="needsAmount" class="field"><span class="label">Сумма пополнения</span><input v-model="amount" class="input" type="number" :min="selectedService.min_amount || 0.01" step="0.01" required @input="resetPaymentAfterInputChange" /><small class="muted">{{ formatAmountLimit(selectedService) }}</small></label>
+        <label v-if="paymentType === 'VOUCHER'" class="field"><span class="label">Количество ключей</span><input v-model.number="voucherQuantity" class="input" type="number" min="1" max="20" step="1" required @input="resetPaymentAfterInputChange" /><small class="muted">Не более 20 за один запуск. Каждый ключ покупается и сохраняется отдельно.</small></label>
         <label v-for="field in selectedService.fields" :key="field.name" class="field"><span class="label">{{ field.name }}<i v-if="field.required"> *</i></span><select v-if="field.type === 'LIST'" v-model="params[field.name]" class="input" :required="field.required" @change="resetPaymentAfterInputChange"><option value="">Выберите значение</option><option v-for="option in sortedNominals(field.value_list)" :key="option.id" :value="option.id">{{ option.title }}</option></select><input v-else v-model.trim="params[field.name]" class="input" :required="field.required" @input="resetPaymentAfterInputChange" /><small v-if="field.name === 'nominal' && selectedCachedPrice" class="muted">Закупочная цена из кэша: {{ formatMoney(selectedCachedPrice.fixed_amount) }} ₽ · {{ formatCachedDate(selectedCachedPrice.calculated_at) }}</small><details v-if="field.name === 'nominal' && selectedCachedPrice" class="interhub-catalog__calculate-response"><summary>Полный ответ calculate</summary><pre>{{ formatProviderResponse(selectedCachedPrice.provider_response) }}</pre></details></label>
         <div class="interhub-catalog__actions" :class="{ 'is-single': !supportsCalculate }">
           <button v-if="supportsCalculate" class="btn interhub-catalog__action-btn" type="button" :disabled="ctx.calculationLoading" @click="calculate"><span class="interhub-catalog__action-index">1</span><span><strong>{{ ctx.calculationLoading ? 'Узнаём цену…' : 'Узнать цену' }}</strong><small>calculate</small></span></button>
@@ -85,13 +86,14 @@
         <div v-if="ctx.check" class="interhub-catalog__payment-result" :class="{ 'is-error': !ctx.check.success }">
           <p class="interhub-catalog__result">{{ ctx.check.success ? 'Проверка доступности пройдена' : 'Проверка доступности не пройдена' }} · {{ ctx.check.message || 'Ответ получен' }}</p>
           <small class="muted">Check не возвращает числовой остаток, а подтверждает возможность провести операцию.</small>
-          <button v-if="ctx.check.success && ctx.canPay && !ctx.payment" class="btn" type="button" :disabled="ctx.paymentLoading" @click="ctx.pay">Оплатить</button>
+          <button v-if="ctx.check.success && ctx.canPay && !ctx.payment" class="btn" type="button" :disabled="ctx.paymentLoading" @click="ctx.pay">{{ voucherQuantity > 1 ? `Получить ${voucherQuantity} ключей` : 'Оплатить' }}</button>
           <p v-else-if="ctx.check.success && !ctx.canPay" class="muted">Оплатить может только владелец.</p>
         </div>
         <div v-if="ctx.payment" class="interhub-catalog__payment-result" :class="{ 'is-error': !ctx.payment.success }">
           <p class="interhub-catalog__result">{{ paymentMessage }}</p>
-          <code v-if="giftCode" class="interhub-catalog__gift-code">{{ giftCode }}</code>
-          <button v-if="isProcessing && ctx.canPay" class="btn" type="button" :disabled="ctx.paymentLoading" @click="ctx.refreshPaymentStatus">Обновить статус</button>
+          <div v-if="voucherGiftCodes.length" class="interhub-catalog__gift-codes"><code v-for="code in voucherGiftCodes" :key="code" class="interhub-catalog__gift-code">{{ code }}</code></div>
+          <code v-else-if="giftCode" class="interhub-catalog__gift-code">{{ giftCode }}</code>
+          <button v-if="isProcessing && ctx.canPay" class="btn" type="button" :disabled="ctx.paymentLoading" @click="isVoucherBatch ? ctx.pay() : ctx.refreshPaymentStatus">{{ isVoucherBatch ? 'Проверить и продолжить' : 'Обновить статус' }}</button>
         </div>
       </form>
     </div>
@@ -190,6 +192,7 @@ const selectedService = ref(null)
 const paymentForm = ref(null)
 const account = ref('')
 const amount = ref('')
+const voucherQuantity = ref(1)
 const params = reactive({})
 const salesHistoryOpen = ref(false)
 const salesHistoryDateFrom = ref('')
@@ -231,9 +234,18 @@ const selectedCachedPrice = computed(() => {
   return (props.ctx.cachedPrices || []).find((item) => Number(item?.service_id) === serviceId && Number(item?.nominal_id) === nominalId) || null
 })
 const giftCode = computed(() => String(props.ctx.payment?.params?.gift_code || ''))
+const isVoucherBatch = computed(() => Boolean(props.ctx.payment?.batch_id))
+const voucherGiftCodes = computed(() => Array.isArray(props.ctx.payment?.gift_codes) ? props.ctx.payment.gift_codes.map((code) => String(code || '')).filter(Boolean) : [])
 const isProcessing = computed(() => Number(props.ctx.payment?.status) === 1)
 const paymentMessage = computed(() => {
   // Переводим статусы провайдера в понятный оператору итог оплаты.
+  if (isVoucherBatch.value) {
+    const received = Number(props.ctx.payment?.received_quantity || 0)
+    const requested = Number(props.ctx.payment?.requested_quantity || 0)
+    if (props.ctx.payment?.state === 'completed') return `Получено ключей: ${received} из ${requested}.`
+    if (props.ctx.payment?.state === 'awaiting_status') return `Получено ключей: ${received} из ${requested}. Оплата следующего ключа уже отправлена и проверяется без повторного списания.`
+    return `Получено ключей: ${received} из ${requested}. ${props.ctx.payment?.message || 'Покупка остановлена.'}`
+  }
   if (isProcessing.value) return 'Платёж обрабатывается. Первая проверка статуса — через 1 минуту, затем по графику InterHub.'
   if (props.ctx.payment?.success) return giftCode.value ? 'Оплата успешна. Код ваучера:' : 'Оплата успешно подтверждена.'
   return `Оплата не прошла · ${props.ctx.payment?.message || 'Ответ InterHub не получен'}`
@@ -310,6 +322,7 @@ async function selectService(service) {
   selectedService.value = service
   account.value = ''
   amount.value = ''
+  voucherQuantity.value = 1
   Object.keys(params).forEach((key) => delete params[key])
   props.ctx.resetPaymentFlow()
   await nextTick()
@@ -376,6 +389,10 @@ function buildPayload() {
   } else if (needsAmount.value) {
     // Передаем введенную сумму только для TOP_UP без фиксированного списка номиналов.
     payload.amount = Number(amount.value)
+  }
+  if (paymentType.value === 'VOUCHER') {
+    // Передаём количество только как инструкцию для нашей пачки, InterHub получает отдельный pay на каждый ключ.
+    payload.quantity = Math.min(20, Math.max(1, Math.trunc(Number(voucherQuantity.value) || 1)))
   }
   return payload
 }
