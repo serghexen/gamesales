@@ -1,0 +1,22 @@
+# HTTPS принимается здесь, а существующий веб-контейнер продолжает обслуживать сайт и API.
+www.homtech.app {
+    redir https://homtech.app{uri} permanent
+}
+
+homtech.app {
+    encode zstd gzip
+    # Убираем присланный клиентом X-Forwarded-For, чтобы API доверял только реальному IP отправителя.
+    reverse_proxy web:80 {
+        header_up -X-Forwarded-For
+        header_up X-Forwarded-For {remote_host}
+    }
+}
+
+# Тестовый поддомен обслуживается отдельным набором контейнеров и не использует боевую БД.
+stage.homtech.app {
+    encode zstd gzip
+    reverse_proxy gamesales-web-staging:80 {
+        header_up -X-Forwarded-For
+        header_up X-Forwarded-For {remote_host}
+    }
+}

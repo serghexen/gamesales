@@ -281,6 +281,7 @@ from domains.finance_api import mount_finance_routes
 from domains.marketplaces_api import mount_marketplaces_routes
 from domains.marketplace_key_pools_api import mount_marketplace_key_pool_routes
 from domains.yandex_market_catalog_api import mount_yandex_market_catalog_routes
+from domains.yandex_market_webhooks_api import mount_yandex_market_webhooks_routes
 from domains.dashboard_api import mount_dashboard_routes
 from domains.products_api import mount_products_routes
 from domains.products_import_api import mount_products_import_routes
@@ -1157,6 +1158,13 @@ mount_marketplace_key_pool_routes(
     qall=qall,
     exec1=exec1,
     require_role=require_role,
+)
+# Подключает отдельный вход для уведомлений Маркета, не меняя каталоги и заказы.
+mount_yandex_market_webhooks_routes(
+    app,
+    DB_DSN=DB_DSN,
+    psycopg=pooled_psycopg,
+    exec1=exec1,
 )
 mount_dashboard_routes(
     app,
