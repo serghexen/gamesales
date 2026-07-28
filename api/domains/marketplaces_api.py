@@ -1256,7 +1256,7 @@ def mount_marketplaces_routes(
         update_supplier: bool = True,
         user=Depends(require_role("owner")),
     ):
-        # При отправке остатка не меняет привязку поставщика из отдельной формы.
+        # При отправке остатка не меняет настройки автовыдачи из отдельной формы ключей.
         if publish_stock:
             require_ozon_live()
         normalized_store_code = normalize_ozon_store_code(store_code)
@@ -1271,9 +1271,9 @@ def mount_marketplaces_routes(
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, now())
                 ON CONFLICT (store_code, external_product_id) DO UPDATE
-                SET offer_id=excluded.offer_id,
-                    manual_stock_limit=excluded.manual_stock_limit,
-                    auto_issue_enabled=excluded.auto_issue_enabled,
+                    SET offer_id=excluded.offer_id,
+                        manual_stock_limit=excluded.manual_stock_limit,
+                        auto_issue_enabled=CASE WHEN %s THEN excluded.auto_issue_enabled ELSE marketplace_ozon_digital_settings.auto_issue_enabled END,
                     activation_instruction=excluded.activation_instruction,
                     support_error_message=excluded.support_error_message,
                     updated_at=now()
@@ -1286,6 +1286,7 @@ def mount_marketplaces_routes(
                     payload.auto_issue_enabled,
                     payload.activation_instruction.strip(),
                     payload.support_error_message.strip(),
+                    not publish_stock,
                 ),
             )
             if update_supplier and payload.interhub_service_id:
