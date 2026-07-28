@@ -1,0 +1,9 @@
+# HTTPS принимается здесь, а существующий веб-контейнер продолжает обслуживать сайт и API.
+www.homtech.app {
+    redir https://homtech.app{uri} permanent
+}
+
+homtech.app {
+    encode zstd gzip
+    reverse_proxy web:80
+}

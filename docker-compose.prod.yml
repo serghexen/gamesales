@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     mem_limit: 900m
     cpus: "0.80"
     volumes:
@@ -79,10 +79,24 @@ services:
     restart: unless-stopped
     depends_on:
       - api
-    ports:
-      - "80:80"
     mem_limit: 120m
     cpus: "0.20"
+
+  gateway:
+    image: caddy:2.8-alpine
+    container_name: gamesales-gateway
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "138.16.162.73:80:80"
+      - "138.16.162.73:443:443"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 90m
+    cpus: "0.15"
 
   queue-api:
     build: ./notify-api
@@ -119,10 +133,10 @@ services:
     container_name: gamesales-redis
     restart: unless-stopped
     command: ["redis-server"]
-    ports:
-      - "6379:6379"
     mem_limit: 120m
     cpus: "0.20"
 
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
