@@ -68,32 +68,23 @@
         <span>Страница {{ currentPage }} из {{ totalPages }}</span>
         <button class="ghost" type="button" :disabled="currentPage === totalPages" aria-label="Следующая страница" @click="changePage(1)">Далее</button>
       </nav>
-      <form v-if="selectedService" ref="paymentForm" class="interhub-catalog__form" :class="{ 'has-optional-account': paymentType === 'TOP_UP_FIXED' }" @submit.prevent="checkPayment">
-        <div class="interhub-catalog__service-summary"><p class="interhub-catalog__eyebrow">Шаги оплаты</p><h3>{{ selectedService.title }}</h3></div>
+      <form v-if="selectedService" ref="paymentForm" class="interhub-catalog__form" :class="{ 'has-optional-account': paymentType === 'TOP_UP_FIXED' }" @submit.prevent="obtainPayment">
+        <div v-if="obtainLoading" class="interhub-catalog__obtain-overlay"><WorkHamsterLoader :label="obtainLoadingLabel" /></div>
+        <div class="interhub-catalog__service-summary"><p class="interhub-catalog__eyebrow">Получение</p><h3>{{ selectedService.title }}</h3></div>
         <label v-if="showAccount" class="field"><span class="label">{{ accountLabel }}<i v-if="accountRequired"> *</i></span><input v-model.trim="account" class="input" :required="accountRequired" @input="resetPaymentAfterInputChange" /><small v-if="!accountRequired" class="muted">Необязательно для этого типа услуги</small></label>
         <div v-if="amountFromNominal" class="interhub-catalog__auto-amount"><span>Сумма пополнения</span><strong>{{ selectedNominalTitle || 'Выберите номинал' }}</strong><small>Подставляется автоматически из номинала</small></div>
         <label v-else-if="needsAmount" class="field"><span class="label">Сумма пополнения</span><input v-model="amount" class="input" type="number" :min="selectedService.min_amount || 0.01" step="0.01" required @input="resetPaymentAfterInputChange" /><small class="muted">{{ formatAmountLimit(selectedService) }}</small></label>
         <label v-if="paymentType === 'VOUCHER'" class="field"><span class="label">Количество ключей</span><input v-model.number="voucherQuantity" class="input" type="number" min="1" max="20" step="1" required @input="resetPaymentAfterInputChange" /><small class="muted">Не более 20 за один запуск. Каждый ключ покупается и сохраняется отдельно.</small></label>
         <label v-for="field in selectedService.fields" :key="field.name" class="field"><span class="label">{{ field.name }}<i v-if="field.required"> *</i></span><select v-if="field.type === 'LIST'" v-model="params[field.name]" class="input" :required="field.required" @change="resetPaymentAfterInputChange"><option value="">Выберите значение</option><option v-for="option in sortedNominals(field.value_list)" :key="option.id" :value="option.id">{{ option.title }}</option></select><input v-else v-model.trim="params[field.name]" class="input" :required="field.required" @input="resetPaymentAfterInputChange" /><small v-if="field.name === 'nominal' && selectedCachedPrice" class="muted">Закупочная цена из кэша: {{ formatMoney(selectedCachedPrice.fixed_amount) }} ₽ · {{ formatCachedDate(selectedCachedPrice.calculated_at) }}</small><details v-if="field.name === 'nominal' && selectedCachedPrice" class="interhub-catalog__calculate-response"><summary>Полный ответ calculate</summary><pre>{{ formatProviderResponse(selectedCachedPrice.provider_response) }}</pre></details></label>
-        <div class="interhub-catalog__actions" :class="{ 'is-single': !supportsCalculate }">
-          <button v-if="supportsCalculate" class="btn interhub-catalog__action-btn" type="button" :disabled="ctx.calculationLoading" @click="calculate"><span class="interhub-catalog__action-index">1</span><span><strong>{{ ctx.calculationLoading ? 'Узнаём цену…' : 'Узнать цену' }}</strong><small>calculate</small></span></button>
-          <button class="btn interhub-catalog__action-btn" type="submit" :disabled="checkDisabled"><span class="interhub-catalog__action-index">{{ supportsCalculate ? 2 : 1 }}</span><span><strong>{{ checkActionText }}</strong><small>check</small></span></button>
+        <div class="interhub-catalog__actions is-single">
+          <button class="btn interhub-catalog__action-btn" type="submit" :disabled="obtainLoading || !ctx.canPay"><span><strong>Получить</strong><small>Цена, проверка и получение ключа</small></span></button>
         </div>
-        <div v-if="ctx.calculation" class="interhub-catalog__payment-result">
-          <p class="interhub-catalog__result">{{ ctx.calculation.success ? 'Цена получена' : 'Цену получить не удалось' }} · {{ ctx.calculation.message || 'Ответ получен' }}</p>
-          <p v-if="ctx.calculation.success && ctx.calculation.fixed_amount" class="muted">К списанию: {{ formatMoney(ctx.calculation.fixed_amount) }} ₽</p>
-        </div>
-        <div v-if="ctx.check" class="interhub-catalog__payment-result" :class="{ 'is-error': !ctx.check.success }">
-          <p class="interhub-catalog__result">{{ ctx.check.success ? 'Проверка доступности пройдена' : 'Проверка доступности не пройдена' }} · {{ ctx.check.message || 'Ответ получен' }}</p>
-          <small class="muted">Check не возвращает числовой остаток, а подтверждает возможность провести операцию.</small>
-          <button v-if="ctx.check.success && ctx.canPay && !ctx.payment" class="btn" type="button" :disabled="ctx.paymentLoading" @click="ctx.pay">{{ voucherQuantity > 1 ? `Получить ${voucherQuantity} ключей` : 'Оплатить' }}</button>
-          <p v-else-if="ctx.check.success && !ctx.canPay" class="muted">Оплатить может только владелец.</p>
-        </div>
+        <p v-if="!ctx.canPay" class="interhub-catalog__owner-note muted">Получать ключи может только владелец.</p>
+        <div v-if="obtainError" class="interhub-catalog__payment-result is-error"><p class="interhub-catalog__result">{{ obtainError }}</p></div>
         <div v-if="ctx.payment" class="interhub-catalog__payment-result" :class="{ 'is-error': !ctx.payment.success }">
           <p class="interhub-catalog__result">{{ paymentMessage }}</p>
           <div v-if="voucherGiftCodes.length" class="interhub-catalog__gift-codes"><code v-for="code in voucherGiftCodes" :key="code" class="interhub-catalog__gift-code">{{ code }}</code></div>
           <code v-else-if="giftCode" class="interhub-catalog__gift-code">{{ giftCode }}</code>
-          <button v-if="isProcessing && ctx.canPay" class="btn" type="button" :disabled="ctx.paymentLoading" @click="isVoucherBatch ? ctx.pay() : ctx.refreshPaymentStatus">{{ isVoucherBatch ? 'Проверить и продолжить' : 'Обновить статус' }}</button>
         </div>
       </form>
     </div>
@@ -164,6 +155,7 @@
 
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue'
+import WorkHamsterLoader from './WorkHamsterLoader.vue'
 
 // Контекст содержит каталог и действия загрузки, чтобы экран не знал деталей API.
 const props = defineProps({
@@ -212,13 +204,6 @@ const hasNominal = computed(() => Boolean(selectedService.value?.fields?.some((f
 const amountFromNominal = computed(() => needsAmount.value && hasNominal.value)
 const paymentType = computed(() => String(selectedService.value?.type || '').toUpperCase())
 const supportsCalculate = computed(() => ['VOUCHER', 'PIN', 'TOP_UP_FIXED'].includes(paymentType.value))
-const hasCalculatedPrice = computed(() => Boolean(props.ctx.calculation?.success && Number(props.ctx.calculation?.fixed_amount) > 0))
-const checkDisabled = computed(() => Boolean(props.ctx.checkLoading || (supportsCalculate.value && !hasCalculatedPrice.value)))
-const checkActionText = computed(() => {
-  // Подсказываем обязательный порядок для услуг, где check использует цену из calculate.
-  if (props.ctx.checkLoading) return 'Проверяем…'
-  return checkDisabled.value && supportsCalculate.value ? 'Сначала узнайте цену' : 'Узнать остаток'
-})
 const showAccount = computed(() => paymentType.value !== 'VOUCHER')
 const accountRequired = computed(() => paymentType.value === 'TOP_UP')
 const accountLabel = computed(() => accountRequired.value ? 'Аккаунт или номер' : 'Аккаунт (необязательно)')
@@ -237,6 +222,15 @@ const giftCode = computed(() => String(props.ctx.payment?.params?.gift_code || '
 const isVoucherBatch = computed(() => Boolean(props.ctx.payment?.batch_id))
 const voucherGiftCodes = computed(() => Array.isArray(props.ctx.payment?.gift_codes) ? props.ctx.payment.gift_codes.map((code) => String(code || '')).filter(Boolean) : [])
 const isProcessing = computed(() => Number(props.ctx.payment?.status) === 1)
+const obtainLoading = ref(false)
+const obtainStage = ref('')
+const obtainError = ref('')
+const obtainLoadingLabel = computed(() => ({
+  calculate: 'Узнаём цену…',
+  check: 'Проверяем возможность выдачи…',
+  pay: 'Получаем ключи…',
+  status: 'Проверяем выдачу ключей…',
+}[obtainStage.value] || 'Получаем ключи…'))
 const paymentMessage = computed(() => {
   // Переводим статусы провайдера в понятный оператору итог оплаты.
   if (isVoucherBatch.value) {
@@ -397,19 +391,55 @@ function buildPayload() {
   return payload
 }
 
-function calculate() {
-  // Узнаём цену отдельно, чтобы владелец видел расчёт до проверки доступности.
-  props.ctx.calculate(buildPayload())
-}
-
 function resetPaymentAfterInputChange() {
   // Сбрасываем прежний расчёт, чтобы его цена не ушла в check с новыми реквизитами или номиналом.
+  obtainError.value = ''
   if (props.ctx.calculation || props.ctx.check || props.ctx.payment || props.ctx.calculationLoading || props.ctx.checkLoading) props.ctx.resetPaymentFlow()
 }
 
-function checkPayment() {
-  // Проверяем доступность отдельным вызовом check и не запускаем оплату.
-  props.ctx.checkPayment(buildPayload())
+async function obtainPayment() {
+  // Выполняет обязательные шаги подряд, оставляя один понятный вход для получения ключа.
+  if (obtainLoading.value || !props.ctx.canPay) return
+  obtainLoading.value = true
+  obtainError.value = ''
+  try {
+    if (isProcessing.value) {
+      obtainStage.value = 'status'
+      if (isVoucherBatch.value) await props.ctx.pay()
+      else await props.ctx.refreshPaymentStatus()
+      return
+    }
+
+    const payload = buildPayload()
+    props.ctx.resetPaymentFlow()
+    if (supportsCalculate.value) {
+      obtainStage.value = 'calculate'
+      await props.ctx.calculate(payload)
+      if (!props.ctx.calculation?.success) {
+        obtainError.value = `Не удалось узнать цену: ${props.ctx.calculation?.message || 'Interhub не вернул расчёт'}`
+        return
+      }
+    }
+
+    obtainStage.value = 'check'
+    await props.ctx.checkPayment(payload)
+    if (!props.ctx.check?.success) {
+      obtainError.value = `Не удалось проверить выдачу: ${props.ctx.check?.message || 'Interhub не подтвердил операцию'}`
+      return
+    }
+
+    obtainStage.value = 'pay'
+    await props.ctx.pay()
+    if (!props.ctx.payment?.success && !isProcessing.value) {
+      obtainError.value = `Не удалось получить ключ: ${props.ctx.payment?.message || 'Interhub не подтвердил оплату'}`
+    }
+  } catch (error) {
+    // Показываем ошибку единого сценария рядом с кнопкой, не скрывая, на каком шаге он остановился.
+    obtainError.value = String(error?.message || 'Не удалось получить ключ')
+  } finally {
+    obtainStage.value = ''
+    obtainLoading.value = false
+  }
 }
 
 function formatType(type) {
@@ -505,6 +535,11 @@ function nominalSortValue(title) {
 .interhub-catalog__id { display: block; margin-top: 3px; font-family: ui-monospace, monospace; }
 .interhub-catalog__type { display: inline-flex; padding: 3px 7px; border: 1px solid rgba(232, 134, 19, .35); color: #9b570d; font-size: 12px; font-weight: 700; }
 .interhub-catalog__row { cursor: pointer; }.interhub-catalog__row.is-selected td { background: rgba(232, 134, 19, .08); }.interhub-catalog__form { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(250px, 1fr) minmax(250px, 1fr) minmax(280px, 1fr); gap: 16px 18px; align-items: start; margin-top: 22px; padding: 22px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); scroll-margin-block: 24px; }.interhub-catalog__service-summary { align-self: center; padding-right: 12px; }.interhub-catalog__form h3 { margin: 0; }.interhub-catalog__actions { display: grid; width: 100%; max-width: 520px; min-width: 0; grid-column: 3 / span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; justify-self: start; }.interhub-catalog__actions.is-single, .interhub-catalog__form.has-optional-account .interhub-catalog__actions { max-width: 300px; grid-column: 4; align-self: center; }.interhub-catalog__form.has-optional-account .interhub-catalog__actions { grid-template-columns: 1fr; }.interhub-catalog__action-btn { display: flex; min-width: 0; min-height: 58px; gap: 9px; align-items: center; justify-content: flex-start; padding: 8px 11px; text-align: left; transition: transform .16s ease, box-shadow .16s ease, filter .16s ease; }.interhub-catalog__action-btn:not(:disabled):hover { box-shadow: 0 8px 20px rgba(70, 224, 185, .16); filter: brightness(1.04); transform: translateY(-1px); }.interhub-catalog__action-btn > span:last-child { display: grid; gap: 1px; min-width: 0; }.interhub-catalog__action-btn strong { font-size: 14px; line-height: 1.08; }.interhub-catalog__action-btn small { color: rgba(9, 18, 27, .68); font-size: 10px; font-weight: 700; letter-spacing: .05em; }.interhub-catalog__action-index { display: grid; width: 24px; height: 24px; flex: 0 0 24px; place-items: center; border: 1px solid rgba(9, 18, 27, .28); border-radius: 50%; font-size: 11px; font-weight: 800; }.interhub-catalog__result { margin: 0; font-weight: 700; }.interhub-catalog__payment-result { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(250px, .8fr) minmax(0, 1fr) auto; gap: 10px 18px; align-items: center; padding-top: 14px; border-top: 1px solid rgba(232, 134, 19, .18); }.interhub-catalog__payment-result.is-error { color: #d45f5f; }.interhub-catalog__payment-result .muted { grid-column: 1 / -1; }.interhub-catalog__gift-code { width: fit-content; padding: 8px 10px; border: 1px dashed rgba(232, 134, 19, .7); background: rgba(232, 134, 19, .08); color: inherit; font-weight: 700; letter-spacing: .04em; }
+.interhub-catalog__form { position: relative; }
+.interhub-catalog__obtain-overlay { position: absolute; z-index: 3; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(9, 18, 27, .78); backdrop-filter: blur(2px); }
+.interhub-catalog__owner-note { grid-column: 1 / -1; margin: 0; }
+.interhub-catalog__gift-codes { display: grid; justify-items: start; gap: 8px; }
+.interhub-catalog__gift-code { max-width: 100%; overflow-wrap: anywhere; }
 .interhub-catalog__pagination { display: flex; gap: 12px; align-items: center; justify-content: end; margin-top: 12px; color: var(--muted, #7a766f); font-size: 13px; }
 .interhub-catalog__auto-amount { display: grid; gap: 3px; min-height: 42px; padding: 8px 10px; border: 1px solid rgba(232, 134, 19, .35); }.interhub-catalog__auto-amount span, .interhub-catalog__auto-amount small { color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__auto-amount strong { font-size: 18px; }
 .interhub-catalog__calculate-response { margin-top: 7px; color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__calculate-response summary { cursor: pointer; color: inherit; }.interhub-catalog__calculate-response pre { max-width: 420px; max-height: 180px; margin: 8px 0 0; padding: 8px; overflow: auto; border: 1px solid rgba(232, 134, 19, .2); background: rgba(9, 12, 25, .38); color: var(--text, #eee); font: 11px/1.45 ui-monospace, monospace; white-space: pre-wrap; }

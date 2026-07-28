@@ -211,22 +211,33 @@ describe('WorkInterhubSection', () => {
     wrapper.unmount()
   })
 
-  it('opens a fixed nominal form and sends its params to a separate check', async () => {
-    const ctx = buildCtx()
+  it('runs price, check and payment from one obtain action', async () => {
+    const ctx = buildCtx({ canPay: true })
+    ctx.calculate = vi.fn(async () => { ctx.calculation = { success: true, fixed_amount: 117.47 } })
+    ctx.checkPayment = vi.fn(async () => { ctx.check = { success: true, message: 'Доступно' } })
+    ctx.pay = vi.fn(async () => { ctx.payment = { success: true, status: 0, params: { gift_code: 'TESTGIFTCODE' } } })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
     await selectServiceByTitle(wrapper, 'Mobile top up')
-    expect(wrapper.text()).toContain('Шаги оплаты')
+    expect(wrapper.text()).toContain('Получение')
 
     await wrapper.find('.interhub-catalog__form select').setValue('15')
-    await wrapper.find('.interhub-catalog__form').trigger('submit.prevent')
+    ctx.resetPaymentFlow.mockClear()
+    await wrapper.find('.interhub-catalog__form').trigger('submit')
 
+    expect(ctx.calculate).toHaveBeenCalledWith({
+      service_id: 7,
+      account: '',
+      params: { nominal: 15 },
+      flow_type: 'TOP_UP_FIXED',
+    })
     expect(ctx.checkPayment).toHaveBeenCalledWith({
       service_id: 7,
       account: '',
       params: { nominal: 15 },
       flow_type: 'TOP_UP_FIXED',
     })
+    expect(ctx.pay).toHaveBeenCalledTimes(1)
     expect(ctx.resetPaymentFlow).toHaveBeenCalledTimes(1)
   })
 
@@ -289,8 +300,8 @@ describe('WorkInterhubSection', () => {
     await wrapper.find('.interhub-catalog__form input[type="number"]').setValue('200')
     const actions = wrapper.find('.interhub-catalog__actions')
     expect(actions.classes()).toContain('is-single')
-    expect(actions.find('.interhub-catalog__action-index').text()).toBe('1')
-    expect(actions.find('.interhub-catalog__action-btn').attributes('disabled')).toBeUndefined()
+    expect(actions.find('.interhub-catalog__action-btn').text()).toContain('Получить')
+    expect(actions.find('.interhub-catalog__action-btn').attributes('disabled')).toBeDefined()
   })
 
   it('hides the account field and shows a bounded quantity for voucher services', async () => {
@@ -310,14 +321,14 @@ describe('WorkInterhubSection', () => {
 
   it('passes the selected voucher quantity only to the internal payment flow', async () => {
     const ctx = buildCtx({
+      canPay: true,
       services: [{ service_id: 12, title: 'Three keys', category: '', type: 'VOUCHER', fields: [] }],
     })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
     await wrapper.find('tbody tr').trigger('click')
     await wrapper.find('.interhub-catalog__form input[type="number"]').setValue('3')
-    const calculateButton = wrapper.findAll('button').find((button) => button.text().includes('Узнать цену'))
-    await calculateButton.trigger('click')
+    await wrapper.find('.interhub-catalog__form').trigger('submit')
 
     expect(ctx.calculate).toHaveBeenCalledWith({
       service_id: 12,
@@ -339,7 +350,7 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.find('.interhub-catalog__form').classes()).toContain('has-optional-account')
   })
 
-  it('lets only the owner confirm a checked payment and shows the gift code', async () => {
+  it('shows the gift code after a completed obtain operation', async () => {
     const ctx = buildCtx({
       canPay: true,
       calculation: { success: true, message: 'Success', fixed_amount: 117.47 },
@@ -352,43 +363,52 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).toContain('TESTGIFTCODE')
     expect(wrapper.text()).toContain('Оплата успешна')
 
-    await wrapper.setProps({ ctx: { ...ctx, payment: null } })
-    const payButton = wrapper.findAll('button').find((button) => button.text() === 'Оплатить')
-    await payButton.trigger('click')
-    expect(ctx.pay).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('.interhub-catalog__action-btn').text()).toContain('Получить')
   })
 
-  it('keeps calculate and check as separate actions', async () => {
-    const ctx = buildCtx()
+  it('shows one obtain button instead of technical payment steps', async () => {
+    const ctx = buildCtx({ canPay: true })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
     await selectServiceByTitle(wrapper, 'Mobile top up')
     await wrapper.find('.interhub-catalog__form select').setValue('15')
-    const checkButton = wrapper.findAll('.interhub-catalog__action-btn')[1]
-    expect(checkButton.attributes('disabled')).toBeDefined()
-    const calculateButton = wrapper.findAll('button').find((button) => button.text().includes('Узнать цену'))
-    await calculateButton.trigger('click')
-
-    expect(ctx.calculate).toHaveBeenCalledWith({
-      service_id: 7,
-      account: '',
-      params: { nominal: 15 },
-      flow_type: 'TOP_UP_FIXED',
-    })
-    expect(ctx.checkPayment).not.toHaveBeenCalled()
-
-    await wrapper.setProps({ ctx: { ...ctx, calculation: { success: true, fixed_amount: 117.47 } } })
-    expect(wrapper.findAll('.interhub-catalog__action-btn')[1].attributes('disabled')).toBeUndefined()
+    expect(wrapper.findAll('.interhub-catalog__action-btn')).toHaveLength(1)
+    expect(wrapper.find('.interhub-catalog__action-btn').text()).toContain('Получить')
+    expect(wrapper.text()).not.toContain('Узнать цену')
+    expect(wrapper.text()).not.toContain('Сначала узнайте цену')
   })
 
-  it('groups price and availability actions into a compact two-button block', async () => {
-    const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx() } })
+  it('shows the hamster until the obtain sequence receives a result', async () => {
+    let resolveCalculation
+    const ctx = buildCtx({ canPay: true })
+    ctx.calculate = vi.fn(() => new Promise((resolve) => { resolveCalculation = () => { ctx.calculation = { success: false, message: 'Нет цены' }; resolve() } }))
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
     await selectServiceByTitle(wrapper, 'Mobile top up')
+    await wrapper.find('.interhub-catalog__form select').setValue('15')
+    await wrapper.find('.interhub-catalog__form').trigger('submit')
 
-    const actions = wrapper.find('.interhub-catalog__actions')
-    expect(actions.exists()).toBe(true)
-    expect(actions.findAll('.interhub-catalog__action-btn')).toHaveLength(2)
+    expect(wrapper.find('.interhub-catalog__obtain-overlay .wheel-and-hamster').exists()).toBe(true)
+    resolveCalculation()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(wrapper.find('.interhub-catalog__obtain-overlay').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Не удалось узнать цену: Нет цены')
+  })
+
+  it('renders multiple received keys in a vertical list', async () => {
+    const ctx = buildCtx({
+      canPay: true,
+      payment: { success: true, status: 0, gift_codes: ['FIRST-CODE', 'SECOND-CODE'] },
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await wrapper.find('tbody tr').trigger('click')
+    const codes = wrapper.find('.interhub-catalog__gift-codes')
+    expect(codes.exists()).toBe(true)
+    expect(codes.findAll('.interhub-catalog__gift-code')).toHaveLength(2)
+    expect(codes.text()).toContain('FIRST-CODE')
+    expect(codes.text()).toContain('SECOND-CODE')
   })
 
   it('shows the cached purchase price for the selected nominal without calculate', async () => {

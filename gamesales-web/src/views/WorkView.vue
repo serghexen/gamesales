@@ -2418,7 +2418,7 @@ async function checkInterhub(payload) {
 }
 
 async function payInterhub() {
-  // Подтверждаем платёж только отдельным кликом владельца по уже проверенной операции.
+  // Подтверждаем платёж после успешной проверки, не создавая новую операцию InterHub.
   const agentTransactionId = String(interhubCheck.value?.agent_transaction_id || '')
   if (!agentTransactionId || !canPayInterhub.value) return
   const flowVersion = interhubPaymentFlowVersion.value
