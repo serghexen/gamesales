@@ -74,12 +74,65 @@
                 <div class="ozon-digital-modal__supplier-fields">
                   <label class="field">
                     <span>Товар</span>
-                    <select v-model="ozonDigitalSettings.interhub_service_id" class="input" :disabled="interhubServicesLoading">
-                      <option :value="null">{{ interhubServicesLoading ? 'Загружаем услуги…' : 'Не выбрана' }}</option>
-                      <option v-for="service in interhubServices" :key="service.service_id" :value="Number(service.service_id)">
-                        {{ service.title }}{{ service.category ? ` · ${service.category}` : '' }}
-                      </option>
-                    </select>
+                    <div class="ozon-digital-modal__service-picker">
+                      <div class="ozon-digital-modal__service-search">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
+                        <input
+                          v-model="interhubServiceSearch"
+                          class="input"
+                          type="search"
+                          autocomplete="off"
+                          placeholder="Найдите товар или регион"
+                          role="combobox"
+                          :aria-expanded="isInterhubServicePickerOpen"
+                          aria-controls="ozon-interhub-service-results"
+                          :disabled="interhubServicesLoading"
+                          @focus="openInterhubServicePicker"
+                          @input="openInterhubServicePicker"
+                          @keydown.enter.prevent="selectFirstInterhubService"
+                          @keydown.esc.prevent="closeInterhubServicePicker"
+                          @blur="closeInterhubServicePicker"
+                        />
+                        <button
+                          v-if="ozonDigitalSettings.interhub_service_id"
+                          class="ozon-digital-modal__service-clear"
+                          type="button"
+                          aria-label="Очистить выбранный товар"
+                          title="Очистить выбор"
+                          @mousedown.prevent
+                          @click="clearInterhubService"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+                        </button>
+                        <button
+                          class="ozon-digital-modal__service-toggle"
+                          type="button"
+                          :aria-label="isInterhubServicePickerOpen ? 'Скрыть список товаров' : 'Показать список товаров'"
+                          @mousedown.prevent
+                          @click="toggleInterhubServicePicker"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5" /></svg>
+                        </button>
+                      </div>
+                      <div v-if="isInterhubServicePickerOpen" id="ozon-interhub-service-results" class="ozon-digital-modal__service-options" role="listbox">
+                        <button
+                          v-for="service in filteredInterhubServices"
+                          :key="service.service_id"
+                          class="ozon-digital-modal__service-option"
+                          :class="{ 'is-selected': Number(service.service_id) === Number(ozonDigitalSettings.interhub_service_id) }"
+                          type="button"
+                          role="option"
+                          :aria-selected="Number(service.service_id) === Number(ozonDigitalSettings.interhub_service_id)"
+                          @mousedown.prevent
+                          @click="selectInterhubService(service)"
+                        >
+                          <strong>{{ service.title }}</strong>
+                          <small v-if="service.category">{{ service.category }}</small>
+                        </button>
+                        <p v-if="!filteredInterhubServices.length" class="ozon-digital-modal__service-empty">Ничего не найдено</p>
+                      </div>
+                    </div>
+                    <small class="ozon-digital-modal__service-help">Поиск по названию, региону или ID услуги</small>
                   </label>
                   <label v-if="ozonDigitalSettings.interhub_service_id && interhubNominals.length" class="field">
                     <span>Номинал</span>
@@ -199,6 +252,8 @@ const props = defineProps({
 const deliveryDrafts = reactive({})
 const deliveryBusy = reactive({})
 const isSupplierOpen = ref(false)
+const interhubServiceSearch = ref('')
+const isInterhubServicePickerOpen = ref(false)
 
 watch(
   () => [props.showOzonDigitalSettings, props.ozonDigitalSettings.external_product_id, props.ozonDigitalProductTitle, props.ozonDigitalSettings.offer_id],
@@ -247,6 +302,75 @@ const poolIssueEnabled = computed({
 function toggleSupplier() {
   // Сворачивает настройки Interhub, чтобы экран ключей оставался компактным.
   isSupplierOpen.value = !isSupplierOpen.value
+}
+
+function interhubServiceLabel(service) {
+  // Собирает понятное имя услуги для поля поиска и компактного списка.
+  if (!service) return ''
+  const title = String(service?.title || '').trim()
+  const category = String(service?.category || '').trim()
+  return category ? `${title} · ${category}` : title
+}
+
+const selectedInterhubService = computed(() => props.interhubServices.find((item) => (
+  Number(item?.service_id) === Number(props.ozonDigitalSettings.interhub_service_id)
+)) || null)
+
+const filteredInterhubServices = computed(() => {
+  // Ищет по видимым данным услуги, чтобы не заставлять оператора листать общий список.
+  const query = String(interhubServiceSearch.value || '').trim().toLocaleLowerCase('ru-RU')
+  const items = Array.isArray(props.interhubServices) ? props.interhubServices : []
+  if (!query) return items.slice(0, 80)
+  return items.filter((service) => `${service?.service_id || ''} ${interhubServiceLabel(service)}`.toLocaleLowerCase('ru-RU').includes(query)).slice(0, 80)
+})
+
+watch(selectedInterhubService, (service) => {
+  // Возвращает в поле выбранное значение после загрузки настроек или явной смены услуги.
+  if (!isInterhubServicePickerOpen.value) interhubServiceSearch.value = interhubServiceLabel(service)
+}, { immediate: true })
+
+function openInterhubServicePicker() {
+  // Открывает подсказки при вводе, не меняя привязку до явного выбора строки.
+  isInterhubServicePickerOpen.value = true
+}
+
+function closeInterhubServicePicker() {
+  // Закрывает список после ухода из поля и восстанавливает выбранную услугу вместо черновика поиска.
+  window.setTimeout(() => {
+    isInterhubServicePickerOpen.value = false
+    interhubServiceSearch.value = interhubServiceLabel(selectedInterhubService.value)
+  }, 120)
+}
+
+function toggleInterhubServicePicker() {
+  // По стрелке показывает весь список, чтобы услугу можно было выбрать и без ввода запроса.
+  if (isInterhubServicePickerOpen.value) {
+    closeInterhubServicePicker()
+    return
+  }
+  interhubServiceSearch.value = ''
+  isInterhubServicePickerOpen.value = true
+}
+
+function selectInterhubService(service) {
+  // Меняет услугу одним действием и очищает прежний номинал, который мог относиться к другой услуге.
+  props.ozonDigitalSettings.interhub_service_id = Number(service?.service_id || 0) || null
+  props.ozonDigitalSettings.interhub_nominal_id = ''
+  interhubServiceSearch.value = interhubServiceLabel(service)
+  isInterhubServicePickerOpen.value = false
+}
+
+function selectFirstInterhubService() {
+  // Enter подтверждает первую найденную подсказку, чтобы поиск работал без мыши.
+  if (filteredInterhubServices.value[0]) selectInterhubService(filteredInterhubServices.value[0])
+}
+
+function clearInterhubService() {
+  // Сбрасывает связку целиком, не оставляя в настройках номинал от прежнего товара.
+  props.ozonDigitalSettings.interhub_service_id = null
+  props.ozonDigitalSettings.interhub_nominal_id = ''
+  interhubServiceSearch.value = ''
+  isInterhubServicePickerOpen.value = true
 }
 
 const manualOzonDigitalOrders = computed(() => {

@@ -95,9 +95,37 @@ describe('WorkOzonDigitalSettingsModal', () => {
 
     expect(wrapper.get('[aria-label="Автовыдача через Interhub"]').exists()).toBe(true)
     await wrapper.get('.ozon-key-settings__block .ozon-catalog-details-modal__work-block-toggle').trigger('click')
-    expect(wrapper.find('.ozon-digital-modal__supplier').text()).toContain('PlayStation Wallet')
+    expect(wrapper.find('.ozon-digital-modal__service-search input').element.value).toContain('PlayStation Wallet')
     expect(wrapper.find('.ozon-digital-modal__supplier').text()).toContain('Номинал')
     expect(wrapper.find('.ozon-digital-modal__supplier').text()).toContain('500 RUB')
+  })
+
+  it('finds an Interhub service before changing the saved supplier binding', async () => {
+    const props = buildProps()
+    props.ozonDigitalSettings.interhub_service_id = 91
+    props.ozonDigitalSettings.interhub_nominal_id = '500'
+    props.interhubServices = [
+      ...props.interhubServices,
+      { service_id: 92, title: 'Roblox - Global', category: 'Gift cards', fields: [{ name: 'nominal', value_list: [{ id: 800, name: 'Robux 800' }] }] },
+      { service_id: 93, title: 'Steam - Turkey', category: 'Gift cards', fields: [] },
+    ]
+    const wrapper = mount(WorkOzonDigitalSettingsModal, {
+      props,
+      global: { stubs: { teleport: true } },
+    })
+
+    await wrapper.get('.ozon-key-settings__block .ozon-catalog-details-modal__work-block-toggle').trigger('click')
+    const search = wrapper.get('.ozon-digital-modal__service-search input')
+    await search.setValue('roblox')
+
+    expect(props.ozonDigitalSettings.interhub_service_id).toBe(91)
+    expect(wrapper.findAll('.ozon-digital-modal__service-option')).toHaveLength(1)
+    expect(wrapper.find('.ozon-digital-modal__service-option').text()).toContain('Roblox - Global')
+
+    await wrapper.find('.ozon-digital-modal__service-option').trigger('click')
+    expect(props.ozonDigitalSettings.interhub_service_id).toBe(92)
+    expect(props.ozonDigitalSettings.interhub_nominal_id).toBe('')
+    expect(wrapper.find('.ozon-digital-modal__service-search input').element.value).toContain('Roblox - Global')
   })
 
   it('keeps the Interhub and pool switches independent', async () => {
