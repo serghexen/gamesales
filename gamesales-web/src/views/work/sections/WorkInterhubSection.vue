@@ -6,6 +6,7 @@
         <h2 class="interhub-catalog__title">Платежи</h2>
       </div>
       <div class="interhub-catalog__head-actions">
+        <button class="ghost interhub-catalog__history-action" type="button" @click="openSalesHistory">История продаж</button>
         <button v-if="ctx.canManagePrices" class="ghost interhub-catalog__price-action" type="button" :disabled="ctx.priceRefreshLoading" @click="ctx.refreshPrices">
           {{ ctx.priceRefreshLoading ? 'Обновляем цены…' : 'Обновить закупочные цены' }}
         </button>
@@ -18,7 +19,7 @@
 
       <div class="panel__body">
       <p class="interhub-catalog__lead">Выберите услугу, проверьте реквизиты и сумму. Подтверждение оплаты доступно только владельцу.</p>
-      <div class="interhub-catalog__balance"><span>Баланс InterHub</span><strong>{{ formatBalance(ctx.balance, ctx.currency) }}</strong><small>Агентский счёт</small></div>
+      <div class="interhub-catalog__balance"><span>Депозит InterHub</span><strong>{{ formatBalance(ctx.balance, ctx.currency) }}</strong><small v-if="hasOverdraft">Овердрафт: {{ formatBalance(overdraftBalance, ctx.currency) }} из {{ formatBalance(overdraftLimit, ctx.currency) }}</small><small v-if="hasOverdraft">Доступно для оплат: {{ formatBalance(availableForPayments, ctx.currency) }}</small><small v-else>Агентский счёт</small></div>
       <p v-if="ctx.error" class="error">{{ ctx.error }}</p>
       <p v-if="ctx.priceError" class="error">{{ ctx.priceError }}</p>
       <p v-if="ctx.priceRefresh" class="muted interhub-catalog__price-progress">Обновление цен: {{ ctx.priceRefresh.processed }} из {{ ctx.priceRefresh.total }} · успешно {{ ctx.priceRefresh.successes }} · ошибок {{ ctx.priceRefresh.errors }}<span v-if="ctx.priceRefresh.message"> · {{ ctx.priceRefresh.message }}</span></p>
@@ -95,6 +96,68 @@
       </form>
     </div>
   </section>
+
+  <teleport to="body">
+    <div v-if="salesHistoryOpen" class="work-page work-modal-root modal-backdrop interhub-history-backdrop" @click.self="closeSalesHistory">
+      <section class="modal interhub-history" role="dialog" aria-modal="true" aria-labelledby="interhub-history-title">
+        <div class="modal__head panel__head panel__head--tight interhub-history__head">
+          <div>
+            <p class="interhub-catalog__eyebrow">InterHub · оплаченные операции</p>
+            <h3 id="interhub-history-title">История продаж</h3>
+          </div>
+          <button class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close" type="button" aria-label="Закрыть" title="Закрыть" @click="closeSalesHistory">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12M18 6l-12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="modal__body interhub-history__body">
+          <form class="interhub-history__filters" @submit.prevent="applySalesHistoryFilter">
+            <label class="field"><span class="label">Дата с</span><input v-model="salesHistoryDateFrom" class="input" type="date" /></label>
+            <label class="field"><span class="label">Дата по</span><input v-model="salesHistoryDateTo" class="input" type="date" /></label>
+            <label class="field interhub-history__search"><span class="label">Поиск</span><input v-model.trim="salesHistorySearch" class="input" type="search" placeholder="Название сервиса или номинал" /></label>
+            <button class="btn" type="submit" :disabled="ctx.salesHistoryLoading">{{ ctx.salesHistoryLoading ? 'Загружаем…' : 'Показать' }}</button>
+          </form>
+          <p v-if="ctx.salesHistoryError" class="error">{{ ctx.salesHistoryError }}</p>
+          <div class="interhub-history__cards" aria-label="Итоги выборки">
+            <div class="mini"><div class="mini__label">Операций</div><div class="mini__value">{{ sortedSalesHistory.length }}</div></div>
+            <div class="mini"><div class="mini__label">Сумма платежей</div><div class="mini__value">{{ formatMoney(salesHistoryTotalAmount) }} ₽</div></div>
+          </div>
+          <div class="table-wrap interhub-history__table-wrap">
+            <table class="table table--compact">
+              <thead>
+                <tr>
+                  <th><button class="interhub-history__sort" type="button" @click="sortSalesHistory('service')">Название сервиса <span>{{ sortMark('service') }}</span></button></th>
+                  <th><button class="interhub-history__sort" type="button" @click="sortSalesHistory('nominal')">Номинал <span>{{ sortMark('nominal') }}</span></button></th>
+                  <th><button class="interhub-history__sort" type="button" @click="sortSalesHistory('price')">Цена <span>{{ sortMark('price') }}</span></button></th>
+                  <th><button class="interhub-history__sort" type="button" @click="sortSalesHistory('giftCode')">Гифт-код <span>{{ sortMark('giftCode') }}</span></button></th>
+                  <th><button class="interhub-history__sort" type="button" @click="sortSalesHistory('createdAt')">Дата <span>{{ sortMark('createdAt') }}</span></button></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="ctx.salesHistoryLoading"><td colspan="5" class="muted">Загружаем историю продаж…</td></tr>
+                <tr v-else-if="!sortedSalesHistory.length"><td colspan="5" class="muted">За выбранный период оплаченных операций нет.</td></tr>
+                <tr v-for="item in pagedSalesHistory" :key="`${item.serviceId}-${item.createdAt}-${item.giftCode}`">
+                  <td>{{ item.service }}</td>
+                  <td>{{ item.nominal || '—' }}</td>
+                  <td>{{ formatMoney(item.price) }} ₽</td>
+                  <td><code v-if="item.giftCode" class="interhub-history__gift-code">{{ item.giftCode }}</code><span v-else>—</span></td>
+                  <td>{{ formatHistoryDate(item.createdAt) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-if="sortedSalesHistory.length" class="interhub-history__pagination">
+            <span>{{ salesHistoryRange }}</span>
+            <div>
+              <button class="ghost" type="button" aria-label="Предыдущая страница истории продаж" :disabled="activeSalesHistoryPage <= 1" @click="changeSalesHistoryPage(-1)">Назад</button>
+              <button class="ghost" type="button" aria-label="Следующая страница истории продаж" :disabled="activeSalesHistoryPage >= salesHistoryPageCount" @click="changeSalesHistoryPage(1)">Вперёд</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </teleport>
 </template>
 
 <script setup>
@@ -128,6 +191,19 @@ const paymentForm = ref(null)
 const account = ref('')
 const amount = ref('')
 const params = reactive({})
+const salesHistoryOpen = ref(false)
+const salesHistoryDateFrom = ref('')
+const salesHistoryDateTo = ref('')
+const salesHistorySearch = ref('')
+const salesHistorySort = reactive({ field: 'createdAt', direction: 'desc' })
+const salesHistoryPage = ref(1)
+const overdraftBalance = computed(() => Number(props.ctx.overBalance || 0))
+const overdraftLimit = computed(() => Math.max(0, Number(props.ctx.overLimit || 0)))
+const hasOverdraft = computed(() => overdraftLimit.value > 0)
+const availableForPayments = computed(() => {
+  // Учитываем знак over_balance из InterHub: отрицательное значение уменьшает доступный лимит.
+  return Math.max(0, Number(props.ctx.balance || 0)) + Math.max(0, overdraftLimit.value + overdraftBalance.value)
+})
 const needsAmount = computed(() => ['TOP_UP'].includes(String(selectedService.value?.type || '').toUpperCase()))
 const hasNominal = computed(() => Boolean(selectedService.value?.fields?.some((field) => field?.name === 'nominal')))
 const amountFromNominal = computed(() => needsAmount.value && hasNominal.value)
@@ -162,10 +238,71 @@ const paymentMessage = computed(() => {
   if (props.ctx.payment?.success) return giftCode.value ? 'Оплата успешна. Код ваучера:' : 'Оплата успешно подтверждена.'
   return `Оплата не прошла · ${props.ctx.payment?.message || 'Ответ InterHub не получен'}`
 })
+const salesHistoryRows = computed(() => {
+  // Берём названия из сохранённого calculate, а каталог используем только для старых записей без расчёта.
+  const serviceNames = new Map((Array.isArray(props.ctx.services) ? props.ctx.services : []).map((service) => [Number(service?.service_id), String(service?.title || '')]))
+  return (Array.isArray(props.ctx.salesHistory) ? props.ctx.salesHistory : []).map((item) => {
+    const serviceId = Number(item?.service_id || 0)
+    return {
+      serviceId,
+      service: String(item?.service_title || '').trim() || serviceNames.get(serviceId) || `Услуга #${serviceId || '—'}`,
+      nominal: String(item?.nominal_title || '').trim() || String(item?.nominal || ''),
+      price: Number(item?.price || 0),
+      giftCode: String(item?.gift_code || ''),
+      createdAt: String(item?.created_at || ''),
+    }
+  })
+})
+const filteredSalesHistory = computed(() => {
+  // Ищем по двум понятным оператору полям без нового запроса к истории.
+  const query = salesHistorySearch.value.toLocaleLowerCase('ru-RU')
+  if (!query) return salesHistoryRows.value
+  return salesHistoryRows.value.filter((item) => `${item.service} ${item.nominal}`.toLocaleLowerCase('ru-RU').includes(query))
+})
+const sortedSalesHistory = computed(() => {
+  // Сортируем уже загруженную выборку по любому видимому столбцу без повторного запроса.
+  const { field, direction } = salesHistorySort
+  const multiplier = direction === 'asc' ? 1 : -1
+  return [...filteredSalesHistory.value].sort((left, right) => {
+    if (field === 'price') return multiplier * (left.price - right.price)
+    if (field === 'createdAt') return multiplier * (new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
+    return multiplier * titleCollator.compare(String(left[field] || ''), String(right[field] || ''))
+  })
+})
+const salesHistoryTotalAmount = computed(() => {
+  // Складываем только строки текущей выборки, уже ограниченной датами и поиском.
+  return filteredSalesHistory.value.reduce((total, item) => total + item.price, 0)
+})
+const salesHistoryPageSize = 25
+const salesHistoryPageCount = computed(() => Math.max(1, Math.ceil(sortedSalesHistory.value.length / salesHistoryPageSize)))
+const activeSalesHistoryPage = computed(() => Math.min(Math.max(salesHistoryPage.value, 1), salesHistoryPageCount.value))
+const pagedSalesHistory = computed(() => {
+  // Показываем короткую страницу, чтобы длинная история не растягивала модальное окно.
+  const offset = (activeSalesHistoryPage.value - 1) * salesHistoryPageSize
+  return sortedSalesHistory.value.slice(offset, offset + salesHistoryPageSize)
+})
+const salesHistoryRange = computed(() => {
+  // Подсказываем границы страницы и общее число найденных оплаченных операций.
+  const total = sortedSalesHistory.value.length
+  if (!total) return ''
+  const start = (activeSalesHistoryPage.value - 1) * salesHistoryPageSize + 1
+  const end = Math.min(start + salesHistoryPageSize - 1, total)
+  return `Показаны ${start}–${end} из ${total}`
+})
 
 watch(() => props.ctx.search, () => {
   // Возвращаемся на первую страницу после поиска, иначе выдача может выглядеть пустой.
   currentPage.value = 1
+})
+
+watch(() => props.ctx.salesHistory, () => {
+  // Возвращаемся к началу при новой выборке по датам, чтобы не показать пустую страницу.
+  salesHistoryPage.value = 1
+})
+
+watch(salesHistorySearch, () => {
+  // Возвращаемся к началу, чтобы фильтр не оставил пользователя на пустой странице.
+  salesHistoryPage.value = 1
 })
 
 async function selectService(service) {
@@ -189,6 +326,44 @@ function toggleServicesSort() {
   // Меняем порядок услуг и возвращаемся к началу списка, чтобы не потерять выбранную страницу.
   servicesSortDirection.value = servicesSortDirection.value === 'asc' ? 'desc' : 'asc'
   currentPage.value = 1
+}
+
+function openSalesHistory() {
+  // Открываем историю и сразу запрашиваем оплаченные операции с текущими границами дат.
+  salesHistoryOpen.value = true
+  applySalesHistoryFilter()
+}
+
+function closeSalesHistory() {
+  // Закрываем окно без сброса фильтра, чтобы оператор мог быстро вернуться к тому же периоду.
+  salesHistoryOpen.value = false
+}
+
+function applySalesHistoryFilter() {
+  // Передаём пустые границы как отсутствие фильтра, а заполненные — как включительный период.
+  salesHistoryPage.value = 1
+  props.ctx.loadSalesHistory({ dateFrom: salesHistoryDateFrom.value, dateTo: salesHistoryDateTo.value })
+}
+
+function sortSalesHistory(field) {
+  // Повторный клик по столбцу меняет направление, другой столбец начинает с прямого порядка.
+  if (salesHistorySort.field === field) salesHistorySort.direction = salesHistorySort.direction === 'asc' ? 'desc' : 'asc'
+  else {
+    salesHistorySort.field = field
+    salesHistorySort.direction = field === 'createdAt' ? 'desc' : 'asc'
+  }
+  salesHistoryPage.value = 1
+}
+
+function changeSalesHistoryPage(direction) {
+  // Переключаем страницу в допустимых границах без повторной загрузки истории.
+  salesHistoryPage.value = Math.min(salesHistoryPageCount.value, Math.max(1, activeSalesHistoryPage.value + direction))
+}
+
+function sortMark(field) {
+  // Показываем направление только у активного столбца, чтобы заголовки не перегружали таблицу.
+  if (salesHistorySort.field !== field) return ''
+  return salesHistorySort.direction === 'asc' ? '↑' : '↓'
 }
 
 function buildPayload() {
@@ -259,6 +434,12 @@ function formatCachedDate(value) {
   return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
 }
 
+function formatHistoryDate(value) {
+  // Выводим время оплаты в локальном формате оператора вместо технической ISO-строки.
+  if (!value) return '—'
+  return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
+}
+
 function formatProviderResponse(value) {
   // Показываем сохранённый JSON как есть, чтобы оператор видел все поля ответа calculate.
   try {
@@ -310,6 +491,10 @@ function nominalSortValue(title) {
 .interhub-catalog__pagination { display: flex; gap: 12px; align-items: center; justify-content: end; margin-top: 12px; color: var(--muted, #7a766f); font-size: 13px; }
 .interhub-catalog__auto-amount { display: grid; gap: 3px; min-height: 42px; padding: 8px 10px; border: 1px solid rgba(232, 134, 19, .35); }.interhub-catalog__auto-amount span, .interhub-catalog__auto-amount small { color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__auto-amount strong { font-size: 18px; }
 .interhub-catalog__calculate-response { margin-top: 7px; color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__calculate-response summary { cursor: pointer; color: inherit; }.interhub-catalog__calculate-response pre { max-width: 420px; max-height: 180px; margin: 8px 0 0; padding: 8px; overflow: auto; border: 1px solid rgba(232, 134, 19, .2); background: rgba(9, 12, 25, .38); color: var(--text, #eee); font: 11px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
+.interhub-history-backdrop { --modal-bg: #101626; --modal-text: #f4f7ff; --ink: #f4f7ff; --muted: #b5bfd3; --table-bg: #202838; --table-border: rgba(181, 194, 219, .22); --input-bg: #0d1320; --input-border: rgba(181, 194, 219, .28); --ghost-bg: rgba(255, 255, 255, .08); --ghost-text: #f4f7ff; --ghost-border: rgba(255, 255, 255, .18); z-index: 80; }
+.interhub-history { width: min(1180px, calc(100vw - 32px)); max-height: min(780px, calc(100vh - 32px)); overflow: auto; }
+.interhub-history__head { position: sticky; top: 0; z-index: 1; padding-bottom: 12px; border-bottom: 1px solid rgba(181, 194, 219, .16); background: #101626; }.interhub-history__head h3 { margin: 0; color: #f4f7ff; font-size: 22px; letter-spacing: -.02em; }
+.interhub-history__body { display: grid; align-content: start; gap: 16px; }.interhub-history__filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; padding: 14px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); }.interhub-history__filters .field { min-width: 170px; }.interhub-history__filters .interhub-history__search { min-width: 260px; flex: 1 1 260px; }.interhub-history__filters .btn { min-height: 40px; }.interhub-history__cards { display: grid; grid-template-columns: repeat(2, minmax(180px, 240px)); gap: 10px; }.interhub-history__cards .mini { min-width: 0; background: #1b2435; border-color: rgba(181, 194, 219, .2); }.interhub-history__cards .mini__value { color: #f4f7ff; }.interhub-history__table-wrap { max-height: min(460px, 44vh); min-height: 0; overflow: auto; overscroll-behavior: contain; }.interhub-history__table-wrap thead { position: sticky; top: 0; z-index: 1; background: #202838; }.interhub-history__table-wrap .table { color: #eef2ff; }.interhub-history__table-wrap .table th { background: #2a3447; color: #f7f9ff; }.interhub-history__table-wrap .table td { color: #e5eaf5; }.interhub-history__pagination { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; color: #b5bfd3; font-size: 13px; }.interhub-history__pagination > div { display: flex; gap: 8px; }.interhub-history__sort { display: inline-flex; width: 100%; gap: 5px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }.interhub-history__sort span { color: #e88613; }.interhub-history__gift-code { color: #f4f7ff; font: 12px/1.35 ui-monospace, monospace; white-space: nowrap; }
 @media (max-width: 1120px) { .interhub-catalog__form { grid-template-columns: repeat(2, minmax(240px, 1fr)); }.interhub-catalog__actions, .interhub-catalog__actions.is-single, .interhub-catalog__form.has-optional-account .interhub-catalog__actions { grid-column: 1 / -1; }.interhub-catalog__payment-result { grid-template-columns: 1fr auto; } }
-@media (max-width: 680px) { .interhub-catalog__head { align-items: start; flex-direction: column; } .interhub-catalog__head-actions { justify-content: start; } .interhub-catalog__toolbar { align-items: stretch; flex-direction: column; } .interhub-catalog__search { width: 100%; } .interhub-catalog__stats { width: fit-content; } .interhub-catalog__form { grid-template-columns: 1fr; padding: 16px; } .interhub-catalog__actions, .interhub-catalog__form.has-optional-account .interhub-catalog__actions, .interhub-catalog__payment-result { grid-column: auto; grid-template-columns: 1fr; } }
+@media (max-width: 680px) { .interhub-catalog__head { align-items: start; flex-direction: column; } .interhub-catalog__head-actions { justify-content: start; } .interhub-catalog__toolbar { align-items: stretch; flex-direction: column; } .interhub-catalog__search { width: 100%; } .interhub-catalog__stats { width: fit-content; } .interhub-catalog__form { grid-template-columns: 1fr; padding: 16px; } .interhub-catalog__actions, .interhub-catalog__form.has-optional-account .interhub-catalog__actions, .interhub-catalog__payment-result { grid-column: auto; grid-template-columns: 1fr; } .interhub-history { width: calc(100vw - 16px); } .interhub-history__filters { align-items: stretch; }.interhub-history__filters .field, .interhub-history__filters .btn { width: 100%; } .interhub-history__cards { grid-template-columns: 1fr; }.interhub-history__pagination { align-items: stretch; flex-direction: column; }.interhub-history__pagination > div { justify-content: stretch; }.interhub-history__pagination .ghost { flex: 1; } }
 </style>

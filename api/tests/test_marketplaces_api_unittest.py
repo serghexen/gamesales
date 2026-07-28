@@ -353,6 +353,8 @@ class MarketplacesApiTests(unittest.TestCase):
         update_stock.assert_called_once_with("Joy1", 1, store_code="asat")
         supplier_calls = [sql for sql, _params in writes if "marketplace_ozon_digital_suppliers" in sql]
         self.assertEqual(supplier_calls, [])
+        settings_params = [params for sql, params in writes if "INSERT INTO app.marketplace_ozon_digital_settings" in sql]
+        self.assertFalse(settings_params[-1][-1], "публикация остатка не должна менять флаг автовыдачи")
 
     # Связка с поставщиком должна сохраняться отдельно от лимита и не вызывать оплату при нажатии «Сохранить».
     def test_digital_settings_saves_interhub_mapping_without_calling_supplier(self):

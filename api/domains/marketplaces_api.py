@@ -1529,7 +1529,7 @@ def mount_marketplaces_routes(
         update_supplier: bool = True,
         user=Depends(require_role("owner")),
     ):
-        # Сохраняет настройки отдельно: при отправке остатка не трогаем привязку поставщика из другой формы.
+        # При публикации остатка не перезаписывает независимые настройки выдачи ключей.
         if publish_stock:
             require_ozon_live()
         normalized_store_code = normalize_ozon_store_code(store_code)
@@ -1542,14 +1542,14 @@ def mount_marketplaces_routes(
                   store_code, external_product_id, offer_id, manual_stock_limit, auto_issue_enabled,
                   activation_instruction, support_error_message, pool_issue_enabled, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now())
                 ON CONFLICT (store_code, external_product_id) DO UPDATE
-                SET offer_id=excluded.offer_id,
-                    manual_stock_limit=excluded.manual_stock_limit,
-                    auto_issue_enabled=excluded.auto_issue_enabled,
+                    SET offer_id=excluded.offer_id,
+                        manual_stock_limit=excluded.manual_stock_limit,
+                        auto_issue_enabled=CASE WHEN %s THEN excluded.auto_issue_enabled ELSE marketplace_ozon_digital_settings.auto_issue_enabled END,
                     activation_instruction=excluded.activation_instruction,
                     support_error_message=excluded.support_error_message,
-                    pool_issue_enabled=excluded.pool_issue_enabled,
+                    pool_issue_enabled=CASE WHEN %s THEN excluded.pool_issue_enabled ELSE marketplace_ozon_digital_settings.pool_issue_enabled END,
                     updated_at=now()
                 """,
                 (
@@ -1561,6 +1561,8 @@ def mount_marketplaces_routes(
                     payload.activation_instruction.strip(),
                     payload.support_error_message.strip(),
                     payload.pool_issue_enabled,
+                    not publish_stock,
+                    not publish_stock,
                 ),
             )
             if update_supplier and payload.interhub_service_id:

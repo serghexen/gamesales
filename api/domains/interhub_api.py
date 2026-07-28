@@ -2,8 +2,9 @@ import json
 import threading
 import time
 import uuid
+from datetime import date
 
-from fastapi import Body, Depends, HTTPException
+from fastapi import Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from domains.interhub_price_cache import build_interhub_prices_xlsx, collect_price_targets
@@ -280,6 +281,73 @@ def mount_interhub_routes(
         # Отдаём баланс агентского счёта без раскрытия токена внешнего провайдера.
         _ = user
         return InterHubBalanceOut(**interhub_get_balance())
+
+    @app.get("/integrations/interhub/transactions/paid")
+    def list_paid_interhub_transactions(
+        date_from: date | None = Query(default=None),
+        date_to: date | None = Query(default=None),
+        user: UserOut = Depends(get_current_user),
+    ):
+        # Выдаём только завершённые продажи и ограничиваем выборку периодом без передачи SQL из браузера.
+        _ = user
+        if date_from and date_to and date_from > date_to:
+            raise HTTPException(422, "Дата «с» не может быть позже даты «по»")
+        clauses = ["state='paid'"]
+        params: list[object] = []
+        if date_from:
+            clauses.append("created_at >= %s")
+            params.append(date_from)
+        if date_to:
+            clauses.append("created_at < %s + interval '1 day'")
+            params.append(date_to)
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT history_transaction.service_id,
+                           COALESCE(service_calculation.service_title, ''),
+                           COALESCE(history_transaction.request_params->>'nominal', ''),
+                           COALESCE(nominal_calculation.nominal_title, ''),
+                           history_transaction.amount, history_transaction.gift_code, history_transaction.created_at
+                    FROM app.interhub_transactions AS history_transaction
+                    LEFT JOIN LATERAL (
+                      SELECT service_title
+                      FROM app.interhub_price_calculations
+                      WHERE success=true AND service_id=history_transaction.service_id
+                      ORDER BY calculated_at DESC, id DESC
+                      LIMIT 1
+                    ) AS service_calculation ON true
+                    LEFT JOIN LATERAL (
+                      SELECT nominal_title
+                      FROM app.interhub_price_calculations
+                      WHERE success=true
+                        AND service_id=history_transaction.service_id
+                        AND nominal_id::text=COALESCE(history_transaction.request_params->>'nominal', '')
+                      ORDER BY calculated_at DESC, id DESC
+                      LIMIT 1
+                    ) AS nominal_calculation ON true
+                    WHERE {' AND '.join(f'history_transaction.{clause}' for clause in clauses)}
+                    ORDER BY history_transaction.created_at DESC, history_transaction.agent_transaction_id DESC
+                    LIMIT 5000
+                    """,
+                    params,
+                )
+                rows = cur.fetchall()
+        # Преобразуем сумму в float, чтобы контракт JSON оставался одинаковым для PostgreSQL numeric.
+        return {
+            "items": [
+                {
+                    "service_id": int(row[0]),
+                    "service_title": str(row[1] or ''),
+                    "nominal": str(row[2] or ''),
+                    "nominal_title": str(row[3] or ''),
+                    "price": float(row[4] or 0),
+                    "gift_code": str(row[5] or ''),
+                    "created_at": row[6],
+                }
+                for row in rows
+            ]
+        }
 
     @app.post("/integrations/interhub/prices/refresh")
     def refresh_interhub_prices(user: UserOut = Depends(require_role("owner"))):

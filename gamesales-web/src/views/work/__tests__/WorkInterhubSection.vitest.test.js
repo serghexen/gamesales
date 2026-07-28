@@ -11,6 +11,8 @@ function buildCtx(overrides = {}) {
     search: '',
     balance: 10000,
     currency: 'RUB',
+    overBalance: 0,
+    overLimit: 0,
     services: [
       {
         service_id: 7,
@@ -46,10 +48,14 @@ function buildCtx(overrides = {}) {
     priceRefresh: null,
     priceRefreshLoading: false,
     priceError: '',
+    salesHistory: [],
+    salesHistoryLoading: false,
+    salesHistoryError: '',
     pay: vi.fn(),
     refreshPaymentStatus: vi.fn(),
     refreshPrices: vi.fn(),
     exportPrices: vi.fn(),
+    loadSalesHistory: vi.fn(),
     resetPaymentFlow: vi.fn(),
     setSearchFromEvent: vi.fn(),
     ...overrides,
@@ -75,6 +81,14 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).toContain('10 000 ₽')
   })
 
+  it('shows the signed overdraft balance and available amount next to the InterHub deposit', () => {
+    const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx({ balance: 0, overBalance: -2328.76, overLimit: 100000 }) } })
+
+    expect(wrapper.text()).toContain('Депозит InterHub')
+    expect(wrapper.text()).toContain('Овердрафт: -2 328,76 ₽ из 100 000 ₽')
+    expect(wrapper.text()).toContain('Доступно для оплат: 97 671,24 ₽')
+  })
+
   it('filters catalog locally and reloads on demand', async () => {
     const ctx = buildCtx()
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
@@ -96,6 +110,105 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.findAll('tbody tr')[0].text()).toContain('Gift PIN')
     await wrapper.find('.interhub-catalog__sort').trigger('click')
     expect(wrapper.findAll('tbody tr')[0].text()).toContain('Mobile top up')
+  })
+
+  it('opens paid sales history with a date range filter', async () => {
+    const ctx = buildCtx({
+      salesHistory: [{ service_id: 7, service_title: 'Steam Wallet', nominal: '15', nominal_title: '15 USD', price: 12.5, gift_code: 'GIFT-15', created_at: '2026-07-27T10:30:00Z' }],
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx }, attachTo: document.body })
+
+    await wrapper.get('.interhub-catalog__history-action').trigger('click')
+    expect(ctx.loadSalesHistory).toHaveBeenCalledWith({ dateFrom: '', dateTo: '' })
+    expect(document.body.querySelector('.interhub-history-backdrop')?.classList.contains('work-modal-root')).toBe(true)
+    expect(document.body.querySelector('.interhub-history__head')?.classList.contains('modal__head')).toBe(true)
+    expect(document.body.querySelector('[aria-label="Закрыть"]')?.classList.contains('deal-create-action-btn--close')).toBe(true)
+    expect(document.body.textContent).toContain('История продаж')
+    expect(document.body.textContent).toContain('Steam Wallet')
+    expect(document.body.textContent).toContain('15 USD')
+    expect(document.body.textContent).toContain('GIFT-15')
+    expect(document.body.querySelector('.interhub-history__cards').textContent).toContain('Сумма платежей')
+    expect(document.body.querySelector('.interhub-history__cards').textContent).toContain('12,50 ₽')
+
+    const dates = document.body.querySelectorAll('.interhub-history input[type="date"]')
+    dates[0].value = '2026-07-01'
+    await dates[0].dispatchEvent(new Event('input'))
+    dates[1].value = '2026-07-27'
+    await dates[1].dispatchEvent(new Event('input'))
+    await document.body.querySelector('.interhub-history__filters').dispatchEvent(new Event('submit', { cancelable: true }))
+    expect(ctx.loadSalesHistory).toHaveBeenLastCalledWith({ dateFrom: '2026-07-01', dateTo: '2026-07-27' })
+    wrapper.unmount()
+  })
+
+  it('sorts paid sales history by visible table columns', async () => {
+    const wrapper = mount(WorkInterhubSection, {
+      props: {
+        ctx: buildCtx({
+          salesHistory: [
+            { service_id: 8, nominal: '50', price: 40, gift_code: 'Z-CODE', created_at: '2026-07-26T10:30:00Z' },
+            { service_id: 7, nominal: '15', price: 12.5, gift_code: 'A-CODE', created_at: '2026-07-27T10:30:00Z' },
+          ],
+        }),
+      },
+      attachTo: document.body,
+    })
+    await wrapper.get('.interhub-catalog__history-action').trigger('click')
+    const priceHeader = document.body.querySelectorAll('.interhub-history__sort')[2]
+    await priceHeader.dispatchEvent(new Event('click'))
+
+    const rows = [...document.body.querySelectorAll('.interhub-history tbody tr')]
+    expect(rows[0].textContent).toContain('12,50 ₽')
+    wrapper.unmount()
+  })
+
+  it('filters paid sales history by service title and nominal', async () => {
+    const wrapper = mount(WorkInterhubSection, {
+      props: {
+        ctx: buildCtx({
+          salesHistory: [
+            { service_id: 7, service_title: 'Steam Wallet', nominal_title: '300 NC', price: 79.2, gift_code: 'STEAM-CODE', created_at: '2026-07-27T10:30:00Z' },
+            { service_id: 8, service_title: 'Apple Gift Card', nominal_title: 'TRY 250', price: 492, gift_code: 'APPLE-CODE', created_at: '2026-07-26T10:30:00Z' },
+          ],
+        }),
+      },
+      attachTo: document.body,
+    })
+    await wrapper.get('.interhub-catalog__history-action').trigger('click')
+    const search = document.body.querySelector('.interhub-history input[type="search"]')
+
+    search.value = 'steam'
+    await search.dispatchEvent(new Event('input'))
+    expect(document.body.querySelectorAll('.interhub-history tbody tr')).toHaveLength(1)
+    expect(document.body.querySelector('.interhub-history tbody tr').textContent).toContain('Steam Wallet')
+
+    search.value = '250'
+    await search.dispatchEvent(new Event('input'))
+    expect(document.body.querySelector('.interhub-history tbody tr').textContent).toContain('Apple Gift Card')
+    wrapper.unmount()
+  })
+
+  it('paginates paid sales history without loading the data again', async () => {
+    const salesHistory = Array.from({ length: 26 }, (_, index) => ({
+      service_id: 7,
+      nominal: String(index + 1),
+      price: index + 1,
+      gift_code: `CODE-${index + 1}`,
+      created_at: `2026-07-27T10:${String(59 - index).padStart(2, '0')}:00Z`,
+    }))
+    const ctx = buildCtx({ salesHistory })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx }, attachTo: document.body })
+
+    await wrapper.get('.interhub-catalog__history-action').trigger('click')
+    expect(document.body.querySelector('.interhub-history__pagination').textContent).toContain('Показаны 1–25 из 26')
+    const rows = document.body.querySelectorAll('.interhub-history tbody tr')
+    expect(rows).toHaveLength(25)
+
+    const next = document.body.querySelector('[aria-label="Следующая страница истории продаж"]')
+    await next.dispatchEvent(new Event('click'))
+    expect(document.body.querySelector('.interhub-history__pagination').textContent).toContain('Показаны 26–26 из 26')
+    expect(document.body.querySelector('.interhub-history tbody tr').textContent).toContain('CODE-26')
+    expect(ctx.loadSalesHistory).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
   })
 
   it('opens a fixed nominal form and sends its params to a separate check', async () => {

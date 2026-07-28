@@ -241,7 +241,7 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, req
   }
 
   async function saveOzonDigitalSettings({ publishStock = false, updateSupplier = true } = {}) {
-    // Отправляет остаток без перезаписи привязки, если действие пришло из блока продаж карточки.
+    // Отправляет остаток, не меняя привязку поставщика и независимые настройки выдачи.
     const productId = ozonDigitalProductId.value
     if (!productId || ozonDigitalSettingsSaving.value) return
     ozonDigitalSettingsSaving.value = true
