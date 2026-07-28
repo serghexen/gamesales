@@ -279,6 +279,9 @@ from domains.imports_models import ImportReportIn
 from domains.analytics_api import mount_analytics_routes
 from domains.finance_api import mount_finance_routes
 from domains.marketplaces_api import mount_marketplaces_routes
+from domains.marketplace_key_pools_api import mount_marketplace_key_pool_routes
+from domains.yandex_market_catalog_api import mount_yandex_market_catalog_routes
+from domains.yandex_market_webhooks_api import mount_yandex_market_webhooks_routes
 from domains.dashboard_api import mount_dashboard_routes
 from domains.products_api import mount_products_routes
 from domains.products_import_api import mount_products_import_routes
@@ -557,6 +560,12 @@ class InterHubPaymentCheckOut(BaseModel):
 class InterHubPayRequestIn(BaseModel):
     agent_transaction_id: str
 
+
+class InterHubVoucherBatchPayRequestIn(BaseModel):
+    batch_id: str = Field(min_length=1, max_length=80)
+    agent_transaction_id: str = Field(min_length=1, max_length=200)
+    quantity: int = Field(ge=1, le=20)
+
 # ----------------------------
 # DB helpers
 # ----------------------------
@@ -665,6 +674,7 @@ _INTERHUB_TOKEN = os.getenv("INTERHUB_TOKEN", "")
 _INTERHUB_TIMEOUT_SEC = int(os.getenv("INTERHUB_TIMEOUT_SEC", "20") or "20")
 _INTERHUB_SSL_VERIFY = str(os.getenv("INTERHUB_SSL_VERIFY", "true") or "true").strip().lower() in ("1", "true", "yes", "on")
 _INTERHUB_CA_CERT_PATH = os.getenv("INTERHUB_CA_CERT_PATH", "")
+_INTERHUB_PROXY_URL = os.getenv("INTERHUB_PROXY_URL", "")
 _INTERHUB_CALCULATE_PATH = os.getenv("INTERHUB_CALCULATE_PATH", "/api/agent/payment/check/calculate")
 _INTERHUB_CHECK_PATH = os.getenv("INTERHUB_CHECK_PATH", "/api/agent/payment/check")
 _INTERHUB_PAY_PATH = os.getenv("INTERHUB_PAY_PATH", "/api/agent/payment/pay")
@@ -675,6 +685,8 @@ _INTERHUB_PRICE_CALCULATE_DELAY_MS = int(os.getenv("INTERHUB_PRICE_CALCULATE_DEL
 _OZON_SUPPLIER_POLL_INTERVAL_SEC = max(10, int(os.getenv("OZON_SUPPLIER_POLL_INTERVAL_SEC", "60") or "60"))
 # Разрешает живые действия Ozon отдельно от общего доступа к Interhub для других маркетплейсов.
 _OZON_LIVE_ENABLED = str(os.getenv("OZON_LIVE_ENABLED", "true") or "true").strip().lower() in ("1", "true", "yes", "on")
+# Разрешает отдельно остановить товарные действия Яндекс Маркета, не отключая финансовую синхронизацию.
+_YANDEX_MARKET_CATALOG_LIVE_ENABLED = str(os.getenv("YANDEX_MARKET_CATALOG_LIVE_ENABLED", "true") or "true").strip().lower() in ("1", "true", "yes", "on")
 # Ограничивает ожидание неопределенной оплаты, не разрешая повторную покупку без финального ответа поставщика.
 _OZON_SUPPLIER_MAX_STATUS_CHECKS = max(1, int(os.getenv("OZON_SUPPLIER_MAX_STATUS_CHECKS", "30") or "30"))
 _OZON_SUPPLIER_DEADLINE_BUFFER_SEC = max(0, int(os.getenv("OZON_SUPPLIER_DEADLINE_BUFFER_SEC", "600") or "600"))
@@ -795,6 +807,7 @@ interhub_service = build_interhub_service(
     timeout_sec=_INTERHUB_TIMEOUT_SEC,
     ssl_verify=_INTERHUB_SSL_VERIFY,
     ca_cert_path=_INTERHUB_CA_CERT_PATH,
+    proxy_url=_INTERHUB_PROXY_URL,
     calculate_path=_INTERHUB_CALCULATE_PATH,
     check_path=_INTERHUB_CHECK_PATH,
     pay_path=_INTERHUB_PAY_PATH,
@@ -1135,6 +1148,32 @@ ozon_refresh_digital_supplier_orders = mount_marketplaces_routes(
     max_supplier_status_checks=_OZON_SUPPLIER_MAX_STATUS_CHECKS,
     supplier_deadline_buffer_sec=_OZON_SUPPLIER_DEADLINE_BUFFER_SEC,
 )
+mount_yandex_market_catalog_routes(
+    app,
+    DB_DSN=DB_DSN,
+    psycopg=pooled_psycopg,
+    q1=q1,
+    qall=qall,
+    exec1=exec1,
+    require_role=require_role,
+    yandex_market_live_enabled=_YANDEX_MARKET_CATALOG_LIVE_ENABLED,
+)
+mount_marketplace_key_pool_routes(
+    app,
+    DB_DSN=DB_DSN,
+    psycopg=pooled_psycopg,
+    q1=q1,
+    qall=qall,
+    exec1=exec1,
+    require_role=require_role,
+)
+# Подключает отдельный вход для уведомлений Маркета, не меняя каталоги и заказы.
+mount_yandex_market_webhooks_routes(
+    app,
+    DB_DSN=DB_DSN,
+    psycopg=pooled_psycopg,
+    exec1=exec1,
+)
 mount_dashboard_routes(
     app,
     DB_DSN=DB_DSN,
@@ -1172,6 +1211,7 @@ interhub_refresh_pending = mount_interhub_routes(
     InterHubPaymentRequestIn=InterHubPaymentRequestIn,
     InterHubPaymentCheckOut=InterHubPaymentCheckOut,
     InterHubPayRequestIn=InterHubPayRequestIn,
+    InterHubVoucherBatchPayRequestIn=InterHubVoucherBatchPayRequestIn,
     interhub_get_services=interhub_get_services,
     interhub_get_balance=interhub_get_balance,
     interhub_calculate=interhub_calculate,

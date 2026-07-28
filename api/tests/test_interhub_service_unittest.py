@@ -1,7 +1,7 @@
 import json
 import unittest
 from io import BytesIO
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 from openpyxl import load_workbook
@@ -95,6 +95,30 @@ class InterHubServiceTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as error:
             service.get_services()
         self.assertEqual(error.exception.status_code, 500)
+
+    def test_catalog_uses_configured_proxy_only_for_interhub_request(self):
+        # Собираем отдельный opener, чтобы proxy не применялся к другим поставщикам приложения.
+        service = build_interhub_service(
+            HTTPException=HTTPException,
+            interhub_api_url="https://api.interhub.ae",
+            interhub_token="test-token",
+            timeout_sec=20,
+            ssl_verify=True,
+            ca_cert_path="",
+            proxy_url="http://127.0.0.1:3128",
+            calculate_path="/api/agent/payment/check/calculate",
+            check_path="/api/agent/payment/check",
+            deposit_path="/api/agent/deposit",
+        )
+        opener = MagicMock()
+        opener.open.return_value = _Response({"success": True, "data": []})
+
+        with patch("domains.interhub_service.urllib.request.build_opener", return_value=opener) as build_opener:
+            service.get_services()
+
+        proxy_handler = build_opener.call_args.args[0]
+        self.assertEqual(proxy_handler.proxies, {"http": "http://127.0.0.1:3128", "https": "http://127.0.0.1:3128"})
+        opener.open.assert_called_once()
 
     def test_pay_preserves_gift_code_and_check_status(self):
         # Сохраняем код ваучера из pay и статус processing без потери полей провайдера.

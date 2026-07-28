@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from hashlib import sha256
 import json
+import os
 import uuid
 
 from fastapi import Depends, HTTPException
@@ -124,6 +125,7 @@ class OzonDigitalSettingsIn(BaseModel):
     interhub_service_id: int | None = Field(default=None, gt=0)
     interhub_nominal_id: str = Field(default="", max_length=255)
     interhub_enabled: bool = False
+    pool_issue_enabled: bool = False
 
 
 class OzonDigitalSupplierOut(BaseModel):
@@ -345,7 +347,8 @@ def mount_marketplaces_routes(
             conn,
             """
             SELECT offer_id, manual_stock_limit, auto_issue_enabled, activation_instruction,
-                   support_error_message, published_stock, last_stock_sync_at, last_orders_sync_at
+                   support_error_message, published_stock, last_stock_sync_at, last_orders_sync_at,
+                   pool_issue_enabled
             FROM app.marketplace_ozon_digital_settings
             WHERE store_code=%s AND external_product_id=%s
             """,
@@ -424,6 +427,7 @@ def mount_marketplaces_routes(
             interhub_service_id=interhub.service_id if interhub else None,
             interhub_nominal_id=interhub.nominal_id if interhub else "",
             interhub_enabled=interhub.enabled if interhub else False,
+            pool_issue_enabled=bool(row[8]) if len(row) > 8 else False,
             suppliers=suppliers,
         )
 
@@ -574,10 +578,10 @@ def mount_marketplaces_routes(
         return "статусе done" in message or "status done" in message
 
     def finish_ozon_delivery(order_id: int, order_row, codes: list[str]) -> OzonDigitalOrderOut:
-        # Фиксирует выдачу локально и не возвращает отмененный заказ в успешный статус.
+        # Фиксирует выдачу и завершает все ключи пула, которые были закреплены за этим заказом.
         delivered_at = datetime.now(timezone.utc)
         with psycopg.connect(DB_DSN) as conn:
-            exec1(
+            delivered_rows = exec1(
                 conn,
                 """
                 UPDATE app.marketplace_ozon_digital_orders
@@ -586,6 +590,22 @@ def mount_marketplaces_routes(
                 """,
                 (delivered_at, json.dumps(codes, ensure_ascii=False), order_id),
             )
+            if delivered_rows:
+                exec1(
+                    conn,
+                    """
+                    UPDATE app.marketplace_manual_keys AS key
+                    SET status='delivered', issued_at=%s, updated_at=now()
+                    FROM app.marketplace_manual_key_pools AS pool
+                    WHERE key.pool_id=pool.id
+                      AND pool.marketplace='ozon'
+                      AND pool.store_code=%s
+                      AND pool.product_key=%s
+                      AND key.issued_order_ref=%s
+                      AND key.status IN ('reserved', 'sending')
+                    """,
+                    (delivered_at, str(order_row[0]), str(int(order_row[1])), str(order_row[2])),
+                )
             delivered_order = read_order_out(conn, order_id)
             conn.commit()
         return delivered_order
@@ -622,6 +642,38 @@ def mount_marketplaces_routes(
                 raise HTTPException(400, f"Для этого заказа можно передать не больше ключей: {required_qty}")
             if len(all_codes) != required_qty:
                 raise HTTPException(400, f"Для этого заказа осталось передать ключей: {required_qty - len(all_codes)}")
+            # Закрепляет вручную добавленные ключи до отправки, чтобы их нельзя было выдать другому заказу при повторе запроса.
+            codes_to_register = [code for code in all_codes if code not in saved_codes]
+            for code in codes_to_register:
+                historic_owner = q1(
+                    conn,
+                    """
+                    SELECT id FROM app.marketplace_ozon_digital_orders
+                    WHERE id<>%s AND delivered_codes @> %s::jsonb
+                    LIMIT 1
+                    """,
+                    (order_id, json.dumps([code], ensure_ascii=False)),
+                )
+                if historic_owner:
+                    raise HTTPException(409, "Этот ключ уже закреплен за другим заказом")
+                registry_owner = q1(
+                    conn,
+                    """
+                    INSERT INTO app.marketplace_ozon_digital_code_registry(code_hash, order_id)
+                    VALUES (%s, %s)
+                    ON CONFLICT (code_hash) DO NOTHING
+                    RETURNING order_id
+                    """,
+                    (digital_code_hash(code), order_id),
+                )
+                if not registry_owner:
+                    existing_owner = q1(
+                        conn,
+                        "SELECT order_id FROM app.marketplace_ozon_digital_code_registry WHERE code_hash=%s",
+                        (digital_code_hash(code),),
+                    )
+                    if existing_owner and int(existing_owner[0]) != order_id:
+                        raise HTTPException(409, "Этот ключ уже закреплен за другим заказом")
             exec1(conn, "UPDATE app.marketplace_ozon_digital_orders SET status='delivering', last_error='', updated_at=now() WHERE id=%s", (order_id,))
             conn.commit()
 
@@ -724,6 +776,224 @@ def mount_marketplaces_routes(
             )
             conn.commit()
 
+    def manual_pool_secret() -> str:
+        # Берет отдельный секрет пула, чтобы ключи расшифровывались только внутри серверной выдачи.
+        secret = str(os.getenv("MARKETPLACE_KEY_POOL_SECRET", "")).strip()
+        if len(secret) < 32:
+            raise HTTPException(503, "Не задан секрет ручного пула ключей")
+        return secret
+
+    def deliver_ozon_codes_from_manual_pool(order_id: int) -> tuple[bool, str]:
+        # Забирает из пула доступную часть заказа, а недостающие ключи оставляет для ручной выдачи.
+        secret = manual_pool_secret()
+        reserved_key_ids: list[int] = []
+        reserved_codes: list[str] = []
+        posting_number = ""
+        store_code = ""
+        product_key = ""
+        remaining_qty = 0
+        with psycopg.connect(DB_DSN) as conn:
+            order = q1(
+                conn,
+                """
+                SELECT store_code, external_product_id, posting_number, required_qty, status, delivered_codes
+                FROM app.marketplace_ozon_digital_orders
+                WHERE id=%s
+                FOR UPDATE
+                """,
+                (order_id,),
+            )
+            if not order or str(order[4] or "") in {"cancelled", "delivered", "delivering"}:
+                conn.commit()
+                return False, "Заказ уже нельзя выдать из пула"
+            setting = q1(
+                conn,
+                """
+                SELECT pool_issue_enabled
+                FROM app.marketplace_ozon_digital_settings
+                WHERE store_code=%s AND external_product_id=%s
+                """,
+                (str(order[0]), int(order[1])),
+            )
+            if not setting or not bool(setting[0]):
+                conn.commit()
+                return False, "Выдача из пула выключена"
+            delivered_codes = delivered_codes_from_row(order[5])
+            required_qty = max(1, int(order[3] or 1))
+            missing_qty = required_qty - len(delivered_codes)
+            if missing_qty <= 0:
+                conn.commit()
+                return False, "Для заказа уже собраны все ключи"
+            pool = q1(
+                conn,
+                """
+                SELECT id
+                FROM app.marketplace_manual_key_pools
+                WHERE marketplace='ozon' AND store_code=%s AND product_key=%s
+                """,
+                (str(order[0]), str(int(order[1]))),
+            )
+            if not pool:
+                conn.commit()
+                return False, "В ручном пуле нет ключей для этой карточки"
+            rows = qall(
+                conn,
+                """
+                SELECT id, pgp_sym_decrypt(code_ciphertext, %s)
+                FROM app.marketplace_manual_keys
+                WHERE pool_id=%s
+                  AND status='free'
+                  AND (expires_at IS NULL OR expires_at >= current_date)
+                ORDER BY created_at ASC, id ASC
+                FOR UPDATE SKIP LOCKED
+                LIMIT %s
+                """,
+                (secret, int(pool[0]), missing_qty),
+            )
+            if not rows:
+                conn.commit()
+                return False, f"В ручном пуле нет свободных ключей: осталось получить {missing_qty}"
+            reserved_key_ids = [int(row[0]) for row in rows]
+            reserved_codes = [str(row[1]).strip() for row in rows]
+            if any(not code for code in reserved_codes):
+                raise HTTPException(409, "В ручном пуле найден пустой ключ. Проверьте список ключей.")
+            if any(code in delivered_codes for code in reserved_codes):
+                raise HTTPException(409, "Ключ из ручного пула уже закреплен за этим заказом")
+            # Не позволяет ключу из пула повторно попасть в другой заказ, включая старую историю до реестра.
+            for code in reserved_codes:
+                historic_owner = q1(
+                    conn,
+                    """
+                    SELECT id FROM app.marketplace_ozon_digital_orders
+                    WHERE id<>%s AND delivered_codes @> %s::jsonb
+                    LIMIT 1
+                    """,
+                    (order_id, json.dumps([code], ensure_ascii=False)),
+                )
+                if historic_owner:
+                    raise HTTPException(409, "Ключ из ручного пула уже закреплен за другим заказом")
+                registry_owner = q1(
+                    conn,
+                    """
+                    INSERT INTO app.marketplace_ozon_digital_code_registry(code_hash, order_id)
+                    VALUES (%s, %s)
+                    ON CONFLICT (code_hash) DO NOTHING
+                    RETURNING order_id
+                    """,
+                    (digital_code_hash(code), order_id),
+                )
+                if not registry_owner:
+                    existing_owner = q1(
+                        conn,
+                        "SELECT order_id FROM app.marketplace_ozon_digital_code_registry WHERE code_hash=%s",
+                        (digital_code_hash(code),),
+                    )
+                    if existing_owner and int(existing_owner[0]) != order_id:
+                        raise HTTPException(409, "Ключ из ручного пула уже закреплен за другим заказом")
+            posting_number = str(order[2] or "")
+            store_code = str(order[0])
+            product_key = str(int(order[1]))
+            collected_codes = delivered_codes + reserved_codes
+            remaining_qty = required_qty - len(collected_codes)
+            exec1(
+                conn,
+                """
+                UPDATE app.marketplace_manual_keys
+                SET status='reserved', issued_order_ref=%s, reserved_at=now()
+                WHERE id=ANY(%s) AND status='free'
+                """,
+                (posting_number, reserved_key_ids),
+            )
+            # Сохраняет частично собранный комплект, чтобы оператор добавил только недостающие ключи.
+            exec1(
+                conn,
+                """
+                UPDATE app.marketplace_ozon_digital_orders
+                SET delivered_codes=%s::jsonb,
+                    status='manual_required',
+                    last_error=%s,
+                    updated_at=now()
+                WHERE id=%s
+                """,
+                (
+                    json.dumps(collected_codes, ensure_ascii=False),
+                    "" if remaining_qty <= 0 else f"Из ручного пула закреплено {len(reserved_codes)}; осталось получить ключей: {remaining_qty}",
+                    order_id,
+                ),
+            )
+            conn.commit()
+
+        if remaining_qty > 0:
+            return False, f"Из ручного пула закреплено ключей: {len(reserved_codes)}; осталось получить: {remaining_qty}"
+
+        try:
+            # Полный комплект уже сохранен в заказе, поэтому передаем его без повторного добавления ключей.
+            deliver_ozon_codes(order_id, [])
+        except HTTPException as exc:
+            with psycopg.connect(DB_DSN) as conn:
+                # Не возвращает ключи в свободные при неопределенном ответе Ozon, чтобы не выдать один код дважды.
+                exec1(
+                    conn,
+                    """
+                    UPDATE app.marketplace_manual_keys AS key
+                    SET status='sending', updated_at=now()
+                    FROM app.marketplace_manual_key_pools AS pool
+                    WHERE key.pool_id=pool.id
+                      AND pool.marketplace='ozon'
+                      AND pool.store_code=%s
+                      AND pool.product_key=%s
+                      AND key.issued_order_ref=%s
+                      AND key.status='reserved'
+                    """,
+                    (store_code, product_key, posting_number),
+                )
+                conn.commit()
+            return False, f"Пул зарезервировал ключи, но Ozon не подтвердил выдачу: {str(exc.detail)}"
+        return True, "Ключи выданы из ручного пула"
+
+    def fall_back_to_manual_pool_or_queue(order_id: int, message: str) -> None:
+        # После безопасного отказа Interhub пробует пул, а при отсутствии ключей оставляет заказ в ручной очереди.
+        try:
+            delivered, pool_message = deliver_ozon_codes_from_manual_pool(order_id)
+        except HTTPException as exc:
+            delivered, pool_message = False, str(exc.detail)
+        if not delivered:
+            mark_order_for_manual_delivery(order_id, f"{message} {pool_message}".strip())
+
+    def process_ozon_digital_order(order_id: int) -> None:
+        # Выбирает источник в заданном порядке: Interhub, затем пул, затем ручная очередь.
+        with psycopg.connect(DB_DSN) as conn:
+            row = q1(
+                conn,
+                """
+                SELECT settings.auto_issue_enabled, settings.pool_issue_enabled,
+                       EXISTS (
+                         SELECT 1 FROM app.marketplace_ozon_digital_suppliers AS supplier
+                         WHERE supplier.store_code=settings.store_code
+                           AND supplier.external_product_id=settings.external_product_id
+                           AND supplier.enabled=true
+                       )
+                FROM app.marketplace_ozon_digital_orders AS orders
+                JOIN app.marketplace_ozon_digital_settings AS settings
+                  ON settings.store_code=orders.store_code
+                 AND settings.external_product_id=orders.external_product_id
+                WHERE orders.id=%s
+                """,
+                (order_id,),
+            )
+            conn.commit()
+        if not row:
+            return
+        if bool(row[0]) and bool(row[2]):
+            process_order_with_suppliers(order_id)
+            return
+        if bool(row[1]):
+            delivered, message = deliver_ozon_codes_from_manual_pool(order_id)
+            if not delivered:
+                mark_order_for_manual_delivery(order_id, message)
+            return
+        mark_order_for_manual_delivery(order_id, "Автовыдача и ручной пул выключены. Требуется ручная выдача.")
+
     def record_delivery_conflict(order_id: int, message: str) -> None:
         # Сохраняет причину остановки, чтобы оплаченный ключ можно было сверить по операции InterHub.
         with psycopg.connect(DB_DSN) as conn:
@@ -796,7 +1066,7 @@ def mount_marketplaces_routes(
     def process_order_with_suppliers_step(order_id: int) -> bool:
         # Покупает ключи по одному до количества заказа, а после частичной ошибки оставляет только недостающее оператору.
         if not interhub_calculate or not interhub_check or not interhub_pay:
-            mark_order_for_manual_delivery(order_id, "Автовыдача Interhub пока недоступна на сервере.")
+            fall_back_to_manual_pool_or_queue(order_id, "Автовыдача Interhub пока недоступна на сервере.")
             return False
         suppliers = []
         failed_suppliers: set[int] = set()
@@ -979,7 +1249,7 @@ def mount_marketplaces_routes(
                     return False
                 return True
 
-        mark_order_for_manual_delivery(order_id, "Поставщики не выдали ключ. Вставьте ключ вручную или обратитесь в поддержку.")
+        fall_back_to_manual_pool_or_queue(order_id, "Поставщики не выдали ключ.")
         return False
 
     def refresh_supplier_attempts() -> None:
@@ -1111,13 +1381,16 @@ def mount_marketplaces_routes(
                 """
                 SELECT settings.store_code, settings.external_product_id
                 FROM app.marketplace_ozon_digital_settings AS settings
-                WHERE settings.auto_issue_enabled=true
-                  AND EXISTS (
-                    SELECT 1 FROM app.marketplace_ozon_digital_suppliers AS supplier
-                    WHERE supplier.store_code=settings.store_code
-                      AND supplier.external_product_id=settings.external_product_id
-                      AND supplier.enabled=true
-                  )
+                WHERE settings.pool_issue_enabled=true
+                   OR (
+                     settings.auto_issue_enabled=true
+                     AND EXISTS (
+                       SELECT 1 FROM app.marketplace_ozon_digital_suppliers AS supplier
+                       WHERE supplier.store_code=settings.store_code
+                         AND supplier.external_product_id=settings.external_product_id
+                         AND supplier.enabled=true
+                     )
+                   )
                 """,
             )
             # Закрываем транзакцию до сетевых запросов к Ozon и Interhub.
@@ -1256,7 +1529,7 @@ def mount_marketplaces_routes(
         update_supplier: bool = True,
         user=Depends(require_role("owner")),
     ):
-        # При отправке остатка не меняет настройки автовыдачи из отдельной формы ключей.
+        # При публикации остатка не перезаписывает независимые настройки выдачи ключей.
         if publish_stock:
             require_ozon_live()
         normalized_store_code = normalize_ozon_store_code(store_code)
@@ -1267,15 +1540,16 @@ def mount_marketplaces_routes(
                 """
                 INSERT INTO app.marketplace_ozon_digital_settings(
                   store_code, external_product_id, offer_id, manual_stock_limit, auto_issue_enabled,
-                  activation_instruction, support_error_message, updated_at
+                  activation_instruction, support_error_message, pool_issue_enabled, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now())
                 ON CONFLICT (store_code, external_product_id) DO UPDATE
                     SET offer_id=excluded.offer_id,
                         manual_stock_limit=excluded.manual_stock_limit,
                         auto_issue_enabled=CASE WHEN %s THEN excluded.auto_issue_enabled ELSE marketplace_ozon_digital_settings.auto_issue_enabled END,
                     activation_instruction=excluded.activation_instruction,
                     support_error_message=excluded.support_error_message,
+                    pool_issue_enabled=CASE WHEN %s THEN excluded.pool_issue_enabled ELSE marketplace_ozon_digital_settings.pool_issue_enabled END,
                     updated_at=now()
                 """,
                 (
@@ -1286,6 +1560,8 @@ def mount_marketplaces_routes(
                     payload.auto_issue_enabled,
                     payload.activation_instruction.strip(),
                     payload.support_error_message.strip(),
+                    payload.pool_issue_enabled,
+                    not publish_stock,
                     not publish_stock,
                 ),
             )
@@ -1582,16 +1858,21 @@ def mount_marketplaces_routes(
                 WHERE orders.store_code=%s
                   AND orders.external_product_id=%s
                   AND orders.status='manual_required'
-                  AND settings.auto_issue_enabled=true
-                  AND EXISTS (
-                    SELECT 1 FROM app.marketplace_ozon_digital_suppliers AS supplier
-                    WHERE supplier.store_code=orders.store_code
-                      AND supplier.external_product_id=orders.external_product_id
-                      AND supplier.enabled=true
-                  )
-                  AND NOT EXISTS (
-                    SELECT 1 FROM app.marketplace_ozon_digital_supplier_attempts AS attempt
-                    WHERE attempt.order_id=orders.id
+                  AND (
+                    settings.pool_issue_enabled=true
+                    OR (
+                      settings.auto_issue_enabled=true
+                      AND EXISTS (
+                        SELECT 1 FROM app.marketplace_ozon_digital_suppliers AS supplier
+                        WHERE supplier.store_code=orders.store_code
+                          AND supplier.external_product_id=orders.external_product_id
+                          AND supplier.enabled=true
+                      )
+                      AND NOT EXISTS (
+                        SELECT 1 FROM app.marketplace_ozon_digital_supplier_attempts AS attempt
+                        WHERE attempt.order_id=orders.id
+                      )
+                    )
                   )
                 ORDER BY orders.id ASC
                 """,
@@ -1600,7 +1881,7 @@ def mount_marketplaces_routes(
             # Не держим транзакцию, пока ниже запускается автовыдача через внешнего поставщика.
             conn.commit()
         for queued_row in queued_rows:
-            process_order_with_suppliers(int(queued_row[0]))
+            process_ozon_digital_order(int(queued_row[0]))
 
         available_stock = 0
         with psycopg.connect(DB_DSN) as conn:

@@ -47,16 +47,73 @@
             <p v-if="ozonDigitalSettingsError" class="bad">{{ ozonDigitalSettingsError }}</p>
             <p v-if="ozonDigitalSettingsOk" class="good">{{ ozonDigitalSettingsOk }}</p>
 
-            <section class="ozon-digital-modal__card">
-              <div class="ozon-digital-modal__card-head">
-                <div>
-                  <span class="ozon-digital-modal__eyebrow">Поставщик ключей</span>
-                  <strong>Interhub</strong>
+            <section class="ozon-catalog-details-modal__work-block ozon-key-settings__block" :class="{ 'is-open': isSupplierOpen }">
+              <div class="ozon-key-settings__block-head">
+                <button class="ozon-catalog-details-modal__work-block-toggle" type="button" :aria-expanded="isSupplierOpen" aria-controls="ozon-key-supplier-content" @click="toggleSupplier">
+                  <span class="ozon-catalog-details-modal__work-block-number">01</span>
+                  <span class="ozon-catalog-details-modal__work-block-copy"><strong>Автовыдача</strong></span>
+                  <svg class="ozon-catalog-details-modal__work-block-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5" /></svg>
+                </button>
+                <div class="ozon-key-settings__block-actions">
+                  <div class="ozon-digital-modal__auto-switch">
+                  <label class="switch" title="Автовыдача через Interhub">
+                    <input v-model="autoIssueEnabled" type="checkbox" aria-label="Автовыдача через Interhub" :disabled="!ozonDigitalSettings.interhub_service_id" />
+                    <span class="slider">
+                      <span class="circle">
+                        <svg class="cross" viewBox="0 0 365.696 365.696" aria-hidden="true"><path fill="currentColor" d="M243.188 182.86 356.32 69.726c12.5-12.5 12.5-32.766 0-45.247L341.238 9.398c-12.504-12.503-32.77-12.503-45.25 0L182.86 122.528 69.727 9.374c-12.5-12.5-32.766-12.5-45.247 0L9.375 24.457c-12.5 12.504-12.5 32.77 0 45.25l113.152 113.152L9.398 295.99c-12.503 12.503-12.503 32.769 0 45.25L24.48 356.32c12.5 12.5 32.766 12.5 45.247 0l113.132-113.132L295.99 356.32c12.503 12.5 32.769 12.5 45.25 0l15.081-15.082c12.5-12.504 12.5-32.77 0-45.25zm0 0" /></svg>
+                        <svg class="checkmark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.707 19.121a.997.997 0 0 1-1.414 0l-5.646-5.647a1.5 1.5 0 0 1 0-2.121l.707-.707a1.5 1.5 0 0 1 2.121 0L9 14.171l9.525-9.525a1.5 1.5 0 0 1 2.121 0l.707.707a1.5 1.5 0 0 1 0 2.121z" /></svg>
+                      </span>
+                    </span>
+                  </label>
+                  </div>
                 </div>
-                <div class="ozon-digital-modal__auto-switch">
-                  <span>Автовыдача</span>
-                  <label class="switch">
-                    <input v-model="autoIssueEnabled" type="checkbox" :disabled="!ozonDigitalSettings.interhub_service_id" />
+              </div>
+
+              <div v-if="isSupplierOpen" id="ozon-key-supplier-content" class="ozon-catalog-details-modal__work-block-body">
+                <div class="ozon-digital-modal__supplier">
+                <div class="ozon-digital-modal__supplier-fields">
+                  <label class="field">
+                    <span>Товар</span>
+                    <select v-model="ozonDigitalSettings.interhub_service_id" class="input" :disabled="interhubServicesLoading">
+                      <option :value="null">{{ interhubServicesLoading ? 'Загружаем услуги…' : 'Не выбрана' }}</option>
+                      <option v-for="service in interhubServices" :key="service.service_id" :value="Number(service.service_id)">
+                        {{ service.title }}{{ service.category ? ` · ${service.category}` : '' }}
+                      </option>
+                    </select>
+                  </label>
+                  <label v-if="ozonDigitalSettings.interhub_service_id && interhubNominals.length" class="field">
+                    <span>Номинал</span>
+                    <select v-model="ozonDigitalSettings.interhub_nominal_id" class="input">
+                      <option value="">Выберите номинал</option>
+                      <option v-for="nominal in interhubNominals" :key="nominal.value" :value="nominal.value">{{ nominal.label }}</option>
+                    </select>
+                  </label>
+                </div>
+                </div>
+              </div>
+            </section>
+
+            <WorkMarketplaceKeyPoolPanel
+              marketplace="ozon"
+              :product-key="String(ozonDigitalSettings.external_product_id || '')"
+              :product-title="keyPoolProductTitle"
+              :marketplace-key-pool="marketplaceKeyPool"
+              :marketplace-key-pool-loading="marketplaceKeyPoolLoading"
+              :marketplace-key-pool-saving="marketplaceKeyPoolSaving"
+              :marketplace-key-pool-error="marketplaceKeyPoolError"
+              :marketplace-key-pool-total-pages="marketplaceKeyPoolTotalPages"
+              :marketplace-key-pool-revealing-id="marketplaceKeyPoolRevealingId"
+              :marketplace-key-pool-revealed-code="marketplaceKeyPoolRevealedCode"
+              :open-marketplace-key-pool="openMarketplaceKeyPool"
+              :load-marketplace-key-pool="loadMarketplaceKeyPool"
+              :reveal-marketplace-key-pool-key="revealMarketplaceKeyPoolKey"
+              :delete-marketplace-key-pool-key="deleteMarketplaceKeyPoolKey"
+              :delete-all-free-marketplace-key-pool-keys="deleteAllFreeMarketplaceKeyPoolKeys"
+            >
+              <template #header-actions>
+                <div class="ozon-digital-modal__auto-switch marketplace-key-pool-panel__issue-switch">
+                  <label class="switch" title="Использует ручной пул этой карточки: после сбоя Interhub или как основной источник">
+                    <input v-model="poolIssueEnabled" type="checkbox" aria-label="Выдача из ручного пула" />
                     <span class="slider">
                       <span class="circle">
                         <svg class="cross" viewBox="0 0 365.696 365.696" aria-hidden="true"><path fill="currentColor" d="M243.188 182.86 356.32 69.726c12.5-12.5 12.5-32.766 0-45.247L341.238 9.398c-12.504-12.503-32.77-12.503-45.25 0L182.86 122.528 69.727 9.374c-12.5-12.5-32.766-12.5-45.247 0L9.375 24.457c-12.5 12.504-12.5 32.77 0 45.25l113.152 113.152L9.398 295.99c-12.503 12.503-12.503 32.769 0 45.25L24.48 356.32c12.5 12.5 32.766 12.5 45.247 0l113.132-113.132L295.99 356.32c12.503 12.5 32.769 12.5 45.25 0l15.081-15.082c12.5-12.504 12.5-32.77 0-45.25zm0 0" /></svg>
@@ -65,29 +122,8 @@
                     </span>
                   </label>
                 </div>
-              </div>
-
-              <div class="ozon-digital-modal__supplier">
-                <div class="ozon-digital-modal__supplier-fields">
-                  <label class="field">
-                    <span>Услуга Interhub</span>
-                    <select v-model="ozonDigitalSettings.interhub_service_id" class="input" :disabled="interhubServicesLoading">
-                      <option :value="null">{{ interhubServicesLoading ? 'Загружаем услуги…' : 'Не выбрана' }}</option>
-                      <option v-for="service in interhubServices" :key="service.service_id" :value="Number(service.service_id)">
-                        {{ service.title }}{{ service.category ? ` · ${service.category}` : '' }}
-                      </option>
-                    </select>
-                  </label>
-                  <label v-if="interhubNominals.length" class="field">
-                    <span>Номинал</span>
-                    <select v-model="ozonDigitalSettings.interhub_nominal_id" class="input">
-                      <option value="">Выберите номинал</option>
-                      <option v-for="nominal in interhubNominals" :key="nominal.value" :value="nominal.value">{{ nominal.label }}</option>
-                    </select>
-                  </label>
-                </div>
-              </div>
-            </section>
+              </template>
+            </WorkMarketplaceKeyPoolPanel>
 
             <section class="ozon-digital-modal__orders">
               <div class="ozon-digital-modal__orders-head">
@@ -128,13 +164,15 @@
 </template>
 
 <script setup>
-import { computed, reactive } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import WorkHamsterLoader from './WorkHamsterLoader.vue'
+import WorkMarketplaceKeyPoolPanel from './WorkMarketplaceKeyPoolPanel.vue'
 
 const props = defineProps({
   showOzonDigitalSettings: { type: Boolean, required: true },
   closeOzonDigitalSettings: { type: Function, required: true },
   ozonDigitalSettings: { type: Object, required: true },
+  ozonDigitalProductTitle: { type: String, default: '' },
   ozonDigitalSettingsLoading: { type: Boolean, required: true },
   ozonDigitalSettingsSaving: { type: Boolean, required: true },
   ozonDigitalSettingsError: { type: String, default: '' },
@@ -144,9 +182,36 @@ const props = defineProps({
   interhubServicesLoading: { type: Boolean, default: false },
   saveOzonDigitalSettings: { type: Function, required: true },
   deliverOzonDigitalOrder: { type: Function, required: true },
+  openMarketplaceKeyPool: { type: Function, default: () => {} },
+  loadMarketplaceKeyPoolFor: { type: Function, default: () => {} },
+  marketplaceKeyPool: { type: Object, default: () => ({ free_count: 0, reserved_count: 0, delivered_count: 0, expired_count: 0, total: 0, page: 1, page_size: 20, items: [] }) },
+  marketplaceKeyPoolLoading: { type: Boolean, default: false },
+  marketplaceKeyPoolSaving: { type: Boolean, default: false },
+  marketplaceKeyPoolError: { type: String, default: '' },
+  marketplaceKeyPoolTotalPages: { type: Number, default: 1 },
+  marketplaceKeyPoolRevealingId: { type: Number, default: 0 },
+  marketplaceKeyPoolRevealedCode: { type: Function, default: () => '' },
+  loadMarketplaceKeyPool: { type: Function, default: () => {} },
+  revealMarketplaceKeyPoolKey: { type: Function, default: () => {} },
+  deleteMarketplaceKeyPoolKey: { type: Function, default: () => {} },
+  deleteAllFreeMarketplaceKeyPoolKeys: { type: Function, default: () => {} },
 })
 const deliveryDrafts = reactive({})
 const deliveryBusy = reactive({})
+const isSupplierOpen = ref(false)
+
+watch(
+  () => [props.showOzonDigitalSettings, props.ozonDigitalSettings.external_product_id, props.ozonDigitalProductTitle, props.ozonDigitalSettings.offer_id],
+  ([isOpen, productKey, productTitle]) => {
+    // Подгружает таблицу на основном экране ключей сразу после открытия настроек карточки.
+    if (isOpen && productKey) props.loadMarketplaceKeyPoolFor({ marketplace: 'ozon', productKey: String(productKey), productTitle: String(productTitle || props.ozonDigitalSettings.offer_id || 'Карточка Ozon') })
+  },
+  { immediate: true },
+)
+
+const keyPoolProductTitle = computed(() => String(
+  props.ozonDigitalProductTitle || props.ozonDigitalSettings.offer_id || 'Карточка Ozon',
+))
 
 const isOzonDigitalBusy = computed(() => Boolean(
   props.ozonDigitalSettingsLoading
@@ -170,6 +235,19 @@ const autoIssueEnabled = computed({
     props.ozonDigitalSettings.interhub_enabled = value
   },
 })
+
+const poolIssueEnabled = computed({
+  get: () => Boolean(props.ozonDigitalSettings.pool_issue_enabled),
+  set: (enabled) => {
+    // Включает отдельный резервный источник, который никогда не запускает покупку у поставщика.
+    props.ozonDigitalSettings.pool_issue_enabled = Boolean(enabled)
+  },
+})
+
+function toggleSupplier() {
+  // Сворачивает настройки Interhub, чтобы экран ключей оставался компактным.
+  isSupplierOpen.value = !isSupplierOpen.value
+}
 
 const manualOzonDigitalOrders = computed(() => {
   // Оставляет здесь только заказы с ручной выдачей: история выданных заказов находится в карточке товара.

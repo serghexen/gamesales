@@ -25,12 +25,15 @@ def build_interhub_service(
     timeout_sec: int,
     ssl_verify: bool,
     ca_cert_path: str,
+    proxy_url: str = "",
     calculate_path: str,
     check_path: str,
     deposit_path: str,
     pay_path: str = "/api/agent/payment/pay",
     check_status_path: str = "/api/agent/payment/check_status",
 ):
+    proxy_url = str(proxy_url or "").strip()
+
     def ensure_configured():
         # Не отправляем запрос провайдеру, пока URL или токен не настроены на сервере.
         if not str(interhub_api_url or "").strip():
@@ -60,7 +63,16 @@ def build_interhub_service(
         request = urllib.request.Request(url, data=body, headers=headers, method="GET" if payload is None else "POST")
         context = ssl.create_default_context(cafile=ca_cert_path or None) if ssl_verify else ssl._create_unverified_context()
         try:
-            with urllib.request.urlopen(request, timeout=max(5, int(timeout_sec or 20)), context=context) as response:
+            if proxy_url:
+                # Направляем только InterHub через CONNECT-proxy, не меняя маршруты остальных интеграций.
+                proxy_handler = urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url})
+                https_handler = urllib.request.HTTPSHandler(context=context)
+                opener = urllib.request.build_opener(proxy_handler, https_handler)
+                response_context = opener.open(request, timeout=max(5, int(timeout_sec or 20)))
+            else:
+                # Выполняем прямой запрос, когда отдельный маршрут к поставщику не требуется.
+                response_context = urllib.request.urlopen(request, timeout=max(5, int(timeout_sec or 20)), context=context)
+            with response_context as response:
                 return parse_json_bytes(response.read() or b"{}")
         except urllib.error.HTTPError as exc:
             details = (exc.read() or b"").decode("utf-8", errors="ignore")

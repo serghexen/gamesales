@@ -5,5 +5,9 @@ www.homtech.app {
 
 homtech.app {
     encode zstd gzip
-    reverse_proxy web:80
+    # Убираем присланный клиентом X-Forwarded-For, чтобы API доверял только реальному IP отправителя.
+    reverse_proxy web:80 {
+        header_up -X-Forwarded-For
+        header_up X-Forwarded-For {remote_host}
+    }
 }

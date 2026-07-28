@@ -117,7 +117,7 @@ describe('useOzonCatalog', () => {
 
     expect(apiPut).toHaveBeenCalledWith(
       '/marketplaces/ozon/catalog/103/digital-settings?publish_stock=true&update_supplier=true',
-      expect.objectContaining({ offer_id: 'PS5-6', manual_stock_limit: 1, auto_issue_enabled: false }),
+      expect.objectContaining({ offer_id: 'PS5-6', manual_stock_limit: 1, auto_issue_enabled: false, pool_issue_enabled: false }),
       { token: 'ozon-token' },
     )
     expect(catalog.ozonDigitalSettings.published_stock).toBe(1)

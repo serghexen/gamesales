@@ -25,6 +25,18 @@ class _Response:
 
 
 class OzonServiceTest(unittest.TestCase):
+    def setUp(self):
+        # Изолируем кабинет ASAT от локального .env, чтобы заголовки запросов были воспроизводимы.
+        self._store_env_patch = patch.dict(
+            os.environ,
+            {
+                "OZON_ASAT_CLIENT_ID": "client-1",
+                "OZON_ASAT_API_KEY": "secret-1",
+            },
+        )
+        self._store_env_patch.start()
+        self.addCleanup(self._store_env_patch.stop)
+
     # Локальный диагностический флаг должен отключать проверку проблемной SSL-цепочки.
     def test_ssl_context_can_disable_verification(self):
         sentinel = object()

@@ -206,7 +206,7 @@ class MarketplacesApiTests(unittest.TestCase):
                 )
             return None
 
-        client, _writes = self.create_client(q1_handler=q1_handler)
+        client, writes = self.create_client(q1_handler=q1_handler)
         with client:
             response = client.get("/marketplaces/ozon/digital-orders/41/supplier-operation")
 
@@ -320,7 +320,7 @@ class MarketplacesApiTests(unittest.TestCase):
                 return ("Joy1", 1, False, "", "", 0, None, None)
             return None
 
-        client, _writes = self.create_client(q1_handler=q1_handler)
+        client, writes = self.create_client(q1_handler=q1_handler)
         with (
             patch("api.domains.marketplaces_api.fetch_ozon_catalog_offer_id", return_value=""),
             patch("api.domains.marketplaces_api.update_ozon_digital_stock", return_value={"status": [{"updated": True}]}) as update_stock,
@@ -382,12 +382,15 @@ class MarketplacesApiTests(unittest.TestCase):
                         "interhub_service_id": 91,
                         "interhub_nominal_id": "500",
                         "interhub_enabled": True,
+                        "pool_issue_enabled": True,
                     },
                 )
 
         self.assertEqual(response.status_code, 200)
         supplier_calls = [params for sql, params in writes if "INSERT INTO app.marketplace_ozon_digital_suppliers" in sql]
         self.assertEqual(supplier_calls[-1][2:5], (True, 91, "500"))
+        settings_calls = [params for sql, params in writes if "INSERT INTO app.marketplace_ozon_digital_settings" in sql]
+        self.assertTrue(settings_calls[-1][-1])
         update_stock.assert_not_called()
 
     # Заказ другой карточки не должен сбрасывать ID выбранного товара перед публикацией остатка.
