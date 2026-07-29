@@ -11,10 +11,12 @@ from pydantic import BaseModel, Field
 
 from .yandex_market_catalog_service import (
     fetch_yandex_market_catalog_items,
+    deliver_yandex_market_digital_goods,
     fetch_yandex_market_orders,
     fetch_yandex_market_stock,
     normalize_yandex_market_store_code,
     yandex_market_sandbox_actions_enabled,
+    yandex_market_sandbox_market_delivery_enabled,
     yandex_market_sandbox_orders_enabled,
     update_yandex_market_catalog_archive,
     update_yandex_market_stock,
@@ -237,6 +239,11 @@ def mount_yandex_market_catalog_routes(
         # Останавливает локальную выдачу вне test-магазина до любых изменений в базе и без внешнего запроса.
         if not yandex_market_sandbox_actions_enabled(store_code):
             raise HTTPException(403, "Локальная выдача доступна только для fake-заказов test-магазина при включенном sandbox-флаге")
+
+    def require_yandex_market_sandbox_market_delivery(store_code: str) -> None:
+        # Не дает отправить ключ во внешний API без отдельного флага именно для test-кабинета.
+        if not yandex_market_sandbox_market_delivery_enabled(store_code):
+            raise HTTPException(403, "Передача ключа в test-Маркет выключена отдельным sandbox-флагом")
 
     def sandbox_order_for_delivery(conn, store_code: str, order_id: int, item_id: int):
         # Блокирует одну сохраненную fake-позицию, чтобы две вкладки не выдали ей разные ключи.
@@ -683,6 +690,108 @@ def mount_yandex_market_catalog_routes(
             )
             conn.commit()
         return result
+
+    @app.post(
+        "/marketplaces/yandex/sandbox/orders/{order_id}/items/{item_id}/send-to-market",
+        response_model=YandexMarketSandboxDeliveryOut,
+    )
+    def send_yandex_market_sandbox_order_to_market(
+        order_id: int,
+        item_id: int,
+        store_code: str = "test",
+        user=Depends(require_role("owner")),
+    ):
+        # Отправляет уже закрепленные ключи только в fake-заказ test-Маркета после явной команды оператора.
+        normalized_store_code = normalize_yandex_market_store_code(store_code)
+        require_yandex_market_live()
+        require_yandex_market_sandbox_market_delivery(normalized_store_code)
+        secret = sandbox_pool_secret()
+        order_ref = sandbox_order_ref(normalized_store_code, order_id, item_id)
+        offer_id = ""
+        required_qty = 0
+        delivery_source = ""
+        with psycopg.connect(DB_DSN) as conn:
+            delivery = q1(
+                conn,
+                """
+                SELECT delivery.offer_id, delivery.required_qty, delivery.delivery_source, delivery.status, orders.status, orders.is_sandbox
+                FROM app.marketplace_yandex_sandbox_deliveries AS delivery
+                JOIN app.marketplace_yandex_order_items AS orders
+                  ON orders.store_code=delivery.store_code AND orders.order_id=delivery.order_id AND orders.item_id=delivery.item_id
+                WHERE delivery.store_code=%s AND delivery.order_id=%s AND delivery.item_id=%s
+                FOR UPDATE
+                """,
+                (normalized_store_code, order_id, item_id),
+            )
+            if not delivery or not bool(delivery[5]):
+                raise HTTPException(404, "Локальная выдача fake-заказа не найдена")
+            if str(delivery[4] or "").upper() != "PROCESSING":
+                raise HTTPException(409, "Передать ключ в Маркет можно только для fake-заказа в статусе PROCESSING")
+            if str(delivery[3] or "") != "locally_issued":
+                raise HTTPException(409, "Эта локальная выдача уже отправляется или была отправлена в Маркет")
+            offer_id, required_qty, delivery_source = str(delivery[0]), int(delivery[1]), str(delivery[2])
+            rows = qall(
+                conn,
+                """
+                SELECT pgp_sym_decrypt(key.code_ciphertext, %s)
+                FROM app.marketplace_manual_keys AS key
+                JOIN app.marketplace_manual_key_pools AS pool ON pool.id=key.pool_id
+                WHERE pool.marketplace='yandex_market'
+                  AND pool.store_code=%s
+                  AND pool.product_key=%s
+                  AND key.issued_order_ref=%s
+                  AND key.status='delivered'
+                ORDER BY key.issued_at ASC, key.id ASC
+                FOR UPDATE
+                """,
+                (secret, normalized_store_code, offer_id, order_ref),
+            )
+            codes = [str(row[0] or "").strip() for row in rows if str(row[0] or "").strip()]
+            if len(codes) != required_qty:
+                raise HTTPException(409, "Не найден полный локально закрепленный комплект ключей для отправки в Маркет")
+            exec1(
+                conn,
+                """
+                UPDATE app.marketplace_yandex_sandbox_deliveries
+                SET status='market_sending', last_error='', updated_at=now()
+                WHERE store_code=%s AND order_id=%s AND item_id=%s
+                """,
+                (normalized_store_code, order_id, item_id),
+            )
+            conn.commit()
+        try:
+            deliver_yandex_market_digital_goods(order_id, item_id=item_id, codes=codes, store_code=normalized_store_code)
+        except HTTPException as error:
+            # При сетевой/серверной ошибке ответ мог потеряться после приема Маркетом, поэтому повтор блокируется.
+            definite_rejection = 400 <= int(error.status_code) < 500
+            next_status = "locally_issued" if definite_rejection else "market_unknown"
+            with psycopg.connect(DB_DSN) as conn:
+                exec1(
+                    conn,
+                    """
+                    UPDATE app.marketplace_yandex_sandbox_deliveries
+                    SET status=%s, last_error=%s, updated_at=now()
+                    WHERE store_code=%s AND order_id=%s AND item_id=%s
+                    """,
+                    (next_status, str(error.detail)[:2000], normalized_store_code, order_id, item_id),
+                )
+                conn.commit()
+            raise
+        with psycopg.connect(DB_DSN) as conn:
+            exec1(
+                conn,
+                """
+                UPDATE app.marketplace_yandex_sandbox_deliveries
+                SET status='market_submitted', market_submitted_at=now(), last_error='', updated_at=now()
+                WHERE store_code=%s AND order_id=%s AND item_id=%s
+                """,
+                (normalized_store_code, order_id, item_id),
+            )
+            conn.commit()
+        return YandexMarketSandboxDeliveryOut(
+            order_id=order_id, item_id=item_id, offer_id=offer_id, issued_qty=required_qty,
+            delivery_source=delivery_source, status="market_submitted",
+        )
 
     @app.get("/marketplaces/yandex/catalog/{offer_id}/stock-settings", response_model=YandexMarketStockSettingsOut)
     def get_yandex_market_stock_settings(offer_id: str, store_code: str = "asat", user=Depends(require_role("owner"))):

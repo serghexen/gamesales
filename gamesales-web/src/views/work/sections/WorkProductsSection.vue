@@ -120,6 +120,7 @@
         :yandex-market-sandbox-delivery-saving="ctx.yandexMarketSandboxDeliverySaving"
         :deliver-yandex-market-sandbox-order="ctx.deliverYandexMarketSandboxOrder"
         :issue-yandex-market-sandbox-order-from-pool="ctx.issueYandexMarketSandboxOrderFromPool"
+        :send-yandex-market-sandbox-order-to-market="ctx.sendYandexMarketSandboxOrderToMarket"
         :open-marketplace-key-pool="ctx.openMarketplaceKeyPool"
         :load-marketplace-key-pool-for="ctx.loadMarketplaceKeyPoolFor"
         :marketplace-key-pool="ctx.marketplaceKeyPool"

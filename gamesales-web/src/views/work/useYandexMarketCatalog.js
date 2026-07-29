@@ -275,6 +275,42 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     }
   }
 
+  async function sendYandexMarketSandboxOrderToMarket(order) {
+    // Отправляет уже закрепленные ключи только в test-Маркет после отдельного подтверждения оператора.
+    const orderId = Number(order?.order_id || 0)
+    const itemId = Number(order?.item_id || 0)
+    if (!orderId || !itemId || yandexMarketSandboxDeliverySaving.value) return { ok: false, message: 'Не удалось определить позицию fake-заказа' }
+    const confirmed = typeof requestDealConfirm === 'function' && await requestDealConfirm({
+      title: 'Отправить ключ в test Маркет?',
+      message: `Ключ будет передан только в fake-заказ ${orderId}. После этого Маркет начнет доставку покупателю и может перевести заказ в DELIVERED.`,
+      confirmText: 'Отправить в test Маркет',
+      cancelText: 'Отмена',
+    })
+    if (!confirmed) return { ok: false, message: '' }
+    const savingKey = `${orderId}:${itemId}`
+    yandexMarketSandboxDeliverySaving.value = savingKey
+    yandexMarketCatalogDetailsError.value = ''
+    try {
+      const result = await apiPost(
+        yandexMarketTestPath(`/marketplaces/yandex/sandbox/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}/send-to-market`),
+        {},
+        { token: auth.state.token },
+      )
+      yandexMarketOrders.value = yandexMarketOrders.value.map((current) => (
+        Number(current?.order_id) === orderId && Number(current?.item_id) === itemId
+          ? { ...current, sandbox_delivery_status: String(result?.status || 'market_submitted') }
+          : current
+      ))
+      return { ok: true, message: '' }
+    } catch (error) {
+      const message = yandexMarketError(error, 'Не удалось отправить ключ в test Маркет')
+      yandexMarketCatalogDetailsError.value = message
+      return { ok: false, message }
+    } finally {
+      yandexMarketSandboxDeliverySaving.value = ''
+    }
+  }
+
   async function selectYandexMarketCatalogItem(item) {
     // Открывает панель и читает текущий остаток Маркета для выбранного SKU без публикации нового значения.
     const offerId = String(item?.offer_id || '').trim()
@@ -359,6 +395,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     syncYandexMarketOrders,
     deliverYandexMarketSandboxOrder,
     issueYandexMarketSandboxOrderFromPool,
+    sendYandexMarketSandboxOrderToMarket,
     updateYandexMarketCatalogArchive,
     selectYandexMarketCatalogItem,
     closeYandexMarketStockSettings,

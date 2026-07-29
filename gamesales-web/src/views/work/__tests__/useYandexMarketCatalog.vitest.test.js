@@ -72,6 +72,22 @@ describe('useYandexMarketCatalog', () => {
     expect(apiPost).toHaveBeenCalledWith('/marketplaces/yandex/sandbox/orders/502/items/100/issue-from-pool?store_code=test', {}, { token: 'market-token' })
     expect(instance.yandexMarketOrders.value[0].sandbox_delivery_status).toBe('locally_issued')
   })
+
+  it('sends a locally issued key to test Market only after confirmation', async () => {
+    const apiPost = vi.fn().mockResolvedValue({ status: 'market_submitted' })
+    const requestDealConfirm = vi.fn().mockResolvedValue(true)
+    const instance = useYandexMarketCatalog({
+      auth: { state: { token: 'market-token' } }, apiGet: vi.fn(), apiPost, apiPut: vi.fn(), mapApiError: vi.fn(), requestDealConfirm,
+    })
+    const order = { order_id: 501, item_id: 99, sandbox_delivery_status: 'locally_issued' }
+    instance.yandexMarketOrders.value = [order]
+
+    await instance.sendYandexMarketSandboxOrderToMarket(order)
+
+    expect(requestDealConfirm).toHaveBeenCalledWith(expect.objectContaining({ title: 'Отправить ключ в test Маркет?' }))
+    expect(apiPost).toHaveBeenCalledWith('/marketplaces/yandex/sandbox/orders/501/items/99/send-to-market?store_code=test', {}, { token: 'market-token' })
+    expect(instance.yandexMarketOrders.value[0].sandbox_delivery_status).toBe('market_submitted')
+  })
 })
 
 describe('WorkYandexMarketCatalogModal', () => {

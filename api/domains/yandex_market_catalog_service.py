@@ -41,6 +41,14 @@ def yandex_market_sandbox_actions_enabled(store_code: str | None = None) -> bool
     )
 
 
+def yandex_market_sandbox_market_delivery_enabled(store_code: str | None = None) -> bool:
+    # Открывает внешнюю отправку кода только для test-магазина после отдельного явного разрешения.
+    normalized_store_code = normalize_yandex_market_store_code(store_code)
+    return yandex_market_sandbox_actions_enabled(normalized_store_code) and _env_store_bool(
+        "SANDBOX_MARKET_DELIVERY_ENABLED", store_code=normalized_store_code, default=False,
+    )
+
+
 def _catalog_context(store_code: str | None) -> tuple[str, str, int, int, int]:
     # Собирает реквизиты кабинета и магазина до обращения к товарным методам Маркета.
     normalized_store_code = normalize_yandex_market_store_code(store_code)
@@ -182,6 +190,39 @@ def update_yandex_market_stock(
         f"{base_url}/v2/campaigns/{campaign_id}/offers/stocks",
         token=token,
         payload={"skus": [{"sku": normalized_offer_id, "items": [{"count": int(stock), "updatedAt": updated_at}]}]},
+        timeout=timeout,
+    )
+
+
+def deliver_yandex_market_digital_goods(
+    order_id: int,
+    *,
+    item_id: int,
+    codes: list[str],
+    store_code: str | None = None,
+) -> dict[str, Any]:
+    # Передает полный комплект ключей одной позиции в test-Маркет по официальному DBS-методу.
+    normalized_order_id = int(order_id)
+    normalized_item_id = int(item_id)
+    prepared_codes = [str(code or "").strip() for code in codes if str(code or "").strip()]
+    if normalized_order_id <= 0 or normalized_item_id <= 0 or not prepared_codes:
+        raise HTTPException(400, "Yandex Market digital delivery requires an order, item and at least one key")
+    if len(prepared_codes) != len(set(prepared_codes)):
+        raise HTTPException(400, "Yandex Market digital delivery codes must be unique")
+    _store_code, token, _business_id, campaign_id, timeout = _catalog_context(store_code)
+    base_url = str(os.getenv("YANDEX_MARKET_BASE_URL", YANDEX_MARKET_BASE_URL) or YANDEX_MARKET_BASE_URL).rstrip("/")
+    return _request_json(
+        "POST",
+        f"{base_url}/v2/campaigns/{campaign_id}/orders/{normalized_order_id}/deliverDigitalGoods",
+        token=token,
+        payload={
+            "items": [{
+                "id": normalized_item_id,
+                "codes": prepared_codes,
+                "slip": "Активируйте код в PlayStation Store.",
+                "activate_till": "2099-12-31",
+            }],
+        },
         timeout=timeout,
     )
 

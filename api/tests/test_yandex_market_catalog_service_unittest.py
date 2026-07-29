@@ -52,6 +52,27 @@ class YandexMarketCatalogServiceTests(unittest.TestCase):
         self.assertEqual(kwargs["payload"]["skus"][0]["sku"], "PSN-500")
         self.assertEqual(kwargs["payload"]["skus"][0]["items"][0]["count"], 3)
 
+    # Передача цифрового товара идет точным DBS-методом с позициями и ключами в одном запросе.
+    def test_deliver_digital_goods_sends_order_item_codes(self):
+        settings = {
+            "YANDEX_MARKET_TEST_TOKEN": "test-token",
+            "YANDEX_MARKET_TEST_BUSINESS_ID": "216926720",
+            "YANDEX_MARKET_TEST_CAMPAIGN_ID": "149196813",
+        }
+        with (
+            patch.dict(os.environ, settings, clear=False),
+            patch.object(yandex_market_catalog_service, "_request_json", return_value={"status": "OK"}) as request_json,
+        ):
+            yandex_market_catalog_service.deliver_yandex_market_digital_goods(
+                501, item_id=99, codes=["TEST-CODE-1"], store_code="test",
+            )
+
+        args, kwargs = request_json.call_args
+        self.assertEqual(args[0], "POST")
+        self.assertIn("/v2/campaigns/149196813/orders/501/deliverDigitalGoods", args[1])
+        self.assertEqual(kwargs["payload"]["items"][0]["id"], 99)
+        self.assertEqual(kwargs["payload"]["items"][0]["codes"], ["TEST-CODE-1"])
+
     # Чтение остатков использует POST и суммирует только доступный для продажи тип AVAILABLE.
     def test_fetch_stock_reads_available_count_without_update(self):
         settings = {

@@ -76,6 +76,13 @@
               </div>
             </article>
           </section>
+          <section v-if="readyForMarketOrders.length" class="ozon-digital-modal__orders">
+            <div class="ozon-digital-modal__orders-head"><div><h4>Отправка в test Маркет</h4><p class="muted">Ключ уже закреплен локально. Отправка изменит только fake-заказ в test-кабинете.</p></div><span class="ozon-digital-modal__manual-count">{{ readyForMarketOrders.length }}</span></div>
+            <article v-for="order in readyForMarketOrders" :key="`market:${order.order_id}:${order.item_id}`" class="ozon-digital-order">
+              <div class="ozon-digital-order__head"><div><strong>Заказ {{ order.order_id }}</strong><p>{{ order.offer_id }} · ключи закреплены локально</p></div><span class="ozon-digital-order__status ozon-digital-order__status--supplier_processing">Готов к отправке</span></div>
+              <div class="ozon-digital-order__delivery"><button class="btn btn--primary" type="button" :disabled="isSaving(order)" @click="sendToMarket(order)">Отправить в test Маркет</button></div>
+            </article>
+          </section>
         </div>
       </div>
     </div>
@@ -95,6 +102,7 @@ const props = defineProps({
   yandexMarketSandboxDeliverySaving: { type: String, default: '' },
   deliverYandexMarketSandboxOrder: { type: Function, default: async () => ({ ok: false }) },
   issueYandexMarketSandboxOrderFromPool: { type: Function, default: async () => ({ ok: false }) },
+  sendYandexMarketSandboxOrderToMarket: { type: Function, default: async () => ({ ok: false }) },
   openMarketplaceKeyPool: { type: Function, default: () => {} },
   loadMarketplaceKeyPoolFor: { type: Function, default: () => {} },
   marketplaceKeyPool: { type: Object, default: () => ({ free_count: 0, reserved_count: 0, delivered_count: 0, expired_count: 0, total: 0, page: 1, page_size: 20, items: [] }) },
@@ -121,6 +129,11 @@ const pendingSandboxOrders = computed(() => {
   ))
 })
 
+const readyForMarketOrders = computed(() => {
+  // Показывает только уже закрепленные коды, которые оператор еще не отправлял во внешний test-Маркет.
+  return props.yandexMarketOrders.filter((order) => String(order?.sandbox_delivery_status || '') === 'locally_issued')
+})
+
 function orderKey(order) {
   // Собирает стабильный ключ формы, чтобы несколько позиций одного заказа не смешивали введенные коды.
   return `${Number(order?.order_id || 0)}:${Number(order?.item_id || 0)}`
@@ -145,6 +158,11 @@ async function issueFromPool(order) {
   // Выдает точное количество из локального test-пула по явному клику оператора.
   const result = await props.issueYandexMarketSandboxOrderFromPool(order)
   if (result?.ok) await props.loadMarketplaceKeyPool()
+}
+
+async function sendToMarket(order) {
+  // Передает ключ во внешний API только после диалога подтверждения из общего обработчика.
+  await props.sendYandexMarketSandboxOrderToMarket(order)
 }
 
 function toggleSupplier() {

@@ -240,6 +240,33 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertIn("только сохраненным fake-заказам", response.json()["detail"])
 
+    # Внешняя отправка возможна только для уже закрепленного fake-ключа и идет в test-Маркет одним вызовом.
+    def test_sandbox_send_to_market_submits_locally_issued_key(self):
+        def q1_handler(sql, _params):
+            if "FROM app.marketplace_yandex_sandbox_deliveries AS delivery" in sql:
+                return ("PSN-500", 1, "manual", "locally_issued", "PROCESSING", True)
+            return None
+
+        client, writes = self.create_client(rows=[("TEST-CODE-1",)], q1_handler=q1_handler)
+        env = {
+            "YANDEX_MARKET_TEST_INCLUDE_FAKE_ORDERS": "true",
+            "YANDEX_MARKET_TEST_SANDBOX_ACTIONS_ENABLED": "true",
+            "YANDEX_MARKET_TEST_SANDBOX_MARKET_DELIVERY_ENABLED": "true",
+            "MARKETPLACE_KEY_POOL_SECRET": "x" * 32,
+        }
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch.object(yandex_market_catalog_api, "deliver_yandex_market_digital_goods", return_value={"status": "OK"}) as deliver,
+        ):
+            with client:
+                response = client.post("/marketplaces/yandex/sandbox/orders/501/items/99/send-to-market?store_code=test")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "market_submitted")
+        deliver.assert_called_once_with(501, item_id=99, codes=["TEST-CODE-1"], store_code="test")
+        self.assertTrue(any("market_sending" in sql for sql, _params in writes))
+        self.assertTrue(any("market_submitted" in sql for sql, _params in writes))
+
     # Все маршруты каталога остаются операцией владельца, как и Ozon на вкладке товаров.
     def test_routes_require_owner_role(self):
         required_roles = []
