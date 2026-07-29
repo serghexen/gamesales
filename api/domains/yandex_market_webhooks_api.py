@@ -88,6 +88,8 @@ def mount_yandex_market_webhooks_routes(
     psycopg,
     exec1,
 ) -> None:
+    # Маркет добавляет /notification к URL, сохранённому в настройке API-уведомления.
+    @app.post("/marketplaces/yandex/notifications/notification", include_in_schema=False)
     @app.post("/marketplaces/yandex/notifications", include_in_schema=False)
     async def receive_yandex_market_notification(request: Request):
         # Проверяем адрес до чтения тела, чтобы неизвестные запросы не расходовали ресурсы и не попадали в журнал.

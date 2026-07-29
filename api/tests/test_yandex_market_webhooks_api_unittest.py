@@ -58,7 +58,7 @@ class YandexMarketWebhookTests(unittest.TestCase):
         payload = {"notificationType": "PING", "time": "2026-07-28T08:00:00Z"}
 
         response = client.post(
-            "/marketplaces/yandex/notifications",
+            "/marketplaces/yandex/notifications/notification",
             json=payload,
             headers={"X-Forwarded-For": "5.45.207.10"},
         )
