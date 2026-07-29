@@ -62,6 +62,7 @@ class YandexMarketCatalogDetailsOut(YandexMarketCatalogItemOut):
 
 class YandexMarketStockSettingsIn(BaseModel):
     manual_stock_limit: int = Field(default=0, ge=0, le=100000)
+    activation_instruction: str = Field(default="", max_length=5000)
 
 
 class YandexMarketStockSettingsOut(YandexMarketStockSettingsIn):
@@ -351,7 +352,7 @@ def mount_yandex_market_catalog_routes(
         row = q1(
             conn,
             """
-            SELECT manual_stock_limit, published_stock, last_stock_sync_at
+            SELECT manual_stock_limit, activation_instruction, published_stock, last_stock_sync_at
             FROM app.marketplace_yandex_stock_settings
             WHERE store_code=%s AND offer_id=%s
             """,
@@ -362,8 +363,9 @@ def mount_yandex_market_catalog_routes(
         return YandexMarketStockSettingsOut(
             offer_id=offer_id,
             manual_stock_limit=max(0, int(row[0] or 0)),
-            published_stock=max(0, int(row[1] or 0)),
-            last_stock_sync_at=row[2],
+            activation_instruction=str(row[1] or ""),
+            published_stock=max(0, int(row[2] or 0)),
+            last_stock_sync_at=row[3],
         )
 
     @app.post("/marketplaces/yandex/catalog/sync", response_model=YandexMarketCatalogSyncOut)
@@ -714,10 +716,13 @@ def mount_yandex_market_catalog_routes(
             delivery = q1(
                 conn,
                 """
-                SELECT delivery.offer_id, delivery.required_qty, delivery.delivery_source, delivery.status, orders.status, orders.is_sandbox
+                SELECT delivery.offer_id, delivery.required_qty, delivery.delivery_source, delivery.status, orders.status, orders.is_sandbox,
+                       settings.activation_instruction
                 FROM app.marketplace_yandex_sandbox_deliveries AS delivery
                 JOIN app.marketplace_yandex_order_items AS orders
                   ON orders.store_code=delivery.store_code AND orders.order_id=delivery.order_id AND orders.item_id=delivery.item_id
+                LEFT JOIN app.marketplace_yandex_stock_settings AS settings
+                  ON settings.store_code=delivery.store_code AND settings.offer_id=delivery.offer_id
                 WHERE delivery.store_code=%s AND delivery.order_id=%s AND delivery.item_id=%s
                 FOR UPDATE
                 """,
@@ -729,6 +734,9 @@ def mount_yandex_market_catalog_routes(
                 raise HTTPException(409, "Передать ключ в Маркет можно только для fake-заказа в статусе PROCESSING")
             if str(delivery[3] or "") != "locally_issued":
                 raise HTTPException(409, "Эта локальная выдача уже отправляется или была отправлена в Маркет")
+            instruction = str(delivery[6] or "").strip()
+            if not instruction:
+                raise HTTPException(409, "Заполните инструкцию покупателю: она будет передана в slip Яндекс Маркета")
             offer_id, required_qty, delivery_source = str(delivery[0]), int(delivery[1]), str(delivery[2])
             rows = qall(
                 conn,
@@ -760,7 +768,13 @@ def mount_yandex_market_catalog_routes(
             )
             conn.commit()
         try:
-            deliver_yandex_market_digital_goods(order_id, item_id=item_id, codes=codes, store_code=normalized_store_code)
+            deliver_yandex_market_digital_goods(
+                order_id,
+                item_id=item_id,
+                codes=codes,
+                slip=instruction,
+                store_code=normalized_store_code,
+            )
         except HTTPException as error:
             # При сетевой/серверной ошибке ответ мог потеряться после приема Маркетом, поэтому повтор блокируется.
             definite_rejection = 400 <= int(error.status_code) < 500
@@ -827,12 +841,21 @@ def mount_yandex_market_catalog_routes(
             exec1(
                 conn,
                 """
-                INSERT INTO app.marketplace_yandex_stock_settings(store_code, offer_id, manual_stock_limit, updated_at)
-                VALUES (%s, %s, %s, now())
+                INSERT INTO app.marketplace_yandex_stock_settings(
+                  store_code, offer_id, manual_stock_limit, activation_instruction, updated_at
+                )
+                VALUES (%s, %s, %s, %s, now())
                 ON CONFLICT (store_code, offer_id) DO UPDATE
-                SET manual_stock_limit=excluded.manual_stock_limit, updated_at=now()
+                SET manual_stock_limit=excluded.manual_stock_limit,
+                    activation_instruction=excluded.activation_instruction,
+                    updated_at=now()
                 """,
-                (normalized_store_code, offer_id, payload.manual_stock_limit),
+                (
+                    normalized_store_code,
+                    offer_id,
+                    payload.manual_stock_limit,
+                    payload.activation_instruction.strip(),
+                ),
             )
             conn.commit()
         if publish_stock:

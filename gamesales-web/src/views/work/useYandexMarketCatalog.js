@@ -26,6 +26,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
   const yandexMarketStockSettings = reactive({
     offer_id: '',
     manual_stock_limit: 0,
+    activation_instruction: '',
     published_stock: 0,
     last_stock_sync_at: null,
     market_available_stock: null,
@@ -52,6 +53,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     Object.assign(yandexMarketStockSettings, {
       offer_id: String(source.offer_id || yandexMarketSelectedOfferId.value || ''),
       manual_stock_limit: Math.max(0, Number(source.manual_stock_limit || 0)),
+      activation_instruction: String(source.activation_instruction || ''),
       published_stock: Math.max(0, Number(source.published_stock || 0)),
       last_stock_sync_at: source.last_stock_sync_at || null,
       market_available_stock: source.market_available_stock === null || source.market_available_stock === undefined ? null : Math.max(0, Number(source.market_available_stock || 0)),
@@ -143,6 +145,8 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     const requestId = ++detailsRequestSeq
     showYandexMarketCatalog.value = false
     showYandexMarketCatalogDetails.value = true
+    // Запоминает SKU открытой карточки, чтобы инструкция сохранялась именно для него.
+    yandexMarketSelectedOfferId.value = offerId
     yandexMarketCatalogDetails.value = null
     yandexMarketCatalogDetailsError.value = ''
     yandexMarketOrders.value = []
@@ -345,13 +349,16 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     try {
       const saved = await apiPut(
         yandexMarketTestPath(`/marketplaces/yandex/catalog/${encodeURIComponent(offerId)}/stock-settings${publishStock ? '?publish_stock=true' : ''}`),
-        { manual_stock_limit: Math.max(0, Number(yandexMarketStockSettings.manual_stock_limit || 0)) },
+        {
+          manual_stock_limit: Math.max(0, Number(yandexMarketStockSettings.manual_stock_limit || 0)),
+          activation_instruction: String(yandexMarketStockSettings.activation_instruction || '').trim(),
+        },
         { token: auth.state.token },
       )
       applyYandexMarketStockSettings(saved)
       yandexMarketCatalogOk.value = publishStock
         ? `На Яндекс Маркете опубликован остаток: ${yandexMarketStockSettings.published_stock}`
-        : 'Лимит остатка сохранён'
+        : 'Инструкция покупателю сохранена'
     } catch (error) {
       yandexMarketCatalogError.value = yandexMarketError(error, (
         publishStock ? 'Не удалось обновить остаток на Яндекс Маркете' : 'Не удалось сохранить лимит остатка'

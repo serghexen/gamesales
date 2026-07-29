@@ -199,16 +199,20 @@ def deliver_yandex_market_digital_goods(
     *,
     item_id: int,
     codes: list[str],
+    slip: str,
     store_code: str | None = None,
 ) -> dict[str, Any]:
     # Передает полный комплект ключей одной позиции в test-Маркет по официальному DBS-методу.
     normalized_order_id = int(order_id)
     normalized_item_id = int(item_id)
     prepared_codes = [str(code or "").strip() for code in codes if str(code or "").strip()]
+    prepared_slip = str(slip or "").strip()
     if normalized_order_id <= 0 or normalized_item_id <= 0 or not prepared_codes:
         raise HTTPException(400, "Yandex Market digital delivery requires an order, item and at least one key")
     if len(prepared_codes) != len(set(prepared_codes)):
         raise HTTPException(400, "Yandex Market digital delivery codes must be unique")
+    if not prepared_slip:
+        raise HTTPException(400, "Yandex Market digital delivery requires a buyer instruction")
     _store_code, token, _business_id, campaign_id, timeout = _catalog_context(store_code)
     base_url = str(os.getenv("YANDEX_MARKET_BASE_URL", YANDEX_MARKET_BASE_URL) or YANDEX_MARKET_BASE_URL).rstrip("/")
     return _request_json(
@@ -219,7 +223,7 @@ def deliver_yandex_market_digital_goods(
             "items": [{
                 "id": normalized_item_id,
                 "codes": prepared_codes,
-                "slip": "Активируйте код в PlayStation Store.",
+                "slip": prepared_slip,
                 "activate_till": "2099-12-31",
             }],
         },

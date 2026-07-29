@@ -104,7 +104,7 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
     def test_publish_stock_calls_market_only_for_explicit_request(self):
         def q1_handler(sql, _params):
             if "FROM app.marketplace_yandex_stock_settings" in sql:
-                return (7, 7, datetime(2026, 7, 25, tzinfo=timezone.utc))
+                return (7, "Активируйте код в PlayStation Store.", 7, datetime(2026, 7, 25, tzinfo=timezone.utc))
             return None
 
         client, _writes = self.create_client(q1_handler=q1_handler)
@@ -244,7 +244,7 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
     def test_sandbox_send_to_market_submits_locally_issued_key(self):
         def q1_handler(sql, _params):
             if "FROM app.marketplace_yandex_sandbox_deliveries AS delivery" in sql:
-                return ("PSN-500", 1, "manual", "locally_issued", "PROCESSING", True)
+                return ("PSN-500", 1, "manual", "locally_issued", "PROCESSING", True, "Инструкция для покупателя")
             return None
 
         client, writes = self.create_client(rows=[("TEST-CODE-1",)], q1_handler=q1_handler)
@@ -263,7 +263,13 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "market_submitted")
-        deliver.assert_called_once_with(501, item_id=99, codes=["TEST-CODE-1"], store_code="test")
+        deliver.assert_called_once_with(
+            501,
+            item_id=99,
+            codes=["TEST-CODE-1"],
+            slip="Инструкция для покупателя",
+            store_code="test",
+        )
         self.assertTrue(any("market_sending" in sql for sql, _params in writes))
         self.assertTrue(any("market_submitted" in sql for sql, _params in writes))
 

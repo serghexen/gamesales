@@ -64,7 +64,11 @@ class YandexMarketCatalogServiceTests(unittest.TestCase):
             patch.object(yandex_market_catalog_service, "_request_json", return_value={"status": "OK"}) as request_json,
         ):
             yandex_market_catalog_service.deliver_yandex_market_digital_goods(
-                501, item_id=99, codes=["TEST-CODE-1"], store_code="test",
+                501,
+                item_id=99,
+                codes=["TEST-CODE-1"],
+                slip="Активируйте код на странице погашения.",
+                store_code="test",
             )
 
         args, kwargs = request_json.call_args
@@ -72,6 +76,7 @@ class YandexMarketCatalogServiceTests(unittest.TestCase):
         self.assertIn("/v2/campaigns/149196813/orders/501/deliverDigitalGoods", args[1])
         self.assertEqual(kwargs["payload"]["items"][0]["id"], 99)
         self.assertEqual(kwargs["payload"]["items"][0]["codes"], ["TEST-CODE-1"])
+        self.assertEqual(kwargs["payload"]["items"][0]["slip"], "Активируйте код на странице погашения.")
 
     # Чтение остатков использует POST и суммирует только доступный для продажи тип AVAILABLE.
     def test_fetch_stock_reads_available_count_without_update(self):
