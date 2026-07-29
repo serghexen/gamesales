@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from .yandex_market_service import (
     YANDEX_MARKET_BASE_URL,
     _env_int,
+    _env_store_bool,
     _env_store_int,
     _request_json,
     _required_store_env,
@@ -19,6 +20,11 @@ from .yandex_market_service import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def _include_fake_yandex_market_orders(store_code: str | None = None) -> bool:
+    # Включаем тестовые заказы только для явно выбранного кабинета Маркета.
+    return _env_store_bool("INCLUDE_FAKE_ORDERS", store_code=store_code, default=False)
 
 
 def _catalog_context(store_code: str | None) -> tuple[str, str, int, int, int]:
@@ -36,6 +42,35 @@ def _catalog_context(store_code: str | None) -> tuple[str, str, int, int, int]:
     base_url = str(os.getenv("YANDEX_MARKET_BASE_URL", YANDEX_MARKET_BASE_URL) or YANDEX_MARKET_BASE_URL).rstrip("/")
     timeout = max(5, _env_int("YANDEX_MARKET_TIMEOUT_SEC", 30))
     return normalized_store_code, token, business_id, campaign_id, timeout
+
+
+def find_yandex_market_store_code_by_campaign_id(campaign_id: int) -> str | None:
+    # Находит локальный код магазина по campaignId из уведомления, чтобы читать заказ из нужного кабинета.
+    target_campaign_id = int(campaign_id)
+    suffix = "_CAMPAIGN_ID"
+    scoped_prefix = "YANDEX_MARKET_"
+    matched_codes: list[str] = []
+    for env_name, env_value in os.environ.items():
+        if not env_name.startswith(scoped_prefix) or not env_name.endswith(suffix):
+            continue
+        store_code = env_name[len(scoped_prefix) : -len(suffix)]
+        if not store_code:
+            continue
+        try:
+            configured_campaign_id = int(str(env_value or "").strip())
+        except (TypeError, ValueError):
+            continue
+        if configured_campaign_id == target_campaign_id:
+            matched_codes.append(normalize_yandex_market_store_code(store_code))
+    if matched_codes:
+        return sorted(set(matched_codes))[0]
+
+    # Поддерживает основной магазин без суффикса, который исторически считается ASAT.
+    try:
+        default_campaign_id = int(str(os.getenv("YANDEX_MARKET_CAMPAIGN_ID", "")).strip())
+    except (TypeError, ValueError):
+        return None
+    return "asat" if default_campaign_id == target_campaign_id else None
 
 
 def _catalog_url(base_url: str, business_id: int, *, page_token: str = "") -> str:
@@ -193,7 +228,11 @@ def fetch_yandex_market_orders(
     pages_loaded = 0
     has_more = False
 
-    payload: dict[str, Any] = {"campaignIds": [campaign_id], "programTypes": ["DBS"], "fake": False}
+    payload: dict[str, Any] = {
+        "campaignIds": [campaign_id],
+        "programTypes": ["DBS"],
+        "fake": _include_fake_yandex_market_orders(normalized_store_code),
+    }
     if updated_from:
         # Повторяем последние пять минут, чтобы не потерять обновление, пришедшее на границе двух загрузок.
         checkpoint = updated_from.astimezone(timezone.utc) if updated_from.tzinfo else updated_from.replace(tzinfo=timezone.utc)
@@ -250,3 +289,31 @@ def fetch_yandex_market_orders(
         has_more,
     )
     return {"orders": orders, "pages_loaded": pages_loaded, "has_more": has_more}
+
+
+def fetch_yandex_market_order(order_id: int, *, store_code: str | None = None) -> dict[str, Any]:
+    # Запрашивает ровно один заказ для уведомления и не меняет его статус или выдачу в Маркете.
+    normalized_order_id = int(order_id)
+    normalized_store_code, token, business_id, campaign_id, timeout = _catalog_context(store_code)
+    base_url = str(os.getenv("YANDEX_MARKET_BASE_URL", YANDEX_MARKET_BASE_URL) or YANDEX_MARKET_BASE_URL).rstrip("/")
+    data = _request_json(
+        "POST",
+        f"{base_url}/v1/businesses/{business_id}/orders?limit=1",
+        token=token,
+        payload={
+            "campaignIds": [campaign_id],
+            "orderIds": [normalized_order_id],
+            "programTypes": ["DBS"],
+            "fake": _include_fake_yandex_market_orders(normalized_store_code),
+        },
+        timeout=timeout,
+    )
+    result = data.get("result") if isinstance(data.get("result"), dict) else data
+    rows = result.get("orders") if isinstance(result, dict) and isinstance(result.get("orders"), list) else []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        row_order_id = row.get("orderId", row.get("id"))
+        if str(row_order_id or "") == str(normalized_order_id) and str(row.get("campaignId") or "") == str(campaign_id):
+            return row
+    raise HTTPException(404, f"Yandex Market order {normalized_order_id} was not found for {normalized_store_code}")

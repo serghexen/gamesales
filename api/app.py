@@ -282,6 +282,7 @@ from domains.marketplaces_api import mount_marketplaces_routes
 from domains.marketplace_key_pools_api import mount_marketplace_key_pool_routes
 from domains.yandex_market_catalog_api import mount_yandex_market_catalog_routes
 from domains.yandex_market_webhooks_api import mount_yandex_market_webhooks_routes
+from domains.yandex_market_webhook_processor import build_yandex_market_webhook_event_processor
 from domains.dashboard_api import mount_dashboard_routes
 from domains.products_api import mount_products_routes
 from domains.products_import_api import mount_products_import_routes
@@ -1167,12 +1168,19 @@ mount_marketplace_key_pool_routes(
     exec1=exec1,
     require_role=require_role,
 )
-# Подключает отдельный вход для уведомлений Маркета, не меняя каталоги и заказы.
+# Создает фоновое read-only чтение заказа после уведомления без выдачи ключей и изменений в Маркете.
+yandex_market_webhook_event_processor = build_yandex_market_webhook_event_processor(
+    DB_DSN=DB_DSN,
+    psycopg=pooled_psycopg,
+    q1=q1,
+    exec1=exec1,
+)
 mount_yandex_market_webhooks_routes(
     app,
     DB_DSN=DB_DSN,
     psycopg=pooled_psycopg,
-    exec1=exec1,
+    q1=q1,
+    process_event=yandex_market_webhook_event_processor,
 )
 mount_dashboard_routes(
     app,

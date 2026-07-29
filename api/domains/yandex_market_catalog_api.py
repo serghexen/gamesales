@@ -15,6 +15,7 @@ from .yandex_market_catalog_service import (
     update_yandex_market_catalog_archive,
     update_yandex_market_stock,
 )
+from .yandex_market_order_storage import save_yandex_market_order_snapshot
 
 
 class YandexMarketCatalogItemOut(BaseModel):
@@ -212,62 +213,16 @@ def mount_yandex_market_catalog_routes(
         remote_snapshot = fetch_yandex_market_orders(store_code=store_code, updated_from=updated_from)
         remote_orders = remote_snapshot.get("orders") if isinstance(remote_snapshot, dict) else []
         synced_at = datetime.now(timezone.utc)
-        imported_orders = 0
+        # Используем единое сохранение и для ручной загрузки, и для заказа из уведомления Маркета.
+        imported_orders = save_yandex_market_order_snapshot(
+            DB_DSN=DB_DSN,
+            psycopg=psycopg,
+            exec1=exec1,
+            store_code=store_code,
+            orders=remote_orders if isinstance(remote_orders, list) else [],
+            synced_at=synced_at,
+        )
         with psycopg.connect(DB_DSN) as conn:
-            for order in remote_orders:
-                order_id = optional_int(order.get("orderId"))
-                campaign_id = optional_int(order.get("campaignId"))
-                if not order_id or not campaign_id:
-                    continue
-                items = order.get("items") if isinstance(order.get("items"), list) else []
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    item_id = optional_int(item.get("id"))
-                    offer_id = first_text(item.get("offerId"))
-                    if not item_id or not offer_id:
-                        continue
-                    prices = item.get("prices") if isinstance(item.get("prices"), dict) else {}
-                    payment = prices.get("payment") if isinstance(prices.get("payment"), dict) else {}
-                    exec1(
-                        conn,
-                        """
-                        INSERT INTO app.marketplace_yandex_order_items(
-                          store_code, order_id, item_id, campaign_id, offer_id, item_name, quantity,
-                          status, substatus, price, currency_code, created_at, updated_at, synced_at
-                        )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (store_code, order_id, item_id) DO UPDATE
-                        SET campaign_id=excluded.campaign_id,
-                            offer_id=excluded.offer_id,
-                            item_name=excluded.item_name,
-                            quantity=excluded.quantity,
-                            status=excluded.status,
-                            substatus=excluded.substatus,
-                            price=excluded.price,
-                            currency_code=excluded.currency_code,
-                            created_at=excluded.created_at,
-                            updated_at=excluded.updated_at,
-                            synced_at=excluded.synced_at
-                        """,
-                        (
-                            store_code,
-                            order_id,
-                            item_id,
-                            campaign_id,
-                            offer_id,
-                            first_text(item.get("offerName")),
-                            nonnegative_int(item.get("count")),
-                            first_text(order.get("status")),
-                            first_text(order.get("substatus")),
-                            first_text(payment.get("value")),
-                            first_text(payment.get("currencyId")),
-                            optional_datetime(order.get("creationDate")),
-                            optional_datetime(order.get("updateDate")),
-                            synced_at,
-                        ),
-                    )
-                    imported_orders += 1
             # Храним отдельную отметку даже при нулевом результате, чтобы не перечитывать последние 30 дней снова.
             exec1(
                 conn,
