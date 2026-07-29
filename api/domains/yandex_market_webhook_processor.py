@@ -6,6 +6,7 @@ from typing import Callable
 from .yandex_market_catalog_service import (
     fetch_yandex_market_order,
     find_yandex_market_store_code_by_campaign_id,
+    yandex_market_sandbox_orders_enabled,
 )
 from .yandex_market_order_storage import save_yandex_market_order_snapshot
 
@@ -82,6 +83,7 @@ def build_yandex_market_webhook_event_processor(*, DB_DSN: str, psycopg, q1, exe
                 exec1=exec1,
                 store_code=store_code,
                 orders=[order],
+                is_sandbox=yandex_market_sandbox_orders_enabled(store_code),
                 synced_at=datetime.now(timezone.utc),
             )
             if not saved:

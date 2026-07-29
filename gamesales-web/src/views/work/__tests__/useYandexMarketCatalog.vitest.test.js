@@ -19,14 +19,14 @@ describe('useYandexMarketCatalog', () => {
 
     await instance.syncYandexMarketCatalog()
 
-    expect(apiPost).toHaveBeenCalledWith('/marketplaces/yandex/catalog/sync', {}, { token: 'market-token' })
-    expect(apiGet).toHaveBeenCalledWith('/marketplaces/yandex/catalog', { token: 'market-token' })
+    expect(apiPost).toHaveBeenCalledWith('/marketplaces/yandex/catalog/sync?store_code=test', {}, { token: 'market-token' })
+    expect(apiGet).toHaveBeenCalledWith('/marketplaces/yandex/catalog?store_code=test', { token: 'market-token' })
     expect(instance.yandexMarketCatalogItems.value).toEqual([{ offer_id: 'PSN-500' }])
   })
 
   it('opens card details and reads the market stock without a PUT request', async () => {
     const apiGet = vi.fn().mockImplementation((url) => {
-      if (url.endsWith('/stock-settings')) return Promise.resolve({ offer_id: 'PSN-500', market_available_stock: 2 })
+      if (url.includes('/stock-settings')) return Promise.resolve({ offer_id: 'PSN-500', market_available_stock: 2 })
       return Promise.resolve({ offer_id: 'PSN-500', title: 'PSN 500' })
     })
     const apiPut = vi.fn()
@@ -37,8 +37,8 @@ describe('useYandexMarketCatalog', () => {
     await instance.openYandexMarketCatalogDetails({ offer_id: 'PSN-500' })
 
     expect(instance.showYandexMarketCatalogDetails.value).toBe(true)
-    expect(apiGet).toHaveBeenCalledWith('/marketplaces/yandex/catalog/PSN-500', { token: 'market-token' })
-    expect(apiGet).toHaveBeenCalledWith('/marketplaces/yandex/catalog/PSN-500/stock-settings', { token: 'market-token' })
+    expect(apiGet).toHaveBeenCalledWith('/marketplaces/yandex/catalog/PSN-500?store_code=test', { token: 'market-token' })
+    expect(apiGet).toHaveBeenCalledWith('/marketplaces/yandex/catalog/PSN-500/stock-settings?store_code=test', { token: 'market-token' })
     expect(instance.yandexMarketStockSettings.market_available_stock).toBe(2)
     expect(apiPut).not.toHaveBeenCalled()
   })
@@ -55,6 +55,22 @@ describe('useYandexMarketCatalog', () => {
     expect(instance.showYandexMarketCatalogDetails.value).toBe(false)
     instance.closeYandexMarketDigitalSettings()
     expect(instance.showYandexMarketCatalogDetails.value).toBe(true)
+  })
+
+  it('issues a fake order only through the local sandbox endpoints', async () => {
+    const apiPost = vi.fn().mockResolvedValue({ status: 'locally_issued' })
+    const instance = useYandexMarketCatalog({
+      auth: { state: { token: 'market-token' } }, apiGet: vi.fn(), apiPost, apiPut: vi.fn(), mapApiError: vi.fn(), requestDealConfirm: vi.fn(),
+    })
+    const order = { order_id: 501, item_id: 99, offer_id: 'PSN-500', quantity: 2 }
+    instance.yandexMarketOrders.value = [order]
+
+    await instance.deliverYandexMarketSandboxOrder(order, ['AAAA-1111', 'BBBB-2222'])
+    await instance.issueYandexMarketSandboxOrderFromPool({ order_id: 502, item_id: 100, offer_id: 'PSN-500', quantity: 1 })
+
+    expect(apiPost).toHaveBeenCalledWith('/marketplaces/yandex/sandbox/orders/501/items/99/deliver?store_code=test', { codes: ['AAAA-1111', 'BBBB-2222'] }, { token: 'market-token' })
+    expect(apiPost).toHaveBeenCalledWith('/marketplaces/yandex/sandbox/orders/502/items/100/issue-from-pool?store_code=test', {}, { token: 'market-token' })
+    expect(instance.yandexMarketOrders.value[0].sandbox_delivery_status).toBe('locally_issued')
   })
 })
 
@@ -118,23 +134,34 @@ describe('WorkYandexMarketCatalogDetailsModal', () => {
 })
 
 describe('WorkYandexMarketDigitalSettingsModal', () => {
-  it('matches the Ozon key layout but keeps issue controls disabled', async () => {
+  it('keeps auto-issue disabled but lets an operator issue one fake order locally', async () => {
+    const deliverYandexMarketSandboxOrder = vi.fn().mockResolvedValue({ ok: true })
+    const issueYandexMarketSandboxOrderFromPool = vi.fn().mockResolvedValue({ ok: true })
     const wrapper = mount(WorkYandexMarketDigitalSettingsModal, {
-      props: { showYandexMarketDigitalSettings: true, closeYandexMarketDigitalSettings: vi.fn(), yandexMarketOfferId: 'PSN-500', openMarketplaceKeyPool: vi.fn() },
+      props: {
+        showYandexMarketDigitalSettings: true, closeYandexMarketDigitalSettings: vi.fn(), yandexMarketOfferId: 'PSN-500', openMarketplaceKeyPool: vi.fn(),
+        yandexMarketOrders: [{ order_id: 501, item_id: 99, offer_id: 'PSN-500', quantity: 2, status: 'PROCESSING' }],
+        deliverYandexMarketSandboxOrder, issueYandexMarketSandboxOrderFromPool,
+      },
       global: { stubs: { teleport: true } },
     })
 
     expect(wrapper.text()).toContain('Ключи Яндекс Маркета')
     expect(wrapper.text()).toContain('Автовыдача')
-    expect(wrapper.text()).toContain('Ручная выдача')
+    expect(wrapper.text()).toContain('Локальная выдача fake-заказов')
     expect(wrapper.get('input[aria-label="Автовыдача пока не подключена"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('input[aria-label="Выдача из ручного пула пока не подключена"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('input[aria-label="Автоматическая выдача из ручного пула выключена"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('button[aria-label="Сохранить настройки"]').attributes('disabled')).toBeDefined()
     expect(wrapper.text()).toContain('Список ключей')
     expect(wrapper.find('.ozon-key-settings__block').classes()).not.toContain('is-open')
     await wrapper.get('.ozon-key-settings__block .ozon-catalog-details-modal__work-block-toggle').trigger('click')
     expect(wrapper.find('.ozon-digital-modal__supplier').text()).toContain('Товар')
     expect(wrapper.find('.ozon-digital-modal__supplier').text()).not.toContain('Номинал')
+    await wrapper.get('textarea[aria-label="Ручные ключи для fake-заказа 501"]').setValue('AAAA-1111\nBBBB-2222')
+    await wrapper.get('button.btn--primary').trigger('click')
+    expect(deliverYandexMarketSandboxOrder).toHaveBeenCalledWith(expect.objectContaining({ order_id: 501 }), ['AAAA-1111', 'BBBB-2222'])
+    await wrapper.get('button.btn--secondary').trigger('click')
+    expect(issueYandexMarketSandboxOrderFromPool).toHaveBeenCalledWith(expect.objectContaining({ item_id: 99 }))
   })
 })
 

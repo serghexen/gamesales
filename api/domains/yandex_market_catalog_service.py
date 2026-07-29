@@ -27,6 +27,20 @@ def _include_fake_yandex_market_orders(store_code: str | None = None) -> bool:
     return _env_store_bool("INCLUDE_FAKE_ORDERS", store_code=store_code, default=False)
 
 
+def yandex_market_sandbox_orders_enabled(store_code: str | None = None) -> bool:
+    # Помечает снимок sandbox только для явно выбранного test-магазина с включенными fake-заказами.
+    normalized_store_code = normalize_yandex_market_store_code(store_code)
+    return normalized_store_code == "test" and _include_fake_yandex_market_orders(normalized_store_code)
+
+
+def yandex_market_sandbox_actions_enabled(store_code: str | None = None) -> bool:
+    # Разрешает локальную выдачу только после отдельного явного включения sandbox-действий.
+    normalized_store_code = normalize_yandex_market_store_code(store_code)
+    return yandex_market_sandbox_orders_enabled(normalized_store_code) and _env_store_bool(
+        "SANDBOX_ACTIONS_ENABLED", store_code=normalized_store_code, default=False,
+    )
+
+
 def _catalog_context(store_code: str | None) -> tuple[str, str, int, int, int]:
     # Собирает реквизиты кабинета и магазина до обращения к товарным методам Маркета.
     normalized_store_code = normalize_yandex_market_store_code(store_code)

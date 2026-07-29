@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from hashlib import sha256
 from typing import Any
 import json
+import os
 
 from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -12,6 +14,8 @@ from .yandex_market_catalog_service import (
     fetch_yandex_market_orders,
     fetch_yandex_market_stock,
     normalize_yandex_market_store_code,
+    yandex_market_sandbox_actions_enabled,
+    yandex_market_sandbox_orders_enabled,
     update_yandex_market_catalog_archive,
     update_yandex_market_stock,
 )
@@ -78,6 +82,7 @@ class YandexMarketOrderOut(BaseModel):
     currency_code: str = ""
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    sandbox_delivery_status: str = ""
 
 
 class YandexMarketOrdersOut(BaseModel):
@@ -91,6 +96,19 @@ class YandexMarketOrdersSyncOut(BaseModel):
     pages_loaded: int = 0
     has_more: bool = False
     updated_from: datetime | None = None
+
+
+class YandexMarketSandboxDeliveryIn(BaseModel):
+    codes: list[str] = Field(min_length=1, max_length=100)
+
+
+class YandexMarketSandboxDeliveryOut(BaseModel):
+    order_id: int
+    item_id: int
+    offer_id: str
+    issued_qty: int
+    delivery_source: str
+    status: str
 
 
 def mount_yandex_market_catalog_routes(
@@ -197,6 +215,82 @@ def mount_yandex_market_catalog_routes(
             currency_code=str(row[8] or ""),
             created_at=row[9],
             updated_at=row[10],
+            sandbox_delivery_status=str(row[11] or "") if len(row) > 11 else "",
+        )
+
+    def sandbox_pool_secret() -> str:
+        # Использует тот же отдельный секрет пула, чтобы ручной код не хранился открытым даже в sandbox.
+        secret = str(os.getenv("MARKETPLACE_KEY_POOL_SECRET", "")).strip()
+        if len(secret) < 32:
+            raise HTTPException(503, "Для sandbox-выдачи задайте MARKETPLACE_KEY_POOL_SECRET длиной не менее 32 символов")
+        return secret
+
+    def sandbox_code_hash(code: str) -> str:
+        # Создает тот же отпечаток, что и общий пул: вручную введенный код нельзя потом загрузить повторно.
+        return sha256(f"marketplace-manual-key:v1:{code}".encode("utf-8")).hexdigest()
+
+    def sandbox_order_ref(store_code: str, order_id: int, item_id: int) -> str:
+        # Связывает ключ с одной позицией fake-заказа и не смешивает одинаковые номера разных магазинов.
+        return f"yandex-sandbox:{store_code}:{order_id}:{item_id}"
+
+    def require_yandex_market_sandbox(store_code: str) -> None:
+        # Останавливает локальную выдачу вне test-магазина до любых изменений в базе и без внешнего запроса.
+        if not yandex_market_sandbox_actions_enabled(store_code):
+            raise HTTPException(403, "Локальная выдача доступна только для fake-заказов test-магазина при включенном sandbox-флаге")
+
+    def sandbox_order_for_delivery(conn, store_code: str, order_id: int, item_id: int):
+        # Блокирует одну сохраненную fake-позицию, чтобы две вкладки не выдали ей разные ключи.
+        row = q1(
+            conn,
+            """
+            SELECT offer_id, quantity, status, is_sandbox
+            FROM app.marketplace_yandex_order_items
+            WHERE store_code=%s AND order_id=%s AND item_id=%s
+            FOR UPDATE
+            """,
+            (store_code, order_id, item_id),
+        )
+        if not row:
+            raise HTTPException(404, "Fake-заказ Яндекс Маркета не найден в локальном снимке")
+        if not bool(row[3]):
+            raise HTTPException(409, "Локально можно выдавать ключи только сохраненным fake-заказам")
+        if str(row[2] or "").upper() in {"CANCELLED", "DELIVERED"}:
+            raise HTTPException(409, "Для отмененного или завершенного fake-заказа ключ не выдается")
+        required_qty = nonnegative_int(row[1])
+        if required_qty <= 0:
+            raise HTTPException(409, "У fake-заказа не указано положительное количество ключей")
+        existing = q1(
+            conn,
+            """
+            SELECT status FROM app.marketplace_yandex_sandbox_deliveries
+            WHERE store_code=%s AND order_id=%s AND item_id=%s
+            FOR UPDATE
+            """,
+            (store_code, order_id, item_id),
+        )
+        if existing:
+            raise HTTPException(409, "Ключи для этой позиции fake-заказа уже локально зафиксированы")
+        return str(row[0]), required_qty
+
+    def finalize_sandbox_delivery(conn, *, store_code: str, order_id: int, item_id: int, offer_id: str, required_qty: int, source: str) -> YandexMarketSandboxDeliveryOut:
+        # Фиксирует только локальный результат; этот блок не вызывает API Маркета и не меняет статус заказа в кабинете.
+        exec1(
+            conn,
+            """
+            INSERT INTO app.marketplace_yandex_sandbox_deliveries(
+              store_code, order_id, item_id, offer_id, required_qty, delivery_source, status, issued_at, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, 'locally_issued', now(), now())
+            """,
+            (store_code, order_id, item_id, offer_id, required_qty, source),
+        )
+        return YandexMarketSandboxDeliveryOut(
+            order_id=order_id,
+            item_id=item_id,
+            offer_id=offer_id,
+            issued_qty=required_qty,
+            delivery_source=source,
+            status="locally_issued",
         )
 
     def sync_yandex_market_orders(store_code: str) -> YandexMarketOrdersSyncOut:
@@ -220,6 +314,7 @@ def mount_yandex_market_catalog_routes(
             exec1=exec1,
             store_code=store_code,
             orders=remote_orders if isinstance(remote_orders, list) else [],
+            is_sandbox=yandex_market_sandbox_orders_enabled(store_code),
             synced_at=synced_at,
         )
         with psycopg.connect(DB_DSN) as conn:
@@ -402,11 +497,15 @@ def mount_yandex_market_catalog_routes(
             rows = qall(
                 conn,
                 """
-                SELECT order_id, item_id, offer_id, item_name, quantity, status, substatus,
-                       price, currency_code, created_at, updated_at
-                FROM app.marketplace_yandex_order_items
-                WHERE store_code=%s AND offer_id=%s
-                ORDER BY created_at DESC NULLS LAST, order_id DESC, item_id DESC
+                SELECT orders.order_id, orders.item_id, orders.offer_id, orders.item_name, orders.quantity, orders.status, orders.substatus,
+                       orders.price, orders.currency_code, orders.created_at, orders.updated_at, COALESCE(deliveries.status, '')
+                FROM app.marketplace_yandex_order_items AS orders
+                LEFT JOIN app.marketplace_yandex_sandbox_deliveries AS deliveries
+                  ON deliveries.store_code=orders.store_code
+                 AND deliveries.order_id=orders.order_id
+                 AND deliveries.item_id=orders.item_id
+                WHERE orders.store_code=%s AND orders.offer_id=%s
+                ORDER BY orders.created_at DESC NULLS LAST, orders.order_id DESC, orders.item_id DESC
                 """,
                 (normalized_store_code, offer_id),
             )
@@ -418,6 +517,172 @@ def mount_yandex_market_catalog_routes(
         require_yandex_market_live()
         normalized_store_code = normalize_yandex_market_store_code(store_code)
         return sync_yandex_market_orders(normalized_store_code)
+
+    @app.post(
+        "/marketplaces/yandex/sandbox/orders/{order_id}/items/{item_id}/deliver",
+        response_model=YandexMarketSandboxDeliveryOut,
+    )
+    def deliver_yandex_market_sandbox_order_manually(
+        order_id: int,
+        item_id: int,
+        payload: YandexMarketSandboxDeliveryIn,
+        store_code: str = "test",
+        user=Depends(require_role("owner")),
+    ):
+        # Шифрует ручные коды и фиксирует их только в локальном sandbox, не отправляя их в Маркет.
+        normalized_store_code = normalize_yandex_market_store_code(store_code)
+        require_yandex_market_sandbox(normalized_store_code)
+        prepared_codes: list[str] = []
+        seen_codes: set[str] = set()
+        for raw_code in payload.codes:
+            code = str(raw_code or "").strip()
+            if not code or len(code) > 1024:
+                raise HTTPException(400, "Каждый ручной ключ должен быть непустым и короче 1025 символов")
+            if code in seen_codes:
+                raise HTTPException(400, "Один и тот же ручной ключ нельзя указать дважды")
+            seen_codes.add(code)
+            prepared_codes.append(code)
+        secret = sandbox_pool_secret()
+        order_ref = sandbox_order_ref(normalized_store_code, order_id, item_id)
+        with psycopg.connect(DB_DSN) as conn:
+            offer_id, required_qty = sandbox_order_for_delivery(conn, normalized_store_code, order_id, item_id)
+            if len(prepared_codes) != required_qty:
+                raise HTTPException(400, f"Для этой позиции нужно ключей: {required_qty}")
+            pool = q1(
+                conn,
+                """
+                INSERT INTO app.marketplace_manual_key_pools(marketplace, store_code, product_key)
+                VALUES ('yandex_market', %s, %s)
+                ON CONFLICT (marketplace, store_code, product_key)
+                DO UPDATE SET updated_at=now()
+                RETURNING id
+                """,
+                (normalized_store_code, offer_id),
+            )
+            pool_id = int(pool[0])
+            existing_keys: list[tuple[int, str]] = []
+            for code in prepared_codes:
+                existing = q1(
+                    conn,
+                    """
+                    SELECT id, pool_id, status, expires_at
+                    FROM app.marketplace_manual_keys
+                    WHERE code_hash=%s
+                    FOR UPDATE
+                    """,
+                    (sandbox_code_hash(code),),
+                )
+                if not existing:
+                    continue
+                if int(existing[1]) != pool_id:
+                    raise HTTPException(409, "Ручной ключ уже находится в другом пуле и не может быть выдан повторно")
+                if str(existing[2] or "") != "free":
+                    raise HTTPException(409, "Ручной ключ уже зарезервирован или выдан")
+                if existing[3] is not None and existing[3] < datetime.now(timezone.utc).date():
+                    raise HTTPException(409, "Ручной ключ уже истек и не может быть выдан")
+                existing_keys.append((int(existing[0]), code))
+            for key_id, _code in existing_keys:
+                exec1(
+                    conn,
+                    """
+                    UPDATE app.marketplace_manual_keys
+                    SET status='delivered', issued_order_ref=%s, issued_at=now(), updated_at=now()
+                    WHERE id=%s AND status='free'
+                    """,
+                    (order_ref, key_id),
+                )
+            existing_code_ids = {code for _key_id, code in existing_keys}
+            for code in prepared_codes:
+                if code in existing_code_ids:
+                    continue
+                exec1(
+                    conn,
+                    """
+                    INSERT INTO app.marketplace_manual_keys(
+                      pool_id, code_ciphertext, code_hash, code_suffix, status, issued_order_ref, issued_at
+                    )
+                    VALUES (%s, pgp_sym_encrypt(%s, %s, 'cipher-algo=aes256, compress-algo=0'), %s, %s, 'delivered', %s, now())
+                    """,
+                    (pool_id, code, secret, sandbox_code_hash(code), code[-4:], order_ref),
+                )
+            result = finalize_sandbox_delivery(
+                conn,
+                store_code=normalized_store_code,
+                order_id=order_id,
+                item_id=item_id,
+                offer_id=offer_id,
+                required_qty=required_qty,
+                source="manual",
+            )
+            conn.commit()
+        return result
+
+    @app.post(
+        "/marketplaces/yandex/sandbox/orders/{order_id}/items/{item_id}/issue-from-pool",
+        response_model=YandexMarketSandboxDeliveryOut,
+    )
+    def issue_yandex_market_sandbox_order_from_pool(
+        order_id: int,
+        item_id: int,
+        store_code: str = "test",
+        user=Depends(require_role("owner")),
+    ):
+        # Берет точное число свободных ключей с блокировкой и отмечает выдачу только в локальной истории.
+        normalized_store_code = normalize_yandex_market_store_code(store_code)
+        require_yandex_market_sandbox(normalized_store_code)
+        order_ref = sandbox_order_ref(normalized_store_code, order_id, item_id)
+        with psycopg.connect(DB_DSN) as conn:
+            offer_id, required_qty = sandbox_order_for_delivery(conn, normalized_store_code, order_id, item_id)
+            pool = q1(
+                conn,
+                """
+                SELECT id
+                FROM app.marketplace_manual_key_pools
+                WHERE marketplace='yandex_market' AND store_code=%s AND product_key=%s
+                """,
+                (normalized_store_code, offer_id),
+            )
+            if not pool:
+                raise HTTPException(409, "Для этой карточки нет ручного пула ключей")
+            keys = qall(
+                conn,
+                """
+                SELECT id
+                FROM app.marketplace_manual_keys
+                WHERE pool_id=%s
+                  AND status='free'
+                  AND (expires_at IS NULL OR expires_at >= current_date)
+                ORDER BY created_at ASC, id ASC
+                FOR UPDATE SKIP LOCKED
+                LIMIT %s
+                """,
+                (int(pool[0]), required_qty),
+            )
+            if len(keys) != required_qty:
+                raise HTTPException(409, f"В ручном пуле недостаточно свободных ключей: нужно {required_qty}, найдено {len(keys)}")
+            key_ids = [int(row[0]) for row in keys]
+            updated = exec1(
+                conn,
+                """
+                UPDATE app.marketplace_manual_keys
+                SET status='delivered', issued_order_ref=%s, issued_at=now(), updated_at=now()
+                WHERE id=ANY(%s) AND status='free'
+                """,
+                (order_ref, key_ids),
+            )
+            if updated is not None and int(updated) != len(key_ids):
+                raise HTTPException(409, "Часть ключей уже занята другой выдачей; повторите попытку")
+            result = finalize_sandbox_delivery(
+                conn,
+                store_code=normalized_store_code,
+                order_id=order_id,
+                item_id=item_id,
+                offer_id=offer_id,
+                required_qty=required_qty,
+                source="pool",
+            )
+            conn.commit()
+        return result
 
     @app.get("/marketplaces/yandex/catalog/{offer_id}/stock-settings", response_model=YandexMarketStockSettingsOut)
     def get_yandex_market_stock_settings(offer_id: str, store_code: str = "asat", user=Depends(require_role("owner"))):

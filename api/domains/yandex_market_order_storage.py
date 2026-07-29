@@ -48,6 +48,7 @@ def save_yandex_market_order_snapshot(
     exec1,
     store_code: str,
     orders: list[dict[str, Any]],
+    is_sandbox: bool = False,
     synced_at: datetime | None = None,
 ) -> int:
     # Сохраняет локальный снимок позиций заказов и не вызывает выдачу, остатки или изменение статуса в Маркете.
@@ -78,9 +79,9 @@ def save_yandex_market_order_snapshot(
                     """
                     INSERT INTO app.marketplace_yandex_order_items(
                       store_code, order_id, item_id, campaign_id, offer_id, item_name, quantity,
-                      status, substatus, price, currency_code, created_at, updated_at, synced_at
+                      status, substatus, price, currency_code, is_sandbox, created_at, updated_at, synced_at
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (store_code, order_id, item_id) DO UPDATE
                     SET campaign_id=excluded.campaign_id,
                         offer_id=excluded.offer_id,
@@ -90,6 +91,7 @@ def save_yandex_market_order_snapshot(
                         substatus=excluded.substatus,
                         price=excluded.price,
                         currency_code=excluded.currency_code,
+                        is_sandbox=excluded.is_sandbox,
                         created_at=excluded.created_at,
                         updated_at=excluded.updated_at,
                         synced_at=excluded.synced_at
@@ -106,6 +108,7 @@ def save_yandex_market_order_snapshot(
                         first_text(order.get("substatus")),
                         first_text(payment.get("value"), item.get("price")),
                         first_text(payment.get("currencyId"), order.get("currency")),
+                        bool(is_sandbox),
                         optional_datetime(order.get("creationDate")),
                         optional_datetime(first_text(order.get("updateDate"), order.get("updatedAt"))),
                         saved_at,
