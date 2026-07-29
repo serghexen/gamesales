@@ -104,7 +104,7 @@ describe('useOzonCatalog', () => {
   it('publishes a manual limit only after the explicit stock action', async () => {
     const { apiGet, apiPut, catalog } = createHarness()
     apiGet
-      .mockResolvedValueOnce({ external_product_id: 103, offer_id: 'PS5-6', manual_stock_limit: 0 })
+      .mockResolvedValueOnce({ external_product_id: 103, offer_id: 'PS5-6', manual_stock_limit: 0, auto_issue_enabled: true, pool_issue_enabled: true })
       .mockResolvedValueOnce({ items: [] })
     apiPut.mockResolvedValueOnce({ external_product_id: 103, offer_id: 'PS5-6', manual_stock_limit: 1, published_stock: 1, available_stock: 1 })
 
@@ -117,7 +117,7 @@ describe('useOzonCatalog', () => {
 
     expect(apiPut).toHaveBeenCalledWith(
       '/marketplaces/ozon/catalog/103/digital-settings?publish_stock=true&update_supplier=true',
-      expect.objectContaining({ offer_id: 'PS5-6', manual_stock_limit: 1, auto_issue_enabled: false, pool_issue_enabled: false }),
+      expect.objectContaining({ offer_id: 'PS5-6', manual_stock_limit: 1, auto_issue_enabled: true, pool_issue_enabled: true }),
       { token: 'ozon-token' },
     )
     expect(catalog.ozonDigitalSettings.published_stock).toBe(1)
