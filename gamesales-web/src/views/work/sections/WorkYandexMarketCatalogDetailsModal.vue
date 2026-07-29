@@ -34,12 +34,9 @@
                     </label>
                     <label class="field">
                       <span>Инструкция покупателю</span>
-                      <textarea class="input textarea" rows="3" readonly placeholder="Например: активируйте ключ в PlayStation Store." aria-label="Инструкция покупателю"></textarea>
+                      <textarea v-model="yandexMarketStockSettings.activation_instruction" class="input textarea" rows="3" placeholder="Например: активируйте ключ в PlayStation Store." aria-label="Инструкция покупателю"></textarea>
                     </label>
-                    <label class="field">
-                      <span>Сообщение при проблеме</span>
-                      <textarea class="input textarea" rows="3" readonly placeholder="Произошла ошибка, обратитесь в поддержку." aria-label="Сообщение при проблеме"></textarea>
-                    </label>
+                    <button class="btn btn--primary ozon-catalog-details-modal__stock-submit" type="button" :disabled="yandexMarketStockSettingsSaving" @click="saveYandexMarketStockSettings()">{{ yandexMarketStockSettingsSaving ? 'Сохраняем…' : 'Сохранить инструкцию' }}</button>
                   </div>
                 </div>
               </section>
@@ -95,7 +92,7 @@ import { computed, ref, watch } from 'vue'
 import WorkHamsterLoader from './WorkHamsterLoader.vue'
 
 const props = defineProps({
-  showYandexMarketCatalogDetails: { type: Boolean, required: true }, closeYandexMarketCatalogDetails: { type: Function, required: true }, openYandexMarketDigitalSettings: { type: Function, required: true }, yandexMarketCatalogDetails: { type: Object, default: null }, yandexMarketCatalogDetailsLoading: { type: Boolean, required: true }, yandexMarketCatalogDetailsError: { type: String, default: '' }, yandexMarketStockSettings: { type: Object, required: true }, yandexMarketOrders: { type: Array, default: () => [] }, yandexMarketOrdersLoading: { type: Boolean, required: true }, yandexMarketOrdersSyncing: { type: Boolean, required: true }, yandexMarketOrdersLastSyncedAt: { type: String, default: null }, loadYandexMarketOrders: { type: Function, required: true }, syncYandexMarketOrders: { type: Function, required: true },
+  showYandexMarketCatalogDetails: { type: Boolean, required: true }, closeYandexMarketCatalogDetails: { type: Function, required: true }, openYandexMarketDigitalSettings: { type: Function, required: true }, yandexMarketCatalogDetails: { type: Object, default: null }, yandexMarketCatalogDetailsLoading: { type: Boolean, required: true }, yandexMarketCatalogDetailsError: { type: String, default: '' }, yandexMarketStockSettings: { type: Object, required: true }, yandexMarketStockSettingsSaving: { type: Boolean, required: true }, saveYandexMarketStockSettings: { type: Function, required: true }, yandexMarketOrders: { type: Array, default: () => [] }, yandexMarketOrdersLoading: { type: Boolean, required: true }, yandexMarketOrdersSyncing: { type: Boolean, required: true }, yandexMarketOrdersLastSyncedAt: { type: String, default: null }, loadYandexMarketOrders: { type: Function, required: true }, syncYandexMarketOrders: { type: Function, required: true },
 })
 
 const isStockOpen = ref(false)

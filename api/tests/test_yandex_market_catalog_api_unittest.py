@@ -1,4 +1,5 @@
 import unittest
+import os
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -103,7 +104,7 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
     def test_publish_stock_calls_market_only_for_explicit_request(self):
         def q1_handler(sql, _params):
             if "FROM app.marketplace_yandex_stock_settings" in sql:
-                return (7, 7, datetime(2026, 7, 25, tzinfo=timezone.utc))
+                return (7, "Активируйте код в PlayStation Store.", 7, datetime(2026, 7, 25, tzinfo=timezone.utc))
             return None
 
         client, _writes = self.create_client(q1_handler=q1_handler)
@@ -158,6 +159,119 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["items"][0]["order_id"], 501)
         self.assertEqual(response.json()["items"][0]["quantity"], 2)
+
+    # Ручная sandbox-выдача шифрует ключи локально и не вызывает API Маркета или Interhub.
+    def test_sandbox_manual_delivery_saves_only_local_key_and_delivery(self):
+        def q1_handler(sql, _params):
+            if "FROM app.marketplace_yandex_order_items" in sql:
+                return ("PSN-500", 2, "PROCESSING", True)
+            if "marketplace_yandex_sandbox_deliveries" in sql:
+                return None
+            if "INSERT INTO app.marketplace_manual_key_pools" in sql:
+                return (17,)
+            if "FROM app.marketplace_manual_keys" in sql:
+                return None
+            return None
+
+        client, writes = self.create_client(q1_handler=q1_handler)
+        env = {
+            "YANDEX_MARKET_TEST_INCLUDE_FAKE_ORDERS": "true",
+            "YANDEX_MARKET_TEST_SANDBOX_ACTIONS_ENABLED": "true",
+            "MARKETPLACE_KEY_POOL_SECRET": "x" * 32,
+        }
+        with patch.dict(os.environ, env, clear=False):
+            with client:
+                response = client.post(
+                    "/marketplaces/yandex/sandbox/orders/501/items/99/deliver?store_code=test",
+                    json={"codes": ["AAAA-1111", "BBBB-2222"]},
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["delivery_source"], "manual")
+        self.assertEqual(response.json()["status"], "locally_issued")
+        self.assertTrue(any("INSERT INTO app.marketplace_manual_keys" in sql for sql, _params in writes))
+        self.assertTrue(any("INSERT INTO app.marketplace_yandex_sandbox_deliveries" in sql for sql, _params in writes))
+
+    # Выдача из пула берет весь комплект под блокировкой и не допускает частичную фиксацию.
+    def test_sandbox_pool_delivery_marks_exact_number_of_local_keys(self):
+        def q1_handler(sql, _params):
+            if "FROM app.marketplace_yandex_order_items" in sql:
+                return ("PSN-500", 2, "PROCESSING", True)
+            if "marketplace_yandex_sandbox_deliveries" in sql:
+                return None
+            if "FROM app.marketplace_manual_key_pools" in sql:
+                return (17,)
+            return None
+
+        client, writes = self.create_client(rows=[(41,), (42,)], q1_handler=q1_handler)
+        env = {
+            "YANDEX_MARKET_TEST_INCLUDE_FAKE_ORDERS": "true",
+            "YANDEX_MARKET_TEST_SANDBOX_ACTIONS_ENABLED": "true",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            with client:
+                response = client.post("/marketplaces/yandex/sandbox/orders/501/items/99/issue-from-pool?store_code=test")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["issued_qty"], 2)
+        pool_updates = [params for sql, params in writes if "UPDATE app.marketplace_manual_keys" in sql]
+        self.assertEqual(pool_updates[0][1], [41, 42])
+
+    # Контур не позволяет выдать обычный сохраненный заказ даже с включенным тестовым флагом.
+    def test_sandbox_delivery_rejects_non_fake_order(self):
+        def q1_handler(sql, _params):
+            if "FROM app.marketplace_yandex_order_items" in sql:
+                return ("PSN-500", 1, "PROCESSING", False)
+            return None
+
+        client, _writes = self.create_client(q1_handler=q1_handler)
+        env = {
+            "YANDEX_MARKET_TEST_INCLUDE_FAKE_ORDERS": "true",
+            "YANDEX_MARKET_TEST_SANDBOX_ACTIONS_ENABLED": "true",
+            "MARKETPLACE_KEY_POOL_SECRET": "x" * 32,
+        }
+        with patch.dict(os.environ, env, clear=False):
+            with client:
+                response = client.post(
+                    "/marketplaces/yandex/sandbox/orders/501/items/99/deliver?store_code=test",
+                    json={"codes": ["AAAA-1111"]},
+                )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("только сохраненным fake-заказам", response.json()["detail"])
+
+    # Внешняя отправка возможна только для уже закрепленного fake-ключа и идет в test-Маркет одним вызовом.
+    def test_sandbox_send_to_market_submits_locally_issued_key(self):
+        def q1_handler(sql, _params):
+            if "FROM app.marketplace_yandex_sandbox_deliveries AS delivery" in sql:
+                return ("PSN-500", 1, "manual", "locally_issued", "PROCESSING", True, "Инструкция для покупателя")
+            return None
+
+        client, writes = self.create_client(rows=[("TEST-CODE-1",)], q1_handler=q1_handler)
+        env = {
+            "YANDEX_MARKET_TEST_INCLUDE_FAKE_ORDERS": "true",
+            "YANDEX_MARKET_TEST_SANDBOX_ACTIONS_ENABLED": "true",
+            "YANDEX_MARKET_TEST_SANDBOX_MARKET_DELIVERY_ENABLED": "true",
+            "MARKETPLACE_KEY_POOL_SECRET": "x" * 32,
+        }
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch.object(yandex_market_catalog_api, "deliver_yandex_market_digital_goods", return_value={"status": "OK"}) as deliver,
+        ):
+            with client:
+                response = client.post("/marketplaces/yandex/sandbox/orders/501/items/99/send-to-market?store_code=test")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "market_submitted")
+        deliver.assert_called_once_with(
+            501,
+            item_id=99,
+            codes=["TEST-CODE-1"],
+            slip="Инструкция для покупателя",
+            store_code="test",
+        )
+        self.assertTrue(any("market_sending" in sql for sql, _params in writes))
+        self.assertTrue(any("market_submitted" in sql for sql, _params in writes))
 
     # Все маршруты каталога остаются операцией владельца, как и Ozon на вкладке товаров.
     def test_routes_require_owner_role(self):

@@ -97,6 +97,14 @@ def _env_store_int(key: str, *, store_code: str | None = None, default: int = 0)
         raise HTTPException(500, f"{_store_env_name(store_code, key)} must be integer")
 
 
+def _env_store_bool(key: str, *, store_code: str | None = None, default: bool = False) -> bool:
+    # Читаем флаг конкретного магазина, чтобы тестовый кабинет не наследовал боевые настройки.
+    raw = _env_value(key, store_code=store_code).lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}
+
+
 def _ssl_context() -> ssl.SSLContext:
     # Создаем SSL-контекст с certifi, чтобы локальный Python доверял сертификатам Yandex.
     if not _env_bool("YANDEX_MARKET_SSL_VERIFY", True):

@@ -52,16 +52,36 @@
           >
             <template #header-actions>
               <div class="ozon-digital-modal__auto-switch marketplace-key-pool-panel__issue-switch">
-                <label class="switch" title="Выдача из пула будет доступна после подключения обработки заказов Маркета">
-                  <input type="checkbox" disabled aria-label="Выдача из ручного пула пока не подключена" />
+                <label class="switch" title="Автовыдача из пула остается выключенной: ключи выдаются только по нажатию в fake-заказе.">
+                  <input type="checkbox" disabled aria-label="Автоматическая выдача из ручного пула выключена" />
                   <span class="slider"><span class="circle"><svg class="cross" viewBox="0 0 365.696 365.696" aria-hidden="true"><path fill="currentColor" d="m243.188 182.86 113.132-113.134c12.5-12.5 12.5-32.766 0-45.247L341.238 9.398c-12.504-12.503-32.77-12.503-45.25 0L182.86 122.528 69.727 9.374c-12.5-12.5-32.766-12.5-45.247 0L9.375 24.457c-12.5 12.504-12.5 32.77 0 45.25l113.152 113.152L9.398 295.99c-12.503 12.503-12.503 32.769 0 45.25L24.48 356.32c12.5 12.503 32.766 12.503 45.247 0l113.132-113.132 113.131 113.132c12.503 12.503 32.769 12.503 45.25 0l15.081-15.082c12.5-12.504 12.5-32.77 0-45.25z" /></svg><svg class="checkmark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.707 19.121a.997.997 0 0 1-1.414 0l-5.646-5.647a1.5 1.5 0 0 1 0-2.121l.707-.707a1.5 1.5 0 0 1 2.121 0L9 14.171l9.525-9.525a1.5 1.5 0 0 1 2.121 0l.707.707a1.5 1.5 0 0 1 0 2.121z" /></svg></span></span>
                 </label>
               </div>
             </template>
           </WorkMarketplaceKeyPoolPanel>
           <section class="ozon-digital-modal__orders">
-            <div class="ozon-digital-modal__orders-head"><div><h4>Ручная выдача</h4><p class="muted">Заказы, для которых поставщик не выдал ключ.</p></div><span class="ozon-digital-modal__manual-count">0</span></div>
-            <p class="ozon-digital-modal__empty muted">Заказов, требующих ручного ключа, пока нет.</p>
+            <div class="ozon-digital-modal__orders-head"><div><h4>Локальная выдача fake-заказов</h4><p class="muted">Ключи сохраняются в локальном test-пуле. Яндекс Маркет и Interhub не вызываются.</p></div><span class="ozon-digital-modal__manual-count">{{ pendingSandboxOrders.length }}</span></div>
+            <p v-if="!pendingSandboxOrders.length" class="ozon-digital-modal__empty muted">Не найдено fake-заказов, ожидающих локальной выдачи.</p>
+            <article v-for="order in pendingSandboxOrders" :key="`${order.order_id}:${order.item_id}`" class="ozon-digital-order">
+              <div class="ozon-digital-order__head">
+                <div><strong>Заказ {{ order.order_id }}</strong><p>{{ order.offer_id }} · требуется ключей: {{ order.quantity }}</p></div>
+                <span class="ozon-digital-order__status ozon-digital-order__status--manual_required">Fake · локально</span>
+              </div>
+              <div class="ozon-digital-order__delivery">
+                <label class="field"><span>Ручные ключи — по одному в строке</span><textarea v-model="manualCodes[orderKey(order)]" class="input" rows="3" :disabled="isSaving(order)" :aria-label="`Ручные ключи для fake-заказа ${order.order_id}`" /></label>
+                <div class="toolbar-actions">
+                  <button class="btn btn--secondary" type="button" :disabled="isSaving(order)" @click="issueFromPool(order)">Взять из пула</button>
+                  <button class="btn btn--primary" type="button" :disabled="isSaving(order)" @click="deliverManually(order)">Зафиксировать локально</button>
+                </div>
+              </div>
+            </article>
+          </section>
+          <section v-if="readyForMarketOrders.length" class="ozon-digital-modal__orders">
+            <div class="ozon-digital-modal__orders-head"><div><h4>Отправка в test Маркет</h4><p class="muted">Ключ уже закреплен локально. Отправка изменит только fake-заказ в test-кабинете.</p></div><span class="ozon-digital-modal__manual-count">{{ readyForMarketOrders.length }}</span></div>
+            <article v-for="order in readyForMarketOrders" :key="`market:${order.order_id}:${order.item_id}`" class="ozon-digital-order">
+              <div class="ozon-digital-order__head"><div><strong>Заказ {{ order.order_id }}</strong><p>{{ order.offer_id }} · ключи закреплены локально</p></div><span class="ozon-digital-order__status ozon-digital-order__status--supplier_processing">Готов к отправке</span></div>
+              <div class="ozon-digital-order__delivery"><button class="btn btn--primary" type="button" :disabled="isSaving(order)" @click="sendToMarket(order)">Отправить в test Маркет</button></div>
+            </article>
           </section>
         </div>
       </div>
@@ -70,7 +90,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import WorkMarketplaceKeyPoolPanel from './WorkMarketplaceKeyPoolPanel.vue'
 
 const props = defineProps({
@@ -78,6 +98,11 @@ const props = defineProps({
   closeYandexMarketDigitalSettings: { type: Function, required: true },
   yandexMarketOfferId: { type: String, default: '' },
   yandexMarketTitle: { type: String, default: '' },
+  yandexMarketOrders: { type: Array, default: () => [] },
+  yandexMarketSandboxDeliverySaving: { type: String, default: '' },
+  deliverYandexMarketSandboxOrder: { type: Function, default: async () => ({ ok: false }) },
+  issueYandexMarketSandboxOrderFromPool: { type: Function, default: async () => ({ ok: false }) },
+  sendYandexMarketSandboxOrderToMarket: { type: Function, default: async () => ({ ok: false }) },
   openMarketplaceKeyPool: { type: Function, default: () => {} },
   loadMarketplaceKeyPoolFor: { type: Function, default: () => {} },
   marketplaceKeyPool: { type: Object, default: () => ({ free_count: 0, reserved_count: 0, delivered_count: 0, expired_count: 0, total: 0, page: 1, page_size: 20, items: [] }) },
@@ -94,6 +119,51 @@ const props = defineProps({
 })
 
 const isSupplierOpen = ref(false)
+const manualCodes = reactive({})
+
+const pendingSandboxOrders = computed(() => {
+  // Оставляет в очереди только незавершенные позиции: итог выдачи хранится локально рядом с fake-заказом.
+  return props.yandexMarketOrders.filter((order) => (
+    !String(order?.sandbox_delivery_status || '').trim()
+    && !['CANCELLED', 'DELIVERED'].includes(String(order?.status || '').toUpperCase())
+  ))
+})
+
+const readyForMarketOrders = computed(() => {
+  // Показывает только уже закрепленные коды, которые оператор еще не отправлял во внешний test-Маркет.
+  return props.yandexMarketOrders.filter((order) => String(order?.sandbox_delivery_status || '') === 'locally_issued')
+})
+
+function orderKey(order) {
+  // Собирает стабильный ключ формы, чтобы несколько позиций одного заказа не смешивали введенные коды.
+  return `${Number(order?.order_id || 0)}:${Number(order?.item_id || 0)}`
+}
+
+function isSaving(order) {
+  // Блокирует только выдаваемую позицию, пока локальная транзакция закрепляет ключи.
+  return props.yandexMarketSandboxDeliverySaving === orderKey(order)
+}
+
+async function deliverManually(order) {
+  // Передает введенные коды только локальному sandbox-обработчику и очищает форму после успешной фиксации.
+  const key = orderKey(order)
+  const result = await props.deliverYandexMarketSandboxOrder(order, String(manualCodes[key] || '').split(/\r?\n/))
+  if (result?.ok) {
+    delete manualCodes[key]
+    await props.loadMarketplaceKeyPool()
+  }
+}
+
+async function issueFromPool(order) {
+  // Выдает точное количество из локального test-пула по явному клику оператора.
+  const result = await props.issueYandexMarketSandboxOrderFromPool(order)
+  if (result?.ok) await props.loadMarketplaceKeyPool()
+}
+
+async function sendToMarket(order) {
+  // Передает ключ во внешний API только после диалога подтверждения из общего обработчика.
+  await props.sendYandexMarketSandboxOrderToMarket(order)
+}
 
 function toggleSupplier() {
   // Сворачивает подготовительный блок автовыдачи, пока Маркет подключён только на чтение.
@@ -104,7 +174,7 @@ watch(
   () => [props.showYandexMarketDigitalSettings, props.yandexMarketOfferId, props.yandexMarketTitle],
   ([isOpen, productKey, productTitle]) => {
     // Подгружает отдельный пул текущего SKU Маркета до показа таблицы на основном экране.
-    if (isOpen && productKey) props.loadMarketplaceKeyPoolFor({ marketplace: 'yandex_market', productKey: String(productKey), productTitle: String(productTitle || productKey) })
+    if (isOpen && productKey) props.loadMarketplaceKeyPoolFor({ marketplace: 'yandex_market', productKey: String(productKey), productTitle: String(productTitle || productKey), storeCode: 'test' })
   },
   { immediate: true },
 )

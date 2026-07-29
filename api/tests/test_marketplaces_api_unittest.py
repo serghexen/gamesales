@@ -338,7 +338,8 @@ class MarketplacesApiTests(unittest.TestCase):
             if "FROM app.marketplace_ozon_catalog_items" in sql:
                 return ("", {})
             if "FROM app.marketplace_ozon_digital_settings" in sql:
-                return ("Joy1", 1, False, "", "", 0, None, None)
+                # Имитируем уже включенные тумблеры: публикация остатка не должна их выключить.
+                return ("Joy1", 1, True, "", "", 0, None, None, True)
             return None
 
         client, writes = self.create_client(q1_handler=q1_handler)
@@ -351,10 +352,13 @@ class MarketplacesApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         update_stock.assert_called_once_with("Joy1", 1, store_code="asat")
+        self.assertTrue(response.json()["auto_issue_enabled"])
+        self.assertTrue(response.json()["pool_issue_enabled"])
         supplier_calls = [sql for sql, _params in writes if "marketplace_ozon_digital_suppliers" in sql]
         self.assertEqual(supplier_calls, [])
         settings_params = [params for sql, params in writes if "INSERT INTO app.marketplace_ozon_digital_settings" in sql]
-        self.assertFalse(settings_params[-1][-1], "публикация остатка не должна менять флаг автовыдачи")
+        self.assertFalse(settings_params[-1][-2], "публикация остатка не должна менять флаг автовыдачи")
+        self.assertFalse(settings_params[-1][-1], "публикация остатка не должна менять флаг выдачи из ручного пула")
 
     # Связка с поставщиком должна сохраняться отдельно от лимита и не вызывать оплату при нажатии «Сохранить».
     def test_digital_settings_saves_interhub_mapping_without_calling_supplier(self):
