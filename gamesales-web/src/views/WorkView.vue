@@ -132,7 +132,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, nextTick, proxyRefs, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onBeforeUnmount, proxyRefs, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../stores/auth'
 import { API_BASE, apiGet, apiPost, apiDelete, apiPut, apiPostForm, apiGetFile } from '../api/http'
@@ -1169,6 +1169,7 @@ const interhubCheckLoading = ref(false)
 const interhubPayment = ref(null)
 const interhubPaymentLoading = ref(false)
 const interhubPaymentFlowVersion = ref(0)
+let interhubVoucherStatusPollTimer = null
 const interhubPrices = ref([])
 const interhubPriceRefresh = ref(null)
 const interhubPriceRefreshLoading = ref(false)
@@ -2334,6 +2335,7 @@ function setInterhubSearchFromEvent(event) {
 
 function resetInterhubPaymentFlow() {
   // Сбрасываем результаты прошлой услуги, чтобы нельзя было оплатить её после переключения каталога.
+  stopInterhubVoucherStatusPolling()
   interhubPaymentFlowVersion.value += 1
   interhubCalculation.value = null
   interhubCheck.value = null
@@ -2341,6 +2343,46 @@ function resetInterhubPaymentFlow() {
   interhubCalculationLoading.value = false
   interhubCheckLoading.value = false
   interhubPaymentLoading.value = false
+}
+
+function stopInterhubVoucherStatusPolling() {
+  // Останавливаем прежний опрос, чтобы смена услуги не обновила результат уже закрытой пачки.
+  if (interhubVoucherStatusPollTimer) window.clearTimeout(interhubVoucherStatusPollTimer)
+  interhubVoucherStatusPollTimer = null
+}
+
+function voucherBatchNeedsPolling(payment) {
+  // Продолжаем читать пачку, пока фоновая выдача ещё может добавить новые ключи.
+  return ['ready', 'running', 'awaiting_status'].includes(String(payment?.state || ''))
+}
+
+function scheduleInterhubVoucherStatusPolling(batchId, flowVersion, delay = 1000) {
+  // Опрос идёт по сохранённому batch_id и никогда не запускает оплату повторно.
+  stopInterhubVoucherStatusPolling()
+  interhubVoucherStatusPollTimer = window.setTimeout(async () => {
+    if (flowVersion !== interhubPaymentFlowVersion.value) return
+    try {
+      const payment = await apiGet(`/integrations/interhub/vouchers/batches/${encodeURIComponent(batchId)}`, { token: auth.state.token })
+      if (flowVersion !== interhubPaymentFlowVersion.value) return
+      interhubPayment.value = payment
+      if (voucherBatchNeedsPolling(payment)) scheduleInterhubVoucherStatusPolling(batchId, flowVersion)
+      else void loadInterhubBalance()
+    } catch (err) {
+      if (flowVersion !== interhubPaymentFlowVersion.value) return
+      // Не держим загрузчик бесконечно, если пачка точно не найдена или доступ к ней уже запрещён.
+      if ([401, 403, 404, 422].includes(Number(err?.status))) {
+        interhubPayment.value = {
+          success: false,
+          status: 2,
+          state: 'stopped',
+          message: mapApiError(err?.message || 'Не удалось найти сохранённую пачку'),
+        }
+        return
+      }
+      // Сеть могла оборваться, поэтому сохраняем текущий безопасный статус и пробуем снова без нового pay.
+      scheduleInterhubVoucherStatusPolling(batchId, flowVersion, 3000)
+    }
+  }, delay)
 }
 
 function createInterhubVoucherBatchId() {
@@ -2424,19 +2466,25 @@ async function payInterhub() {
   const flowVersion = interhubPaymentFlowVersion.value
   const voucherQuantity = Number(interhubCheck.value?.voucher_quantity || 0)
   const voucherBatchId = String(interhubCheck.value?.voucher_batch_id || '')
+  const alreadyStartedBatchId = String(interhubPayment.value?.batch_id || '')
   interhubPaymentLoading.value = true
   interhubPayment.value = null
   try {
     const payment = voucherQuantity > 0 && voucherBatchId
-      ? await apiPost('/integrations/interhub/vouchers/pay-batch', {
-        agent_transaction_id: agentTransactionId,
-        batch_id: voucherBatchId,
-        quantity: voucherQuantity,
-      }, { token: auth.state.token })
+      ? (alreadyStartedBatchId === voucherBatchId
+          ? await apiGet(`/integrations/interhub/vouchers/batches/${encodeURIComponent(voucherBatchId)}`, { token: auth.state.token })
+          : await apiPost('/integrations/interhub/vouchers/pay-batch', {
+            agent_transaction_id: agentTransactionId,
+            batch_id: voucherBatchId,
+            quantity: voucherQuantity,
+          }, { token: auth.state.token }))
       : await apiPost('/integrations/interhub/pay', {
         agent_transaction_id: agentTransactionId,
       }, { token: auth.state.token })
     if (flowVersion === interhubPaymentFlowVersion.value) interhubPayment.value = payment
+    if (voucherQuantity > 0 && voucherBatchId && voucherBatchNeedsPolling(payment)) {
+      scheduleInterhubVoucherStatusPolling(voucherBatchId, flowVersion)
+    }
     if (Number(payment?.status) === 1 || Number(payment?.paid_quantity) > 0) void loadInterhubBalance()
   } catch (err) {
     if (flowVersion === interhubPaymentFlowVersion.value) {
@@ -2444,11 +2492,17 @@ async function payInterhub() {
       interhubPayment.value = voucherQuantity > 0 && voucherBatchId
         ? { success: false, status: 1, batch_id: voucherBatchId, state: 'awaiting_status', requested_quantity: voucherQuantity, received_quantity: 0, message: 'Ответ сервера не получен. Проверяем прежнюю оплату без повторного списания.' }
         : { success: false, message: mapApiError(err?.message || 'Не удалось подтвердить оплату') }
+      if (voucherQuantity > 0 && voucherBatchId) scheduleInterhubVoucherStatusPolling(voucherBatchId, flowVersion, 500)
     }
   } finally {
     if (flowVersion === interhubPaymentFlowVersion.value) interhubPaymentLoading.value = false
   }
 }
+
+onBeforeUnmount(() => {
+  // Не оставляем таймер опроса после ухода со страницы платежей.
+  stopInterhubVoucherStatusPolling()
+})
 
 async function refreshInterhubPaymentStatus() {
   // Даём владельцу вручную уточнить результат, не отправляя pay повторно.

@@ -34,6 +34,7 @@ class InterHubEndpointsTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("/integrations/interhub/pay", response.json()["paths"])
         self.assertIn("/integrations/interhub/vouchers/pay-batch", response.json()["paths"])
+        self.assertIn("/integrations/interhub/vouchers/batches/{batch_id}", response.json()["paths"])
         self.assertIn("/integrations/interhub/prices/refresh", response.json()["paths"])
         self.assertIn("/integrations/interhub/prices/export", response.json()["paths"])
 

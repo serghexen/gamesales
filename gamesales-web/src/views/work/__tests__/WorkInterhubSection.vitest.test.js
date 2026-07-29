@@ -396,6 +396,21 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).toContain('Не удалось узнать цену: Нет цены')
   })
 
+  it('keeps the hamster visible while a voucher batch is received in the background', async () => {
+    const ctx = buildCtx({
+      canPay: true,
+      services: [{ service_id: 11, title: 'Steam voucher', category: '', type: 'VOUCHER', fields: [] }],
+      payment: { success: false, status: 1, batch_id: 'batch-1', state: 'running', requested_quantity: 3, received_quantity: 1 },
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await wrapper.find('tbody tr').trigger('click')
+
+    expect(wrapper.find('.interhub-catalog__obtain-overlay .wheel-and-hamster').exists()).toBe(true)
+    expect(wrapper.find('.interhub-catalog__action-btn').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('Получаем ключи: 1 из 3')
+  })
+
   it('renders multiple received keys in a vertical list', async () => {
     const ctx = buildCtx({
       canPay: true,
