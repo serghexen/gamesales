@@ -1557,6 +1557,41 @@
   margin-top: 0;
 }
 
+/* Сохраняет текст выдачи рядом с остатком, не подменяя явную отправку остатка в маркетплейс. */
+.work-page .ozon-catalog-details-modal__stock-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.work-page .ozon-catalog-details-modal__stock-actions .ozon-catalog-details-modal__stock-submit {
+  flex: 1 1 auto;
+}
+
+.work-page .ozon-catalog-details-modal__stock-settings-save {
+  width: 52px;
+  min-width: 52px;
+  min-height: 52px;
+  color: #071726;
+  border-color: #55e4c5;
+  background: linear-gradient(135deg, #58e4c5, #4fd5af);
+  box-shadow: 0 6px 18px rgba(82, 226, 193, .24);
+}
+
+.work-page .ozon-catalog-details-modal__stock-settings-save:hover:not(:disabled) {
+  background: linear-gradient(135deg, #6df0d0, #55e4c5);
+  box-shadow: 0 9px 22px rgba(82, 226, 193, .34);
+}
+
+.work-page .ozon-catalog-details-modal__stock-settings-save svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
 .work-page .ozon-catalog-details-modal__sale-settings-form .textarea {
   min-height: 96px;
   resize: vertical;

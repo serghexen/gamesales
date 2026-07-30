@@ -302,7 +302,7 @@ from domains.marketplace_key_pools_api import mount_marketplace_key_pool_routes
 from domains.yandex_market_catalog_api import mount_yandex_market_catalog_routes
 from domains.yandex_market_webhooks_api import mount_yandex_market_webhooks_routes
 from domains.yandex_market_webhook_processor import build_yandex_market_webhook_event_processor
-from domains.yandex_market_production_delivery import build_yandex_market_production_delivery_processor
+from domains.yandex_market_production_delivery import build_yandex_market_production_delivery_processor, mount_yandex_market_production_delivery_routes
 from domains.dashboard_api import mount_dashboard_routes
 from domains.products_api import mount_products_routes
 from domains.products_import_api import mount_products_import_routes
@@ -1208,6 +1208,11 @@ yandex_market_production_delivery_processor = build_yandex_market_production_del
 )
 # Отдельная функция фоновой сверки не умеет создавать выдачи и потому безопасна при выключенном боевом флаге.
 yandex_market_refresh_digital_supplier_attempts = yandex_market_production_delivery_processor.refresh_supplier_attempts
+mount_yandex_market_production_delivery_routes(
+    app,
+    delivery_processor=yandex_market_production_delivery_processor,
+    require_role=require_role,
+)
 # Создает фоновое чтение заказа после уведомления; ручная синхронизация не вызывает production-выдачу.
 yandex_market_webhook_event_processor = build_yandex_market_webhook_event_processor(
     DB_DSN=DB_DSN,

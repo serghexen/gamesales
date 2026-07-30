@@ -30,7 +30,7 @@
               </div>
             </div>
             <div v-if="isSupplierOpen" id="yandex-key-supplier-content" class="ozon-catalog-details-modal__work-block-body">
-              <div class="ozon-digital-modal__supplier"><div class="ozon-digital-modal__supplier-fields"><template v-if="yandexMarketSandboxMode"><label class="field"><span>Товар</span><select class="input" disabled aria-label="Товар"><option>Будет выбран при подключении</option></select></label></template><template v-else><label class="field"><span>ID услуги Interhub</span><input v-model.number="yandexMarketStockSettings.interhub_service_id" class="input" type="number" min="1" aria-label="ID услуги Interhub Яндекс Маркета" /></label><label class="field"><span>Номинал Interhub</span><input v-model="yandexMarketStockSettings.interhub_nominal_id" class="input" aria-label="Номинал Interhub Яндекс Маркета" /></label></template></div></div>
+              <div class="ozon-digital-modal__supplier"><div class="ozon-digital-modal__supplier-fields"><template v-if="yandexMarketSandboxMode"><label class="field"><span>Товар</span><select class="input" disabled aria-label="Товар"><option>Будет выбран при подключении</option></select></label></template><template v-else><label class="field"><span>Товар Interhub</span><div class="ozon-digital-modal__service-picker"><div class="ozon-digital-modal__service-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg><input v-model="interhubServiceSearch" class="input" type="search" autocomplete="off" placeholder="Найдите товар или регион" role="combobox" :aria-expanded="isInterhubServicePickerOpen" aria-controls="yandex-interhub-service-results" :disabled="yandexMarketInterhubServicesLoading" @focus="openInterhubServicePicker" @input="openInterhubServicePicker" @keydown.enter.prevent="selectFirstInterhubService" @keydown.esc.prevent="closeInterhubServicePicker" @blur="closeInterhubServicePicker" /><button v-if="yandexMarketStockSettings.interhub_service_id" class="ozon-digital-modal__service-clear" type="button" aria-label="Очистить выбранный товар Interhub" title="Очистить выбор" @mousedown.prevent @click="clearInterhubService"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button><button class="ozon-digital-modal__service-toggle" type="button" :aria-label="isInterhubServicePickerOpen ? 'Скрыть список товаров Interhub' : 'Показать список товаров Interhub'" @mousedown.prevent @click="toggleInterhubServicePicker"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5" /></svg></button></div><div v-if="isInterhubServicePickerOpen" id="yandex-interhub-service-results" class="ozon-digital-modal__service-options" role="listbox"><button v-for="service in filteredInterhubServices" :key="service.service_id" class="ozon-digital-modal__service-option" :class="{ 'is-selected': Number(service.service_id) === Number(yandexMarketStockSettings.interhub_service_id) }" type="button" role="option" :aria-selected="Number(service.service_id) === Number(yandexMarketStockSettings.interhub_service_id)" @mousedown.prevent @click="selectInterhubService(service)"><strong>{{ service.title }}</strong><small v-if="service.category">{{ service.category }}</small></button><p v-if="!filteredInterhubServices.length" class="ozon-digital-modal__service-empty">Ничего не найдено</p></div></div><small class="ozon-digital-modal__service-help">Поиск по названию, региону или ID услуги</small></label><label v-if="yandexMarketStockSettings.interhub_service_id && interhubNominals.length" class="field"><span>Номинал</span><select v-model="yandexMarketStockSettings.interhub_nominal_id" class="input" aria-label="Номинал Interhub Яндекс Маркета"><option value="">Выберите номинал</option><option v-for="nominal in interhubNominals" :key="nominal.value" :value="nominal.value">{{ nominal.label }}</option></select></label></template></div></div>
             </div>
           </section>
           <WorkMarketplaceKeyPoolPanel
@@ -59,6 +59,19 @@
               </div>
             </template>
           </WorkMarketplaceKeyPoolPanel>
+          <section v-if="!yandexMarketSandboxMode" class="ozon-digital-modal__orders">
+            <div class="ozon-digital-modal__orders-head"><div><h4>Ручная выдача</h4><p class="muted">Заказы, для которых ключ не выдан автоматически. Отправка в Яндекс Маркет — только по вашей кнопке.</p></div><span class="ozon-digital-modal__manual-count">{{ yandexMarketProductionManualOrders.length }}</span></div>
+            <p v-if="yandexMarketProductionManualOrdersLoading" class="ozon-digital-modal__empty muted">Загружаем очередь ручной выдачи…</p>
+            <p v-else-if="!yandexMarketProductionManualOrders.length" class="ozon-digital-modal__empty muted">Заказов, требующих ручного ключа, пока нет.</p>
+            <article v-for="order in yandexMarketProductionManualOrders" :key="order.id" class="ozon-digital-order">
+              <div class="ozon-digital-order__head"><div><strong>{{ order.item_name || yandexMarketTitle || 'Цифровой товар' }}</strong><p>Заказ {{ order.order_id }} · SKU {{ order.offer_id }} · {{ order.required_qty }} шт.</p></div><span class="ozon-digital-order__status ozon-digital-order__status--manual_required">Нужен ключ</span></div>
+              <p v-if="order.last_error" class="bad">{{ order.last_error }}</p>
+              <div class="ozon-digital-order__delivery">
+                <label class="field"><span>{{ productionManualDeliveryLabel(order) }}</span><textarea v-model="productionManualCodes[order.id]" class="input textarea" rows="2" placeholder="Вставьте ключ для покупателя" :disabled="isProductionSaving(order)" :aria-label="`Ручные ключи для заказа Яндекс Маркета ${order.order_id}`" /></label>
+                <div class="toolbar-actions"><button class="btn btn--secondary" type="button" :disabled="isProductionSaving(order)" @click="issueProductionFromPool(order)">Взять из пула</button><button class="btn btn--primary" type="button" :disabled="isProductionSaving(order)" @click="deliverProductionManually(order)">{{ isProductionSaving(order) ? 'Отправляем…' : 'Отправить ключ' }}</button></div>
+              </div>
+            </article>
+          </section>
           <section v-if="yandexMarketSandboxMode" class="ozon-digital-modal__orders">
             <div class="ozon-digital-modal__orders-head"><div><h4>Локальная выдача fake-заказов</h4><p class="muted">Ключи сохраняются в локальном test-пуле. Яндекс Маркет и Interhub не вызываются.</p></div><span class="ozon-digital-modal__manual-count">{{ pendingSandboxOrders.length }}</span></div>
             <p v-if="!pendingSandboxOrders.length" class="ozon-digital-modal__empty muted">Не найдено fake-заказов, ожидающих локальной выдачи.</p>
@@ -102,6 +115,13 @@ const props = defineProps({
   yandexMarketStockSettings: { type: Object, default: () => ({}) },
   yandexMarketStockSettingsSaving: { type: Boolean, default: false },
   saveYandexMarketStockSettings: { type: Function, default: async () => ({ ok: false }) },
+  yandexMarketInterhubServices: { type: Array, default: () => [] },
+  yandexMarketInterhubServicesLoading: { type: Boolean, default: false },
+  yandexMarketProductionManualOrders: { type: Array, default: () => [] },
+  yandexMarketProductionManualOrdersLoading: { type: Boolean, default: false },
+  yandexMarketProductionManualDeliverySaving: { type: Number, default: 0 },
+  deliverYandexMarketProductionOrder: { type: Function, default: async () => ({ ok: false }) },
+  issueYandexMarketProductionOrderFromPool: { type: Function, default: async () => ({ ok: false }) },
   yandexMarketOrders: { type: Array, default: () => [] },
   yandexMarketSandboxDeliverySaving: { type: String, default: '' },
   deliverYandexMarketSandboxOrder: { type: Function, default: async () => ({ ok: false }) },
@@ -124,6 +144,9 @@ const props = defineProps({
 
 const isSupplierOpen = ref(false)
 const manualCodes = reactive({})
+const productionManualCodes = reactive({})
+const interhubServiceSearch = ref('')
+const isInterhubServicePickerOpen = ref(false)
 
 const autoIssueEnabled = computed({
   get: () => Boolean(props.yandexMarketStockSettings.auto_issue_enabled),
@@ -191,10 +214,113 @@ function toggleSupplier() {
   isSupplierOpen.value = !isSupplierOpen.value
 }
 
+function interhubServiceLabel(service) {
+  // Собирает понятное имя услуги для поиска и выбранной связки.
+  if (!service) return ''
+  const title = String(service?.title || '').trim()
+  const category = String(service?.category || '').trim()
+  return category ? `${title} · ${category}` : title
+}
+
+const selectedInterhubService = computed(() => props.yandexMarketInterhubServices.find((item) => (
+  Number(item?.service_id) === Number(props.yandexMarketStockSettings.interhub_service_id)
+)) || null)
+
+const filteredInterhubServices = computed(() => {
+  // Ищет услугу по названию, региону и ID без ручного ввода технического идентификатора.
+  const query = String(interhubServiceSearch.value || '').trim().toLocaleLowerCase('ru-RU')
+  const items = Array.isArray(props.yandexMarketInterhubServices) ? props.yandexMarketInterhubServices : []
+  if (!query) return items.slice(0, 80)
+  return items.filter((service) => `${service?.service_id || ''} ${interhubServiceLabel(service)}`.toLocaleLowerCase('ru-RU').includes(query)).slice(0, 80)
+})
+
+const interhubNominals = computed(() => {
+  // Берёт номиналы только выбранной услуги, чтобы в связку не попало несовместимое значение.
+  const field = Array.isArray(selectedInterhubService.value?.fields) ? selectedInterhubService.value.fields.find((item) => String(item?.name || '').toLowerCase() === 'nominal') : null
+  const values = Array.isArray(field?.value_list) ? field.value_list : []
+  return values.map((item) => ({
+    value: String(item?.id ?? item?.value ?? ''),
+    label: String(item?.name ?? item?.title ?? item?.value ?? item?.id ?? ''),
+  })).filter((item) => item.value && item.label)
+})
+
+watch(selectedInterhubService, (service) => {
+  // Возвращает выбранную услугу в поле после загрузки сохраненной настройки.
+  if (!isInterhubServicePickerOpen.value) interhubServiceSearch.value = interhubServiceLabel(service)
+}, { immediate: true })
+
+function openInterhubServicePicker() {
+  // Открывает варианты без смены связки, пока оператор не выберет строку.
+  isInterhubServicePickerOpen.value = true
+}
+
+function closeInterhubServicePicker() {
+  // Закрывает подсказки и не оставляет в поле незавершенный поисковый текст.
+  window.setTimeout(() => {
+    isInterhubServicePickerOpen.value = false
+    interhubServiceSearch.value = interhubServiceLabel(selectedInterhubService.value)
+  }, 120)
+}
+
+function toggleInterhubServicePicker() {
+  // По стрелке показывает весь каталог Interhub, чтобы не требовать строку поиска.
+  if (isInterhubServicePickerOpen.value) {
+    closeInterhubServicePicker()
+    return
+  }
+  interhubServiceSearch.value = ''
+  isInterhubServicePickerOpen.value = true
+}
+
+function selectInterhubService(service) {
+  // Сохраняет ID выбранной услуги и очищает номинал от прежней услуги.
+  props.yandexMarketStockSettings.interhub_service_id = Number(service?.service_id || 0) || null
+  props.yandexMarketStockSettings.interhub_nominal_id = ''
+  interhubServiceSearch.value = interhubServiceLabel(service)
+  isInterhubServicePickerOpen.value = false
+}
+
+function selectFirstInterhubService() {
+  // Enter подтверждает первую подходящую услугу, чтобы связку можно было настроить без мыши.
+  if (filteredInterhubServices.value[0]) selectInterhubService(filteredInterhubServices.value[0])
+}
+
+function clearInterhubService() {
+  // Сбрасывает услугу и номинал вместе, не оставляя неполную связку с поставщиком.
+  props.yandexMarketStockSettings.interhub_service_id = null
+  props.yandexMarketStockSettings.interhub_nominal_id = ''
+  interhubServiceSearch.value = ''
+  isInterhubServicePickerOpen.value = true
+}
+
 async function saveProductionSettings() {
   // Отправляет настройки выдачи только из боевой формы; sandbox остаётся локальным сценарием.
   if (props.yandexMarketSandboxMode) return
   await props.saveYandexMarketStockSettings()
+}
+
+function productionManualDeliveryLabel(order) {
+  // Подсказывает количество недостающих ключей для текущей позиции заказа.
+  const requiredQty = Math.max(1, Number(order?.required_qty || 1))
+  const collectedQty = Math.max(0, Number(order?.collected_qty || 0))
+  const remainingQty = Math.max(0, requiredQty - collectedQty)
+  return remainingQty === 1 ? 'Ключ' : `Ключи — по одному в строке (${remainingQty})`
+}
+
+function isProductionSaving(order) {
+  // Блокирует только одну строку, пока её комплект закрепляется и передается в Маркет.
+  return Number(props.yandexMarketProductionManualDeliverySaving || 0) === Number(order?.id || 0)
+}
+
+async function deliverProductionManually(order) {
+  // Отправляет введенные ключи в одну ручную выдачу и очищает черновик после успеха.
+  const result = await props.deliverYandexMarketProductionOrder(order, productionManualCodes[order.id])
+  if (result?.ok) delete productionManualCodes[order.id]
+}
+
+async function issueProductionFromPool(order) {
+  // Резервирует полный комплект из ручного пула для выбранного заказа по явной команде.
+  await props.issueYandexMarketProductionOrderFromPool(order)
 }
 
 watch(

@@ -110,6 +110,7 @@ describe('useYandexMarketCatalog', () => {
 
 describe('WorkYandexMarketCatalogModal', () => {
   it('keeps the search and splits a long catalog into pages with all working columns', async () => {
+    const updateYandexMarketCatalogArchive = vi.fn()
     const yandexMarketCatalogItems = Array.from({ length: 21 }, (_, index) => ({
       offer_id: `SKU-${index + 1}`,
       title: `Игра ${index + 1}`,
@@ -122,7 +123,7 @@ describe('WorkYandexMarketCatalogModal', () => {
     }))
     const wrapper = mount(WorkYandexMarketCatalogModal, {
       props: {
-        showYandexMarketCatalog: true, closeYandexMarketCatalog: vi.fn(), syncYandexMarketCatalog: vi.fn(), openYandexMarketCatalogDetails: vi.fn(), yandexMarketCatalogItems, yandexMarketCatalogLoading: false, yandexMarketCatalogSyncing: false,
+        showYandexMarketCatalog: true, closeYandexMarketCatalog: vi.fn(), syncYandexMarketCatalog: vi.fn(), updateYandexMarketCatalogArchive, openYandexMarketCatalogDetails: vi.fn(), yandexMarketCatalogItems, yandexMarketCatalogLoading: false, yandexMarketCatalogSyncing: false,
       },
       global: { stubs: { teleport: true } },
     })
@@ -131,6 +132,9 @@ describe('WorkYandexMarketCatalogModal', () => {
     expect(wrapper.findAll('.yandex-catalog-modal__table th').map((cell) => cell.text())).toEqual(['Карточка Яндекс Маркета', 'Действие'])
     expect(wrapper.findAll('.yandex-catalog-modal__table tbody tr')).toHaveLength(20)
     expect(wrapper.text()).toContain('Страница 1 из 2')
+    expect(wrapper.get('button.yandex-catalog-modal__open-btn').text()).toBe('В архив')
+    await wrapper.get('button.yandex-catalog-modal__open-btn').trigger('click')
+    expect(updateYandexMarketCatalogArchive).toHaveBeenCalledWith(expect.objectContaining({ offer_id: 'SKU-1' }), true)
 
     await wrapper.get('[aria-label="Следующая страница каталога Яндекс Маркета"]').trigger('click')
     expect(wrapper.text()).toContain('SKU-21')
@@ -163,7 +167,10 @@ describe('WorkYandexMarketCatalogDetailsModal', () => {
     expect(wrapper.find('input[aria-label="Автовыдача Яндекс Маркета"]').exists()).toBe(false)
     expect(wrapper.find('input[aria-label="Выдача из ручного пула Яндекс Маркета"]').exists()).toBe(false)
     expect(wrapper.get('textarea[aria-label="Инструкция покупателю"]').element.value).toBe('Активируйте ключ здесь.')
-    expect(wrapper.text()).toContain('Сохранить настройки карточки')
+    const saveSettingsButton = wrapper.get('button[aria-label="Сохранить настройки карточки"]')
+    expect(saveSettingsButton.attributes('title')).toBe('Сохранить инструкцию и настройки выдачи')
+    await saveSettingsButton.trigger('click')
+    expect(saveYandexMarketStockSettings).toHaveBeenLastCalledWith()
     await wrapper.findAll('.yandex-catalog-details-modal__work-block-toggle').at(1).trigger('click')
     expect(wrapper.text()).toContain('Заказ 501')
     expect(wrapper.text()).toContain('В обработке')
@@ -205,6 +212,8 @@ describe('WorkYandexMarketDigitalSettingsModal', () => {
   it('keeps production issue settings and the key pool in the separate keys modal', async () => {
     const saveYandexMarketStockSettings = vi.fn()
     const loadMarketplaceKeyPoolFor = vi.fn()
+    const deliverYandexMarketProductionOrder = vi.fn().mockResolvedValue({ ok: true })
+    const issueYandexMarketProductionOrderFromPool = vi.fn().mockResolvedValue({ ok: true })
     const settings = { interhub_service_id: 25, interhub_nominal_id: '250', auto_issue_enabled: false, interhub_enabled: false, pool_issue_enabled: true }
     const wrapper = mount(WorkYandexMarketDigitalSettingsModal, {
       props: {
@@ -217,21 +226,32 @@ describe('WorkYandexMarketDigitalSettingsModal', () => {
         saveYandexMarketStockSettings,
         openMarketplaceKeyPool: vi.fn(),
         loadMarketplaceKeyPoolFor,
+        yandexMarketInterhubServices: [{ service_id: 25, title: 'PlayStation Turkey', category: 'Турция', fields: [{ name: 'nominal', value_list: [{ id: 250, title: '250 TRY' }] }] }],
+        yandexMarketProductionManualOrders: [{ id: 25, order_id: 501, offer_id: 'PSN-500', item_name: 'PSN 500', required_qty: 1, collected_qty: 0, status: 'manual_required' }],
+        deliverYandexMarketProductionOrder,
+        issueYandexMarketProductionOrderFromPool,
       },
       global: { stubs: { teleport: true } },
     })
 
     expect(wrapper.text()).toContain('Ключи Яндекс Маркета')
     expect(wrapper.text()).not.toContain('Локальная выдача fake-заказов')
+    expect(wrapper.text()).toContain('Ручная выдача')
     expect(wrapper.get('input[aria-label="Автовыдача через Interhub Яндекс Маркета"]').attributes('disabled')).toBeUndefined()
     expect(wrapper.get('input[aria-label="Выдача из ручного пула Яндекс Маркета"]').element.checked).toBe(true)
     expect(loadMarketplaceKeyPoolFor).toHaveBeenCalledWith(expect.objectContaining({ marketplace: 'yandex_market', productKey: 'PSN-500', storeCode: 'asat' }))
     await wrapper.get('.ozon-key-settings__block .ozon-catalog-details-modal__work-block-toggle').trigger('click')
-    expect(wrapper.get('input[aria-label="ID услуги Interhub Яндекс Маркета"]').element.value).toBe('25')
+    expect(wrapper.get('input[role="combobox"]').element.value).toContain('PlayStation Turkey')
+    expect(wrapper.get('select[aria-label="Номинал Interhub Яндекс Маркета"]').element.value).toBe('250')
     await wrapper.get('input[aria-label="Автовыдача через Interhub Яндекс Маркета"]').setValue(true)
     expect(settings).toMatchObject({ auto_issue_enabled: true, interhub_enabled: true, pool_issue_enabled: true })
     await wrapper.get('button[aria-label="Сохранить настройки"]').trigger('click')
     expect(saveYandexMarketStockSettings).toHaveBeenCalledTimes(1)
+    await wrapper.get('textarea[aria-label="Ручные ключи для заказа Яндекс Маркета 501"]').setValue('AAAA-1111')
+    await wrapper.get('button.btn--primary').trigger('click')
+    expect(deliverYandexMarketProductionOrder).toHaveBeenCalledWith(expect.objectContaining({ id: 25 }), 'AAAA-1111')
+    await wrapper.get('button.btn--secondary').trigger('click')
+    expect(issueYandexMarketProductionOrderFromPool).toHaveBeenCalledWith(expect.objectContaining({ id: 25 }))
   })
 })
 

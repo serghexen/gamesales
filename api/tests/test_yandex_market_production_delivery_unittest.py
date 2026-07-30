@@ -1,7 +1,15 @@
 import os
 import unittest
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import patch
+
+from fastapi import FastAPI
+
+try:
+    from fastapi.testclient import TestClient
+except Exception:  # pragma: no cover
+    TestClient = None
 
 try:
     from api.domains import yandex_market_production_delivery
@@ -143,3 +151,27 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
         deliver.assert_called_once_with(501, item_id=99, codes=["CODE-ONE"], slip="Инструкция", store_code="asat")
         update_stock.assert_called_once_with("PSN-500", 7, store_code="asat")
         self.assertTrue(any("last_stock_sync_error=''" in sql for sql, _params in writes))
+
+
+@unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
+class YandexMarketProductionManualRoutesTests(unittest.TestCase):
+    # Проверяет, что ручная выдача вызывается только явными маршрутами и не смешивается с webhook-обработчиком.
+    def test_manual_routes_delegate_to_production_processor(self):
+        app = FastAPI()
+        calls = []
+        processor = SimpleNamespace(
+            list_manual_deliveries=lambda store_code, offer_id: calls.append(("list", store_code, offer_id)) or [{"id": 7}],
+            deliver_manually=lambda delivery_id, codes: calls.append(("deliver", delivery_id, codes)) or {"id": delivery_id, "status": "market_submitted"},
+            issue_from_pool_manually=lambda delivery_id: calls.append(("pool", delivery_id)) or {"id": delivery_id, "status": "market_submitted"},
+        )
+        yandex_market_production_delivery.mount_yandex_market_production_delivery_routes(
+            app,
+            delivery_processor=processor,
+            require_role=lambda *_roles: (lambda: SimpleNamespace(username="owner", role="owner")),
+        )
+
+        client = TestClient(app)
+        self.assertEqual(client.get("/marketplaces/yandex/catalog/PSN-500/manual-deliveries?store_code=asat").json()["items"], [{"id": 7}])
+        self.assertEqual(client.post("/marketplaces/yandex/digital-deliveries/7/deliver", json={"codes": ["AAAA-1111"]}).status_code, 200)
+        self.assertEqual(client.post("/marketplaces/yandex/digital-deliveries/7/issue-from-pool").status_code, 200)
+        self.assertEqual(calls, [("list", "asat", "PSN-500"), ("deliver", 7, ["AAAA-1111"]), ("pool", 7)])

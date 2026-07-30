@@ -23,6 +23,11 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
   const yandexMarketOrdersSyncing = ref(false)
   const yandexMarketOrdersLastSyncedAt = ref(null)
   const yandexMarketSandboxDeliverySaving = ref('')
+  const yandexMarketProductionManualOrders = ref([])
+  const yandexMarketProductionManualOrdersLoading = ref(false)
+  const yandexMarketProductionManualDeliverySaving = ref(0)
+  const yandexMarketInterhubServices = ref([])
+  const yandexMarketInterhubServicesLoading = ref(false)
   const yandexMarketStockSettingsLoading = ref(false)
   const yandexMarketStockSettingsSaving = ref(false)
   const yandexMarketStockSettings = reactive({
@@ -191,7 +196,11 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     if (!yandexMarketCatalogDetails.value) return
     showYandexMarketCatalogDetails.value = false
     showYandexMarketDigitalSettings.value = true
-    loadYandexMarketOrders()
+    if (YANDEX_MARKET_SANDBOX_MODE) loadYandexMarketOrders()
+    else {
+      loadYandexMarketProductionManualOrders()
+      loadYandexMarketInterhubServices()
+    }
   }
 
   function closeYandexMarketDigitalSettings() {
@@ -212,6 +221,73 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
       yandexMarketCatalogDetailsError.value = yandexMarketError(error, 'Не удалось загрузить историю заказов Яндекс Маркета')
     } finally {
       yandexMarketOrdersLoading.value = false
+    }
+  }
+
+  async function loadYandexMarketProductionManualOrders() {
+    // Читает только остановленные боевые выдачи выбранной карточки, без синхронизации или внешней отправки.
+    const offerId = String(yandexMarketCatalogDetails.value?.offer_id || '').trim()
+    if (!offerId || YANDEX_MARKET_SANDBOX_MODE || yandexMarketProductionManualOrdersLoading.value) return
+    yandexMarketProductionManualOrdersLoading.value = true
+    try {
+      const data = await apiGet(yandexMarketTestPath(`/marketplaces/yandex/catalog/${encodeURIComponent(offerId)}/manual-deliveries`), { token: auth.state.token })
+      yandexMarketProductionManualOrders.value = Array.isArray(data?.items) ? data.items : []
+    } catch (error) {
+      yandexMarketCatalogDetailsError.value = yandexMarketError(error, 'Не удалось загрузить очередь ручной выдачи Яндекс Маркета')
+    } finally {
+      yandexMarketProductionManualOrdersLoading.value = false
+    }
+  }
+
+  async function loadYandexMarketInterhubServices() {
+    // Получает каталог услуг только через наш API, чтобы токен Interhub не попадал в браузер.
+    if (YANDEX_MARKET_SANDBOX_MODE || yandexMarketInterhubServicesLoading.value) return
+    yandexMarketInterhubServicesLoading.value = true
+    try {
+      const data = await apiGet('/integrations/interhub/services', { token: auth.state.token })
+      yandexMarketInterhubServices.value = Array.isArray(data?.items) ? data.items : []
+    } catch {
+      // Оставляет ручную выдачу доступной, если каталог поставщика временно недоступен.
+      yandexMarketInterhubServices.value = []
+    } finally {
+      yandexMarketInterhubServicesLoading.value = false
+    }
+  }
+
+  async function deliverYandexMarketProductionOrder(order, rawCodes) {
+    // Передает ручные коды только выбранной остановленной выдаче и обновляет локальную очередь после ответа Маркета.
+    const deliveryId = Number(order?.id || 0)
+    const codes = String(rawCodes || '').split(/\r?\n/).map((code) => code.trim()).filter(Boolean)
+    if (!deliveryId || !codes.length) return { ok: false, message: 'Введите ключ для отправки' }
+    yandexMarketProductionManualDeliverySaving.value = deliveryId
+    try {
+      await apiPost(`/marketplaces/yandex/digital-deliveries/${encodeURIComponent(deliveryId)}/deliver`, { codes }, { token: auth.state.token })
+      await loadYandexMarketProductionManualOrders()
+      return { ok: true, message: '' }
+    } catch (error) {
+      const message = yandexMarketError(error, 'Не удалось отправить ключ в Яндекс Маркет')
+      yandexMarketCatalogDetailsError.value = message
+      return { ok: false, message }
+    } finally {
+      yandexMarketProductionManualDeliverySaving.value = 0
+    }
+  }
+
+  async function issueYandexMarketProductionOrderFromPool(order) {
+    // Берет полный комплект из боевого ручного пула только после прямого действия оператора.
+    const deliveryId = Number(order?.id || 0)
+    if (!deliveryId) return { ok: false, message: 'Не удалось определить выдачу' }
+    yandexMarketProductionManualDeliverySaving.value = deliveryId
+    try {
+      await apiPost(`/marketplaces/yandex/digital-deliveries/${encodeURIComponent(deliveryId)}/issue-from-pool`, {}, { token: auth.state.token })
+      await loadYandexMarketProductionManualOrders()
+      return { ok: true, message: '' }
+    } catch (error) {
+      const message = yandexMarketError(error, 'Не удалось выдать ключ из ручного пула')
+      yandexMarketCatalogDetailsError.value = message
+      return { ok: false, message }
+    } finally {
+      yandexMarketProductionManualDeliverySaving.value = 0
     }
   }
 
@@ -406,6 +482,11 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     yandexMarketOrdersSyncing,
     yandexMarketOrdersLastSyncedAt,
     yandexMarketSandboxDeliverySaving,
+    yandexMarketProductionManualOrders,
+    yandexMarketProductionManualOrdersLoading,
+    yandexMarketProductionManualDeliverySaving,
+    yandexMarketInterhubServices,
+    yandexMarketInterhubServicesLoading,
     yandexMarketSandboxMode: YANDEX_MARKET_SANDBOX_MODE,
     openYandexMarketCatalog,
     closeYandexMarketCatalog,
@@ -416,10 +497,14 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     openYandexMarketDigitalSettings,
     closeYandexMarketDigitalSettings,
     loadYandexMarketOrders,
+    loadYandexMarketProductionManualOrders,
+    loadYandexMarketInterhubServices,
     syncYandexMarketOrders,
     deliverYandexMarketSandboxOrder,
     issueYandexMarketSandboxOrderFromPool,
     sendYandexMarketSandboxOrderToMarket,
+    deliverYandexMarketProductionOrder,
+    issueYandexMarketProductionOrderFromPool,
     updateYandexMarketCatalogArchive,
     selectYandexMarketCatalogItem,
     closeYandexMarketStockSettings,

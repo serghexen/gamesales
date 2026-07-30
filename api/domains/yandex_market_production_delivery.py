@@ -8,14 +8,20 @@ from threading import Timer
 import uuid
 from typing import Any, Callable
 
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from .yandex_market_catalog_service import (
     deliver_yandex_market_digital_goods,
     update_yandex_market_stock,
+    normalize_yandex_market_store_code,
     yandex_market_production_auto_delivery_enabled,
     yandex_market_production_auto_delivery_not_before,
 )
+
+
+class YandexMarketManualDeliveryIn(BaseModel):
+    codes: list[str] = Field(min_length=1, max_length=100)
 
 
 def build_yandex_market_production_delivery_processor(
@@ -224,7 +230,7 @@ def build_yandex_market_production_delivery_processor(
             conn.commit()
         schedule_yandex_target_stock_republish(str(row[0]), str(row[4]))
 
-    def take_from_pool(delivery_id: int) -> bool:
+    def take_from_pool(delivery_id: int, allowed_statuses: set[str] | None = None) -> bool:
         # Резервирует полный комплект из пула транзакционно: частичный заказ автоматически не отправляется.
         secret = pool_secret()
         with psycopg.connect(DB_DSN) as conn:
@@ -236,7 +242,8 @@ def build_yandex_market_production_delivery_processor(
                 """,
                 (delivery_id,),
             )
-            if not delivery or str(delivery[6] or "") not in {"manual_required", "supplier_processing"}:
+            allowed = allowed_statuses or {"manual_required", "supplier_processing"}
+            if not delivery or str(delivery[6] or "") not in allowed:
                 conn.commit()
                 return False
             current = texts(delivery[5])
@@ -516,12 +523,130 @@ def build_yandex_market_production_delivery_processor(
                 # Финальный отказ может перейти к пулу, но никогда не повторяет исходный Interhub pay.
                 process_delivery_steps(int(delivery_id))
 
+    def delivery_out(row: tuple[Any, ...]) -> dict[str, Any]:
+        # Отдает оператору только сведения для ручной выдачи, не раскрывая уже закрепленные коды.
+        return {
+            "id": int(row[0]),
+            "order_id": int(row[1]),
+            "item_id": int(row[2]),
+            "offer_id": str(row[3]),
+            "required_qty": int(row[4] or 1),
+            "collected_qty": len(texts(row[5])),
+            "status": str(row[6] or "manual_required"),
+            "last_error": str(row[7] or ""),
+            "item_name": str(row[8] or ""),
+            "market_status": str(row[9] or ""),
+            "created_at": row[10],
+            "updated_at": row[11],
+        }
+
+    def read_manual_delivery(conn, delivery_id: int) -> dict[str, Any]:
+        # Читает один заказ после явной выдачи, чтобы интерфейс получил финальное локальное состояние.
+        row = q1(
+            conn,
+            """
+            SELECT delivery.id, delivery.order_id, delivery.item_id, delivery.offer_id, delivery.required_qty,
+                   delivery.delivered_codes, delivery.status, delivery.last_error, orders.item_name, orders.status,
+                   delivery.created_at, delivery.updated_at
+            FROM app.marketplace_yandex_digital_deliveries AS delivery
+            JOIN app.marketplace_yandex_order_items AS orders
+              ON orders.store_code=delivery.store_code AND orders.order_id=delivery.order_id AND orders.item_id=delivery.item_id
+            WHERE delivery.id=%s
+            """,
+            (delivery_id,),
+        )
+        if not row:
+            raise HTTPException(404, "Цифровая выдача Яндекс Маркета не найдена")
+        return delivery_out(row)
+
+    def list_manual_deliveries(store_code: str, offer_id: str) -> list[dict[str, Any]]:
+        # Показывает только остановленные выдачи: список не запускает Interhub и не отправляет ключи в Маркет.
+        with psycopg.connect(DB_DSN) as conn:
+            rows = qall(
+                conn,
+                """
+                SELECT delivery.id, delivery.order_id, delivery.item_id, delivery.offer_id, delivery.required_qty,
+                       delivery.delivered_codes, delivery.status, delivery.last_error, orders.item_name, orders.status,
+                       delivery.created_at, delivery.updated_at
+                FROM app.marketplace_yandex_digital_deliveries AS delivery
+                JOIN app.marketplace_yandex_order_items AS orders
+                  ON orders.store_code=delivery.store_code AND orders.order_id=delivery.order_id AND orders.item_id=delivery.item_id
+                WHERE delivery.store_code=%s AND delivery.offer_id=%s AND delivery.status='manual_required'
+                ORDER BY delivery.created_at DESC, delivery.id DESC
+                """,
+                (store_code, offer_id),
+            )
+            conn.commit()
+        return [delivery_out(row) for row in rows]
+
+    def deliver_manually(delivery_id: int, raw_codes: list[str]) -> dict[str, Any]:
+        # Закрепляет ручные коды за одной остановленной выдачей и только затем однократно отправляет их в Маркет.
+        prepared: list[str] = []
+        seen: set[str] = set()
+        for raw_code in raw_codes:
+            code = str(raw_code or "").strip()
+            if not code or len(code) > 1024:
+                raise HTTPException(400, "Каждый ручной ключ должен быть непустым и короче 1025 символов")
+            if code in seen:
+                raise HTTPException(400, "Один и тот же ручной ключ нельзя указать дважды")
+            seen.add(code)
+            prepared.append(code)
+        with psycopg.connect(DB_DSN) as conn:
+            row = q1(
+                conn,
+                "SELECT required_qty, delivered_codes, status FROM app.marketplace_yandex_digital_deliveries WHERE id=%s FOR UPDATE",
+                (delivery_id,),
+            )
+            if not row:
+                raise HTTPException(404, "Цифровая выдача Яндекс Маркета не найдена")
+            if str(row[2] or "") != "manual_required":
+                raise HTTPException(409, "Ручной ключ можно выдать только заказу, ожидающему ручной обработки")
+            existing = texts(row[1])
+            new_codes = [code for code in prepared if code not in existing]
+            all_codes = existing + new_codes
+            required_qty = int(row[0] or 1)
+            if len(all_codes) != required_qty:
+                raise HTTPException(400, f"Для этой позиции нужно ключей: {required_qty - len(existing)}")
+            for code in new_codes:
+                owner = q1(
+                    conn,
+                    "INSERT INTO app.marketplace_yandex_digital_code_registry(code_hash, delivery_id) VALUES (%s, %s) ON CONFLICT (code_hash) DO NOTHING RETURNING delivery_id",
+                    (code_hash(code), delivery_id),
+                )
+                if owner:
+                    continue
+                existing_owner = q1(
+                    conn,
+                    "SELECT delivery_id FROM app.marketplace_yandex_digital_code_registry WHERE code_hash=%s",
+                    (code_hash(code),),
+                )
+                if not existing_owner or int(existing_owner[0]) != delivery_id:
+                    raise HTTPException(409, "Этот ключ уже закреплен за другим заказом")
+            exec1(
+                conn,
+                "UPDATE app.marketplace_yandex_digital_deliveries SET delivered_codes=%s::jsonb, status='supplier_processing', last_error='', updated_at=now() WHERE id=%s",
+                (json.dumps(all_codes, ensure_ascii=False), delivery_id),
+            )
+            conn.commit()
+        send_delivery(delivery_id)
+        with psycopg.connect(DB_DSN) as conn:
+            result = read_manual_delivery(conn, delivery_id)
+            conn.commit()
+        return result
+
+    def issue_from_pool_manually(delivery_id: int) -> dict[str, Any]:
+        # Берет ключи только для остановленной выдачи, не вмешиваясь в активную покупку у Interhub.
+        if not take_from_pool(delivery_id, {"manual_required"}):
+            raise HTTPException(409, "В ручном пуле нет полного комплекта ключей для этого заказа")
+        with psycopg.connect(DB_DSN) as conn:
+            result = read_manual_delivery(conn, delivery_id)
+            conn.commit()
+        return result
+
     def process(store_code: str, order_id: int, item_id: int, event_time: datetime | None = None) -> None:
-        # Запускается исключительно из webhook-пути: финальный статус фиксируется локально, а новая выдача проходит предохранители.
-        if not yandex_market_production_auto_delivery_enabled(store_code):
-            return
+        # Запускается только после двух глобальных предохранителей, чтобы выключенная автоматика не читала и не меняла очередь.
         not_before = yandex_market_production_auto_delivery_not_before(store_code)
-        if not_before is None or (event_time and event_time < not_before):
+        if not yandex_market_production_auto_delivery_enabled(store_code) or not_before is None or (event_time and event_time < not_before):
             return
         with psycopg.connect(DB_DSN) as conn:
             order = q1(
@@ -576,6 +701,28 @@ def build_yandex_market_production_delivery_processor(
         if delivery:
             process_delivery_steps(int(delivery[0]))
 
-    # Фоновая задача получает только эту функцию, поэтому она не может случайно запустить обработку новых заказов.
+    # Публикует узкие ручные операции отдельно от webhook-процессора, чтобы UI не мог запустить автопокупку.
     process.refresh_supplier_attempts = refresh_supplier_attempts  # type: ignore[attr-defined]
+    process.list_manual_deliveries = list_manual_deliveries  # type: ignore[attr-defined]
+    process.deliver_manually = deliver_manually  # type: ignore[attr-defined]
+    process.issue_from_pool_manually = issue_from_pool_manually  # type: ignore[attr-defined]
     return process
+
+
+def mount_yandex_market_production_delivery_routes(app, *, delivery_processor, require_role) -> None:
+    @app.get("/marketplaces/yandex/catalog/{offer_id}/manual-deliveries")
+    def list_yandex_market_manual_deliveries(offer_id: str, store_code: str = "asat", user=Depends(require_role("owner"))):
+        # Возвращает локальную очередь ручной выдачи без обращения к Interhub или Яндекс Маркету.
+        normalized_store_code = normalize_yandex_market_store_code(store_code)
+        items = delivery_processor.list_manual_deliveries(normalized_store_code, str(offer_id))
+        return {"offer_id": str(offer_id), "items": items}
+
+    @app.post("/marketplaces/yandex/digital-deliveries/{delivery_id}/deliver")
+    def deliver_yandex_market_order_manually(delivery_id: int, payload: YandexMarketManualDeliveryIn, user=Depends(require_role("owner"))):
+        # Передает операторские коды только для выбранной остановленной выдачи.
+        return delivery_processor.deliver_manually(int(delivery_id), payload.codes)
+
+    @app.post("/marketplaces/yandex/digital-deliveries/{delivery_id}/issue-from-pool")
+    def issue_yandex_market_order_from_pool(delivery_id: int, user=Depends(require_role("owner"))):
+        # Берет полный комплект из ручного пула только по явной команде оператора.
+        return delivery_processor.issue_from_pool_manually(int(delivery_id))

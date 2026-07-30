@@ -29,7 +29,12 @@
                     <label class="field ozon-catalog-details-modal__stock-field">
                       <span>Остаток на Маркете</span>
                       <input v-model.number="yandexMarketStockSettings.manual_stock_limit" class="input" type="number" min="0" aria-label="Остаток для публикации на Маркете" />
-                      <button class="btn btn--primary ozon-catalog-details-modal__stock-submit" type="button" :disabled="yandexMarketStockSettingsSaving" title="Опубликовать указанный остаток в Яндекс Маркете" @click="saveYandexMarketStockSettings({ publishStock: true })">Отправить</button>
+                      <div class="ozon-catalog-details-modal__stock-actions">
+                        <button class="btn btn--primary ozon-catalog-details-modal__stock-submit" type="button" :disabled="yandexMarketStockSettingsSaving" title="Опубликовать указанный остаток в Яндекс Маркете" @click="saveYandexMarketStockSettings({ publishStock: true })">Отправить</button>
+                        <button class="btn btn--icon-plain ozon-catalog-details-modal__stock-settings-save" type="button" :disabled="yandexMarketStockSettingsSaving" title="Сохранить инструкцию и настройки выдачи" aria-label="Сохранить настройки карточки" @click="saveYandexMarketStockSettings()">
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h12l4 4v12H4z" /><path d="M7 4v6h8V4" /><path d="M7 20v-6h10v6" /></svg>
+                        </button>
+                      </div>
                     </label>
                     <label class="field">
                       <span>Инструкция покупателю</span>
@@ -39,7 +44,6 @@
                       <span>Сообщение при проблеме</span>
                       <textarea v-model="yandexMarketStockSettings.support_error_message" class="input textarea" rows="2" placeholder="Например: обратитесь в поддержку." aria-label="Сообщение при проблеме Яндекс Маркета"></textarea>
                     </label>
-                    <button class="btn btn--primary ozon-catalog-details-modal__stock-submit" type="button" :disabled="yandexMarketStockSettingsSaving" @click="saveYandexMarketStockSettings()">{{ yandexMarketStockSettingsSaving ? 'Сохраняем…' : 'Сохранить настройки карточки' }}</button>
                   </div>
                 </div>
               </section>
