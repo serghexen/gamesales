@@ -242,6 +242,8 @@ describe('WorkYandexMarketDigitalSettingsModal', () => {
     expect(loadMarketplaceKeyPoolFor).toHaveBeenCalledWith(expect.objectContaining({ marketplace: 'yandex_market', productKey: 'PSN-500', storeCode: 'asat' }))
     await wrapper.get('.ozon-key-settings__block .ozon-catalog-details-modal__work-block-toggle').trigger('click')
     expect(wrapper.get('input[role="combobox"]').element.value).toContain('PlayStation Turkey')
+    await wrapper.get('button[aria-label="Показать список товаров Interhub"]').trigger('click')
+    expect(wrapper.get('#yandex-interhub-service-results').text()).toContain('PlayStation Turkey')
     expect(wrapper.get('select[aria-label="Номинал Interhub Яндекс Маркета"]').element.value).toBe('250')
     await wrapper.get('input[aria-label="Автовыдача через Interhub Яндекс Маркета"]').setValue(true)
     expect(settings).toMatchObject({ auto_issue_enabled: true, interhub_enabled: true, pool_issue_enabled: true })
