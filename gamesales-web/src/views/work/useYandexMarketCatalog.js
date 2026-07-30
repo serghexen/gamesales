@@ -187,8 +187,8 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
   }
 
   function openYandexMarketDigitalSettings() {
-    // Открывает локальную sandbox-выдачу и подгружает только уже сохраненные позиции fake-заказов.
-    if (!YANDEX_MARKET_SANDBOX_MODE || !yandexMarketCatalogDetails.value) return
+    // Открывает отдельные настройки источников выдачи для выбранной карточки в нужном контуре.
+    if (!yandexMarketCatalogDetails.value) return
     showYandexMarketCatalogDetails.value = false
     showYandexMarketDigitalSettings.value = true
     loadYandexMarketOrders()

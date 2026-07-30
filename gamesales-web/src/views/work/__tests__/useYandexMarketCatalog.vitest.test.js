@@ -142,7 +142,7 @@ describe('WorkYandexMarketCatalogModal', () => {
 })
 
 describe('WorkYandexMarketCatalogDetailsModal', () => {
-  it('publishes stock explicitly and keeps the delivery switches in the saved form', async () => {
+  it('publishes stock explicitly and keeps delivery settings out of the stock form', async () => {
     const saveYandexMarketStockSettings = vi.fn()
     const wrapper = mount(WorkYandexMarketCatalogDetailsModal, {
       props: {
@@ -160,10 +160,10 @@ describe('WorkYandexMarketCatalogDetailsModal', () => {
     expect(wrapper.get('input[aria-label="Остаток для публикации на Маркете"]').element.value).toBe('4')
     await wrapper.get('button[title="Опубликовать указанный остаток в Яндекс Маркете"]').trigger('click')
     expect(saveYandexMarketStockSettings).toHaveBeenCalledWith({ publishStock: true })
-    expect(wrapper.get('input[aria-label="Автовыдача Яндекс Маркета"]').element.checked).toBe(true)
-    expect(wrapper.get('input[aria-label="Выдача из ручного пула Яндекс Маркета"]').element.checked).toBe(true)
+    expect(wrapper.find('input[aria-label="Автовыдача Яндекс Маркета"]').exists()).toBe(false)
+    expect(wrapper.find('input[aria-label="Выдача из ручного пула Яндекс Маркета"]').exists()).toBe(false)
     expect(wrapper.get('textarea[aria-label="Инструкция покупателю"]').element.value).toBe('Активируйте ключ здесь.')
-    expect(wrapper.text()).toContain('Сохранить инструкцию')
+    expect(wrapper.text()).toContain('Сохранить настройки карточки')
     await wrapper.findAll('.yandex-catalog-details-modal__work-block-toggle').at(1).trigger('click')
     expect(wrapper.text()).toContain('Заказ 501')
     expect(wrapper.text()).toContain('В обработке')
@@ -199,6 +199,38 @@ describe('WorkYandexMarketDigitalSettingsModal', () => {
     expect(deliverYandexMarketSandboxOrder).toHaveBeenCalledWith(expect.objectContaining({ order_id: 501 }), ['AAAA-1111', 'BBBB-2222'])
     await wrapper.get('button.btn--secondary').trigger('click')
     expect(issueYandexMarketSandboxOrderFromPool).toHaveBeenCalledWith(expect.objectContaining({ item_id: 99 }))
+  })
+
+  it('keeps production issue settings and the key pool in the separate keys modal', async () => {
+    const saveYandexMarketStockSettings = vi.fn()
+    const loadMarketplaceKeyPoolFor = vi.fn()
+    const settings = { interhub_service_id: 25, interhub_nominal_id: '250', auto_issue_enabled: false, interhub_enabled: false, pool_issue_enabled: true }
+    const wrapper = mount(WorkYandexMarketDigitalSettingsModal, {
+      props: {
+        showYandexMarketDigitalSettings: true,
+        closeYandexMarketDigitalSettings: vi.fn(),
+        yandexMarketSandboxMode: false,
+        yandexMarketOfferId: 'PSN-500',
+        yandexMarketTitle: 'PSN 500',
+        yandexMarketStockSettings: settings,
+        saveYandexMarketStockSettings,
+        openMarketplaceKeyPool: vi.fn(),
+        loadMarketplaceKeyPoolFor,
+      },
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(wrapper.text()).toContain('Ключи Яндекс Маркета')
+    expect(wrapper.text()).not.toContain('Локальная выдача fake-заказов')
+    expect(wrapper.get('input[aria-label="Автовыдача через Interhub Яндекс Маркета"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('input[aria-label="Выдача из ручного пула Яндекс Маркета"]').element.checked).toBe(true)
+    expect(loadMarketplaceKeyPoolFor).toHaveBeenCalledWith(expect.objectContaining({ marketplace: 'yandex_market', productKey: 'PSN-500', storeCode: 'asat' }))
+    await wrapper.get('.ozon-key-settings__block .ozon-catalog-details-modal__work-block-toggle').trigger('click')
+    expect(wrapper.get('input[aria-label="ID услуги Interhub Яндекс Маркета"]').element.value).toBe('25')
+    await wrapper.get('input[aria-label="Автовыдача через Interhub Яндекс Маркета"]').setValue(true)
+    expect(settings).toMatchObject({ auto_issue_enabled: true, interhub_enabled: true, pool_issue_enabled: true })
+    await wrapper.get('button[aria-label="Сохранить настройки"]').trigger('click')
+    expect(saveYandexMarketStockSettings).toHaveBeenCalledTimes(1)
   })
 })
 

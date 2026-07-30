@@ -5,7 +5,7 @@
         <div class="panel__head panel__head--tight modal__head">
           <div><h3>Ключи Яндекс Маркета</h3></div>
           <div class="toolbar-actions ozon-digital-modal__head-actions">
-            <button class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save" type="button" disabled title="Настройка выдачи ключей пока не подключена" aria-label="Сохранить настройки">
+            <button class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save" type="button" :disabled="yandexMarketSandboxMode || yandexMarketStockSettingsSaving" :title="yandexMarketSandboxMode ? 'Настройка выдачи ключей пока не подключена' : 'Сохранить настройки'" aria-label="Сохранить настройки" @click="saveProductionSettings">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h12l4 4v12H4z" /><path d="M7 4v6h8V4" /><path d="M7 20v-6h10v6" /></svg>
             </button>
             <button class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--edit" type="button" aria-label="Вернуться к карточке" title="К карточке" @click="closeYandexMarketDigitalSettings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5" /><path d="m11 18-6-6 6-6" /></svg></button>
@@ -22,15 +22,15 @@
               </button>
               <div class="ozon-key-settings__block-actions">
                 <div class="ozon-digital-modal__auto-switch">
-                  <label class="switch" title="Автовыдача будет доступна после подключения обработки заказов Маркета">
-                    <input type="checkbox" disabled aria-label="Автовыдача пока не подключена" />
+                  <label class="switch" :title="yandexMarketSandboxMode ? 'Автовыдача будет доступна после подключения обработки заказов Маркета' : 'Автовыдача через Interhub'">
+                    <input v-model="autoIssueEnabled" type="checkbox" :disabled="yandexMarketSandboxMode || !yandexMarketStockSettings.interhub_service_id" :aria-label="yandexMarketSandboxMode ? 'Автовыдача пока не подключена' : 'Автовыдача через Interhub Яндекс Маркета'" />
                     <span class="slider"><span class="circle"><svg class="cross" viewBox="0 0 365.696 365.696" aria-hidden="true"><path fill="currentColor" d="m243.188 182.86 113.132-113.134c12.5-12.5 12.5-32.766 0-45.247L341.238 9.398c-12.504-12.503-32.77-12.503-45.25 0L182.86 122.528 69.727 9.374c-12.5-12.5-32.766-12.5-45.247 0L9.375 24.457c-12.5 12.504-12.5 32.77 0 45.25l113.152 113.152L9.398 295.99c-12.503 12.503-12.503 32.769 0 45.25L24.48 356.32c12.5 12.503 32.766 12.503 45.247 0l113.132-113.132 113.131 113.132c12.503 12.503 32.769 12.503 45.25 0l15.081-15.082c12.5-12.504 12.5-32.77 0-45.25z" /></svg><svg class="checkmark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.707 19.121a.997.997 0 0 1-1.414 0l-5.646-5.647a1.5 1.5 0 0 1 0-2.121l.707-.707a1.5 1.5 0 0 1 2.121 0L9 14.171l9.525-9.525a1.5 1.5 0 0 1 2.121 0l.707.707a1.5 1.5 0 0 1 0 2.121z" /></svg></span></span>
                   </label>
                 </div>
               </div>
             </div>
             <div v-if="isSupplierOpen" id="yandex-key-supplier-content" class="ozon-catalog-details-modal__work-block-body">
-              <div class="ozon-digital-modal__supplier"><div class="ozon-digital-modal__supplier-fields"><label class="field"><span>Товар</span><select class="input" disabled aria-label="Товар"><option>Будет выбран при подключении</option></select></label></div></div>
+              <div class="ozon-digital-modal__supplier"><div class="ozon-digital-modal__supplier-fields"><template v-if="yandexMarketSandboxMode"><label class="field"><span>Товар</span><select class="input" disabled aria-label="Товар"><option>Будет выбран при подключении</option></select></label></template><template v-else><label class="field"><span>ID услуги Interhub</span><input v-model.number="yandexMarketStockSettings.interhub_service_id" class="input" type="number" min="1" aria-label="ID услуги Interhub Яндекс Маркета" /></label><label class="field"><span>Номинал Interhub</span><input v-model="yandexMarketStockSettings.interhub_nominal_id" class="input" aria-label="Номинал Interhub Яндекс Маркета" /></label></template></div></div>
             </div>
           </section>
           <WorkMarketplaceKeyPoolPanel
@@ -52,14 +52,14 @@
           >
             <template #header-actions>
               <div class="ozon-digital-modal__auto-switch marketplace-key-pool-panel__issue-switch">
-                <label class="switch" title="Автовыдача из пула остается выключенной: ключи выдаются только по нажатию в fake-заказе.">
-                  <input type="checkbox" disabled aria-label="Автоматическая выдача из ручного пула выключена" />
+                <label class="switch" :title="yandexMarketSandboxMode ? 'Автовыдача из пула остается выключенной: ключи выдаются только по нажатию в fake-заказе.' : 'Использует ручной пул этой карточки как источник выдачи'">
+                  <input v-model="poolIssueEnabled" type="checkbox" :disabled="yandexMarketSandboxMode" :aria-label="yandexMarketSandboxMode ? 'Автоматическая выдача из ручного пула выключена' : 'Выдача из ручного пула Яндекс Маркета'" />
                   <span class="slider"><span class="circle"><svg class="cross" viewBox="0 0 365.696 365.696" aria-hidden="true"><path fill="currentColor" d="m243.188 182.86 113.132-113.134c12.5-12.5 12.5-32.766 0-45.247L341.238 9.398c-12.504-12.503-32.77-12.503-45.25 0L182.86 122.528 69.727 9.374c-12.5-12.5-32.766-12.5-45.247 0L9.375 24.457c-12.5 12.504-12.5 32.77 0 45.25l113.152 113.152L9.398 295.99c-12.503 12.503-12.503 32.769 0 45.25L24.48 356.32c12.5 12.503 32.766 12.503 45.247 0l113.132-113.132 113.131 113.132c12.503 12.503 32.769 12.503 45.25 0l15.081-15.082c12.5-12.504 12.5-32.77 0-45.25z" /></svg><svg class="checkmark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.707 19.121a.997.997 0 0 1-1.414 0l-5.646-5.647a1.5 1.5 0 0 1 0-2.121l.707-.707a1.5 1.5 0 0 1 2.121 0L9 14.171l9.525-9.525a1.5 1.5 0 0 1 2.121 0l.707.707a1.5 1.5 0 0 1 0 2.121z" /></svg></span></span>
                 </label>
               </div>
             </template>
           </WorkMarketplaceKeyPoolPanel>
-          <section class="ozon-digital-modal__orders">
+          <section v-if="yandexMarketSandboxMode" class="ozon-digital-modal__orders">
             <div class="ozon-digital-modal__orders-head"><div><h4>Локальная выдача fake-заказов</h4><p class="muted">Ключи сохраняются в локальном test-пуле. Яндекс Маркет и Interhub не вызываются.</p></div><span class="ozon-digital-modal__manual-count">{{ pendingSandboxOrders.length }}</span></div>
             <p v-if="!pendingSandboxOrders.length" class="ozon-digital-modal__empty muted">Не найдено fake-заказов, ожидающих локальной выдачи.</p>
             <article v-for="order in pendingSandboxOrders" :key="`${order.order_id}:${order.item_id}`" class="ozon-digital-order">
@@ -76,7 +76,7 @@
               </div>
             </article>
           </section>
-          <section v-if="readyForMarketOrders.length" class="ozon-digital-modal__orders">
+          <section v-if="yandexMarketSandboxMode && readyForMarketOrders.length" class="ozon-digital-modal__orders">
             <div class="ozon-digital-modal__orders-head"><div><h4>Отправка в test Маркет</h4><p class="muted">Ключ уже закреплен локально. Отправка изменит только fake-заказ в test-кабинете.</p></div><span class="ozon-digital-modal__manual-count">{{ readyForMarketOrders.length }}</span></div>
             <article v-for="order in readyForMarketOrders" :key="`market:${order.order_id}:${order.item_id}`" class="ozon-digital-order">
               <div class="ozon-digital-order__head"><div><strong>Заказ {{ order.order_id }}</strong><p>{{ order.offer_id }} · ключи закреплены локально</p></div><span class="ozon-digital-order__status ozon-digital-order__status--supplier_processing">Готов к отправке</span></div>
@@ -96,8 +96,12 @@ import WorkMarketplaceKeyPoolPanel from './WorkMarketplaceKeyPoolPanel.vue'
 const props = defineProps({
   showYandexMarketDigitalSettings: { type: Boolean, required: true },
   closeYandexMarketDigitalSettings: { type: Function, required: true },
+  yandexMarketSandboxMode: { type: Boolean, default: true },
   yandexMarketOfferId: { type: String, default: '' },
   yandexMarketTitle: { type: String, default: '' },
+  yandexMarketStockSettings: { type: Object, default: () => ({}) },
+  yandexMarketStockSettingsSaving: { type: Boolean, default: false },
+  saveYandexMarketStockSettings: { type: Function, default: async () => ({ ok: false }) },
   yandexMarketOrders: { type: Array, default: () => [] },
   yandexMarketSandboxDeliverySaving: { type: String, default: '' },
   deliverYandexMarketSandboxOrder: { type: Function, default: async () => ({ ok: false }) },
@@ -120,6 +124,23 @@ const props = defineProps({
 
 const isSupplierOpen = ref(false)
 const manualCodes = reactive({})
+
+const autoIssueEnabled = computed({
+  get: () => Boolean(props.yandexMarketStockSettings.auto_issue_enabled),
+  set: (enabled) => {
+    // Включает Interhub вместе с автовыдачей, чтобы не сохранить противоречивую конфигурацию.
+    props.yandexMarketStockSettings.auto_issue_enabled = Boolean(enabled)
+    props.yandexMarketStockSettings.interhub_enabled = Boolean(enabled)
+  },
+})
+
+const poolIssueEnabled = computed({
+  get: () => Boolean(props.yandexMarketStockSettings.pool_issue_enabled),
+  set: (enabled) => {
+    // Сохраняет выбор ручного пула отдельно от поставщика Interhub.
+    props.yandexMarketStockSettings.pool_issue_enabled = Boolean(enabled)
+  },
+})
 
 const pendingSandboxOrders = computed(() => {
   // Оставляет в очереди только незавершенные позиции: итог выдачи хранится локально рядом с fake-заказом.
@@ -166,15 +187,21 @@ async function sendToMarket(order) {
 }
 
 function toggleSupplier() {
-  // Сворачивает подготовительный блок автовыдачи, пока Маркет подключён только на чтение.
+  // Сворачивает настройки источника, не меняя сохраненные параметры карточки.
   isSupplierOpen.value = !isSupplierOpen.value
+}
+
+async function saveProductionSettings() {
+  // Отправляет настройки выдачи только из боевой формы; sandbox остаётся локальным сценарием.
+  if (props.yandexMarketSandboxMode) return
+  await props.saveYandexMarketStockSettings()
 }
 
 watch(
   () => [props.showYandexMarketDigitalSettings, props.yandexMarketOfferId, props.yandexMarketTitle],
   ([isOpen, productKey, productTitle]) => {
-    // Подгружает отдельный пул текущего SKU Маркета до показа таблицы на основном экране.
-    if (isOpen && productKey) props.loadMarketplaceKeyPoolFor({ marketplace: 'yandex_market', productKey: String(productKey), productTitle: String(productTitle || productKey), storeCode: 'test' })
+    // Подгружает отдельный пул нужного контура до показа таблицы ключей.
+    if (isOpen && productKey) props.loadMarketplaceKeyPoolFor({ marketplace: 'yandex_market', productKey: String(productKey), productTitle: String(productTitle || productKey), storeCode: props.yandexMarketSandboxMode ? 'test' : 'asat' })
   },
   { immediate: true },
 )
