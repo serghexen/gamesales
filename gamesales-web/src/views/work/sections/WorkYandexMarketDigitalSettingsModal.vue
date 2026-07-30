@@ -96,7 +96,7 @@ import WorkMarketplaceKeyPoolPanel from './WorkMarketplaceKeyPoolPanel.vue'
 const props = defineProps({
   showYandexMarketDigitalSettings: { type: Boolean, required: true },
   closeYandexMarketDigitalSettings: { type: Function, required: true },
-  yandexMarketSandboxMode: { type: Boolean, default: true },
+  yandexMarketSandboxMode: { type: Boolean, default: false },
   yandexMarketOfferId: { type: String, default: '' },
   yandexMarketTitle: { type: String, default: '' },
   yandexMarketStockSettings: { type: Object, default: () => ({}) },

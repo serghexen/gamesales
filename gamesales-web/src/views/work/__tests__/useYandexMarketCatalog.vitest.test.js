@@ -177,6 +177,7 @@ describe('WorkYandexMarketDigitalSettingsModal', () => {
     const wrapper = mount(WorkYandexMarketDigitalSettingsModal, {
       props: {
         showYandexMarketDigitalSettings: true, closeYandexMarketDigitalSettings: vi.fn(), yandexMarketOfferId: 'PSN-500', openMarketplaceKeyPool: vi.fn(),
+        yandexMarketSandboxMode: true,
         yandexMarketOrders: [{ order_id: 501, item_id: 99, offer_id: 'PSN-500', quantity: 2, status: 'PROCESSING' }],
         deliverYandexMarketSandboxOrder, issueYandexMarketSandboxOrderFromPool,
       },
