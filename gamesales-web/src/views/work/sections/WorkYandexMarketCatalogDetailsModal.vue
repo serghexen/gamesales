@@ -4,7 +4,7 @@
       <div class="modal modal--auto yandex-catalog-details-modal ozon-catalog-details-modal">
         <div class="panel__head panel__head--tight modal__head">
           <div><h3>Параметры карточки Яндекс Маркета</h3></div>
-          <div class="toolbar-actions yandex-catalog-details-modal__head-actions ozon-catalog-details-modal__head-actions"><button v-if="yandexMarketCatalogDetails" class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save" type="button" aria-label="Открыть ключи" title="Ключи" @click="openYandexMarketDigitalSettings"><svg class="ozon-catalog-details-modal__keys-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a1 1 0 0 1 1 1v4a2 2 0 0 0 0 4v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4a2 2 0 0 0 0-4V5a1 1 0 0 1 1-1Z" /><path d="M13 7v2M13 11v2M13 15v2" /></svg></button><button class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--edit" type="button" aria-label="Вернуться к каталогу" title="К каталогу" @click="closeYandexMarketCatalogDetails"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5" /><path d="m11 18-6-6 6-6" /></svg></button><button class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close" type="button" aria-label="Закрыть" title="Закрыть" @click="closeYandexMarketCatalogDetails"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6l-12 12" /></svg></button></div>
+          <div class="toolbar-actions yandex-catalog-details-modal__head-actions ozon-catalog-details-modal__head-actions"><button v-if="yandexMarketSandboxMode && yandexMarketCatalogDetails" class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save" type="button" aria-label="Открыть ключи" title="Ключи" @click="openYandexMarketDigitalSettings"><svg class="ozon-catalog-details-modal__keys-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a1 1 0 0 1 1 1v4a2 2 0 0 0 0 4v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4a2 2 0 0 0 0-4V5a1 1 0 0 1 1-1Z" /><path d="M13 7v2M13 11v2M13 15v2" /></svg></button><button class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--edit" type="button" aria-label="Вернуться к каталогу" title="К каталогу" @click="closeYandexMarketCatalogDetails"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5" /><path d="m11 18-6-6 6-6" /></svg></button><button class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close" type="button" aria-label="Закрыть" title="Закрыть" @click="closeYandexMarketCatalogDetails"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6l-12 12" /></svg></button></div>
         </div>
         <div class="modal__body" :class="{ 'modal__body--locked': yandexMarketCatalogDetailsLoading, 'modal__body--loader': yandexMarketCatalogDetailsLoading }">
           <div v-if="yandexMarketCatalogDetailsLoading" class="modal__body-overlay"><WorkHamsterLoader label="Загружаем параметры и остаток Маркета…" /></div>
@@ -28,14 +28,22 @@
                   <div class="ozon-catalog-details-modal__sale-settings-form">
                     <label class="field ozon-catalog-details-modal__stock-field">
                       <span>Остаток на Маркете</span>
-                      <input class="input" type="number" :value="yandexMarketStockSettings.market_available_stock ?? ''" readonly aria-label="Остаток на Маркете" />
-                      <!-- Кнопка показывает будущую публикацию, но заблокирована до разрешения отправок в Маркет. -->
-                      <button class="btn btn--primary ozon-catalog-details-modal__stock-submit" type="button" disabled title="Публикация остатка в Яндекс Маркет пока не подключена">Отправить</button>
+                      <input v-model.number="yandexMarketStockSettings.manual_stock_limit" class="input" type="number" min="0" aria-label="Остаток для публикации на Маркете" />
+                      <button class="btn btn--primary ozon-catalog-details-modal__stock-submit" type="button" :disabled="yandexMarketStockSettingsSaving" title="Опубликовать указанный остаток в Яндекс Маркете" @click="saveYandexMarketStockSettings({ publishStock: true })">Отправить</button>
                     </label>
                     <label class="field">
                       <span>Инструкция покупателю</span>
                       <textarea v-model="yandexMarketStockSettings.activation_instruction" class="input textarea" rows="3" placeholder="Например: активируйте ключ в PlayStation Store." aria-label="Инструкция покупателю"></textarea>
                     </label>
+                    <label class="field">
+                      <span>Сообщение при проблеме</span>
+                      <textarea v-model="yandexMarketStockSettings.support_error_message" class="input textarea" rows="2" placeholder="Например: обратитесь в поддержку." aria-label="Сообщение при проблеме Яндекс Маркета"></textarea>
+                    </label>
+                    <label class="switch"><input v-model="yandexMarketStockSettings.auto_issue_enabled" type="checkbox" aria-label="Автовыдача Яндекс Маркета" /><span class="slider"></span><span>Автовыдача через Interhub</span></label>
+                    <label class="switch"><input v-model="yandexMarketStockSettings.pool_issue_enabled" type="checkbox" aria-label="Выдача из ручного пула Яндекс Маркета" /><span class="slider"></span><span>Выдача из ручного пула</span></label>
+                    <label class="field"><span>ID услуги Interhub</span><input v-model.number="yandexMarketStockSettings.interhub_service_id" class="input" type="number" min="1" aria-label="ID услуги Interhub Яндекс Маркета" /></label>
+                    <label class="field"><span>Номинал Interhub</span><input v-model="yandexMarketStockSettings.interhub_nominal_id" class="input" aria-label="Номинал Interhub Яндекс Маркета" /></label>
+                    <label class="switch"><input v-model="yandexMarketStockSettings.interhub_enabled" type="checkbox" aria-label="Поставщик Interhub Яндекс Маркета" /><span class="slider"></span><span>Поставщик Interhub включён</span></label>
                     <button class="btn btn--primary ozon-catalog-details-modal__stock-submit" type="button" :disabled="yandexMarketStockSettingsSaving" @click="saveYandexMarketStockSettings()">{{ yandexMarketStockSettingsSaving ? 'Сохраняем…' : 'Сохранить инструкцию' }}</button>
                   </div>
                 </div>
@@ -92,7 +100,7 @@ import { computed, ref, watch } from 'vue'
 import WorkHamsterLoader from './WorkHamsterLoader.vue'
 
 const props = defineProps({
-  showYandexMarketCatalogDetails: { type: Boolean, required: true }, closeYandexMarketCatalogDetails: { type: Function, required: true }, openYandexMarketDigitalSettings: { type: Function, required: true }, yandexMarketCatalogDetails: { type: Object, default: null }, yandexMarketCatalogDetailsLoading: { type: Boolean, required: true }, yandexMarketCatalogDetailsError: { type: String, default: '' }, yandexMarketStockSettings: { type: Object, required: true }, yandexMarketStockSettingsSaving: { type: Boolean, required: true }, saveYandexMarketStockSettings: { type: Function, required: true }, yandexMarketOrders: { type: Array, default: () => [] }, yandexMarketOrdersLoading: { type: Boolean, required: true }, yandexMarketOrdersSyncing: { type: Boolean, required: true }, yandexMarketOrdersLastSyncedAt: { type: String, default: null }, loadYandexMarketOrders: { type: Function, required: true }, syncYandexMarketOrders: { type: Function, required: true },
+  showYandexMarketCatalogDetails: { type: Boolean, required: true }, closeYandexMarketCatalogDetails: { type: Function, required: true }, openYandexMarketDigitalSettings: { type: Function, required: true }, yandexMarketSandboxMode: { type: Boolean, default: true }, yandexMarketCatalogDetails: { type: Object, default: null }, yandexMarketCatalogDetailsLoading: { type: Boolean, required: true }, yandexMarketCatalogDetailsError: { type: String, default: '' }, yandexMarketStockSettings: { type: Object, required: true }, yandexMarketStockSettingsSaving: { type: Boolean, required: true }, saveYandexMarketStockSettings: { type: Function, required: true }, yandexMarketOrders: { type: Array, default: () => [] }, yandexMarketOrdersLoading: { type: Boolean, required: true }, yandexMarketOrdersSyncing: { type: Boolean, required: true }, yandexMarketOrdersLastSyncedAt: { type: String, default: null }, loadYandexMarketOrders: { type: Function, required: true }, syncYandexMarketOrders: { type: Function, required: true },
 })
 
 const isStockOpen = ref(false)

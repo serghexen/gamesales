@@ -1,6 +1,8 @@
 import { reactive, ref } from 'vue'
 
-const YANDEX_MARKET_STORE_CODE = 'test'
+// Сборка test остается изолированной, а production явно выбирает ASAT через переменную окружения фронта.
+const YANDEX_MARKET_STORE_CODE = String(import.meta.env.VITE_YANDEX_MARKET_STORE_CODE || 'test').trim().toLowerCase()
+const YANDEX_MARKET_SANDBOX_MODE = YANDEX_MARKET_STORE_CODE === 'test'
 
 export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, requestDealConfirm }) {
   const showYandexMarketCatalog = ref(false)
@@ -27,6 +29,12 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     offer_id: '',
     manual_stock_limit: 0,
     activation_instruction: '',
+    support_error_message: '',
+    auto_issue_enabled: false,
+    pool_issue_enabled: false,
+    interhub_service_id: null,
+    interhub_nominal_id: '',
+    interhub_enabled: false,
     published_stock: 0,
     last_stock_sync_at: null,
     market_available_stock: null,
@@ -54,6 +62,10 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
       offer_id: String(source.offer_id || yandexMarketSelectedOfferId.value || ''),
       manual_stock_limit: Math.max(0, Number(source.manual_stock_limit || 0)),
       activation_instruction: String(source.activation_instruction || ''),
+      support_error_message: String(source.support_error_message || ''),
+      auto_issue_enabled: Boolean(source.auto_issue_enabled), pool_issue_enabled: Boolean(source.pool_issue_enabled),
+      interhub_service_id: source.interhub_service_id ? Number(source.interhub_service_id) : null,
+      interhub_nominal_id: String(source.interhub_nominal_id || ''), interhub_enabled: Boolean(source.interhub_enabled),
       published_stock: Math.max(0, Number(source.published_stock || 0)),
       last_stock_sync_at: source.last_stock_sync_at || null,
       market_available_stock: source.market_available_stock === null || source.market_available_stock === undefined ? null : Math.max(0, Number(source.market_available_stock || 0)),
@@ -176,7 +188,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
 
   function openYandexMarketDigitalSettings() {
     // Открывает локальную sandbox-выдачу и подгружает только уже сохраненные позиции fake-заказов.
-    if (!yandexMarketCatalogDetails.value) return
+    if (!YANDEX_MARKET_SANDBOX_MODE || !yandexMarketCatalogDetails.value) return
     showYandexMarketCatalogDetails.value = false
     showYandexMarketDigitalSettings.value = true
     loadYandexMarketOrders()
@@ -352,6 +364,10 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
         {
           manual_stock_limit: Math.max(0, Number(yandexMarketStockSettings.manual_stock_limit || 0)),
           activation_instruction: String(yandexMarketStockSettings.activation_instruction || '').trim(),
+          support_error_message: String(yandexMarketStockSettings.support_error_message || '').trim(),
+          auto_issue_enabled: Boolean(yandexMarketStockSettings.auto_issue_enabled), pool_issue_enabled: Boolean(yandexMarketStockSettings.pool_issue_enabled),
+          interhub_service_id: yandexMarketStockSettings.interhub_service_id ? Number(yandexMarketStockSettings.interhub_service_id) : null,
+          interhub_nominal_id: String(yandexMarketStockSettings.interhub_nominal_id || '').trim(), interhub_enabled: Boolean(yandexMarketStockSettings.interhub_enabled),
         },
         { token: auth.state.token },
       )
@@ -390,6 +406,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     yandexMarketOrdersSyncing,
     yandexMarketOrdersLastSyncedAt,
     yandexMarketSandboxDeliverySaving,
+    yandexMarketSandboxMode: YANDEX_MARKET_SANDBOX_MODE,
     openYandexMarketCatalog,
     closeYandexMarketCatalog,
     loadYandexMarketCatalog,

@@ -98,6 +98,7 @@
         :show-yandex-market-catalog-details="ctx.showYandexMarketCatalogDetails"
         :close-yandex-market-catalog-details="ctx.closeYandexMarketCatalogDetails"
         :open-yandex-market-digital-settings="ctx.openYandexMarketDigitalSettings"
+        :yandex-market-sandbox-mode="ctx.yandexMarketSandboxMode"
         :yandex-market-catalog-details="ctx.yandexMarketCatalogDetails"
         :yandex-market-catalog-details-loading="ctx.yandexMarketCatalogDetailsLoading"
         :yandex-market-catalog-details-error="ctx.yandexMarketCatalogDetailsError"

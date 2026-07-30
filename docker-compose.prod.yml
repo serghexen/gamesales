@@ -75,6 +75,7 @@ services:
       context: ./gamesales-web
       args:
         VITE_API_BASE: /api
+        VITE_YANDEX_MARKET_STORE_CODE: ${VITE_YANDEX_MARKET_STORE_CODE:-asat}
     container_name: gamesales-web
     restart: unless-stopped
     depends_on:

@@ -63,6 +63,12 @@ class YandexMarketCatalogDetailsOut(YandexMarketCatalogItemOut):
 class YandexMarketStockSettingsIn(BaseModel):
     manual_stock_limit: int = Field(default=0, ge=0, le=100000)
     activation_instruction: str = Field(default="", max_length=5000)
+    support_error_message: str = Field(default="", max_length=2000)
+    auto_issue_enabled: bool = False
+    pool_issue_enabled: bool = False
+    interhub_service_id: int | None = Field(default=None, gt=0)
+    interhub_nominal_id: str = Field(default="", max_length=255)
+    interhub_enabled: bool = False
 
 
 class YandexMarketStockSettingsOut(YandexMarketStockSettingsIn):
@@ -352,8 +358,13 @@ def mount_yandex_market_catalog_routes(
         row = q1(
             conn,
             """
-            SELECT manual_stock_limit, activation_instruction, published_stock, last_stock_sync_at
+            SELECT manual_stock_limit, activation_instruction, support_error_message, auto_issue_enabled,
+                   pool_issue_enabled, published_stock, last_stock_sync_at,
+                   (SELECT service_id FROM app.marketplace_yandex_digital_suppliers supplier WHERE supplier.store_code=settings.store_code AND supplier.offer_id=settings.offer_id AND supplier.provider_code='interhub' AND supplier.priority=1),
+                   (SELECT nominal_id FROM app.marketplace_yandex_digital_suppliers supplier WHERE supplier.store_code=settings.store_code AND supplier.offer_id=settings.offer_id AND supplier.provider_code='interhub' AND supplier.priority=1),
+                   COALESCE((SELECT enabled FROM app.marketplace_yandex_digital_suppliers supplier WHERE supplier.store_code=settings.store_code AND supplier.offer_id=settings.offer_id AND supplier.provider_code='interhub' AND supplier.priority=1), false)
             FROM app.marketplace_yandex_stock_settings
+            AS settings
             WHERE store_code=%s AND offer_id=%s
             """,
             (store_code, offer_id),
@@ -363,9 +374,12 @@ def mount_yandex_market_catalog_routes(
         return YandexMarketStockSettingsOut(
             offer_id=offer_id,
             manual_stock_limit=max(0, int(row[0] or 0)),
-            activation_instruction=str(row[1] or ""),
-            published_stock=max(0, int(row[2] or 0)),
-            last_stock_sync_at=row[3],
+            activation_instruction=str(row[1] or ""), support_error_message=str(row[2] or ""),
+            auto_issue_enabled=bool(row[3]), pool_issue_enabled=bool(row[4]),
+            published_stock=max(0, int(row[5] or 0)), last_stock_sync_at=row[6],
+            interhub_service_id=int(row[7]) if len(row) > 7 and row[7] else None,
+            interhub_nominal_id=str(row[8] or "") if len(row) > 8 else "",
+            interhub_enabled=bool(row[9]) if len(row) > 9 else False,
         )
 
     @app.post("/marketplaces/yandex/catalog/sync", response_model=YandexMarketCatalogSyncOut)
@@ -842,12 +856,16 @@ def mount_yandex_market_catalog_routes(
                 conn,
                 """
                 INSERT INTO app.marketplace_yandex_stock_settings(
-                  store_code, offer_id, manual_stock_limit, activation_instruction, updated_at
+                  store_code, offer_id, manual_stock_limit, activation_instruction, support_error_message,
+                  auto_issue_enabled, pool_issue_enabled, updated_at
                 )
-                VALUES (%s, %s, %s, %s, now())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, now())
                 ON CONFLICT (store_code, offer_id) DO UPDATE
                 SET manual_stock_limit=excluded.manual_stock_limit,
                     activation_instruction=excluded.activation_instruction,
+                    support_error_message=excluded.support_error_message,
+                    auto_issue_enabled=CASE WHEN %s THEN excluded.auto_issue_enabled ELSE marketplace_yandex_stock_settings.auto_issue_enabled END,
+                    pool_issue_enabled=CASE WHEN %s THEN excluded.pool_issue_enabled ELSE marketplace_yandex_stock_settings.pool_issue_enabled END,
                     updated_at=now()
                 """,
                 (
@@ -855,8 +873,19 @@ def mount_yandex_market_catalog_routes(
                     offer_id,
                     payload.manual_stock_limit,
                     payload.activation_instruction.strip(),
+                    payload.support_error_message.strip(),
+                    payload.auto_issue_enabled,
+                    payload.pool_issue_enabled,
+                    not publish_stock,
+                    not publish_stock,
                 ),
             )
+            if payload.interhub_service_id:
+                # Связывает SKU с Interhub без оплаты: покупка возможна только из включенного webhook-обработчика.
+                exec1(conn, """INSERT INTO app.marketplace_yandex_digital_suppliers(store_code, offer_id, provider_code, priority, enabled, service_id, nominal_id, updated_at) VALUES (%s, %s, 'interhub', 1, %s, %s, %s, now()) ON CONFLICT (store_code, offer_id, provider_code, priority) DO UPDATE SET enabled=excluded.enabled, service_id=excluded.service_id, nominal_id=excluded.nominal_id, updated_at=now()""", (normalized_store_code, offer_id, payload.interhub_enabled, payload.interhub_service_id, payload.interhub_nominal_id.strip()))
+            else:
+                # Не удаляет историю попыток, а выключает поставщика при очистке настройки.
+                exec1(conn, "UPDATE app.marketplace_yandex_digital_suppliers SET enabled=false, updated_at=now() WHERE store_code=%s AND offer_id=%s AND provider_code='interhub' AND priority=1", (normalized_store_code, offer_id))
             conn.commit()
         if publish_stock:
             require_yandex_market_live()

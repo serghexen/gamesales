@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 try:
@@ -77,3 +78,26 @@ class YandexMarketWebhookProcessorTests(unittest.TestCase):
 
         fetch_order.assert_not_called()
         self.assertTrue(any(params == ("ignored", "", "ignored", 8) for _sql, params in writes))
+
+    # Только webhook передает позицию в боевой обработчик; ручная синхронизация этот callback не использует.
+    def test_order_event_passes_saved_item_only_to_delivery_callback(self):
+        delivered = []
+
+        def fake_q1(_conn, _sql, _params=None):
+            return (70940298, 501, "ORDER_CREATED", "received", datetime(2026, 7, 29, tzinfo=timezone.utc))
+
+        with (
+            patch.object(yandex_market_webhook_processor, "find_yandex_market_store_code_by_campaign_id", return_value="asat"),
+            patch.object(yandex_market_webhook_processor, "fetch_yandex_market_order", return_value={"orderId": 501, "items": [{"id": 99}]}),
+            patch.object(yandex_market_webhook_processor, "save_yandex_market_order_snapshot", return_value=1),
+        ):
+            process_event = yandex_market_webhook_processor.build_yandex_market_webhook_event_processor(
+                DB_DSN="postgresql://test",
+                psycopg=_FakePsycopg(),
+                q1=fake_q1,
+                exec1=lambda *_args: None,
+                process_delivery=lambda *args: delivered.append(args),
+            )
+            process_event(9)
+
+        self.assertEqual(delivered, [("asat", 501, 99, datetime(2026, 7, 29, tzinfo=timezone.utc))])
