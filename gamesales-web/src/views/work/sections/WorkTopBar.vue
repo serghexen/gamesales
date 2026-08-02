@@ -26,6 +26,9 @@
           <router-link v-if="canViewProductsSection" class="tab" :class="{ active: activeTab === 'products' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'products' } }">
             Товары
           </router-link>
+          <router-link class="tab" :to="{ name: 'marketplace' }">
+            Маркетплейсы
+          </router-link>
           <router-link v-if="canViewNsGiftSection" class="tab" :class="{ active: activeTab === 'ns-gift' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'ns-gift' } }">
             Магазин
           </router-link>

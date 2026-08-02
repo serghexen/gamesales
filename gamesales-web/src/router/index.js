@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import WorkView from '../views/WorkView.vue'
+import MarketplaceView from '../views/MarketplaceView.vue'
 import { useAuth } from '../stores/auth'
 
 const router = createRouter({
@@ -8,6 +9,7 @@ const router = createRouter({
   routes: [
     { path: '/login', name: 'login', component: LoginView },
     { path: '/', name: 'work', component: WorkView, meta: { requiresAuth: true } },
+    { path: '/marketplace', name: 'marketplace', component: MarketplaceView, meta: { requiresAuth: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })

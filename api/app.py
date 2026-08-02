@@ -299,6 +299,10 @@ from domains.analytics_api import mount_analytics_routes
 from domains.finance_api import mount_finance_routes
 from domains.marketplaces_api import mount_marketplaces_routes
 from domains.marketplace_key_pools_api import mount_marketplace_key_pool_routes
+from domains.marketplace_connections_api import mount_marketplace_connection_routes
+from domains.marketplace_connection_verification import discover_yandex_market_stores, verify_ozon_connection
+from domains.marketplace_catalog_service import fetch_marketplace_catalog
+from domains.marketplace_orders_service import fetch_marketplace_orders, normalize_marketplace_order_status
 from domains.yandex_market_catalog_api import mount_yandex_market_catalog_routes
 from domains.yandex_market_webhooks_api import mount_yandex_market_webhooks_routes
 from domains.yandex_market_webhook_processor import build_yandex_market_webhook_event_processor
@@ -1192,6 +1196,19 @@ mount_marketplace_key_pool_routes(
     qall=qall,
     exec1=exec1,
     require_role=require_role,
+)
+mount_marketplace_connection_routes(
+    app,
+    DB_DSN=DB_DSN,
+    psycopg=pooled_psycopg,
+    q1=q1,
+    qall=qall,
+    get_current_user=get_current_user,
+    verify_ozon_connection=verify_ozon_connection,
+    discover_yandex_market_stores=discover_yandex_market_stores,
+    fetch_marketplace_catalog=fetch_marketplace_catalog,
+    fetch_marketplace_orders=fetch_marketplace_orders,
+    normalize_marketplace_order_status=normalize_marketplace_order_status,
 )
 # Создает отключенный по умолчанию боевой обработчик: внешняя выдача возможна только после двух явных флагов.
 yandex_market_production_delivery_processor = build_yandex_market_production_delivery_processor(
