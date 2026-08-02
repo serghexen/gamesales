@@ -39,7 +39,7 @@ services:
       redis:
         condition: service_started
     ports:
-      - "18081:8000"
+      - "127.0.0.1:18081:8000"
     mem_limit: 450m
     cpus: "0.70"
 
@@ -84,9 +84,25 @@ services:
     depends_on:
       - api
     ports:
-      - "18080:80"
+      - "127.0.0.1:18080:80"
     mem_limit: 120m
     cpus: "0.20"
+
+  gateway:
+    image: caddy:2.8-alpine
+    container_name: gamesales-gateway-staging
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "88.218.61.203:80:80"
+      - "88.218.61.203:443:443"
+    volumes:
+      - ./deploy/caddy/Caddyfile.stage:/etc/caddy/Caddyfile:ro
+      - caddy_data_staging:/data
+      - caddy_config_staging:/config
+    mem_limit: 90m
+    cpus: "0.15"
 
   queue-api:
     build: ./notify-api
@@ -124,3 +140,5 @@ services:
 
 volumes:
   pgdata_staging:
+  caddy_data_staging:
+  caddy_config_staging:

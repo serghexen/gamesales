@@ -1,0 +1,7 @@
+# Этот шлюз обслуживает только stage-домен и подключён только к тестовой Docker-сети.
+stage.homtech.app {
+    encode zstd gzip
+
+    # Caddy сам передаёт адрес клиента в X-Forwarded-For.
+    reverse_proxy web:80
+}
