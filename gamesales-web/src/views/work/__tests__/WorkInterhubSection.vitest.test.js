@@ -242,6 +242,7 @@ describe('WorkInterhubSection', () => {
     expect(ctx.pay).not.toHaveBeenCalled()
     expect(ctx.resetPaymentFlow).toHaveBeenCalledTimes(1)
     expect(document.body.querySelector('.interhub-confirm')?.classList.contains('modal--auto')).toBe(true)
+    expect(document.body.querySelector('.interhub-confirm__nominal')?.textContent).toBe('15')
     expect(document.body.textContent).toContain('Актуальная цена')
     expect(document.body.textContent).toContain('117,47 ₽')
     expect(document.body.textContent).toContain('Готов к покупке')
