@@ -2408,7 +2408,7 @@ function createInterhubVoucherBatchId() {
 }
 
 async function calculateInterhub(payload) {
-  // Узнаём актуальную цену через calculate отдельно, не создавая операцию check и не запуская оплату.
+  // Узнаём цену для одного ключа: количество нужно только нашей пачке и не уходит поставщику.
   const flowVersion = interhubPaymentFlowVersion.value
   interhubCalculationLoading.value = true
   interhubCalculation.value = null
@@ -2417,6 +2417,7 @@ async function calculateInterhub(payload) {
   try {
     const requestPayload = { ...payload }
     delete requestPayload.flow_type
+    delete requestPayload.quantity
     const calculateTransactionId = `gamesales-calculate-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const calculation = await apiPost('/integrations/interhub/calculate', {
       ...requestPayload,

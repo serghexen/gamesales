@@ -44,10 +44,27 @@
       "problemMatcher": []
     },
     {
+      "label": "Staging DB SSH Tunnel",
+      "type": "shell",
+      "command": "ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L 127.0.0.1:5433:127.0.0.1:5433 adminops@138.16.162.73",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": [
+            "-lc"
+          ]
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
       "label": "Run Frontend + Backend",
       "dependsOn": [
         "Backend Dev",
-        "Frontend Dev"
+        "Frontend Dev",
+        "Staging DB SSH Tunnel"
       ],
       "dependsOrder": "parallel",
       "problemMatcher": []
@@ -57,6 +74,7 @@
       "dependsOn": [
         "Backend Dev",
         "Frontend Dev",
+        "Staging DB SSH Tunnel",
         "InterHub Tunnel"
       ],
       "dependsOrder": "parallel",

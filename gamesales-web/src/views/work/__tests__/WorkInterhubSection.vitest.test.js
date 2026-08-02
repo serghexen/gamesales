@@ -211,7 +211,7 @@ describe('WorkInterhubSection', () => {
     wrapper.unmount()
   })
 
-  it('runs price, check and payment from one obtain action', async () => {
+  it('prepares price and availability before an explicit purchase confirmation', async () => {
     const ctx = buildCtx({ canPay: true })
     ctx.calculate = vi.fn(async () => { ctx.calculation = { success: true, fixed_amount: 117.47 } })
     ctx.checkPayment = vi.fn(async () => { ctx.check = { success: true, message: 'Доступно' } })
@@ -224,6 +224,8 @@ describe('WorkInterhubSection', () => {
     await wrapper.find('.interhub-catalog__form select').setValue('15')
     ctx.resetPaymentFlow.mockClear()
     await wrapper.find('.interhub-catalog__form').trigger('submit')
+    await Promise.resolve()
+    await Promise.resolve()
 
     expect(ctx.calculate).toHaveBeenCalledWith({
       service_id: 7,
@@ -237,8 +239,35 @@ describe('WorkInterhubSection', () => {
       params: { nominal: 15 },
       flow_type: 'TOP_UP_FIXED',
     })
-    expect(ctx.pay).toHaveBeenCalledTimes(1)
+    expect(ctx.pay).not.toHaveBeenCalled()
     expect(ctx.resetPaymentFlow).toHaveBeenCalledTimes(1)
+    expect(document.body.querySelector('.interhub-confirm')?.classList.contains('modal--auto')).toBe(true)
+    expect(document.body.textContent).toContain('Актуальная цена')
+    expect(document.body.textContent).toContain('117,47 ₽')
+    expect(document.body.textContent).toContain('Готов к покупке')
+
+    await document.body.querySelector('.interhub-confirm__actions .btn').dispatchEvent(new Event('click'))
+    expect(ctx.pay).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('shows the provider availability error and disables purchase confirmation', async () => {
+    const ctx = buildCtx({ canPay: true })
+    ctx.calculate = vi.fn(async () => { ctx.calculation = { success: true, fixed_amount: 117.47 } })
+    ctx.checkPayment = vi.fn(async () => { ctx.check = { success: false, message: 'У поставщика закончились ключи' } })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx }, attachTo: document.body })
+
+    await selectServiceByTitle(wrapper, 'Mobile top up')
+    await wrapper.find('.interhub-catalog__form select').setValue('15')
+    await wrapper.find('.interhub-catalog__form').trigger('submit')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const buyButton = document.body.querySelector('.interhub-confirm__actions .btn')
+    expect(document.body.textContent).toContain('У поставщика закончились ключи')
+    expect(buyButton.disabled).toBe(true)
+    expect(ctx.pay).not.toHaveBeenCalled()
+    wrapper.unmount()
   })
 
   it('scrolls the selected service payment form into view', async () => {
@@ -324,11 +353,15 @@ describe('WorkInterhubSection', () => {
       canPay: true,
       services: [{ service_id: 12, title: 'Three keys', category: '', type: 'VOUCHER', fields: [] }],
     })
+    ctx.calculate = vi.fn(async () => { ctx.calculation = { success: true, fixed_amount: 117.47 } })
+    ctx.checkPayment = vi.fn(async () => { ctx.check = { success: true, message: 'Доступно' } })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
     await wrapper.find('tbody tr').trigger('click')
     await wrapper.find('.interhub-catalog__form input[type="number"]').setValue('3')
     await wrapper.find('.interhub-catalog__form').trigger('submit')
+    await Promise.resolve()
+    await Promise.resolve()
 
     expect(ctx.calculate).toHaveBeenCalledWith({
       service_id: 12,
@@ -337,6 +370,45 @@ describe('WorkInterhubSection', () => {
       flow_type: 'VOUCHER',
       quantity: 3,
     })
+    expect(document.body.textContent).toContain('К покупке, шт.')
+    expect(document.body.textContent).toContain('3')
+  })
+
+  it('resets voucher quantity to one when another service is selected', async () => {
+    const ctx = buildCtx({
+      services: [
+        { service_id: 12, title: 'First voucher', category: '', type: 'VOUCHER', fields: [] },
+        { service_id: 13, title: 'Second voucher', category: '', type: 'VOUCHER', fields: [] },
+      ],
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await selectServiceByTitle(wrapper, 'First voucher')
+    await wrapper.find('.interhub-catalog__form input[type="number"]').setValue('3')
+    await selectServiceByTitle(wrapper, 'Second voucher')
+
+    expect(wrapper.find('.interhub-catalog__form input[type="number"]').element.value).toBe('1')
+  })
+
+  it('groups extra provider fields separately from the purchase action', async () => {
+    const ctx = buildCtx({
+      services: [{
+        service_id: 14,
+        title: 'Voucher with count',
+        category: '',
+        type: 'VOUCHER',
+        fields: [
+          { name: 'nominal', type: 'LIST', required: true, value_list: [{ id: 25, title: 'USD 25' }] },
+          { name: 'count', type: 'TEXT', required: false },
+        ],
+      }],
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    await selectServiceByTitle(wrapper, 'Voucher with count')
+
+    expect(wrapper.find('.interhub-catalog__fields').findAll('.field')).toHaveLength(3)
+    expect(wrapper.find('.interhub-catalog__form > .interhub-catalog__actions').exists()).toBe(true)
   })
 
   it('shows an optional account field for fixed nominal services', async () => {
@@ -393,7 +465,9 @@ describe('WorkInterhubSection', () => {
     await Promise.resolve()
     await Promise.resolve()
     expect(wrapper.find('.interhub-catalog__obtain-overlay').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Не удалось узнать цену: Нет цены')
+    expect(document.body.textContent).toContain('Нет цены')
+    expect(document.body.textContent).toContain('Не получена')
+    wrapper.unmount()
   })
 
   it('keeps the hamster visible while a voucher batch is received in the background', async () => {
