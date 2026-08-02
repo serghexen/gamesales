@@ -49,6 +49,27 @@ def yandex_market_sandbox_market_delivery_enabled(store_code: str | None = None)
     )
 
 
+def yandex_market_production_auto_delivery_enabled(store_code: str | None = None) -> bool:
+    # Открывает боевую выдачу только главному магазину после отдельного явного разрешения в окружении.
+    normalized_store_code = normalize_yandex_market_store_code(store_code)
+    return normalized_store_code == "asat" and _env_store_bool(
+        "AUTO_DELIVERY_ENABLED", store_code=normalized_store_code, default=False,
+    )
+
+
+def yandex_market_production_auto_delivery_not_before(store_code: str | None = None) -> datetime | None:
+    # Ограничивает обработку свежими уведомлениями, чтобы включение не захватило старый хвост заказов.
+    normalized_store_code = normalize_yandex_market_store_code(store_code)
+    raw = str(os.getenv(f"YANDEX_MARKET_{normalized_store_code.upper()}_AUTO_DELIVERY_NOT_BEFORE", "") or "").strip()
+    if not raw:
+        return None
+    try:
+        value = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
 def _catalog_context(store_code: str | None) -> tuple[str, str, int, int, int]:
     # Собирает реквизиты кабинета и магазина до обращения к товарным методам Маркета.
     normalized_store_code = normalize_yandex_market_store_code(store_code)

@@ -47,7 +47,7 @@ class MarketplacesApiTests(unittest.TestCase):
         self.assertFalse(auto_supplier_wait_expired(2, datetime(2026, 7, 24, 12, 11, tzinfo=timezone.utc), max_status_checks=30, deadline_buffer_sec=600, now=now))
 
     # Поднимает маршрут с памятью вместо БД, чтобы проверять контракт без доступа к Ozon.
-    def create_client(self, rows=None, writes=None, detail_row=None, q1_handler=None, qall_handler=None, required_roles=None, ozon_live_enabled=True):
+    def create_client(self, rows=None, writes=None, detail_row=None, q1_handler=None, qall_handler=None, required_roles=None, ozon_live_enabled=True, stock_republish_delay_sec=0):
         app = FastAPI()
         stored_rows = list(rows or [])
         write_log = writes if writes is not None else []
@@ -81,6 +81,7 @@ class MarketplacesApiTests(unittest.TestCase):
             get_current_user=lambda: SimpleNamespace(username="owner", role="owner"),
             require_role=fake_require_role,
             ozon_live_enabled=ozon_live_enabled,
+            stock_republish_delay_sec=stock_republish_delay_sec,
         )
         self._refresh_orders = refresh_orders
         return TestClient(app), write_log
@@ -359,6 +360,35 @@ class MarketplacesApiTests(unittest.TestCase):
         settings_params = [params for sql, params in writes if "INSERT INTO app.marketplace_ozon_digital_settings" in sql]
         self.assertFalse(settings_params[-1][-2], "публикация остатка не должна менять флаг автовыдачи")
         self.assertFalse(settings_params[-1][-1], "публикация остатка не должна менять флаг выдачи из ручного пула")
+
+    # После успешного приема ключа Ozon получает сохраненный ручной лимит, а не уменьшенный остаток поставщика.
+    def test_successful_code_delivery_republishes_saved_target_stock(self):
+        def q1_handler(sql, _params):
+            if "WHERE id=%s FOR UPDATE" in sql:
+                return ("asat", 103, "posting-1", 555, 1, "manual_required", [])
+            if "WHERE id<>%s AND delivered_codes" in sql:
+                return None
+            if "INSERT INTO app.marketplace_ozon_digital_code_registry" in sql:
+                return (41,)
+            if "SELECT orders.id, orders.posting_number" in sql:
+                return (41, "posting-1", "order-1", "PSN 500", 555, 1, "delivered", "done", None, None, datetime(2026, 7, 29, tzinfo=timezone.utc), "", "", ["CODE-ONE"])
+            if "FROM app.marketplace_ozon_digital_settings" in sql:
+                return ("PSN-500", 7, False, "Инструкция", "", 0, None, None, False)
+            if "COALESCE(SUM" in sql:
+                return (0, 0, 0)
+            return None
+
+        client, _writes = self.create_client(q1_handler=q1_handler, qall_handler=lambda *_args: [])
+        with (
+            patch("api.domains.marketplaces_api.upload_ozon_digital_codes", return_value={"exemplars_by_sku": [{"sku": 555, "received_qty": 1, "rejected_qty": 0}]}) as upload,
+            patch("api.domains.marketplaces_api.update_ozon_digital_stock", return_value={"status": [{"updated": True}]}) as update_stock,
+        ):
+            with client:
+                response = client.post("/marketplaces/ozon/digital-orders/41/deliver", json={"codes": ["CODE-ONE"]})
+
+        self.assertEqual(response.status_code, 200)
+        upload.assert_called_once_with(posting_number="posting-1", sku=555, codes=["CODE-ONE"], store_code="asat")
+        update_stock.assert_called_once_with("PSN-500", 7, store_code="asat")
 
     # Связка с поставщиком должна сохраняться отдельно от лимита и не вызывать оплату при нажатии «Сохранить».
     def test_digital_settings_saves_interhub_mapping_without_calling_supplier(self):

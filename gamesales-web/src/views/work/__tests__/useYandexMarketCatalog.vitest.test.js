@@ -56,7 +56,7 @@ describe('useYandexMarketCatalog', () => {
 
     expect(apiPut).toHaveBeenCalledWith(
       '/marketplaces/yandex/catalog/PSN-500/stock-settings?store_code=test',
-      { manual_stock_limit: 0, activation_instruction: 'Активируйте код в магазине.' },
+      expect.objectContaining({ manual_stock_limit: 0, activation_instruction: 'Активируйте код в магазине.', auto_issue_enabled: false, pool_issue_enabled: false }),
       { token: 'market-token' },
     )
   })
@@ -110,6 +110,7 @@ describe('useYandexMarketCatalog', () => {
 
 describe('WorkYandexMarketCatalogModal', () => {
   it('keeps the search and splits a long catalog into pages with all working columns', async () => {
+    const updateYandexMarketCatalogArchive = vi.fn()
     const yandexMarketCatalogItems = Array.from({ length: 21 }, (_, index) => ({
       offer_id: `SKU-${index + 1}`,
       title: `Игра ${index + 1}`,
@@ -122,7 +123,7 @@ describe('WorkYandexMarketCatalogModal', () => {
     }))
     const wrapper = mount(WorkYandexMarketCatalogModal, {
       props: {
-        showYandexMarketCatalog: true, closeYandexMarketCatalog: vi.fn(), syncYandexMarketCatalog: vi.fn(), openYandexMarketCatalogDetails: vi.fn(), yandexMarketCatalogItems, yandexMarketCatalogLoading: false, yandexMarketCatalogSyncing: false,
+        showYandexMarketCatalog: true, closeYandexMarketCatalog: vi.fn(), syncYandexMarketCatalog: vi.fn(), updateYandexMarketCatalogArchive, openYandexMarketCatalogDetails: vi.fn(), yandexMarketCatalogItems, yandexMarketCatalogLoading: false, yandexMarketCatalogSyncing: false,
       },
       global: { stubs: { teleport: true } },
     })
@@ -131,6 +132,9 @@ describe('WorkYandexMarketCatalogModal', () => {
     expect(wrapper.findAll('.yandex-catalog-modal__table th').map((cell) => cell.text())).toEqual(['Карточка Яндекс Маркета', 'Действие'])
     expect(wrapper.findAll('.yandex-catalog-modal__table tbody tr')).toHaveLength(20)
     expect(wrapper.text()).toContain('Страница 1 из 2')
+    expect(wrapper.get('button.yandex-catalog-modal__open-btn').text()).toBe('В архив')
+    await wrapper.get('button.yandex-catalog-modal__open-btn').trigger('click')
+    expect(updateYandexMarketCatalogArchive).toHaveBeenCalledWith(expect.objectContaining({ offer_id: 'SKU-1' }), true)
 
     await wrapper.get('[aria-label="Следующая страница каталога Яндекс Маркета"]').trigger('click')
     expect(wrapper.text()).toContain('SKU-21')
@@ -142,10 +146,11 @@ describe('WorkYandexMarketCatalogModal', () => {
 })
 
 describe('WorkYandexMarketCatalogDetailsModal', () => {
-  it('shows the stock form and a local order history without any delivery controls', async () => {
+  it('publishes stock explicitly and keeps delivery settings out of the stock form', async () => {
+    const saveYandexMarketStockSettings = vi.fn()
     const wrapper = mount(WorkYandexMarketCatalogDetailsModal, {
       props: {
-        showYandexMarketCatalogDetails: true, closeYandexMarketCatalogDetails: vi.fn(), openYandexMarketDigitalSettings: vi.fn(), yandexMarketCatalogDetailsLoading: false, yandexMarketCatalogDetails: { offer_id: 'PSN-500', market_sku: '123', title: 'PSN 500', category_name: 'Игровые карты', price: '500', currency_code: 'RUB', card_status: 'HAS_CARD_CAN_UPDATE' }, yandexMarketStockSettings: { market_available_stock: 4, market_stock_updated_at: '2026-07-25T11:33:00Z', activation_instruction: 'Активируйте ключ здесь.' }, yandexMarketStockSettingsSaving: false, saveYandexMarketStockSettings: vi.fn(), yandexMarketOrders: [{ order_id: 501, item_id: 99, offer_id: 'PSN-500', quantity: 2, status: 'PROCESSING', created_at: '2026-07-25T12:00:00Z' }], yandexMarketOrdersLoading: false, yandexMarketOrdersSyncing: false, yandexMarketOrdersLastSyncedAt: '2026-07-25T12:01:00Z', loadYandexMarketOrders: vi.fn(), syncYandexMarketOrders: vi.fn(),
+        showYandexMarketCatalogDetails: true, closeYandexMarketCatalogDetails: vi.fn(), openYandexMarketDigitalSettings: vi.fn(), yandexMarketSandboxMode: false, yandexMarketCatalogDetailsLoading: false, yandexMarketCatalogDetails: { offer_id: 'PSN-500', market_sku: '123', title: 'PSN 500', category_name: 'Игровые карты', price: '500', currency_code: 'RUB', card_status: 'HAS_CARD_CAN_UPDATE' }, yandexMarketStockSettings: { manual_stock_limit: 4, market_available_stock: 4, market_stock_updated_at: '2026-07-25T11:33:00Z', activation_instruction: 'Активируйте ключ здесь.', auto_issue_enabled: true, pool_issue_enabled: true }, yandexMarketStockSettingsSaving: false, saveYandexMarketStockSettings, yandexMarketOrders: [{ order_id: 501, item_id: 99, offer_id: 'PSN-500', quantity: 2, status: 'PROCESSING', created_at: '2026-07-25T12:00:00Z' }], yandexMarketOrdersLoading: false, yandexMarketOrdersSyncing: false, yandexMarketOrdersLastSyncedAt: '2026-07-25T12:01:00Z', loadYandexMarketOrders: vi.fn(), syncYandexMarketOrders: vi.fn(),
       },
       global: { stubs: { teleport: true } },
     })
@@ -156,11 +161,16 @@ describe('WorkYandexMarketCatalogDetailsModal', () => {
     expect(wrapper.text()).toContain('4')
     expect(wrapper.findAll('.yandex-catalog-details-modal__work-block-toggle')).toHaveLength(2)
     await wrapper.findAll('.yandex-catalog-details-modal__work-block-toggle').at(0).trigger('click')
-    expect(wrapper.get('button[disabled]').text()).toBe('Отправить')
-    expect(wrapper.get('button[disabled]').attributes('title')).toContain('пока не подключена')
-    expect(wrapper.get('input[aria-label="Остаток на Маркете"]').element.value).toBe('4')
+    expect(wrapper.get('input[aria-label="Остаток для публикации на Маркете"]').element.value).toBe('4')
+    await wrapper.get('button[title="Опубликовать указанный остаток в Яндекс Маркете"]').trigger('click')
+    expect(saveYandexMarketStockSettings).toHaveBeenCalledWith({ publishStock: true })
+    expect(wrapper.find('input[aria-label="Автовыдача Яндекс Маркета"]').exists()).toBe(false)
+    expect(wrapper.find('input[aria-label="Выдача из ручного пула Яндекс Маркета"]').exists()).toBe(false)
     expect(wrapper.get('textarea[aria-label="Инструкция покупателю"]').element.value).toBe('Активируйте ключ здесь.')
-    expect(wrapper.text()).toContain('Сохранить инструкцию')
+    const saveSettingsButton = wrapper.get('button[aria-label="Сохранить настройки карточки"]')
+    expect(saveSettingsButton.attributes('title')).toBe('Сохранить инструкцию и настройки выдачи')
+    await saveSettingsButton.trigger('click')
+    expect(saveYandexMarketStockSettings).toHaveBeenLastCalledWith()
     await wrapper.findAll('.yandex-catalog-details-modal__work-block-toggle').at(1).trigger('click')
     expect(wrapper.text()).toContain('Заказ 501')
     expect(wrapper.text()).toContain('В обработке')
@@ -174,6 +184,7 @@ describe('WorkYandexMarketDigitalSettingsModal', () => {
     const wrapper = mount(WorkYandexMarketDigitalSettingsModal, {
       props: {
         showYandexMarketDigitalSettings: true, closeYandexMarketDigitalSettings: vi.fn(), yandexMarketOfferId: 'PSN-500', openMarketplaceKeyPool: vi.fn(),
+        yandexMarketSandboxMode: true,
         yandexMarketOrders: [{ order_id: 501, item_id: 99, offer_id: 'PSN-500', quantity: 2, status: 'PROCESSING' }],
         deliverYandexMarketSandboxOrder, issueYandexMarketSandboxOrderFromPool,
       },
@@ -196,6 +207,53 @@ describe('WorkYandexMarketDigitalSettingsModal', () => {
     expect(deliverYandexMarketSandboxOrder).toHaveBeenCalledWith(expect.objectContaining({ order_id: 501 }), ['AAAA-1111', 'BBBB-2222'])
     await wrapper.get('button.btn--secondary').trigger('click')
     expect(issueYandexMarketSandboxOrderFromPool).toHaveBeenCalledWith(expect.objectContaining({ item_id: 99 }))
+  })
+
+  it('keeps production issue settings and the key pool in the separate keys modal', async () => {
+    const saveYandexMarketStockSettings = vi.fn()
+    const loadMarketplaceKeyPoolFor = vi.fn()
+    const deliverYandexMarketProductionOrder = vi.fn().mockResolvedValue({ ok: true })
+    const issueYandexMarketProductionOrderFromPool = vi.fn().mockResolvedValue({ ok: true })
+    const settings = { interhub_service_id: 25, interhub_nominal_id: '250', auto_issue_enabled: false, interhub_enabled: false, pool_issue_enabled: true }
+    const wrapper = mount(WorkYandexMarketDigitalSettingsModal, {
+      props: {
+        showYandexMarketDigitalSettings: true,
+        closeYandexMarketDigitalSettings: vi.fn(),
+        yandexMarketSandboxMode: false,
+        yandexMarketOfferId: 'PSN-500',
+        yandexMarketTitle: 'PSN 500',
+        yandexMarketStockSettings: settings,
+        saveYandexMarketStockSettings,
+        openMarketplaceKeyPool: vi.fn(),
+        loadMarketplaceKeyPoolFor,
+        yandexMarketInterhubServices: [{ service_id: 25, title: 'PlayStation Turkey', category: 'Турция', fields: [{ name: 'nominal', value_list: [{ id: 250, title: '250 TRY' }] }] }],
+        yandexMarketProductionManualOrders: [{ id: 25, order_id: 501, offer_id: 'PSN-500', item_name: 'PSN 500', required_qty: 1, collected_qty: 0, status: 'manual_required' }],
+        deliverYandexMarketProductionOrder,
+        issueYandexMarketProductionOrderFromPool,
+      },
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(wrapper.text()).toContain('Ключи Яндекс Маркета')
+    expect(wrapper.text()).not.toContain('Локальная выдача fake-заказов')
+    expect(wrapper.text()).toContain('Ручная выдача')
+    expect(wrapper.get('input[aria-label="Автовыдача через Interhub Яндекс Маркета"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('input[aria-label="Выдача из ручного пула Яндекс Маркета"]').element.checked).toBe(true)
+    expect(loadMarketplaceKeyPoolFor).toHaveBeenCalledWith(expect.objectContaining({ marketplace: 'yandex_market', productKey: 'PSN-500', storeCode: 'asat' }))
+    await wrapper.get('.ozon-key-settings__block .ozon-catalog-details-modal__work-block-toggle').trigger('click')
+    expect(wrapper.get('input[role="combobox"]').element.value).toContain('PlayStation Turkey')
+    await wrapper.get('button[aria-label="Показать список товаров Interhub"]').trigger('click')
+    expect(wrapper.get('#yandex-interhub-service-results').text()).toContain('PlayStation Turkey')
+    expect(wrapper.get('select[aria-label="Номинал Interhub Яндекс Маркета"]').element.value).toBe('250')
+    await wrapper.get('input[aria-label="Автовыдача через Interhub Яндекс Маркета"]').setValue(true)
+    expect(settings).toMatchObject({ auto_issue_enabled: true, interhub_enabled: true, pool_issue_enabled: true })
+    await wrapper.get('button[aria-label="Сохранить настройки"]').trigger('click')
+    expect(saveYandexMarketStockSettings).toHaveBeenCalledTimes(1)
+    await wrapper.get('textarea[aria-label="Ручные ключи для заказа Яндекс Маркета 501"]').setValue('AAAA-1111')
+    await wrapper.get('button.btn--primary').trigger('click')
+    expect(deliverYandexMarketProductionOrder).toHaveBeenCalledWith(expect.objectContaining({ id: 25 }), 'AAAA-1111')
+    await wrapper.get('button.btn--secondary').trigger('click')
+    expect(issueYandexMarketProductionOrderFromPool).toHaveBeenCalledWith(expect.objectContaining({ id: 25 }))
   })
 })
 

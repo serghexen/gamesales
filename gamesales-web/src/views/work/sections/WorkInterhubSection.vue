@@ -18,7 +18,6 @@
     </div>
 
       <div class="panel__body">
-      <p class="interhub-catalog__lead">Выберите услугу, проверьте реквизиты и сумму. Подтверждение оплаты доступно только владельцу.</p>
       <div class="interhub-catalog__balance"><span>Депозит InterHub</span><strong>{{ formatBalance(ctx.balance, ctx.currency) }}</strong><small v-if="hasOverdraft">Овердрафт: {{ formatBalance(overdraftBalance, ctx.currency) }} из {{ formatBalance(overdraftLimit, ctx.currency) }}</small><small v-if="hasOverdraft">Доступно для оплат: {{ formatBalance(availableForPayments, ctx.currency) }}</small><small v-else>Агентский счёт</small></div>
       <p v-if="ctx.error" class="error">{{ ctx.error }}</p>
       <p v-if="ctx.priceError" class="error">{{ ctx.priceError }}</p>
@@ -54,7 +53,7 @@
             </tr>
             <tr v-for="service in pagedServices" :key="service.service_id" class="interhub-catalog__row" :class="{ 'is-selected': selectedService?.service_id === service.service_id }" @click="selectService(service)">
               <td>
-                <strong>{{ service.title }}</strong>
+                <strong>{{ formatServiceTitle(service.title) }}</strong>
                 <span class="interhub-catalog__id">#{{ service.service_id }}</span>
               </td>
               <td>{{ service.category || '—' }}</td>
@@ -68,16 +67,18 @@
         <span>Страница {{ currentPage }} из {{ totalPages }}</span>
         <button class="ghost" type="button" :disabled="currentPage === totalPages" aria-label="Следующая страница" @click="changePage(1)">Далее</button>
       </nav>
-      <form v-if="selectedService" ref="paymentForm" class="interhub-catalog__form" :class="{ 'has-optional-account': paymentType === 'TOP_UP_FIXED' }" @submit.prevent="obtainPayment">
+      <form v-if="selectedService" ref="paymentForm" class="interhub-catalog__form" :class="{ 'has-optional-account': paymentType === 'TOP_UP_FIXED' }" @submit.prevent="preparePurchase">
         <div v-if="showHamster" class="interhub-catalog__obtain-overlay"><WorkHamsterLoader :label="obtainLoadingLabel" /></div>
-        <div class="interhub-catalog__service-summary"><p class="interhub-catalog__eyebrow">Получение</p><h3>{{ selectedService.title }}</h3></div>
-        <label v-if="showAccount" class="field"><span class="label">{{ accountLabel }}<i v-if="accountRequired"> *</i></span><input v-model.trim="account" class="input" :required="accountRequired" @input="resetPaymentAfterInputChange" /><small v-if="!accountRequired" class="muted">Необязательно для этого типа услуги</small></label>
-        <div v-if="amountFromNominal" class="interhub-catalog__auto-amount"><span>Сумма пополнения</span><strong>{{ selectedNominalTitle || 'Выберите номинал' }}</strong><small>Подставляется автоматически из номинала</small></div>
-        <label v-else-if="needsAmount" class="field"><span class="label">Сумма пополнения</span><input v-model="amount" class="input" type="number" :min="selectedService.min_amount || 0.01" step="0.01" required @input="resetPaymentAfterInputChange" /><small class="muted">{{ formatAmountLimit(selectedService) }}</small></label>
-        <label v-if="paymentType === 'VOUCHER'" class="field"><span class="label">Количество ключей</span><input v-model.number="voucherQuantity" class="input" type="number" min="1" max="20" step="1" required @input="resetPaymentAfterInputChange" /><small class="muted">Не более 20 за один запуск. Каждый ключ покупается и сохраняется отдельно.</small></label>
-        <label v-for="field in selectedService.fields" :key="field.name" class="field"><span class="label">{{ field.name }}<i v-if="field.required"> *</i></span><select v-if="field.type === 'LIST'" v-model="params[field.name]" class="input" :required="field.required" @change="resetPaymentAfterInputChange"><option value="">Выберите значение</option><option v-for="option in sortedNominals(field.value_list)" :key="option.id" :value="option.id">{{ option.title }}</option></select><input v-else v-model.trim="params[field.name]" class="input" :required="field.required" @input="resetPaymentAfterInputChange" /><small v-if="field.name === 'nominal' && selectedCachedPrice" class="muted">Закупочная цена из кэша: {{ formatMoney(selectedCachedPrice.fixed_amount) }} ₽ · {{ formatCachedDate(selectedCachedPrice.calculated_at) }}</small><details v-if="field.name === 'nominal' && selectedCachedPrice" class="interhub-catalog__calculate-response"><summary>Полный ответ calculate</summary><pre>{{ formatProviderResponse(selectedCachedPrice.provider_response) }}</pre></details></label>
+        <div class="interhub-catalog__service-summary"><p class="interhub-catalog__eyebrow">Получение</p><h3>{{ formatServiceTitle(selectedService.title) }}</h3></div>
+        <div class="interhub-catalog__fields">
+          <label v-if="showAccount" class="field"><span class="label">{{ accountLabel }}<i v-if="accountRequired"> *</i></span><input v-model.trim="account" class="input" :required="accountRequired" @input="resetPaymentAfterInputChange" /><small v-if="!accountRequired" class="muted">Необязательно для этого типа услуги</small></label>
+          <div v-if="amountFromNominal" class="interhub-catalog__auto-amount"><span>Сумма пополнения</span><strong>{{ selectedNominalTitle || 'Выберите номинал' }}</strong><small>Подставляется автоматически из номинала</small></div>
+          <label v-else-if="needsAmount" class="field"><span class="label">Сумма пополнения</span><input v-model="amount" class="input" type="number" :min="selectedService.min_amount || 0.01" step="0.01" required @input="resetPaymentAfterInputChange" /><small class="muted">{{ formatAmountLimit(selectedService) }}</small></label>
+          <label v-if="paymentType === 'VOUCHER'" class="field"><span class="label">Количество ключей</span><input v-model.number="voucherQuantity" class="input interhub-catalog__quantity-input" type="number" min="1" max="20" step="1" required @input="resetPaymentAfterInputChange" /><small class="muted">Не более 20 за один запуск. Каждый ключ покупается и сохраняется отдельно.</small></label>
+          <label v-for="field in selectedService.fields" :key="field.name" class="field"><span class="label">{{ field.name }}<i v-if="field.required"> *</i></span><select v-if="field.type === 'LIST'" v-model="params[field.name]" class="input" :required="field.required" @change="resetPaymentAfterInputChange"><option value="">Выберите значение</option><option v-for="option in sortedNominals(field.value_list)" :key="option.id" :value="option.id">{{ option.title }}</option></select><input v-else v-model.trim="params[field.name]" class="input" :required="field.required" @input="resetPaymentAfterInputChange" /><small v-if="field.name === 'nominal' && selectedCachedPrice" class="muted">Закупочная цена из кэша: {{ formatMoney(selectedCachedPrice.fixed_amount) }} ₽ · {{ formatCachedDate(selectedCachedPrice.calculated_at) }}</small><details v-if="field.name === 'nominal' && selectedCachedPrice" class="interhub-catalog__calculate-response"><summary>Полный ответ calculate</summary><pre>{{ formatProviderResponse(selectedCachedPrice.provider_response) }}</pre></details></label>
+        </div>
         <div class="interhub-catalog__actions is-single">
-          <button class="btn interhub-catalog__action-btn" type="submit" :disabled="showHamster || !ctx.canPay"><span><strong>Получить</strong><small>Цена, проверка и получение ключа</small></span></button>
+          <button class="btn interhub-catalog__action-btn" type="submit" :disabled="showHamster || !ctx.canPay"><span><strong>Получить</strong><small>Цена и проверка доступности</small></span></button>
         </div>
         <p v-if="!ctx.canPay" class="interhub-catalog__owner-note muted">Получать ключи может только владелец.</p>
         <div v-if="obtainError" class="interhub-catalog__payment-result is-error"><p class="interhub-catalog__result">{{ obtainError }}</p></div>
@@ -151,10 +152,39 @@
       </section>
     </div>
   </teleport>
+
+  <teleport to="body">
+    <div v-if="purchaseConfirmationOpen" class="work-page work-modal-root modal-backdrop interhub-confirm-backdrop" @click.self="closePurchaseConfirmation">
+      <section class="modal modal--auto interhub-confirm" role="dialog" aria-modal="true" aria-labelledby="interhub-confirm-title">
+        <div class="modal__head panel__head panel__head--tight interhub-confirm__head">
+          <div>
+            <p class="interhub-catalog__eyebrow">InterHub · подтверждение покупки</p>
+            <h3 id="interhub-confirm-title">Проверьте покупку</h3>
+          </div>
+          <button class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close" type="button" aria-label="Закрыть подтверждение покупки" title="Закрыть" @click="closePurchaseConfirmation">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6l-12 12" /></svg>
+          </button>
+        </div>
+        <div class="modal__body interhub-confirm__body">
+          <p class="interhub-confirm__service"><span>{{ formatServiceTitle(selectedService?.title) }}</span><span v-if="purchaseNominal" class="interhub-confirm__nominal">{{ purchaseNominal }}</span></p>
+          <dl class="interhub-confirm__details">
+            <div><dt>Актуальная цена</dt><dd>{{ purchasePrice }}</dd></div>
+            <div v-if="purchaseQuantity"><dt>К покупке, шт.</dt><dd>{{ purchaseQuantity }}</dd></div>
+            <div :class="{ 'is-error': !purchaseIsAvailable }"><dt>Доступность</dt><dd>{{ purchaseAvailability }}</dd></div>
+          </dl>
+          <p v-if="!purchaseIsAvailable" class="interhub-confirm__hint">Покупка недоступна, пока поставщик не подтвердит выдачу.</p>
+          <div class="interhub-confirm__actions">
+            <button class="ghost" type="button" @click="closePurchaseConfirmation">Отмена</button>
+            <button class="btn" type="button" :disabled="!canConfirmPurchase" @click="confirmPurchase">{{ obtainLoading ? 'Покупаем…' : 'Купить' }}</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </teleport>
 </template>
 
 <script setup>
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import WorkHamsterLoader from './WorkHamsterLoader.vue'
 
 // Контекст содержит каталог и действия загрузки, чтобы экран не знал деталей API.
@@ -165,13 +195,23 @@ const props = defineProps({
 const titleCollator = new Intl.Collator('ru', { numeric: true, sensitivity: 'base' })
 const servicesSortDirection = ref('asc')
 const filteredServices = computed(() => {
-  // Фильтруем по названию и категории без повторного запроса к провайдеру.
-  const query = String(props.ctx.search || '').trim().toLowerCase()
+  // Ищем без учёта дефисов и подчёркиваний, чтобы название можно было вводить обычными словами.
+  const query = normalizeServiceSearch(props.ctx.search)
   const services = Array.isArray(props.ctx.services) ? props.ctx.services : []
-  const filtered = query ? services.filter((service) => `${service?.title || ''} ${service?.category || ''}`.toLowerCase().includes(query)) : services
+  const filtered = query ? services.filter((service) => normalizeServiceSearch(`${service?.title || ''} ${service?.category || ''}`).includes(query)) : services
   const direction = servicesSortDirection.value === 'asc' ? 1 : -1
   return [...filtered].sort((left, right) => direction * titleCollator.compare(String(left?.title || ''), String(right?.title || '')))
 })
+
+function formatServiceTitle(value) {
+  // Скрываем служебный префикс каталога только в интерфейсе, не меняя исходное имя для API.
+  return String(value || '').replace(/^po_/i, '').trim()
+}
+
+function normalizeServiceSearch(value) {
+  // Приводим разделители к пробелам, чтобы поиск не требовал точного написания названия.
+  return String(value || '').toLocaleLowerCase('ru-RU').replace(/[\s_-]+/g, ' ').trim()
+}
 const pageSize = 20
 const currentPage = ref(1)
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredServices.value.length / pageSize)))
@@ -186,6 +226,8 @@ const account = ref('')
 const amount = ref('')
 const voucherQuantity = ref(1)
 const params = reactive({})
+const purchaseConfirmationOpen = ref(false)
+const preparedPayload = ref(null)
 const salesHistoryOpen = ref(false)
 const salesHistoryDateFrom = ref('')
 const salesHistoryDateTo = ref('')
@@ -225,6 +267,39 @@ const isProcessing = computed(() => Number(props.ctx.payment?.status) === 1)
 const obtainLoading = ref(false)
 const obtainStage = ref('')
 const obtainError = ref('')
+const purchasePrice = computed(() => {
+  // Показываем стоимость, подтверждённую calculate, а для обычного пополнения — введённую сумму.
+  const calculated = Number(props.ctx.calculation?.fixed_amount || 0)
+  const requested = Number(preparedPayload.value?.amount || 0)
+  const amount = calculated > 0 ? calculated : requested
+  return amount > 0 ? `${formatMoney(amount)} ₽` : 'Не получена'
+})
+const purchaseQuantity = computed(() => {
+  // Берём количество из снимка реквизитов, чтобы подтверждение показывало именно будущую покупку.
+  const quantity = Math.trunc(Number(preparedPayload.value?.quantity || 0))
+  return quantity > 0 ? quantity : null
+})
+const purchaseNominal = computed(() => {
+  // Находим номинал в снимке формы, чтобы подтвердить тот же вариант, который прошёл check.
+  const nominalId = preparedPayload.value?.params?.nominal
+  const nominalField = selectedService.value?.fields?.find((field) => field?.name === 'nominal')
+  const nominal = nominalField?.value_list?.find((item) => String(item?.id) === String(nominalId))
+  return String(nominal?.title || '')
+})
+const purchaseIsAvailable = computed(() => {
+  // Купить можно только после успешного check, который сохранил операцию для последующего pay.
+  return Boolean(props.ctx.check?.success)
+})
+const purchaseAvailability = computed(() => {
+  // Отдаём текст поставщика при ошибке, а успешную проверку переводим в короткий статус.
+  if (purchaseIsAvailable.value) return 'Готов к покупке'
+  if (!props.ctx.calculation?.success && supportsCalculate.value) return props.ctx.calculation?.message || 'Поставщик не вернул актуальную цену'
+  return props.ctx.check?.message || 'Поставщик не подтвердил доступность'
+})
+const canConfirmPurchase = computed(() => {
+  // Кнопка оплаты активна только для владельца и только пока проверенная операция не изменилась.
+  return props.ctx.canPay && purchaseIsAvailable.value && !obtainLoading.value && !showHamster.value
+})
 const obtainLoadingLabel = computed(() => ({
   calculate: 'Узнаём цену…',
   check: 'Проверяем возможность выдачи…',
@@ -323,6 +398,7 @@ async function selectService(service) {
   amount.value = ''
   voucherQuantity.value = 1
   Object.keys(params).forEach((key) => delete params[key])
+  closePurchaseConfirmation()
   props.ctx.resetPaymentFlow()
   await nextTick()
   // Переносим фокус экрана к форме, чтобы оператор сразу видел, что выбрать дальше.
@@ -399,11 +475,18 @@ function buildPayload() {
 function resetPaymentAfterInputChange() {
   // Сбрасываем прежний расчёт, чтобы его цена не ушла в check с новыми реквизитами или номиналом.
   obtainError.value = ''
+  closePurchaseConfirmation()
   if (props.ctx.calculation || props.ctx.check || props.ctx.payment || props.ctx.calculationLoading || props.ctx.checkLoading) props.ctx.resetPaymentFlow()
 }
 
-async function obtainPayment() {
-  // Выполняет обязательные шаги подряд, оставляя один понятный вход для получения ключа.
+function closePurchaseConfirmation() {
+  // Закрываем подтверждение и забываем снимок формы, чтобы оплатить можно было только свежий check.
+  purchaseConfirmationOpen.value = false
+  preparedPayload.value = null
+}
+
+async function preparePurchase() {
+  // Сначала узнаём цену и доступность, а оплату оставляем отдельным осознанным подтверждением.
   if (obtainLoading.value || !props.ctx.canPay) return
   obtainLoading.value = true
   obtainError.value = ''
@@ -416,36 +499,55 @@ async function obtainPayment() {
     }
 
     const payload = buildPayload()
+    preparedPayload.value = payload
     props.ctx.resetPaymentFlow()
     if (supportsCalculate.value) {
       obtainStage.value = 'calculate'
       await props.ctx.calculate(payload)
       if (!props.ctx.calculation?.success) {
-        obtainError.value = `Не удалось узнать цену: ${props.ctx.calculation?.message || 'Interhub не вернул расчёт'}`
+        purchaseConfirmationOpen.value = true
         return
       }
     }
 
     obtainStage.value = 'check'
     await props.ctx.checkPayment(payload)
-    if (!props.ctx.check?.success) {
-      obtainError.value = `Не удалось проверить выдачу: ${props.ctx.check?.message || 'Interhub не подтвердил операцию'}`
-      return
-    }
-
-    obtainStage.value = 'pay'
-    await props.ctx.pay()
-    if (!props.ctx.payment?.success && !isProcessing.value) {
-      obtainError.value = `Не удалось получить ключ: ${props.ctx.payment?.message || 'Interhub не подтвердил оплату'}`
-    }
+    purchaseConfirmationOpen.value = true
   } catch (error) {
-    // Показываем ошибку единого сценария рядом с кнопкой, не скрывая, на каком шаге он остановился.
-    obtainError.value = String(error?.message || 'Не удалось получить ключ')
+    // Не скрываем непредвиденную ошибку подготовки, если запрос не смог вернуть свой статус.
+    obtainError.value = String(error?.message || 'Не удалось подготовить покупку')
   } finally {
     obtainStage.value = ''
     obtainLoading.value = false
   }
 }
+
+async function confirmPurchase() {
+  // Запускаем pay только по явному нажатию в окне после успешной проверки поставщика.
+  if (!canConfirmPurchase.value) return
+  obtainLoading.value = true
+  obtainStage.value = 'pay'
+  obtainError.value = ''
+  try {
+    await props.ctx.pay()
+    if (!props.ctx.payment?.success && !isProcessing.value) {
+      obtainError.value = `Не удалось получить ключ: ${props.ctx.payment?.message || 'Interhub не подтвердил оплату'}`
+    }
+  } catch (error) {
+    // Оставляем ошибку оплаты рядом с формой, чтобы оператор видел итог после закрытия окна.
+    obtainError.value = String(error?.message || 'Не удалось подтвердить покупку')
+  } finally {
+    closePurchaseConfirmation()
+    obtainStage.value = ''
+    obtainLoading.value = false
+  }
+}
+
+onBeforeUnmount(() => {
+  // Возвращаем один ключ при уходе со страницы, чтобы не сохранить количество прошлой покупки.
+  voucherQuantity.value = 1
+  closePurchaseConfirmation()
+})
 
 function formatType(type) {
   // Делаем технический тип платежа понятнее оператору, сохраняя исходный смысл.
@@ -539,7 +641,7 @@ function nominalSortValue(title) {
 .interhub-catalog__stats span, .interhub-catalog__id { color: var(--muted, #7a766f); font-size: 12px; }
 .interhub-catalog__id { display: block; margin-top: 3px; font-family: ui-monospace, monospace; }
 .interhub-catalog__type { display: inline-flex; padding: 3px 7px; border: 1px solid rgba(232, 134, 19, .35); color: #9b570d; font-size: 12px; font-weight: 700; }
-.interhub-catalog__row { cursor: pointer; }.interhub-catalog__row.is-selected td { background: rgba(232, 134, 19, .08); }.interhub-catalog__form { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(250px, 1fr) minmax(250px, 1fr) minmax(280px, 1fr); gap: 16px 18px; align-items: start; margin-top: 22px; padding: 22px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); scroll-margin-block: 24px; }.interhub-catalog__service-summary { align-self: center; padding-right: 12px; }.interhub-catalog__form h3 { margin: 0; }.interhub-catalog__actions { display: grid; width: 100%; max-width: 520px; min-width: 0; grid-column: 3 / span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; justify-self: start; }.interhub-catalog__actions.is-single, .interhub-catalog__form.has-optional-account .interhub-catalog__actions { max-width: 300px; grid-column: 4; align-self: center; }.interhub-catalog__form.has-optional-account .interhub-catalog__actions { grid-template-columns: 1fr; }.interhub-catalog__action-btn { display: flex; min-width: 0; min-height: 58px; gap: 9px; align-items: center; justify-content: flex-start; padding: 8px 11px; text-align: left; transition: transform .16s ease, box-shadow .16s ease, filter .16s ease; }.interhub-catalog__action-btn:not(:disabled):hover { box-shadow: 0 8px 20px rgba(70, 224, 185, .16); filter: brightness(1.04); transform: translateY(-1px); }.interhub-catalog__action-btn > span:last-child { display: grid; gap: 1px; min-width: 0; }.interhub-catalog__action-btn strong { font-size: 14px; line-height: 1.08; }.interhub-catalog__action-btn small { color: rgba(9, 18, 27, .68); font-size: 10px; font-weight: 700; letter-spacing: .05em; }.interhub-catalog__action-index { display: grid; width: 24px; height: 24px; flex: 0 0 24px; place-items: center; border: 1px solid rgba(9, 18, 27, .28); border-radius: 50%; font-size: 11px; font-weight: 800; }.interhub-catalog__result { margin: 0; font-weight: 700; }.interhub-catalog__payment-result { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(250px, .8fr) minmax(0, 1fr) auto; gap: 10px 18px; align-items: center; padding-top: 14px; border-top: 1px solid rgba(232, 134, 19, .18); }.interhub-catalog__payment-result.is-error { color: #d45f5f; }.interhub-catalog__payment-result .muted { grid-column: 1 / -1; }.interhub-catalog__gift-code { width: fit-content; padding: 8px 10px; border: 1px dashed rgba(232, 134, 19, .7); background: rgba(232, 134, 19, .08); color: inherit; font-weight: 700; letter-spacing: .04em; }
+.interhub-catalog__row { cursor: pointer; }.interhub-catalog__row.is-selected td { background: rgba(232, 134, 19, .08); }.interhub-catalog__form { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(0, 1fr) minmax(220px, .72fr); gap: 16px 18px; align-items: start; margin-top: 22px; padding: 22px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); scroll-margin-block: 24px; }.interhub-catalog__service-summary { align-self: center; padding-right: 12px; }.interhub-catalog__form h3 { margin: 0; }.interhub-catalog__fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px 18px; min-width: 0; }.interhub-catalog__actions { display: grid; width: 100%; max-width: 300px; min-width: 0; grid-template-columns: 1fr; justify-self: start; align-self: start; margin-top: 35px; }.interhub-catalog__action-btn { display: flex; min-width: 0; min-height: 58px; gap: 9px; align-items: center; justify-content: flex-start; padding: 8px 11px; text-align: left; transition: transform .16s ease, box-shadow .16s ease, filter .16s ease; }.interhub-catalog__action-btn:not(:disabled):hover { box-shadow: 0 8px 20px rgba(70, 224, 185, .16); filter: brightness(1.04); transform: translateY(-1px); }.interhub-catalog__action-btn > span:last-child { display: grid; gap: 1px; min-width: 0; }.interhub-catalog__action-btn strong { font-size: 14px; line-height: 1.08; }.interhub-catalog__action-btn small { color: rgba(9, 18, 27, .68); font-size: 10px; font-weight: 700; letter-spacing: .05em; }.interhub-catalog__action-index { display: grid; width: 24px; height: 24px; flex: 0 0 24px; place-items: center; border: 1px solid rgba(9, 18, 27, .28); border-radius: 50%; font-size: 11px; font-weight: 800; }.interhub-catalog__quantity-input { color-scheme: dark; }.interhub-catalog__quantity-input::-webkit-inner-spin-button { opacity: 1; filter: brightness(0) invert(1); }.interhub-catalog__result { margin: 0; font-weight: 700; }.interhub-catalog__payment-result { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(250px, .8fr) minmax(0, 1fr) auto; gap: 10px 18px; align-items: center; padding-top: 14px; border-top: 1px solid rgba(232, 134, 19, .18); }.interhub-catalog__payment-result.is-error { color: #d45f5f; }.interhub-catalog__payment-result .muted { grid-column: 1 / -1; }.interhub-catalog__gift-code { width: fit-content; padding: 8px 10px; border: 1px dashed rgba(232, 134, 19, .7); background: rgba(232, 134, 19, .08); color: inherit; font-weight: 700; letter-spacing: .04em; }
 .interhub-catalog__form { position: relative; }
 .interhub-catalog__obtain-overlay { position: absolute; z-index: 3; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(9, 18, 27, .78); backdrop-filter: blur(2px); }
 .interhub-catalog__owner-note { grid-column: 1 / -1; margin: 0; }
@@ -548,10 +650,12 @@ function nominalSortValue(title) {
 .interhub-catalog__pagination { display: flex; gap: 12px; align-items: center; justify-content: end; margin-top: 12px; color: var(--muted, #7a766f); font-size: 13px; }
 .interhub-catalog__auto-amount { display: grid; gap: 3px; min-height: 42px; padding: 8px 10px; border: 1px solid rgba(232, 134, 19, .35); }.interhub-catalog__auto-amount span, .interhub-catalog__auto-amount small { color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__auto-amount strong { font-size: 18px; }
 .interhub-catalog__calculate-response { margin-top: 7px; color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__calculate-response summary { cursor: pointer; color: inherit; }.interhub-catalog__calculate-response pre { max-width: 420px; max-height: 180px; margin: 8px 0 0; padding: 8px; overflow: auto; border: 1px solid rgba(232, 134, 19, .2); background: rgba(9, 12, 25, .38); color: var(--text, #eee); font: 11px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
+.interhub-confirm-backdrop { --modal-bg: #101626; --modal-text: #f4f7ff; --ink: #f4f7ff; --muted: #b5bfd3; --ghost-bg: rgba(255, 255, 255, .08); --ghost-text: #f4f7ff; --ghost-border: rgba(255, 255, 255, .18); z-index: 85; align-items: center; padding: 16px; }
+.work-page.work-modal-root.modal-backdrop.interhub-confirm-backdrop .interhub-confirm { width: min(520px, calc(100vw - 32px)); max-width: 520px; min-height: 0; max-height: min(90vh, 560px); height: auto; padding: 16px; overflow: auto; }.work-page.work-modal-root.modal-backdrop.interhub-confirm-backdrop .interhub-confirm__head { margin-bottom: 0; padding: 0 0 13px; border-bottom: 1px solid rgba(181, 194, 219, .16); background: transparent; }.work-page.work-modal-root.modal-backdrop.interhub-confirm-backdrop .interhub-confirm__head h3 { margin: 0; color: #f4f7ff; font-size: 22px; letter-spacing: -.02em; }.work-page.work-modal-root.modal-backdrop.interhub-confirm-backdrop .interhub-confirm__body { display: grid; flex: 0 0 auto; gap: 14px; overflow: visible; padding: 18px 0 0; }.interhub-confirm__service { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0; color: #f4f7ff; font-weight: 700; }.interhub-confirm__nominal { padding: 3px 8px; border: 1px solid rgba(232, 134, 19, .55); background: rgba(232, 134, 19, .1); color: #f4c57f; font-size: 12px; line-height: 1.25; }.interhub-confirm__details { display: grid; gap: 8px; margin: 0; }.interhub-confirm__details > div { display: grid; grid-template-columns: minmax(145px, .8fr) minmax(0, 1.2fr); gap: 14px; padding: 12px 14px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .08); }.interhub-confirm__details > div.is-error { border-left-color: #d45f5f; background: rgba(212, 95, 95, .1); }.interhub-confirm__details dt { color: #b5bfd3; font-size: 12px; }.interhub-confirm__details dd { margin: 0; color: #f4f7ff; font-weight: 700; text-align: right; overflow-wrap: anywhere; }.interhub-confirm__details .is-error dd { color: #ffabab; }.interhub-confirm__hint { margin: -3px 0 0; color: #b5bfd3; font-size: 13px; line-height: 1.45; }.interhub-confirm__actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding-top: 4px; }.interhub-confirm__actions .btn, .interhub-confirm__actions .ghost { min-height: 42px; padding: 9px 16px; }
 .interhub-history-backdrop { --modal-bg: #101626; --modal-text: #f4f7ff; --ink: #f4f7ff; --muted: #b5bfd3; --table-bg: #202838; --table-border: rgba(181, 194, 219, .22); --input-bg: #0d1320; --input-border: rgba(181, 194, 219, .28); --ghost-bg: rgba(255, 255, 255, .08); --ghost-text: #f4f7ff; --ghost-border: rgba(255, 255, 255, .18); z-index: 80; }
 .interhub-history { width: min(1180px, calc(100vw - 32px)); max-height: min(780px, calc(100vh - 32px)); overflow: auto; }
 .interhub-history__head { position: sticky; top: 0; z-index: 1; padding-bottom: 12px; border-bottom: 1px solid rgba(181, 194, 219, .16); background: #101626; }.interhub-history__head h3 { margin: 0; color: #f4f7ff; font-size: 22px; letter-spacing: -.02em; }
 .interhub-history__body { display: grid; align-content: start; gap: 16px; }.interhub-history__filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; padding: 14px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); }.interhub-history__filters .field { min-width: 170px; }.interhub-history__filters .interhub-history__search { min-width: 260px; flex: 1 1 260px; }.interhub-history__filters .btn { min-height: 40px; }.interhub-history__cards { display: grid; grid-template-columns: repeat(2, minmax(180px, 240px)); gap: 10px; }.interhub-history__cards .mini { min-width: 0; background: #1b2435; border-color: rgba(181, 194, 219, .2); }.interhub-history__cards .mini__value { color: #f4f7ff; }.interhub-history__table-wrap { max-height: min(460px, 44vh); min-height: 0; overflow: auto; overscroll-behavior: contain; }.interhub-history__table-wrap thead { position: sticky; top: 0; z-index: 1; background: #202838; }.interhub-history__table-wrap .table { color: #eef2ff; }.interhub-history__table-wrap .table th { background: #2a3447; color: #f7f9ff; }.interhub-history__table-wrap .table td { color: #e5eaf5; }.interhub-history__pagination { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; color: #b5bfd3; font-size: 13px; }.interhub-history__pagination > div { display: flex; gap: 8px; }.interhub-history__sort { display: inline-flex; width: 100%; gap: 5px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }.interhub-history__sort span { color: #e88613; }.interhub-history__gift-code { color: #f4f7ff; font: 12px/1.35 ui-monospace, monospace; white-space: nowrap; }
-@media (max-width: 1120px) { .interhub-catalog__form { grid-template-columns: repeat(2, minmax(240px, 1fr)); }.interhub-catalog__actions, .interhub-catalog__actions.is-single, .interhub-catalog__form.has-optional-account .interhub-catalog__actions { grid-column: 1 / -1; }.interhub-catalog__payment-result { grid-template-columns: 1fr auto; } }
-@media (max-width: 680px) { .interhub-catalog__head { align-items: start; flex-direction: column; } .interhub-catalog__head-actions { justify-content: start; } .interhub-catalog__toolbar { align-items: stretch; flex-direction: column; } .interhub-catalog__search { width: 100%; } .interhub-catalog__stats { width: fit-content; } .interhub-catalog__form { grid-template-columns: 1fr; padding: 16px; } .interhub-catalog__actions, .interhub-catalog__form.has-optional-account .interhub-catalog__actions, .interhub-catalog__payment-result { grid-column: auto; grid-template-columns: 1fr; } .interhub-history { width: calc(100vw - 16px); } .interhub-history__filters { align-items: stretch; }.interhub-history__filters .field, .interhub-history__filters .btn { width: 100%; } .interhub-history__cards { grid-template-columns: 1fr; }.interhub-history__pagination { align-items: stretch; flex-direction: column; }.interhub-history__pagination > div { justify-content: stretch; }.interhub-history__pagination .ghost { flex: 1; } }
+@media (max-width: 1120px) { .interhub-catalog__form { grid-template-columns: minmax(220px, .8fr) minmax(0, 1fr); }.interhub-catalog__fields { grid-column: 2; }.interhub-catalog__actions { grid-column: 2; margin-top: 0; }.interhub-catalog__payment-result { grid-template-columns: 1fr auto; } }
+@media (max-width: 680px) { .interhub-catalog__head { align-items: start; flex-direction: column; } .interhub-catalog__head-actions { justify-content: start; } .interhub-catalog__toolbar { align-items: stretch; flex-direction: column; } .interhub-catalog__search { width: 100%; } .interhub-catalog__stats { width: fit-content; } .interhub-catalog__form { grid-template-columns: 1fr; padding: 16px; } .interhub-catalog__fields, .interhub-catalog__actions, .interhub-catalog__payment-result { grid-column: auto; grid-template-columns: 1fr; } .interhub-confirm__details > div { grid-template-columns: 1fr; gap: 5px; }.interhub-confirm__details dd { text-align: left; }.interhub-history { width: calc(100vw - 16px); } .interhub-history__filters { align-items: stretch; }.interhub-history__filters .field, .interhub-history__filters .btn { width: 100%; } .interhub-history__cards { grid-template-columns: 1fr; }.interhub-history__pagination { align-items: stretch; flex-direction: column; }.interhub-history__pagination > div { justify-content: stretch; }.interhub-history__pagination .ghost { flex: 1; } }
 </style>

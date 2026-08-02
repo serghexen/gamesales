@@ -4,7 +4,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from hashlib import sha256
 import json
+import logging
 import os
+from threading import Timer
 import uuid
 
 from fastapi import Depends, HTTPException
@@ -19,6 +21,9 @@ from .ozon_service import (
     update_ozon_digital_stock,
     upload_ozon_digital_codes,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def claim_due_supplier_attempts(conn, qall, lock_token: str):
@@ -220,6 +225,7 @@ def mount_marketplaces_routes(
     ozon_live_enabled: bool = True,
     max_supplier_status_checks: int = 30,
     supplier_deadline_buffer_sec: int = 600,
+    stock_republish_delay_sec: float = 3,
 ):
     def require_ozon_live() -> None:
         # Блокирует внешние действия Ozon в тестовом окружении до сетевого запроса.
@@ -453,6 +459,38 @@ def mount_marketplaces_routes(
             raise HTTPException(502, f"Ozon не подтвердил обновление остатка. {'; '.join(message for message in messages if message) or 'Проверьте карточку и настройки цифрового товара.'}")
         update_local_published_stock(conn, store_code, product_id, settings.available_stock, datetime.now(timezone.utc))
         return make_digital_settings_out(conn, store_code, product_id)
+
+    def republish_ozon_target_stock(store_code: str, product_id: int) -> None:
+        # После подтвержденной выдачи повторяет сохраненный целевой остаток, не пытаясь вычесть ключи поставщика.
+        try:
+            with psycopg.connect(DB_DSN) as conn:
+                publish_available_stock(conn, store_code, product_id)
+                exec1(
+                    conn,
+                    "UPDATE app.marketplace_ozon_digital_settings SET last_stock_sync_error='', updated_at=now() WHERE store_code=%s AND external_product_id=%s",
+                    (store_code, product_id),
+                )
+                conn.commit()
+        except Exception as error:
+            message = str(getattr(error, "detail", error))[:2000]
+            logger.warning("Ozon stock republish failed for %s/%s: %s", store_code, product_id, message)
+            with psycopg.connect(DB_DSN) as conn:
+                exec1(
+                    conn,
+                    "UPDATE app.marketplace_ozon_digital_settings SET last_stock_sync_error=%s, updated_at=now() WHERE store_code=%s AND external_product_id=%s",
+                    (message, store_code, product_id),
+                )
+                conn.commit()
+
+    def schedule_ozon_target_stock_republish(store_code: str, product_id: int) -> None:
+        # Откладывает витринный остаток на пару секунд, чтобы Ozon успел завершить прием цифрового кода.
+        delay = max(0.0, float(stock_republish_delay_sec or 0))
+        if delay == 0:
+            republish_ozon_target_stock(store_code, product_id)
+            return
+        timer = Timer(delay, republish_ozon_target_stock, args=(store_code, product_id))
+        timer.daemon = True
+        timer.start()
 
     def local_digital_order_status(ozon_status: str) -> str:
         # Переводит финальные статусы Ozon в наши, чтобы отмененный заказ не оставался в обработке.
@@ -692,7 +730,10 @@ def mount_marketplaces_routes(
                 conn.commit()
             raise
 
-        return finish_ozon_delivery(order_id, row, all_codes)
+        delivered_order = finish_ozon_delivery(order_id, row, all_codes)
+        # Коды приняты Ozon, поэтому поддерживаем ровно заданный оператором остаток отдельным безопасным запросом.
+        schedule_ozon_target_stock_republish(str(row[0]), int(row[1]))
+        return delivered_order
 
     def save_collected_supplier_code(order_id: int, gift_code: str) -> tuple[int, int, bool]:
         # Закрепляет код за одним заказом до следующей покупки, исключая повторную выдачу другому клиенту.

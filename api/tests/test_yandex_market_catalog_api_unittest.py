@@ -104,7 +104,7 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
     def test_publish_stock_calls_market_only_for_explicit_request(self):
         def q1_handler(sql, _params):
             if "FROM app.marketplace_yandex_stock_settings" in sql:
-                return (7, "Активируйте код в PlayStation Store.", 7, datetime(2026, 7, 25, tzinfo=timezone.utc))
+                return (7, "Активируйте код в PlayStation Store.", "", True, True, 7, datetime(2026, 7, 25, tzinfo=timezone.utc))
             return None
 
         client, _writes = self.create_client(q1_handler=q1_handler)
@@ -116,6 +116,26 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
         self.assertEqual(saved.status_code, 200)
         self.assertEqual(published.status_code, 200)
         update_stock.assert_called_once_with("PSN-500", 7, store_code="asat")
+
+    # Публикация остатка не сбрасывает включенные ранее авто-выдачу и пул, даже если форма пришла без их значений.
+    def test_publish_stock_preserves_delivery_switches(self):
+        def q1_handler(sql, _params):
+            if "FROM app.marketplace_yandex_stock_settings" in sql:
+                return (7, "Инструкция", "", True, True, 7, datetime(2026, 7, 25, tzinfo=timezone.utc))
+            return None
+
+        client, writes = self.create_client(q1_handler=q1_handler)
+        with patch.object(yandex_market_catalog_api, "update_yandex_market_stock", return_value={}):
+            with client:
+                response = client.put(
+                    "/marketplaces/yandex/catalog/PSN-500/stock-settings?publish_stock=true",
+                    json={"manual_stock_limit": 7},
+                )
+
+        self.assertEqual(response.status_code, 200)
+        upsert = next((params for sql, params in writes if "auto_issue_enabled=CASE WHEN" in sql), None)
+        self.assertIsNotNone(upsert)
+        self.assertEqual(upsert[-2:], (False, False))
 
     # Открытие карточки читает доступный остаток методом POST и не передает новое значение через PUT.
     def test_stock_settings_reads_live_market_stock_without_publishing(self):

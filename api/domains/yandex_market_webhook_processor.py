@@ -17,7 +17,7 @@ def _error_text(error: Exception) -> str:
     return str(detail or error or error.__class__.__name__)[:1000]
 
 
-def build_yandex_market_webhook_event_processor(*, DB_DSN: str, psycopg, q1, exec1) -> Callable[[int], None]:
+def build_yandex_market_webhook_event_processor(*, DB_DSN: str, psycopg, q1, exec1, process_delivery=None) -> Callable[[int], None]:
     # Создает фоновую обработку журнала: уведомление уже подтверждено Маркету, а чтение заказа идет отдельно.
     def set_event_state(event_id: int, state: str, *, error_text: str = "") -> None:
         # Отмечает итог обработки, чтобы повторные уведомления и ошибки были видны в локальном журнале.
@@ -43,7 +43,7 @@ def build_yandex_market_webhook_event_processor(*, DB_DSN: str, psycopg, q1, exe
                 event = q1(
                     conn,
                     """
-                    SELECT campaign_id, order_id, notification_type, processing_state
+                    SELECT campaign_id, order_id, notification_type, processing_state, event_time
                     FROM app.marketplace_yandex_market_webhook_events
                     WHERE id=%s
                     FOR UPDATE SKIP LOCKED
@@ -88,6 +88,11 @@ def build_yandex_market_webhook_event_processor(*, DB_DSN: str, psycopg, q1, exe
             )
             if not saved:
                 raise ValueError(f"Yandex Market order {order_id} does not contain saved items")
+            if process_delivery:
+                # Боевой обработчик вызывается только из подтвержденного уведомления, а не из ручной синхронизации.
+                for item in order.get("items") if isinstance(order.get("items"), list) else []:
+                    if isinstance(item, dict) and item.get("id"):
+                        process_delivery(store_code, order_id, int(item["id"]), event[4])
             set_event_state(event_id, "processed")
         except Exception as error:
             # Ошибку чтения сохраняем отдельно: HTTP-ответ уведомлению уже был отдан без задержки.

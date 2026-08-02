@@ -1,6 +1,8 @@
 import { reactive, ref } from 'vue'
 
-const YANDEX_MARKET_STORE_CODE = 'test'
+// Сборка test остается изолированной, а production явно выбирает ASAT через переменную окружения фронта.
+const YANDEX_MARKET_STORE_CODE = String(import.meta.env.VITE_YANDEX_MARKET_STORE_CODE || 'test').trim().toLowerCase()
+const YANDEX_MARKET_SANDBOX_MODE = YANDEX_MARKET_STORE_CODE === 'test'
 
 export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, requestDealConfirm }) {
   const showYandexMarketCatalog = ref(false)
@@ -21,12 +23,23 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
   const yandexMarketOrdersSyncing = ref(false)
   const yandexMarketOrdersLastSyncedAt = ref(null)
   const yandexMarketSandboxDeliverySaving = ref('')
+  const yandexMarketProductionManualOrders = ref([])
+  const yandexMarketProductionManualOrdersLoading = ref(false)
+  const yandexMarketProductionManualDeliverySaving = ref(0)
+  const yandexMarketInterhubServices = ref([])
+  const yandexMarketInterhubServicesLoading = ref(false)
   const yandexMarketStockSettingsLoading = ref(false)
   const yandexMarketStockSettingsSaving = ref(false)
   const yandexMarketStockSettings = reactive({
     offer_id: '',
     manual_stock_limit: 0,
     activation_instruction: '',
+    support_error_message: '',
+    auto_issue_enabled: false,
+    pool_issue_enabled: false,
+    interhub_service_id: null,
+    interhub_nominal_id: '',
+    interhub_enabled: false,
     published_stock: 0,
     last_stock_sync_at: null,
     market_available_stock: null,
@@ -54,6 +67,10 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
       offer_id: String(source.offer_id || yandexMarketSelectedOfferId.value || ''),
       manual_stock_limit: Math.max(0, Number(source.manual_stock_limit || 0)),
       activation_instruction: String(source.activation_instruction || ''),
+      support_error_message: String(source.support_error_message || ''),
+      auto_issue_enabled: Boolean(source.auto_issue_enabled), pool_issue_enabled: Boolean(source.pool_issue_enabled),
+      interhub_service_id: source.interhub_service_id ? Number(source.interhub_service_id) : null,
+      interhub_nominal_id: String(source.interhub_nominal_id || ''), interhub_enabled: Boolean(source.interhub_enabled),
       published_stock: Math.max(0, Number(source.published_stock || 0)),
       last_stock_sync_at: source.last_stock_sync_at || null,
       market_available_stock: source.market_available_stock === null || source.market_available_stock === undefined ? null : Math.max(0, Number(source.market_available_stock || 0)),
@@ -175,11 +192,15 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
   }
 
   function openYandexMarketDigitalSettings() {
-    // Открывает локальную sandbox-выдачу и подгружает только уже сохраненные позиции fake-заказов.
+    // Открывает отдельные настройки источников выдачи для выбранной карточки в нужном контуре.
     if (!yandexMarketCatalogDetails.value) return
     showYandexMarketCatalogDetails.value = false
     showYandexMarketDigitalSettings.value = true
-    loadYandexMarketOrders()
+    if (YANDEX_MARKET_SANDBOX_MODE) loadYandexMarketOrders()
+    else {
+      loadYandexMarketProductionManualOrders()
+      loadYandexMarketInterhubServices()
+    }
   }
 
   function closeYandexMarketDigitalSettings() {
@@ -200,6 +221,73 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
       yandexMarketCatalogDetailsError.value = yandexMarketError(error, 'Не удалось загрузить историю заказов Яндекс Маркета')
     } finally {
       yandexMarketOrdersLoading.value = false
+    }
+  }
+
+  async function loadYandexMarketProductionManualOrders() {
+    // Читает только остановленные боевые выдачи выбранной карточки, без синхронизации или внешней отправки.
+    const offerId = String(yandexMarketCatalogDetails.value?.offer_id || '').trim()
+    if (!offerId || YANDEX_MARKET_SANDBOX_MODE || yandexMarketProductionManualOrdersLoading.value) return
+    yandexMarketProductionManualOrdersLoading.value = true
+    try {
+      const data = await apiGet(yandexMarketTestPath(`/marketplaces/yandex/catalog/${encodeURIComponent(offerId)}/manual-deliveries`), { token: auth.state.token })
+      yandexMarketProductionManualOrders.value = Array.isArray(data?.items) ? data.items : []
+    } catch (error) {
+      yandexMarketCatalogDetailsError.value = yandexMarketError(error, 'Не удалось загрузить очередь ручной выдачи Яндекс Маркета')
+    } finally {
+      yandexMarketProductionManualOrdersLoading.value = false
+    }
+  }
+
+  async function loadYandexMarketInterhubServices() {
+    // Получает каталог услуг только через наш API, чтобы токен Interhub не попадал в браузер.
+    if (YANDEX_MARKET_SANDBOX_MODE || yandexMarketInterhubServicesLoading.value) return
+    yandexMarketInterhubServicesLoading.value = true
+    try {
+      const data = await apiGet('/integrations/interhub/services', { token: auth.state.token })
+      yandexMarketInterhubServices.value = Array.isArray(data?.items) ? data.items : []
+    } catch {
+      // Оставляет ручную выдачу доступной, если каталог поставщика временно недоступен.
+      yandexMarketInterhubServices.value = []
+    } finally {
+      yandexMarketInterhubServicesLoading.value = false
+    }
+  }
+
+  async function deliverYandexMarketProductionOrder(order, rawCodes) {
+    // Передает ручные коды только выбранной остановленной выдаче и обновляет локальную очередь после ответа Маркета.
+    const deliveryId = Number(order?.id || 0)
+    const codes = String(rawCodes || '').split(/\r?\n/).map((code) => code.trim()).filter(Boolean)
+    if (!deliveryId || !codes.length) return { ok: false, message: 'Введите ключ для отправки' }
+    yandexMarketProductionManualDeliverySaving.value = deliveryId
+    try {
+      await apiPost(`/marketplaces/yandex/digital-deliveries/${encodeURIComponent(deliveryId)}/deliver`, { codes }, { token: auth.state.token })
+      await loadYandexMarketProductionManualOrders()
+      return { ok: true, message: '' }
+    } catch (error) {
+      const message = yandexMarketError(error, 'Не удалось отправить ключ в Яндекс Маркет')
+      yandexMarketCatalogDetailsError.value = message
+      return { ok: false, message }
+    } finally {
+      yandexMarketProductionManualDeliverySaving.value = 0
+    }
+  }
+
+  async function issueYandexMarketProductionOrderFromPool(order) {
+    // Берет полный комплект из боевого ручного пула только после прямого действия оператора.
+    const deliveryId = Number(order?.id || 0)
+    if (!deliveryId) return { ok: false, message: 'Не удалось определить выдачу' }
+    yandexMarketProductionManualDeliverySaving.value = deliveryId
+    try {
+      await apiPost(`/marketplaces/yandex/digital-deliveries/${encodeURIComponent(deliveryId)}/issue-from-pool`, {}, { token: auth.state.token })
+      await loadYandexMarketProductionManualOrders()
+      return { ok: true, message: '' }
+    } catch (error) {
+      const message = yandexMarketError(error, 'Не удалось выдать ключ из ручного пула')
+      yandexMarketCatalogDetailsError.value = message
+      return { ok: false, message }
+    } finally {
+      yandexMarketProductionManualDeliverySaving.value = 0
     }
   }
 
@@ -352,6 +440,10 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
         {
           manual_stock_limit: Math.max(0, Number(yandexMarketStockSettings.manual_stock_limit || 0)),
           activation_instruction: String(yandexMarketStockSettings.activation_instruction || '').trim(),
+          support_error_message: String(yandexMarketStockSettings.support_error_message || '').trim(),
+          auto_issue_enabled: Boolean(yandexMarketStockSettings.auto_issue_enabled), pool_issue_enabled: Boolean(yandexMarketStockSettings.pool_issue_enabled),
+          interhub_service_id: yandexMarketStockSettings.interhub_service_id ? Number(yandexMarketStockSettings.interhub_service_id) : null,
+          interhub_nominal_id: String(yandexMarketStockSettings.interhub_nominal_id || '').trim(), interhub_enabled: Boolean(yandexMarketStockSettings.interhub_enabled),
         },
         { token: auth.state.token },
       )
@@ -390,6 +482,12 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     yandexMarketOrdersSyncing,
     yandexMarketOrdersLastSyncedAt,
     yandexMarketSandboxDeliverySaving,
+    yandexMarketProductionManualOrders,
+    yandexMarketProductionManualOrdersLoading,
+    yandexMarketProductionManualDeliverySaving,
+    yandexMarketInterhubServices,
+    yandexMarketInterhubServicesLoading,
+    yandexMarketSandboxMode: YANDEX_MARKET_SANDBOX_MODE,
     openYandexMarketCatalog,
     closeYandexMarketCatalog,
     loadYandexMarketCatalog,
@@ -399,10 +497,14 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     openYandexMarketDigitalSettings,
     closeYandexMarketDigitalSettings,
     loadYandexMarketOrders,
+    loadYandexMarketProductionManualOrders,
+    loadYandexMarketInterhubServices,
     syncYandexMarketOrders,
     deliverYandexMarketSandboxOrder,
     issueYandexMarketSandboxOrderFromPool,
     sendYandexMarketSandboxOrderToMarket,
+    deliverYandexMarketProductionOrder,
+    issueYandexMarketProductionOrderFromPool,
     updateYandexMarketCatalogArchive,
     selectYandexMarketCatalogItem,
     closeYandexMarketStockSettings,
