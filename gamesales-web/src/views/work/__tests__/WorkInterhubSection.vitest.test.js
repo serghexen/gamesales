@@ -104,6 +104,33 @@ describe('WorkInterhubSection', () => {
     expect(ctx.reload).toHaveBeenCalledTimes(1)
   })
 
+  it('hides the technical po_ prefix and finds a service without hyphens', async () => {
+    const ctx = buildCtx({
+      canPay: true,
+      services: [
+        { service_id: 14, title: 'po_Age of Legends - Global', category: 'Games', type: 'VOUCHER', fields: [] },
+        { service_id: 15, title: 'po_Other service', category: 'Games', type: 'VOUCHER', fields: [] },
+      ],
+    })
+    ctx.calculate = vi.fn(async () => { ctx.calculation = { success: true, fixed_amount: 117.47 } })
+    ctx.checkPayment = vi.fn(async () => { ctx.check = { success: true, message: 'Доступно' } })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+
+    expect(wrapper.text()).toContain('Age of Legends - Global')
+    expect(wrapper.text()).not.toContain('po_Age of Legends - Global')
+    await wrapper.setProps({ ctx: { ...ctx, search: 'age of legends global' } })
+    expect(wrapper.text()).toContain('Age of Legends - Global')
+    expect(wrapper.text()).not.toContain('Other service')
+
+    await wrapper.find('tbody tr').trigger('click')
+    expect(wrapper.find('.interhub-catalog__service-summary').text()).toContain('Age of Legends - Global')
+    await wrapper.find('.interhub-catalog__form').trigger('submit')
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(document.body.querySelector('.interhub-confirm__service')?.textContent).toContain('Age of Legends - Global')
+    wrapper.unmount()
+  })
+
   it('sorts services by title in both directions', async () => {
     const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx() } })
 

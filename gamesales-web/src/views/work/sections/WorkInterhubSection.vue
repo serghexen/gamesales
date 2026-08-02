@@ -18,7 +18,6 @@
     </div>
 
       <div class="panel__body">
-      <p class="interhub-catalog__lead">Выберите услугу, проверьте реквизиты и сумму. Подтверждение оплаты доступно только владельцу.</p>
       <div class="interhub-catalog__balance"><span>Депозит InterHub</span><strong>{{ formatBalance(ctx.balance, ctx.currency) }}</strong><small v-if="hasOverdraft">Овердрафт: {{ formatBalance(overdraftBalance, ctx.currency) }} из {{ formatBalance(overdraftLimit, ctx.currency) }}</small><small v-if="hasOverdraft">Доступно для оплат: {{ formatBalance(availableForPayments, ctx.currency) }}</small><small v-else>Агентский счёт</small></div>
       <p v-if="ctx.error" class="error">{{ ctx.error }}</p>
       <p v-if="ctx.priceError" class="error">{{ ctx.priceError }}</p>
@@ -54,7 +53,7 @@
             </tr>
             <tr v-for="service in pagedServices" :key="service.service_id" class="interhub-catalog__row" :class="{ 'is-selected': selectedService?.service_id === service.service_id }" @click="selectService(service)">
               <td>
-                <strong>{{ service.title }}</strong>
+                <strong>{{ formatServiceTitle(service.title) }}</strong>
                 <span class="interhub-catalog__id">#{{ service.service_id }}</span>
               </td>
               <td>{{ service.category || '—' }}</td>
@@ -70,7 +69,7 @@
       </nav>
       <form v-if="selectedService" ref="paymentForm" class="interhub-catalog__form" :class="{ 'has-optional-account': paymentType === 'TOP_UP_FIXED' }" @submit.prevent="preparePurchase">
         <div v-if="showHamster" class="interhub-catalog__obtain-overlay"><WorkHamsterLoader :label="obtainLoadingLabel" /></div>
-        <div class="interhub-catalog__service-summary"><p class="interhub-catalog__eyebrow">Получение</p><h3>{{ selectedService.title }}</h3></div>
+        <div class="interhub-catalog__service-summary"><p class="interhub-catalog__eyebrow">Получение</p><h3>{{ formatServiceTitle(selectedService.title) }}</h3></div>
         <div class="interhub-catalog__fields">
           <label v-if="showAccount" class="field"><span class="label">{{ accountLabel }}<i v-if="accountRequired"> *</i></span><input v-model.trim="account" class="input" :required="accountRequired" @input="resetPaymentAfterInputChange" /><small v-if="!accountRequired" class="muted">Необязательно для этого типа услуги</small></label>
           <div v-if="amountFromNominal" class="interhub-catalog__auto-amount"><span>Сумма пополнения</span><strong>{{ selectedNominalTitle || 'Выберите номинал' }}</strong><small>Подставляется автоматически из номинала</small></div>
@@ -167,7 +166,7 @@
           </button>
         </div>
         <div class="modal__body interhub-confirm__body">
-          <p class="interhub-confirm__service"><span>{{ selectedService?.title }}</span><span v-if="purchaseNominal" class="interhub-confirm__nominal">{{ purchaseNominal }}</span></p>
+          <p class="interhub-confirm__service"><span>{{ formatServiceTitle(selectedService?.title) }}</span><span v-if="purchaseNominal" class="interhub-confirm__nominal">{{ purchaseNominal }}</span></p>
           <dl class="interhub-confirm__details">
             <div><dt>Актуальная цена</dt><dd>{{ purchasePrice }}</dd></div>
             <div v-if="purchaseQuantity"><dt>К покупке, шт.</dt><dd>{{ purchaseQuantity }}</dd></div>
@@ -196,13 +195,23 @@ const props = defineProps({
 const titleCollator = new Intl.Collator('ru', { numeric: true, sensitivity: 'base' })
 const servicesSortDirection = ref('asc')
 const filteredServices = computed(() => {
-  // Фильтруем по названию и категории без повторного запроса к провайдеру.
-  const query = String(props.ctx.search || '').trim().toLowerCase()
+  // Ищем без учёта дефисов и подчёркиваний, чтобы название можно было вводить обычными словами.
+  const query = normalizeServiceSearch(props.ctx.search)
   const services = Array.isArray(props.ctx.services) ? props.ctx.services : []
-  const filtered = query ? services.filter((service) => `${service?.title || ''} ${service?.category || ''}`.toLowerCase().includes(query)) : services
+  const filtered = query ? services.filter((service) => normalizeServiceSearch(`${service?.title || ''} ${service?.category || ''}`).includes(query)) : services
   const direction = servicesSortDirection.value === 'asc' ? 1 : -1
   return [...filtered].sort((left, right) => direction * titleCollator.compare(String(left?.title || ''), String(right?.title || '')))
 })
+
+function formatServiceTitle(value) {
+  // Скрываем служебный префикс каталога только в интерфейсе, не меняя исходное имя для API.
+  return String(value || '').replace(/^po_/i, '').trim()
+}
+
+function normalizeServiceSearch(value) {
+  // Приводим разделители к пробелам, чтобы поиск не требовал точного написания названия.
+  return String(value || '').toLocaleLowerCase('ru-RU').replace(/[\s_-]+/g, ' ').trim()
+}
 const pageSize = 20
 const currentPage = ref(1)
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredServices.value.length / pageSize)))
