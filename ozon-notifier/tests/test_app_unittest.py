@@ -1,7 +1,6 @@
 import importlib.util
 import sys
 import unittest
-from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -14,30 +13,53 @@ SPEC.loader.exec_module(APP)
 
 
 class OzonNotifierMessageTests(unittest.TestCase):
-    def test_new_order_message_confirms_arrival_and_shows_actual_status_without_deadline(self):
-        # Проверяет, что уведомление сохраняет факт поступления и не скрывает быструю автовыдачу.
+    def test_error_alert_contains_manual_action_and_order_details(self):
+        # Проверяет, что оператор видит понятное действие без технического текста поставщика.
         order = {
             "posting_number": "123-456",
             "order_number": "OZN-7",
             "product_name": "Подарочная карта",
             "required_qty": 2,
             "status": "supplier_processing",
-            "waiting_deadline_at": datetime(2026, 7, 24, 12, 30, tzinfo=timezone.utc),
+            "last_error": "Interhub не вернул ключ",
         }
 
-        text = APP.message_text(order)
+        text = APP.alert_text(order)
 
-        self.assertIn("Поступил новый заказ Ozon", text)
+        self.assertIn("Требуется оператор", text)
         self.assertIn("Заказ: OZN-7", text)
         self.assertIn("Количество: 2", text)
-        self.assertIn("Текущий статус: Обрабатывается поставщиком", text)
-        self.assertNotIn("Дедлайн выдачи:", text)
+        self.assertIn("Причина: Необходим ручной ввод или ручная отправка.", text)
+        self.assertNotIn("Interhub", text)
 
-    def test_status_update_shows_actual_order_state(self):
-        # Проверяет, что после первого сообщения бот по-прежнему показывает текущий технический результат заказа.
-        text = APP.message_text({"status": "delivered"})
+    def test_successful_order_does_not_create_alert(self):
+        # Проверяет, что успешная выдача не создаёт уведомление и не засоряет рабочий чат.
+        key = APP.alert_key({"status": "delivered"})
 
-        self.assertIn("Текущий статус: Выполнен", text)
+        self.assertEqual(key, "")
+
+    def test_resolved_problem_creates_a_separate_resolution_notification(self):
+        # Проверяет, что после тревоги об успехе приходит отдельное сообщение, а не изменение старого текста.
+        order = {
+            "order_number": "OZN-8",
+            "product_name": "Steam Wallet 1000 ₽",
+            "required_qty": 1,
+            "status": "delivered",
+            "last_status": "alert:error:abc",
+        }
+
+        self.assertEqual(APP.notification_key(order), "resolved")
+        self.assertIn("✅ Проблема решена", APP.resolution_text(order))
+        self.assertIn("Текущий статус: Выполнен", APP.resolution_text(order))
+
+    def test_manual_order_and_changed_error_have_distinct_alerts(self):
+        # Проверяет, что ручная обработка и новая причина ошибки доставляются как отдельные полезные тревоги.
+        manual_key = APP.alert_key({"status": "manual_required", "operator_wait_expired": False})
+        first_error_key = APP.alert_key({"status": "manual_required", "last_error": "Первая ошибка"})
+        second_error_key = APP.alert_key({"status": "manual_required", "last_error": "Другая ошибка"})
+
+        self.assertEqual(manual_key, "alert:manual_required")
+        self.assertNotEqual(first_error_key, second_error_key)
 
     def test_unknown_status_is_shown_as_processing(self):
         # Оставляет нейтральный понятный статус, пока новый технический код Ozon не добавлен в словарь.

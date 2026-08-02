@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 import json
 import logging
 import os
@@ -26,6 +27,7 @@ class Settings:
     database_url: str
     bot_token: str
     poll_interval_sec: int
+    operator_wait_sec: int
 
 
 def env_required(name: str) -> str:
@@ -53,6 +55,7 @@ def load_settings() -> Settings:
         database_url=env_required("DATABASE_URL"),
         bot_token=env_required("OZON_NOTIFIER_BOT_TOKEN"),
         poll_interval_sec=env_int("OZON_NOTIFIER_POLL_INTERVAL_SEC", default=15, minimum=5),
+        operator_wait_sec=env_int("OZON_NOTIFIER_OPERATOR_WAIT_SEC", default=120, minimum=30),
     )
 
 
@@ -68,13 +71,64 @@ def status_title(status: str) -> str:
     return labels.get(str(status or "").strip().lower(), "Обрабатывается")
 
 
-def message_text(order: dict[str, Any]) -> str:
-    # Сохраняет факт поступления в заголовке и отдельно показывает актуальную стадию обработки заказа.
+def alert_key(order: dict[str, Any]) -> str:
+    # Создаёт устойчивый ключ причины, чтобы бот повторял тревогу только при новом состоянии или новой ошибке.
+    status = str(order.get("status") or "").strip().lower()
+    error = str(order.get("last_error") or "").strip()
+    if status == "cancelled":
+        return "alert:cancelled"
+    if error:
+        return f"alert:error:{sha256(error.encode('utf-8')).hexdigest()}"
+    if status == "manual_required":
+        return "alert:manual_wait" if bool(order.get("operator_wait_expired")) else "alert:manual_required"
+    return ""
+
+
+def notification_key(order: dict[str, Any]) -> str:
+    # Определяет, нужна ли новая тревога или одно сообщение о её закрытии после смены проблемного состояния.
+    active_alert = alert_key(order)
+    previous_key = str(order.get("last_status") or "")
+    if active_alert:
+        return active_alert
+    if previous_key.startswith("alert:"):
+        return "resolved"
+    return ""
+
+
+def alert_text(order: dict[str, Any]) -> str:
+    # Формирует короткое действие для оператора вместо сообщений о штатном ходе и успешной выдаче.
+    order_number = str(order.get("order_number") or order.get("posting_number") or "—")
+    product_name = str(order.get("product_name") or "Товар не указан").strip()[:1000]
+    status = str(order.get("status") or "").strip().lower()
+    error = str(order.get("last_error") or "").strip()
+    if status == "cancelled":
+        title = "⚠️ Заказ Ozon отменён"
+        reason = "Ozon отменил заказ. Проверьте, не началась ли выдача у поставщика."
+    elif error:
+        title = "⚠️ Требуется оператор"
+        reason = "Необходим ручной ввод или ручная отправка."
+    else:
+        title = "⚠️ Требуется оператор"
+        reason = "Необходим ручной ввод или ручная отправка."
+    return "\n".join(
+        (
+            title,
+            f"Заказ: {order_number}",
+            f"Товар: {product_name}",
+            f"Количество: {int(order.get('required_qty') or 1)}",
+            f"Статус: {status_title(status)}",
+            f"Причина: {reason[:1500]}",
+        )
+    )
+
+
+def resolution_text(order: dict[str, Any]) -> str:
+    # Сообщает об устранении проблемы отдельной записью, сохраняя исходную тревогу в истории чата.
     order_number = str(order.get("order_number") or order.get("posting_number") or "—")
     product_name = str(order.get("product_name") or "Товар не указан").strip()[:1000]
     return "\n".join(
         (
-            "🛍 Поступил новый заказ Ozon",
+            "✅ Проблема решена",
             f"Заказ: {order_number}",
             f"Товар: {product_name}",
             f"Количество: {int(order.get('required_qty') or 1)}",
@@ -114,22 +168,10 @@ def send_text(settings: Settings, chat_id: int, text: str) -> int:
     return message_id
 
 
-def send_message(settings: Settings, chat_id: int, order: dict[str, Any]) -> int:
-    # Создаёт первое сообщение о заказе и возвращает его ID для дальнейшего редактирования.
-    return send_text(settings, chat_id, message_text(order))
-
-
-def edit_message(settings: Settings, chat_id: int, message_id: int, order: dict[str, Any]) -> None:
-    # Обновляет исходное сообщение, чтобы один заказ не засорял чат несколькими уведомлениями.
-    try:
-        telegram_request(
-            settings,
-            "editMessageText",
-            {"chat_id": chat_id, "message_id": message_id, "text": message_text(order)},
-        )
-    except RuntimeError as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
+def send_message(settings: Settings, chat_id: int, order: dict[str, Any], event_key: str) -> int:
+    # Отправляет новую запись в чат и не редактирует прежнее сообщение оператора при закрытии проблемы.
+    text = resolution_text(order) if event_key == "resolved" else alert_text(order)
+    return send_text(settings, chat_id, text)
 
 
 def initialize_tracking(conn: psycopg.Connection[Any]) -> None:
@@ -248,36 +290,51 @@ def sync_recipients(settings: Settings) -> None:
                 save_update_offset(conn, update_id + 1)
 
 
-def read_pending_orders(conn: psycopg.Connection[Any]) -> list[dict[str, Any]]:
-    # Выбирает только новые заказы и сменившиеся статусы для каждого активного получателя без повторной рассылки.
+def read_pending_orders(conn: psycopg.Connection[Any], settings: Settings) -> list[dict[str, Any]]:
+    # Выбирает тревоги и закрытия прежних тревог, не уведомляя о штатных промежуточных статусах.
     with conn.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
             SELECT orders.id, orders.posting_number, orders.order_number, orders.product_name, orders.required_qty,
-                   orders.status, orders.waiting_deadline_at, recipient.chat_id, delivery.telegram_message_id,
-                   delivery.last_status
+                   orders.status, orders.last_error, settings.auto_issue_enabled, recipient.chat_id,
+                   delivery.telegram_message_id, delivery.last_status,
+                   orders.updated_at <= now() - (%s * interval '1 second') AS operator_wait_expired
             FROM app.ozon_order_notifier_recipients AS recipient
             JOIN app.ozon_order_notifier_state AS state ON state.notifier_code=%s
             JOIN app.marketplace_ozon_digital_orders AS orders
               ON orders.id > GREATEST(state.baseline_order_id, recipient.orders_from_id)
+            JOIN app.marketplace_ozon_digital_settings AS settings
+              ON settings.store_code=orders.store_code
+             AND settings.external_product_id=orders.external_product_id
             LEFT JOIN app.ozon_order_notifier_deliveries AS delivery
               ON delivery.order_id=orders.id AND delivery.chat_id=recipient.chat_id
             WHERE recipient.is_active=true
               AND (
-                delivery.order_id IS NULL
-                OR delivery.telegram_message_id IS NULL
-                OR delivery.last_status IS DISTINCT FROM orders.status
+                orders.status='cancelled'
+                OR orders.last_error <> ''
+                OR (
+                  orders.status='manual_required'
+                  AND (
+                    settings.auto_issue_enabled=false
+                    OR orders.updated_at <= now() - (%s * interval '1 second')
+                  )
+                )
+                OR delivery.last_status LIKE 'alert:%%'
               )
             ORDER BY orders.created_at ASC NULLS LAST, orders.id ASC
-            LIMIT 100
+            LIMIT 200
             """,
-            (NOTIFIER_CODE,),
+            (settings.operator_wait_sec, NOTIFIER_CODE, settings.operator_wait_sec),
         )
-        return list(cursor.fetchall())
+        return [
+            order
+            for order in cursor.fetchall()
+            if notification_key(order) and notification_key(order) != str(order.get("last_status") or "")
+        ]
 
 
-def remember_success(conn: psycopg.Connection[Any], order: dict[str, Any], message_id: int) -> None:
-    # Фиксирует ID Telegram-сообщения и текущий статус отдельно для каждого получателя после успешной доставки.
+def remember_success(conn: psycopg.Connection[Any], order: dict[str, Any], message_id: int, sent_event_key: str) -> None:
+    # Фиксирует ключ тревоги или её закрытия, чтобы каждое полезное событие пришло получателю только один раз.
     with conn.cursor() as cursor:
         cursor.execute(
             """
@@ -292,7 +349,7 @@ def remember_success(conn: psycopg.Connection[Any], order: dict[str, Any], messa
                 last_error='',
                 updated_at=now()
             """,
-            (int(order["id"]), int(order["chat_id"]), message_id, str(order.get("status") or "")),
+            (int(order["id"]), int(order["chat_id"]), message_id, sent_event_key),
         )
     conn.commit()
 
@@ -318,19 +375,16 @@ def run_cycle(settings: Settings) -> None:
         initialize_tracking(conn)
     sync_recipients(settings)
     with psycopg.connect(settings.database_url) as conn:
-        orders = read_pending_orders(conn)
+        orders = read_pending_orders(conn, settings)
 
     for order in orders:
-        message_id = int(order.get("telegram_message_id") or 0)
         chat_id = int(order["chat_id"])
+        sent_event_key = notification_key(order)
         try:
-            if message_id:
-                edit_message(settings, chat_id, message_id, order)
-            else:
-                message_id = send_message(settings, chat_id, order)
+            message_id = send_message(settings, chat_id, order, sent_event_key)
             with psycopg.connect(settings.database_url) as conn:
-                remember_success(conn, order, message_id)
-            LOGGER.info("Order %s was notified with status %s", order["id"], order["status"])
+                remember_success(conn, order, message_id, sent_event_key)
+            LOGGER.info("Order %s notification was sent: %s", order["id"], sent_event_key)
         except Exception as exc:
             LOGGER.exception("Cannot notify order %s", order["id"])
             with psycopg.connect(settings.database_url) as conn:
