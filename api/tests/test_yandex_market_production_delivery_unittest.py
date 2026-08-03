@@ -146,6 +146,7 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
             processor.start_existing_order_manually("joycards", 501, 99)
 
         self.assertTrue(any("INSERT INTO app.marketplace_yandex_digital_deliveries" in sql for sql, _params in queries))
+        self.assertTrue(any("FOR UPDATE OF orders" in sql for sql, _params in queries if "SELECT orders.offer_id" in sql))
 
     # Ошибка сети после pay сохраняет неопределенную попытку, а повторное уведомление не запускает второй pay.
     def test_pay_timeout_waits_for_check_status_without_second_payment(self):

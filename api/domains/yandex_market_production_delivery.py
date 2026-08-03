@@ -657,7 +657,7 @@ def build_yandex_market_production_delivery_processor(
                 FROM app.marketplace_yandex_order_items AS orders
                 LEFT JOIN app.marketplace_yandex_stock_settings AS settings
                   ON settings.store_code=orders.store_code AND settings.offer_id=orders.offer_id
-                WHERE orders.store_code=%s AND orders.order_id=%s AND orders.item_id=%s FOR UPDATE
+                WHERE orders.store_code=%s AND orders.order_id=%s AND orders.item_id=%s FOR UPDATE OF orders
                 """,
                 (store_code, order_id, item_id),
             )
