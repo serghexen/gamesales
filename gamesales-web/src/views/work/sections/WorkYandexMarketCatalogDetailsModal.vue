@@ -78,7 +78,7 @@
                         <td><strong>{{ marketStatusLabel(order.status) }}</strong><span v-if="order.substatus">{{ order.substatus }}</span></td>
                         <td>Яндекс Маркет</td>
                         <td><strong>{{ formatOrderDate(order.created_at) || '—' }}</strong><span v-if="order.updated_at">Обновлён: {{ formatOrderDate(order.updated_at) }}</span></td>
-                        <td v-if="!yandexMarketSandboxMode">
+                        <td v-if="!yandexMarketSandboxMode" class="ozon-catalog-details-modal__order-source">
                           <button v-if="canStartProductionDelivery(order)" class="ghost" type="button" :disabled="isStartingProductionDelivery(order)" :aria-label="`Запустить выдачу заказа Яндекс Маркета ${order.order_id}`" @click="startProductionDelivery(order)">{{ isStartingProductionDelivery(order) ? 'Запускаем…' : 'Запустить выдачу' }}</button>
                           <button v-else-if="canRevealYandexMarketDigitalCodesForOrder(order)" class="ozon-catalog-details-modal__supplier-operation-action" type="button" :aria-label="`Открыть выдачу для заказа Яндекс Маркета ${order.order_id}`" title="Открыть выдачу" @click="openYandexMarketDigitalCodes(order)">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z" /><path d="M15 3v4h4M9 11h6M9 15h6" /></svg>
