@@ -77,6 +77,7 @@ services:
       args:
         VITE_API_BASE: /api
         VITE_YANDEX_MARKET_STORE_CODE: ${VITE_YANDEX_MARKET_STORE_CODE:-asat}
+        VITE_YANDEX_MARKET_STORE_CODES: ${VITE_YANDEX_MARKET_STORE_CODES:-asat,joycards}
     container_name: gamesales-web
     restart: unless-stopped
     depends_on:

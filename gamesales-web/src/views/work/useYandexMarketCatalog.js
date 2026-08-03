@@ -1,10 +1,13 @@
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 
-// Сборка test остается изолированной, а production явно выбирает ASAT через переменную окружения фронта.
-const YANDEX_MARKET_STORE_CODE = String(import.meta.env.VITE_YANDEX_MARKET_STORE_CODE || 'test').trim().toLowerCase()
-const YANDEX_MARKET_SANDBOX_MODE = YANDEX_MARKET_STORE_CODE === 'test'
+const YANDEX_MARKET_STORE_CODES = [...new Set(String(
+  import.meta.env.VITE_YANDEX_MARKET_STORE_CODES || import.meta.env.VITE_YANDEX_MARKET_STORE_CODE || 'test',
+).split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))]
 
 export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, requestDealConfirm }) {
+  // Хранит выбранный кабинет, чтобы товары и ключи разных магазинов никогда не смешивались.
+  const yandexMarketStoreCode = ref(YANDEX_MARKET_STORE_CODES[0] || 'test')
+  const yandexMarketSandboxMode = computed(() => yandexMarketStoreCode.value === 'test')
   const showYandexMarketCatalog = ref(false)
   const yandexMarketCatalogItems = ref([])
   const yandexMarketCatalogLoading = ref(false)
@@ -56,8 +59,8 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
   }
 
   function yandexMarketTestPath(path) {
-    // Добавляет test-магазин ко всем запросам экрана, чтобы sandbox не прочитал данные ASAT по умолчанию.
-    return `${path}${path.includes('?') ? '&' : '?'}store_code=${YANDEX_MARKET_STORE_CODE}`
+    // Передает выбранный кабинет во все запросы, чтобы магазины не читали данные друг друга.
+    return `${path}${path.includes('?') ? '&' : '?'}store_code=${encodeURIComponent(yandexMarketStoreCode.value)}`
   }
 
   function applyYandexMarketStockSettings(value) {
@@ -150,6 +153,24 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     loadYandexMarketCatalog()
   }
 
+  async function selectYandexMarketStore(storeCode) {
+    // Переключает кабинет только в каталоге и сбрасывает карточку, чтобы не сохранить настройки не того магазина.
+    const normalizedStoreCode = String(storeCode || '').trim().toLowerCase()
+    if (!YANDEX_MARKET_STORE_CODES.includes(normalizedStoreCode) || normalizedStoreCode === yandexMarketStoreCode.value) return
+    ++catalogRequestSeq
+    ++detailsRequestSeq
+    yandexMarketStoreCode.value = normalizedStoreCode
+    yandexMarketCatalogItems.value = []
+    yandexMarketCatalogDetails.value = null
+    yandexMarketSelectedOfferId.value = ''
+    yandexMarketOrders.value = []
+    yandexMarketProductionManualOrders.value = []
+    yandexMarketInterhubServices.value = []
+    yandexMarketCatalogError.value = ''
+    yandexMarketCatalogOk.value = ''
+    await loadYandexMarketCatalog()
+  }
+
   function closeYandexMarketCatalog() {
     // Закрывает окно без очистки списка, чтобы повторное открытие не показывало мерцание пустого состояния.
     showYandexMarketCatalog.value = false
@@ -196,7 +217,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     if (!yandexMarketCatalogDetails.value) return
     showYandexMarketCatalogDetails.value = false
     showYandexMarketDigitalSettings.value = true
-    if (YANDEX_MARKET_SANDBOX_MODE) loadYandexMarketOrders()
+    if (yandexMarketSandboxMode.value) loadYandexMarketOrders()
     else {
       loadYandexMarketProductionManualOrders()
       loadYandexMarketInterhubServices()
@@ -227,7 +248,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
   async function loadYandexMarketProductionManualOrders() {
     // Читает только остановленные боевые выдачи выбранной карточки, без синхронизации или внешней отправки.
     const offerId = String(yandexMarketCatalogDetails.value?.offer_id || '').trim()
-    if (!offerId || YANDEX_MARKET_SANDBOX_MODE || yandexMarketProductionManualOrdersLoading.value) return
+    if (!offerId || yandexMarketSandboxMode.value || yandexMarketProductionManualOrdersLoading.value) return
     yandexMarketProductionManualOrdersLoading.value = true
     try {
       const data = await apiGet(yandexMarketTestPath(`/marketplaces/yandex/catalog/${encodeURIComponent(offerId)}/manual-deliveries`), { token: auth.state.token })
@@ -241,7 +262,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
 
   async function loadYandexMarketInterhubServices() {
     // Получает каталог услуг только через наш API, чтобы токен Interhub не попадал в браузер.
-    if (YANDEX_MARKET_SANDBOX_MODE || yandexMarketInterhubServicesLoading.value) return
+    if (yandexMarketSandboxMode.value || yandexMarketInterhubServicesLoading.value) return
     yandexMarketInterhubServicesLoading.value = true
     try {
       const data = await apiGet('/integrations/interhub/services', { token: auth.state.token })
@@ -487,8 +508,11 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     yandexMarketProductionManualDeliverySaving,
     yandexMarketInterhubServices,
     yandexMarketInterhubServicesLoading,
-    yandexMarketSandboxMode: YANDEX_MARKET_SANDBOX_MODE,
+    yandexMarketStoreCodes: YANDEX_MARKET_STORE_CODES,
+    yandexMarketStoreCode,
+    yandexMarketSandboxMode,
     openYandexMarketCatalog,
+    selectYandexMarketStore,
     closeYandexMarketCatalog,
     loadYandexMarketCatalog,
     syncYandexMarketCatalog,

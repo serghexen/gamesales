@@ -93,6 +93,9 @@
         :yandex-market-catalog-item-action-id="ctx.yandexMarketCatalogItemActionId"
         :yandex-market-catalog-error="ctx.yandexMarketCatalogError"
         :yandex-market-catalog-ok="ctx.yandexMarketCatalogOk"
+        :yandex-market-store-codes="ctx.yandexMarketStoreCodes"
+        :yandex-market-store-code="ctx.yandexMarketStoreCode"
+        :select-yandex-market-store="ctx.selectYandexMarketStore"
       />
 
       <WorkYandexMarketCatalogDetailsModal
@@ -120,6 +123,7 @@
         :show-yandex-market-digital-settings="ctx.showYandexMarketDigitalSettings"
         :close-yandex-market-digital-settings="ctx.closeYandexMarketDigitalSettings"
         :yandex-market-sandbox-mode="ctx.yandexMarketSandboxMode"
+        :yandex-market-store-code="ctx.yandexMarketStoreCode"
         :yandex-market-offer-id="ctx.yandexMarketCatalogDetails?.offer_id || ''"
         :yandex-market-title="ctx.yandexMarketCatalogDetails?.title || ''"
         :yandex-market-stock-settings="ctx.yandexMarketStockSettings"

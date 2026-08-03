@@ -4,9 +4,15 @@
     {
       "label": "Frontend Dev",
       "type": "shell",
-      "command": "npm run dev",
+      "command": "set -a && source ${workspaceFolder}/.env.dev && set +a && npm run dev",
       "options": {
-        "cwd": "${workspaceFolder}/gamesales-web"
+        "cwd": "${workspaceFolder}/gamesales-web",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": [
+            "-lc"
+          ]
+        }
       },
       "isBackground": true,
       "problemMatcher": []

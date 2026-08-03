@@ -50,9 +50,9 @@ def yandex_market_sandbox_market_delivery_enabled(store_code: str | None = None)
 
 
 def yandex_market_production_auto_delivery_enabled(store_code: str | None = None) -> bool:
-    # Открывает боевую выдачу только главному магазину после отдельного явного разрешения в окружении.
+    # Открывает боевую выдачу только тому магазину, для которого она явно разрешена в окружении.
     normalized_store_code = normalize_yandex_market_store_code(store_code)
-    return normalized_store_code == "asat" and _env_store_bool(
+    return _env_store_bool(
         "AUTO_DELIVERY_ENABLED", store_code=normalized_store_code, default=False,
     )
 

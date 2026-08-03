@@ -111,6 +111,7 @@ describe('useYandexMarketCatalog', () => {
 describe('WorkYandexMarketCatalogModal', () => {
   it('keeps the search and splits a long catalog into pages with all working columns', async () => {
     const updateYandexMarketCatalogArchive = vi.fn()
+    const selectYandexMarketStore = vi.fn()
     const yandexMarketCatalogItems = Array.from({ length: 21 }, (_, index) => ({
       offer_id: `SKU-${index + 1}`,
       title: `Игра ${index + 1}`,
@@ -123,12 +124,14 @@ describe('WorkYandexMarketCatalogModal', () => {
     }))
     const wrapper = mount(WorkYandexMarketCatalogModal, {
       props: {
-        showYandexMarketCatalog: true, closeYandexMarketCatalog: vi.fn(), syncYandexMarketCatalog: vi.fn(), updateYandexMarketCatalogArchive, openYandexMarketCatalogDetails: vi.fn(), yandexMarketCatalogItems, yandexMarketCatalogLoading: false, yandexMarketCatalogSyncing: false,
+        showYandexMarketCatalog: true, closeYandexMarketCatalog: vi.fn(), syncYandexMarketCatalog: vi.fn(), updateYandexMarketCatalogArchive, openYandexMarketCatalogDetails: vi.fn(), yandexMarketCatalogItems, yandexMarketCatalogLoading: false, yandexMarketCatalogSyncing: false, yandexMarketStoreCodes: ['asat', 'joycards'], yandexMarketStoreCode: 'asat', selectYandexMarketStore,
       },
       global: { stubs: { teleport: true } },
     })
 
     expect(wrapper.get('input[aria-label="Поиск по названию или SKU карточки Яндекс Маркета"]').exists()).toBe(true)
+    await wrapper.get('select').setValue('joycards')
+    expect(selectYandexMarketStore).toHaveBeenCalledWith('joycards')
     expect(wrapper.findAll('.yandex-catalog-modal__table th').map((cell) => cell.text())).toEqual(['Карточка Яндекс Маркета', 'Действие'])
     expect(wrapper.findAll('.yandex-catalog-modal__table tbody tr')).toHaveLength(20)
     expect(wrapper.text()).toContain('Страница 1 из 2')

@@ -110,6 +110,7 @@ const props = defineProps({
   showYandexMarketDigitalSettings: { type: Boolean, required: true },
   closeYandexMarketDigitalSettings: { type: Function, required: true },
   yandexMarketSandboxMode: { type: Boolean, default: false },
+  yandexMarketStoreCode: { type: String, default: 'asat' },
   yandexMarketOfferId: { type: String, default: '' },
   yandexMarketTitle: { type: String, default: '' },
   yandexMarketStockSettings: { type: Object, default: () => ({}) },
@@ -327,7 +328,7 @@ watch(
   () => [props.showYandexMarketDigitalSettings, props.yandexMarketOfferId, props.yandexMarketTitle],
   ([isOpen, productKey, productTitle]) => {
     // Подгружает отдельный пул нужного контура до показа таблицы ключей.
-    if (isOpen && productKey) props.loadMarketplaceKeyPoolFor({ marketplace: 'yandex_market', productKey: String(productKey), productTitle: String(productTitle || productKey), storeCode: props.yandexMarketSandboxMode ? 'test' : 'asat' })
+    if (isOpen && productKey) props.loadMarketplaceKeyPoolFor({ marketplace: 'yandex_market', productKey: String(productKey), productTitle: String(productTitle || productKey), storeCode: props.yandexMarketStoreCode })
   },
   { immediate: true },
 )

@@ -13,8 +13,10 @@ except Exception:  # pragma: no cover
 
 try:
     from api.domains import yandex_market_production_delivery
+    from api.domains.yandex_market_catalog_service import yandex_market_production_auto_delivery_enabled
 except ModuleNotFoundError:  # Запуск из папки api использует локальный пакет domains.
     from domains import yandex_market_production_delivery
+    from domains.yandex_market_catalog_service import yandex_market_production_auto_delivery_enabled
 
 
 class _NoDatabasePsycopg:
@@ -39,6 +41,16 @@ class _FakePsycopg:
 
 
 class YandexMarketProductionDeliveryTests(unittest.TestCase):
+    # Автовыдача изолирована настройкой каждого кабинета, а не зарезервированным именем магазина.
+    def test_auto_delivery_flag_is_resolved_for_each_store(self):
+        env = {
+            "YANDEX_MARKET_ASAT_AUTO_DELIVERY_ENABLED": "false",
+            "YANDEX_MARKET_JOYCARDS_AUTO_DELIVERY_ENABLED": "true",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            self.assertFalse(yandex_market_production_auto_delivery_enabled("asat"))
+            self.assertTrue(yandex_market_production_auto_delivery_enabled("joycards"))
+
     # Выключенный флаг останавливает webhook до резервирования ключей, оплаты Interhub и даже чтения очереди.
     def test_disabled_flag_makes_webhook_delivery_a_noop(self):
         processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
