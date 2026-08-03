@@ -120,6 +120,17 @@ describe('useYandexMarketCatalog', () => {
     expect(requestDealConfirm).toHaveBeenCalledWith(expect.objectContaining({ title: 'Запустить выдачу?' }))
     expect(apiPost).toHaveBeenCalledWith('/marketplaces/yandex/orders/501/items/99/start-delivery?store_code=joycards', {}, { token: 'market-token' })
   })
+
+  it('loads an already sent production key only by the exact order item', async () => {
+    const apiGet = vi.fn().mockResolvedValue({ order_id: 501, item_id: 99, codes: ['AAAA-1111'] })
+    const instance = useYandexMarketCatalog({
+      auth: { state: { token: 'market-token' } }, apiGet, apiPost: vi.fn(), apiPut: vi.fn(), mapApiError: vi.fn(), requestDealConfirm: vi.fn(),
+    })
+    instance.yandexMarketStoreCode.value = 'joycards'
+
+    await expect(instance.revealYandexMarketProductionOrderCodes({ order_id: 501, item_id: 99 })).resolves.toEqual({ ok: true, codes: ['AAAA-1111'], message: '' })
+    expect(apiGet).toHaveBeenCalledWith('/marketplaces/yandex/orders/501/items/99/codes?store_code=joycards', { token: 'market-token' })
+  })
 })
 
 describe('WorkYandexMarketCatalogModal', () => {
@@ -166,9 +177,10 @@ describe('WorkYandexMarketCatalogDetailsModal', () => {
   it('publishes stock explicitly and keeps delivery settings out of the stock form', async () => {
     const saveYandexMarketStockSettings = vi.fn()
     const startYandexMarketProductionOrder = vi.fn().mockResolvedValue({ ok: true })
+    const revealYandexMarketProductionOrderCodes = vi.fn().mockResolvedValue({ ok: true, codes: ['AAAA-1111'] })
     const wrapper = mount(WorkYandexMarketCatalogDetailsModal, {
       props: {
-        showYandexMarketCatalogDetails: true, closeYandexMarketCatalogDetails: vi.fn(), openYandexMarketDigitalSettings: vi.fn(), yandexMarketSandboxMode: false, yandexMarketCatalogDetailsLoading: false, yandexMarketCatalogDetails: { offer_id: 'PSN-500', market_sku: '123', title: 'PSN 500', category_name: 'Игровые карты', price: '500', currency_code: 'RUB', card_status: 'HAS_CARD_CAN_UPDATE' }, yandexMarketStockSettings: { manual_stock_limit: 4, market_available_stock: 4, market_stock_updated_at: '2026-07-25T11:33:00Z', activation_instruction: 'Активируйте ключ здесь.', auto_issue_enabled: true, pool_issue_enabled: true }, yandexMarketStockSettingsSaving: false, saveYandexMarketStockSettings, yandexMarketOrders: [{ order_id: 501, item_id: 99, offer_id: 'PSN-500', quantity: 2, status: 'PROCESSING', created_at: '2026-07-25T12:00:00Z' }], yandexMarketOrdersLoading: false, yandexMarketOrdersSyncing: false, yandexMarketOrdersLastSyncedAt: '2026-07-25T12:01:00Z', loadYandexMarketOrders: vi.fn(), syncYandexMarketOrders: vi.fn(), startYandexMarketProductionOrder,
+        showYandexMarketCatalogDetails: true, closeYandexMarketCatalogDetails: vi.fn(), openYandexMarketDigitalSettings: vi.fn(), yandexMarketSandboxMode: false, yandexMarketCatalogDetailsLoading: false, yandexMarketCatalogDetails: { offer_id: 'PSN-500', market_sku: '123', title: 'PSN 500', category_name: 'Игровые карты', price: '500', currency_code: 'RUB', card_status: 'HAS_CARD_CAN_UPDATE' }, yandexMarketStockSettings: { manual_stock_limit: 4, market_available_stock: 4, market_stock_updated_at: '2026-07-25T11:33:00Z', activation_instruction: 'Активируйте ключ здесь.', auto_issue_enabled: true, pool_issue_enabled: true }, yandexMarketStockSettingsSaving: false, saveYandexMarketStockSettings, yandexMarketOrders: [{ order_id: 501, item_id: 99, offer_id: 'PSN-500', quantity: 2, status: 'PROCESSING', created_at: '2026-07-25T12:00:00Z' }], yandexMarketOrdersLoading: false, yandexMarketOrdersSyncing: false, yandexMarketOrdersLastSyncedAt: '2026-07-25T12:01:00Z', canRevealYandexMarketDigitalCodes: true, loadYandexMarketOrders: vi.fn(), syncYandexMarketOrders: vi.fn(), startYandexMarketProductionOrder, revealYandexMarketProductionOrderCodes,
       },
       global: { stubs: { teleport: true } },
     })
@@ -197,6 +209,12 @@ describe('WorkYandexMarketCatalogDetailsModal', () => {
     await wrapper.setProps({ yandexMarketProductionStartDeliverySaving: 501 })
     expect(wrapper.get('button[aria-label="Запустить выдачу заказа Яндекс Маркета 501"]').text()).toBe('Запускаем…')
     expect(wrapper.get('button[aria-label="Запустить выдачу заказа Яндекс Маркета 501"]').attributes('disabled')).toBeDefined()
+    await wrapper.setProps({ yandexMarketProductionStartDeliverySaving: 0, yandexMarketOrders: [{ order_id: 501, item_id: 99, offer_id: 'PSN-500', quantity: 2, status: 'DELIVERED', created_at: '2026-07-25T12:00:00Z' }] })
+    expect(wrapper.text()).not.toContain('AAAA-1111')
+    await wrapper.get('button[aria-label="Открыть выдачу для заказа Яндекс Маркета 501"]').trigger('click')
+    await Promise.resolve()
+    expect(revealYandexMarketProductionOrderCodes).toHaveBeenCalledWith(expect.objectContaining({ order_id: 501, item_id: 99 }))
+    expect(wrapper.text()).toContain('AAAA-1111')
   })
 })
 

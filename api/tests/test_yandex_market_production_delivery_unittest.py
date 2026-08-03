@@ -148,6 +148,26 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
         self.assertTrue(any("INSERT INTO app.marketplace_yandex_digital_deliveries" in sql for sql, _params in queries))
         self.assertTrue(any("FOR UPDATE OF orders" in sql for sql, _params in queries if "SELECT orders.offer_id" in sql))
 
+    # Просмотр выдачи всегда привязан к item_id, чтобы два товара одного заказа не раскрывали ключи друг друга.
+    def test_reveal_delivered_codes_reads_the_exact_yandex_order_item(self):
+        queries = []
+
+        def fake_q1(_conn, sql, params=None):
+            queries.append((sql, params))
+            return (["AAAA-1111"],)
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=lambda *_args: [],
+            exec1=lambda *_args: 1,
+        )
+
+        self.assertEqual(processor.reveal_delivered_codes("joycards", 501, 99), {"order_id": 501, "item_id": 99, "codes": ["AAAA-1111"]})
+        self.assertEqual(queries[0][1], ("joycards", 501, 99))
+        self.assertIn("WHERE store_code=%s AND order_id=%s AND item_id=%s", queries[0][0])
+
     # Ошибка сети после pay сохраняет неопределенную попытку, а повторное уведомление не запускает второй pay.
     def test_pay_timeout_waits_for_check_status_without_second_payment(self):
         writes = []
@@ -246,6 +266,7 @@ class YandexMarketProductionManualRoutesTests(unittest.TestCase):
             deliver_manually=lambda delivery_id, codes: calls.append(("deliver", delivery_id, codes)) or {"id": delivery_id, "status": "market_submitted"},
             issue_from_pool_manually=lambda delivery_id: calls.append(("pool", delivery_id)) or {"id": delivery_id, "status": "market_submitted"},
             start_existing_order_manually=lambda store_code, order_id, item_id: calls.append(("start", store_code, order_id, item_id)),
+            reveal_delivered_codes=lambda store_code, order_id, item_id: calls.append(("codes", store_code, order_id, item_id)) or {"order_id": order_id, "item_id": item_id, "codes": ["AAAA-1111"]},
         )
         yandex_market_production_delivery.mount_yandex_market_production_delivery_routes(
             app,
@@ -258,4 +279,5 @@ class YandexMarketProductionManualRoutesTests(unittest.TestCase):
         self.assertEqual(client.post("/marketplaces/yandex/digital-deliveries/7/deliver", json={"codes": ["AAAA-1111"]}).status_code, 200)
         self.assertEqual(client.post("/marketplaces/yandex/digital-deliveries/7/issue-from-pool").status_code, 200)
         self.assertEqual(client.post("/marketplaces/yandex/orders/501/items/99/start-delivery?store_code=joycards").json()["started"], True)
-        self.assertEqual(calls, [("list", "asat", "PSN-500"), ("deliver", 7, ["AAAA-1111"]), ("pool", 7), ("start", "joycards", 501, 99)])
+        self.assertEqual(client.get("/marketplaces/yandex/orders/501/items/99/codes?store_code=joycards").json(), {"order_id": 501, "item_id": 99, "codes": ["AAAA-1111"]})
+        self.assertEqual(calls, [("list", "asat", "PSN-500"), ("deliver", 7, ["AAAA-1111"]), ("pool", 7), ("start", "joycards", 501, 99), ("codes", "joycards", 501, 99)])

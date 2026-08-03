@@ -78,7 +78,13 @@
                         <td><strong>{{ marketStatusLabel(order.status) }}</strong><span v-if="order.substatus">{{ order.substatus }}</span></td>
                         <td>Яндекс Маркет</td>
                         <td><strong>{{ formatOrderDate(order.created_at) || '—' }}</strong><span v-if="order.updated_at">Обновлён: {{ formatOrderDate(order.updated_at) }}</span></td>
-                        <td v-if="!yandexMarketSandboxMode"><button v-if="canStartProductionDelivery(order)" class="ghost" type="button" :disabled="isStartingProductionDelivery(order)" :aria-label="`Запустить выдачу заказа Яндекс Маркета ${order.order_id}`" @click="startProductionDelivery(order)">{{ isStartingProductionDelivery(order) ? 'Запускаем…' : 'Запустить выдачу' }}</button><span v-else>—</span></td>
+                        <td v-if="!yandexMarketSandboxMode">
+                          <button v-if="canStartProductionDelivery(order)" class="ghost" type="button" :disabled="isStartingProductionDelivery(order)" :aria-label="`Запустить выдачу заказа Яндекс Маркета ${order.order_id}`" @click="startProductionDelivery(order)">{{ isStartingProductionDelivery(order) ? 'Запускаем…' : 'Запустить выдачу' }}</button>
+                          <button v-else-if="canRevealYandexMarketDigitalCodesForOrder(order)" class="ozon-catalog-details-modal__supplier-operation-action" type="button" :aria-label="`Открыть выдачу для заказа Яндекс Маркета ${order.order_id}`" title="Открыть выдачу" @click="openYandexMarketDigitalCodes(order)">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z" /><path d="M15 3v4h4M9 11h6M9 15h6" /></svg>
+                          </button>
+                          <span v-else>—</span>
+                        </td>
                       </tr></tbody>
                     </table>
                   </div>
@@ -90,6 +96,23 @@
             </div>
           </template>
         </div>
+        <div v-if="showYandexMarketDigitalCodes" class="ozon-catalog-details-modal__supplier-operation-backdrop" @click.self="closeYandexMarketDigitalCodes">
+          <section class="ozon-catalog-details-modal__supplier-operation" role="dialog" aria-modal="true" aria-label="Выданный ключ Яндекс Маркета">
+            <div class="panel__head panel__head--tight modal__head ozon-catalog-details-modal__supplier-operation-head">
+              <div><span>Выдача ключа</span><strong>Яндекс Маркет · Заказ {{ yandexMarketDigitalCodesOrder?.order_id }}</strong></div>
+              <button class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close ozon-catalog-details-modal__supplier-operation-close" type="button" aria-label="Закрыть выдачу ключа" title="Закрыть" @click="closeYandexMarketDigitalCodes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+            </div>
+            <div v-if="yandexMarketDigitalCodesLoading" class="ozon-catalog-details-modal__supplier-operation-loading"><WorkHamsterLoader label="Загружаем отправленный ключ…" /></div>
+            <p v-else-if="yandexMarketDigitalCodesError" class="bad">{{ yandexMarketDigitalCodesError }}</p>
+            <dl v-else-if="yandexMarketDigitalCodes.length" class="ozon-catalog-details-modal__supplier-operation-grid">
+              <dt>Ключ</dt>
+              <dd class="ozon-catalog-details-modal__supplier-operation-identifier">
+                <code>{{ yandexMarketDigitalCodes.join('\n') }}</code>
+                <button class="btn btn--icon-plain ozon-catalog-details-modal__supplier-operation-copy" type="button" aria-label="Копировать ключ выдачи Яндекс Маркета" title="Копировать" @click="copyYandexMarketDigitalCodes"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg></button>
+              </dd>
+            </dl>
+          </section>
+        </div>
       </div>
     </div>
   </teleport>
@@ -100,18 +123,26 @@ import { computed, ref, watch } from 'vue'
 import WorkHamsterLoader from './WorkHamsterLoader.vue'
 
 const props = defineProps({
-  showYandexMarketCatalogDetails: { type: Boolean, required: true }, closeYandexMarketCatalogDetails: { type: Function, required: true }, openYandexMarketDigitalSettings: { type: Function, required: true }, yandexMarketSandboxMode: { type: Boolean, default: true }, yandexMarketCatalogDetails: { type: Object, default: null }, yandexMarketCatalogDetailsLoading: { type: Boolean, required: true }, yandexMarketCatalogDetailsError: { type: String, default: '' }, yandexMarketStockSettings: { type: Object, required: true }, yandexMarketStockSettingsSaving: { type: Boolean, required: true }, saveYandexMarketStockSettings: { type: Function, required: true }, yandexMarketOrders: { type: Array, default: () => [] }, yandexMarketOrdersLoading: { type: Boolean, required: true }, yandexMarketOrdersSyncing: { type: Boolean, required: true }, yandexMarketOrdersLastSyncedAt: { type: String, default: null }, yandexMarketProductionStartDeliverySaving: { type: Number, default: 0 }, loadYandexMarketOrders: { type: Function, required: true }, syncYandexMarketOrders: { type: Function, required: true }, startYandexMarketProductionOrder: { type: Function, default: async () => ({ ok: false }) },
+  showYandexMarketCatalogDetails: { type: Boolean, required: true }, closeYandexMarketCatalogDetails: { type: Function, required: true }, openYandexMarketDigitalSettings: { type: Function, required: true }, yandexMarketSandboxMode: { type: Boolean, default: true }, yandexMarketCatalogDetails: { type: Object, default: null }, yandexMarketCatalogDetailsLoading: { type: Boolean, required: true }, yandexMarketCatalogDetailsError: { type: String, default: '' }, yandexMarketStockSettings: { type: Object, required: true }, yandexMarketStockSettingsSaving: { type: Boolean, required: true }, saveYandexMarketStockSettings: { type: Function, required: true }, yandexMarketOrders: { type: Array, default: () => [] }, yandexMarketOrdersLoading: { type: Boolean, required: true }, yandexMarketOrdersSyncing: { type: Boolean, required: true }, yandexMarketOrdersLastSyncedAt: { type: String, default: null }, yandexMarketProductionStartDeliverySaving: { type: Number, default: 0 }, canRevealYandexMarketDigitalCodes: { type: Boolean, default: false }, loadYandexMarketOrders: { type: Function, required: true }, syncYandexMarketOrders: { type: Function, required: true }, startYandexMarketProductionOrder: { type: Function, default: async () => ({ ok: false }) }, revealYandexMarketProductionOrderCodes: { type: Function, default: null },
 })
 
 const isStockOpen = ref(false)
 const isOrdersOpen = ref(false)
 const orderQuery = ref('')
 const ordersPage = ref(1)
+const showYandexMarketDigitalCodes = ref(false)
+const yandexMarketDigitalCodesLoading = ref(false)
+const yandexMarketDigitalCodesError = ref('')
+const yandexMarketDigitalCodesOrder = ref(null)
+const yandexMarketDigitalCodes = ref([])
 const ORDERS_PAGE_SIZE = 10
 
 watch(() => props.showYandexMarketCatalogDetails, (isOpen) => {
   // Закрывает секции при новом открытии карточки, как в эталонной форме Ozon.
-  if (!isOpen) return
+  if (!isOpen) {
+    closeYandexMarketDigitalCodes()
+    return
+  }
   isStockOpen.value = false
   isOrdersOpen.value = false
   orderQuery.value = ''
@@ -158,6 +189,50 @@ function canStartProductionDelivery(order) {
 function isStartingProductionDelivery(order) {
   // Блокирует повторный клик по тому же заказу, пока сервер проводит выдачу.
   return Number(props.yandexMarketProductionStartDeliverySaving || 0) === Number(order?.order_id || 0)
+}
+
+function canRevealYandexMarketDigitalCodesForOrder(order) {
+  // Показывает просмотр только владельцу и только после подтвержденной доставки позиции Маркета.
+  return !props.yandexMarketSandboxMode
+    && props.canRevealYandexMarketDigitalCodes
+    && typeof props.revealYandexMarketProductionOrderCodes === 'function'
+    && String(order?.status || '').toUpperCase() === 'DELIVERED'
+    && Number(order?.order_id || 0) > 0
+    && Number(order?.item_id || 0) > 0
+}
+
+async function openYandexMarketDigitalCodes(order) {
+  // Запрашивает ключ только после клика, поэтому он не попадает в обычный список заказов.
+  if (!canRevealYandexMarketDigitalCodesForOrder(order)) return
+  showYandexMarketDigitalCodes.value = true
+  yandexMarketDigitalCodesLoading.value = true
+  yandexMarketDigitalCodesError.value = ''
+  yandexMarketDigitalCodesOrder.value = order
+  yandexMarketDigitalCodes.value = []
+  const result = await props.revealYandexMarketProductionOrderCodes(order)
+  if (result?.ok && Array.isArray(result.codes) && result.codes.length) yandexMarketDigitalCodes.value = result.codes
+  else yandexMarketDigitalCodesError.value = result?.message || 'Ключ для этого заказа не найден'
+  yandexMarketDigitalCodesLoading.value = false
+}
+
+function closeYandexMarketDigitalCodes() {
+  // Очищает показанный ключ при закрытии, чтобы он не оставался в состоянии следующей карточки.
+  showYandexMarketDigitalCodes.value = false
+  yandexMarketDigitalCodesLoading.value = false
+  yandexMarketDigitalCodesError.value = ''
+  yandexMarketDigitalCodesOrder.value = null
+  yandexMarketDigitalCodes.value = []
+}
+
+async function copyYandexMarketDigitalCodes() {
+  // Копирует полный комплект ключей одной позиции для быстрой сверки с покупателем.
+  const value = yandexMarketDigitalCodes.value.join('\n')
+  if (!value) return
+  try {
+    await globalThis.navigator?.clipboard?.writeText(value)
+  } catch {
+    yandexMarketDigitalCodesError.value = 'Не удалось скопировать ключ'
+  }
 }
 
 async function startProductionDelivery(order) {

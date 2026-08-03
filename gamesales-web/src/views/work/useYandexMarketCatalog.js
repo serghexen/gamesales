@@ -340,6 +340,23 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     }
   }
 
+  async function revealYandexMarketProductionOrderCodes(order) {
+    // Загружает уже отправленный ключ только по явному действию владельца, не добавляя его в историю заказов.
+    const orderId = Number(order?.order_id || 0)
+    const itemId = Number(order?.item_id || 0)
+    if (!orderId || !itemId) return { ok: false, codes: [], message: 'Не удалось определить заказ для просмотра ключа' }
+    try {
+      const result = await apiGet(
+        yandexMarketTestPath(`/marketplaces/yandex/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}/codes`),
+        { token: auth.state.token },
+      )
+      const codes = Array.isArray(result?.codes) ? result.codes.map((code) => String(code || '').trim()).filter(Boolean) : []
+      return codes.length ? { ok: true, codes, message: '' } : { ok: false, codes: [], message: 'Отправленный ключ не найден' }
+    } catch (error) {
+      return { ok: false, codes: [], message: yandexMarketError(error, 'Не удалось загрузить отправленный ключ') }
+    }
+  }
+
   async function syncYandexMarketOrders() {
     // Обновляет историю вручную безопасным чтением заказов, без выдачи ключей и смены статусов.
     const offerId = String(yandexMarketCatalogDetails.value?.offer_id || '').trim()
@@ -559,6 +576,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     deliverYandexMarketProductionOrder,
     issueYandexMarketProductionOrderFromPool,
     startYandexMarketProductionOrder,
+    revealYandexMarketProductionOrderCodes,
     updateYandexMarketCatalogArchive,
     selectYandexMarketCatalogItem,
     closeYandexMarketStockSettings,

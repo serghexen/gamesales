@@ -115,9 +115,11 @@
         :yandex-market-orders-syncing="ctx.yandexMarketOrdersSyncing"
         :yandex-market-orders-last-synced-at="ctx.yandexMarketOrdersLastSyncedAt"
         :yandex-market-production-start-delivery-saving="ctx.yandexMarketProductionStartDeliverySaving"
+        :can-reveal-yandex-market-digital-codes="ctx.isAdmin"
         :load-yandex-market-orders="ctx.loadYandexMarketOrders"
         :sync-yandex-market-orders="ctx.syncYandexMarketOrders"
         :start-yandex-market-production-order="ctx.startYandexMarketProductionOrder"
+        :reveal-yandex-market-production-order-codes="ctx.revealYandexMarketProductionOrderCodes"
       />
 
       <WorkYandexMarketDigitalSettingsModal

@@ -25,6 +25,12 @@ class YandexMarketManualDeliveryIn(BaseModel):
     codes: list[str] = Field(min_length=1, max_length=100)
 
 
+class YandexMarketDigitalOrderCodesOut(BaseModel):
+    order_id: int
+    item_id: int
+    codes: list[str] = Field(default_factory=list)
+
+
 def build_yandex_market_production_delivery_processor(
     *,
     DB_DSN,
@@ -786,12 +792,33 @@ def build_yandex_market_production_delivery_processor(
             raise HTTPException(409, "Автовыдача Яндекс Маркета выключена для этого кабинета")
         process_saved_order(store_code, order_id, item_id, allow_manual=True)
 
+    def reveal_delivered_codes(store_code: str, order_id: int, item_id: int) -> dict[str, Any]:
+        # Отдает уже отправленный ключ только владельцу по точной позиции заказа, не раскрывая его в общей истории.
+        with psycopg.connect(DB_DSN) as conn:
+            row = q1(
+                conn,
+                """
+                SELECT delivered_codes
+                FROM app.marketplace_yandex_digital_deliveries
+                WHERE store_code=%s AND order_id=%s AND item_id=%s
+                """,
+                (store_code, int(order_id), int(item_id)),
+            )
+            conn.commit()
+        if not row:
+            raise HTTPException(404, "Выдача по этой позиции заказа не найдена")
+        codes = texts(row[0])
+        if not codes:
+            raise HTTPException(409, "Ключ для этой позиции еще не был отправлен")
+        return {"order_id": int(order_id), "item_id": int(item_id), "codes": codes}
+
     # Публикует узкие ручные операции отдельно от webhook-процессора, чтобы UI не мог запустить автопокупку.
     process.refresh_supplier_attempts = refresh_supplier_attempts  # type: ignore[attr-defined]
     process.list_manual_deliveries = list_manual_deliveries  # type: ignore[attr-defined]
     process.deliver_manually = deliver_manually  # type: ignore[attr-defined]
     process.issue_from_pool_manually = issue_from_pool_manually  # type: ignore[attr-defined]
     process.start_existing_order_manually = start_existing_order_manually  # type: ignore[attr-defined]
+    process.reveal_delivered_codes = reveal_delivered_codes  # type: ignore[attr-defined]
     return process
 
 
@@ -812,6 +839,13 @@ def mount_yandex_market_production_delivery_routes(app, *, delivery_processor, r
     def issue_yandex_market_order_from_pool(delivery_id: int, user=Depends(require_role("owner"))):
         # Берет полный комплект из ручного пула только по явной команде оператора.
         return delivery_processor.issue_from_pool_manually(int(delivery_id))
+
+    @app.get("/marketplaces/yandex/orders/{order_id}/items/{item_id}/codes", response_model=YandexMarketDigitalOrderCodesOut)
+    def get_yandex_market_order_codes(order_id: int, item_id: int, store_code: str = "asat", user=Depends(require_role("owner"))):
+        # Раскрывает ключ владельцу лишь после явного клика по уже доставленной позиции Маркета.
+        normalized_store_code = normalize_yandex_market_store_code(store_code)
+        result = delivery_processor.reveal_delivered_codes(normalized_store_code, int(order_id), int(item_id))
+        return YandexMarketDigitalOrderCodesOut(**result)
 
     @app.post("/marketplaces/yandex/orders/{order_id}/items/{item_id}/start-delivery")
     def start_yandex_market_existing_order(order_id: int, item_id: int, store_code: str = "asat", user=Depends(require_role("owner"))):
