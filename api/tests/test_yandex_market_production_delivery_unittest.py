@@ -114,6 +114,39 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
         self.assertEqual(status_calls, [{"agent_transaction_id": "joycards-transaction"}])
         self.assertEqual(poll_queries[0][1][1], ["joycards"])
 
+    # Явный запуск старого заказа без источников создает только локальную ручную очередь, не вызывая внешние API.
+    def test_existing_order_can_be_put_into_manual_queue(self):
+        queries = []
+
+        def fake_q1(_conn, sql, params=None):
+            queries.append((sql, params))
+            if "SELECT orders.offer_id" in sql:
+                return ("PUBG-300", 1, "PROCESSING", False, False, False)
+            if "INSERT INTO app.marketplace_yandex_digital_deliveries" in sql:
+                return (17,)
+            if "SELECT required_qty, delivered_codes, status" in sql:
+                return (1, [], "manual_required", "joycards", "PUBG-300")
+            if "SELECT 1 FROM app.marketplace_yandex_digital_suppliers" in sql:
+                return None
+            if "SELECT auto_issue_enabled" in sql:
+                return (False, False)
+            return None
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=lambda *_args: [],
+            exec1=lambda *_args: 1,
+            interhub_calculate=lambda *_args: (_ for _ in ()).throw(AssertionError("Interhub calculate must not run")),
+            interhub_check=lambda *_args: (_ for _ in ()).throw(AssertionError("Interhub check must not run")),
+            interhub_pay=lambda *_args: (_ for _ in ()).throw(AssertionError("Interhub pay must not run")),
+        )
+        with patch.dict(os.environ, {"YANDEX_MARKET_JOYCARDS_AUTO_DELIVERY_ENABLED": "true"}, clear=False):
+            processor.start_existing_order_manually("joycards", 501, 99)
+
+        self.assertTrue(any("INSERT INTO app.marketplace_yandex_digital_deliveries" in sql for sql, _params in queries))
+
     # Ошибка сети после pay сохраняет неопределенную попытку, а повторное уведомление не запускает второй pay.
     def test_pay_timeout_waits_for_check_status_without_second_payment(self):
         writes = []
@@ -210,6 +243,7 @@ class YandexMarketProductionManualRoutesTests(unittest.TestCase):
             list_manual_deliveries=lambda store_code, offer_id: calls.append(("list", store_code, offer_id)) or [{"id": 7}],
             deliver_manually=lambda delivery_id, codes: calls.append(("deliver", delivery_id, codes)) or {"id": delivery_id, "status": "market_submitted"},
             issue_from_pool_manually=lambda delivery_id: calls.append(("pool", delivery_id)) or {"id": delivery_id, "status": "market_submitted"},
+            start_existing_order_manually=lambda store_code, order_id, item_id: calls.append(("start", store_code, order_id, item_id)),
         )
         yandex_market_production_delivery.mount_yandex_market_production_delivery_routes(
             app,
@@ -221,4 +255,5 @@ class YandexMarketProductionManualRoutesTests(unittest.TestCase):
         self.assertEqual(client.get("/marketplaces/yandex/catalog/PSN-500/manual-deliveries?store_code=asat").json()["items"], [{"id": 7}])
         self.assertEqual(client.post("/marketplaces/yandex/digital-deliveries/7/deliver", json={"codes": ["AAAA-1111"]}).status_code, 200)
         self.assertEqual(client.post("/marketplaces/yandex/digital-deliveries/7/issue-from-pool").status_code, 200)
-        self.assertEqual(calls, [("list", "asat", "PSN-500"), ("deliver", 7, ["AAAA-1111"]), ("pool", 7)])
+        self.assertEqual(client.post("/marketplaces/yandex/orders/501/items/99/start-delivery?store_code=joycards").json()["started"], True)
+        self.assertEqual(calls, [("list", "asat", "PSN-500"), ("deliver", 7, ["AAAA-1111"]), ("pool", 7), ("start", "joycards", 501, 99)])

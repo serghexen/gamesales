@@ -72,12 +72,13 @@
                   </div>
                   <div v-if="visibleOrders.length" class="ozon-catalog-details-modal__order-history-table-wrap">
                     <table class="table table--compact table--dense ozon-catalog-details-modal__order-history-table">
-                      <thead><tr><th>Заказ</th><th>Статус Маркета</th><th>Источник</th><th>Дата</th></tr></thead>
+                      <thead><tr><th>Заказ</th><th>Статус Маркета</th><th>Источник</th><th>Дата</th><th v-if="!yandexMarketSandboxMode">Действие</th></tr></thead>
                       <tbody><tr v-for="order in visibleOrders" :key="`${order.order_id}-${order.item_id}`">
                         <td><strong>Заказ {{ order.order_id }}</strong><span>SKU {{ order.offer_id || '—' }} · {{ order.quantity || 0 }} шт.</span></td>
                         <td><strong>{{ marketStatusLabel(order.status) }}</strong><span v-if="order.substatus">{{ order.substatus }}</span></td>
                         <td>Яндекс Маркет</td>
                         <td><strong>{{ formatOrderDate(order.created_at) || '—' }}</strong><span v-if="order.updated_at">Обновлён: {{ formatOrderDate(order.updated_at) }}</span></td>
+                        <td v-if="!yandexMarketSandboxMode"><button v-if="canStartProductionDelivery(order)" class="ghost" type="button" :disabled="isStartingProductionDelivery(order)" :aria-label="`Запустить выдачу заказа Яндекс Маркета ${order.order_id}`" @click="startProductionDelivery(order)">{{ isStartingProductionDelivery(order) ? 'Запускаем…' : 'Запустить выдачу' }}</button><span v-else>—</span></td>
                       </tr></tbody>
                     </table>
                   </div>
@@ -99,7 +100,7 @@ import { computed, ref, watch } from 'vue'
 import WorkHamsterLoader from './WorkHamsterLoader.vue'
 
 const props = defineProps({
-  showYandexMarketCatalogDetails: { type: Boolean, required: true }, closeYandexMarketCatalogDetails: { type: Function, required: true }, openYandexMarketDigitalSettings: { type: Function, required: true }, yandexMarketSandboxMode: { type: Boolean, default: true }, yandexMarketCatalogDetails: { type: Object, default: null }, yandexMarketCatalogDetailsLoading: { type: Boolean, required: true }, yandexMarketCatalogDetailsError: { type: String, default: '' }, yandexMarketStockSettings: { type: Object, required: true }, yandexMarketStockSettingsSaving: { type: Boolean, required: true }, saveYandexMarketStockSettings: { type: Function, required: true }, yandexMarketOrders: { type: Array, default: () => [] }, yandexMarketOrdersLoading: { type: Boolean, required: true }, yandexMarketOrdersSyncing: { type: Boolean, required: true }, yandexMarketOrdersLastSyncedAt: { type: String, default: null }, loadYandexMarketOrders: { type: Function, required: true }, syncYandexMarketOrders: { type: Function, required: true },
+  showYandexMarketCatalogDetails: { type: Boolean, required: true }, closeYandexMarketCatalogDetails: { type: Function, required: true }, openYandexMarketDigitalSettings: { type: Function, required: true }, yandexMarketSandboxMode: { type: Boolean, default: true }, yandexMarketCatalogDetails: { type: Object, default: null }, yandexMarketCatalogDetailsLoading: { type: Boolean, required: true }, yandexMarketCatalogDetailsError: { type: String, default: '' }, yandexMarketStockSettings: { type: Object, required: true }, yandexMarketStockSettingsSaving: { type: Boolean, required: true }, saveYandexMarketStockSettings: { type: Function, required: true }, yandexMarketOrders: { type: Array, default: () => [] }, yandexMarketOrdersLoading: { type: Boolean, required: true }, yandexMarketOrdersSyncing: { type: Boolean, required: true }, yandexMarketOrdersLastSyncedAt: { type: String, default: null }, yandexMarketProductionStartDeliverySaving: { type: Number, default: 0 }, loadYandexMarketOrders: { type: Function, required: true }, syncYandexMarketOrders: { type: Function, required: true }, startYandexMarketProductionOrder: { type: Function, default: async () => ({ ok: false }) },
 })
 
 const isStockOpen = ref(false)
@@ -147,6 +148,21 @@ function formatOrderDate(value) {
 function marketStatusLabel(status) {
   // Переводит основные статусы Маркета в короткие подписи для оператора.
   return ({ PROCESSING: 'В обработке', DELIVERED: 'Доставлен', CANCELLED: 'Отменён', DELIVERY: 'В доставке', PICKUP: 'В пункте выдачи', UNPAID: 'Не оплачен', PENDING: 'Ожидает обработки' })[String(status || '').toUpperCase()] || status || '—'
+}
+
+function canStartProductionDelivery(order) {
+  // Показывает явный запуск только для еще обрабатываемой позиции боевого заказа.
+  return String(order?.status || '').toUpperCase() === 'PROCESSING' && Number(order?.order_id || 0) > 0 && Number(order?.item_id || 0) > 0
+}
+
+function isStartingProductionDelivery(order) {
+  // Блокирует повторный клик по тому же заказу, пока сервер проводит выдачу.
+  return Number(props.yandexMarketProductionStartDeliverySaving || 0) === Number(order?.order_id || 0)
+}
+
+async function startProductionDelivery(order) {
+  // Передает операторскую команду в родительскую логику, где есть подтверждение и обработка ошибки.
+  await props.startYandexMarketProductionOrder(order)
 }
 
 const filteredOrders = computed(() => {

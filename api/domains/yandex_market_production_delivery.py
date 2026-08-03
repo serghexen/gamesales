@@ -646,11 +646,8 @@ def build_yandex_market_production_delivery_processor(
             conn.commit()
         return result
 
-    def process(store_code: str, order_id: int, item_id: int, event_time: datetime | None = None) -> None:
-        # Запускается только после двух глобальных предохранителей, чтобы выключенная автоматика не читала и не меняла очередь.
-        not_before = yandex_market_production_auto_delivery_not_before(store_code)
-        if not yandex_market_production_auto_delivery_enabled(store_code) or not_before is None or (event_time and event_time < not_before):
-            return
+    def process_saved_order(store_code: str, order_id: int, item_id: int, *, allow_manual: bool = False) -> None:
+        # Создает или продолжает одну выдачу из сохраненного заказа, оставляя ее ручной по явной команде без источника.
         with psycopg.connect(DB_DSN) as conn:
             order = q1(
                 conn,
@@ -686,7 +683,7 @@ def build_yandex_market_production_delivery_processor(
                 )
                 conn.commit()
                 return
-            if market_status != "PROCESSING" or not (bool(order[4]) or bool(order[5])):
+            if market_status != "PROCESSING" or (not allow_manual and not (bool(order[4]) or bool(order[5]))):
                 conn.commit()
                 return
             delivery = q1(
@@ -704,11 +701,25 @@ def build_yandex_market_production_delivery_processor(
         if delivery:
             process_delivery_steps(int(delivery[0]))
 
+    def process(store_code: str, order_id: int, item_id: int, event_time: datetime | None = None) -> None:
+        # Запускается только после двух глобальных предохранителей, чтобы выключенная автоматика не читала и не меняла очередь.
+        not_before = yandex_market_production_auto_delivery_not_before(store_code)
+        if not yandex_market_production_auto_delivery_enabled(store_code) or not_before is None or (event_time and event_time < not_before):
+            return
+        process_saved_order(store_code, order_id, item_id)
+
+    def start_existing_order_manually(store_code: str, order_id: int, item_id: int) -> None:
+        # Запускает старый сохраненный заказ только по явной команде владельца, не меняя порог webhook-автоматики.
+        if not yandex_market_production_auto_delivery_enabled(store_code):
+            raise HTTPException(409, "Автовыдача Яндекс Маркета выключена для этого кабинета")
+        process_saved_order(store_code, order_id, item_id, allow_manual=True)
+
     # Публикует узкие ручные операции отдельно от webhook-процессора, чтобы UI не мог запустить автопокупку.
     process.refresh_supplier_attempts = refresh_supplier_attempts  # type: ignore[attr-defined]
     process.list_manual_deliveries = list_manual_deliveries  # type: ignore[attr-defined]
     process.deliver_manually = deliver_manually  # type: ignore[attr-defined]
     process.issue_from_pool_manually = issue_from_pool_manually  # type: ignore[attr-defined]
+    process.start_existing_order_manually = start_existing_order_manually  # type: ignore[attr-defined]
     return process
 
 
@@ -729,3 +740,10 @@ def mount_yandex_market_production_delivery_routes(app, *, delivery_processor, r
     def issue_yandex_market_order_from_pool(delivery_id: int, user=Depends(require_role("owner"))):
         # Берет полный комплект из ручного пула только по явной команде оператора.
         return delivery_processor.issue_from_pool_manually(int(delivery_id))
+
+    @app.post("/marketplaces/yandex/orders/{order_id}/items/{item_id}/start-delivery")
+    def start_yandex_market_existing_order(order_id: int, item_id: int, store_code: str = "asat", user=Depends(require_role("owner"))):
+        # Позволяет владельцу один раз явно запустить выдачу по уже сохраненному заказу до порога автоматики.
+        normalized_store_code = normalize_yandex_market_store_code(store_code)
+        delivery_processor.start_existing_order_manually(normalized_store_code, int(order_id), int(item_id))
+        return {"order_id": int(order_id), "item_id": int(item_id), "started": True}

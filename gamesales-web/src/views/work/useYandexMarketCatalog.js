@@ -29,6 +29,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
   const yandexMarketProductionManualOrders = ref([])
   const yandexMarketProductionManualOrdersLoading = ref(false)
   const yandexMarketProductionManualDeliverySaving = ref(0)
+  const yandexMarketProductionStartDeliverySaving = ref(0)
   const yandexMarketInterhubServices = ref([])
   const yandexMarketInterhubServicesLoading = ref(false)
   const yandexMarketStockSettingsLoading = ref(false)
@@ -312,6 +313,33 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     }
   }
 
+  async function startYandexMarketProductionOrder(order) {
+    // Явно запускает выдачу старого сохраненного заказа, не ослабляя порог новых webhook-уведомлений.
+    const orderId = Number(order?.order_id || 0)
+    const itemId = Number(order?.item_id || 0)
+    if (!orderId || !itemId) return { ok: false, message: 'Не удалось определить заказ для выдачи' }
+    const confirmed = typeof requestDealConfirm === 'function' && await requestDealConfirm({
+      title: 'Запустить выдачу?',
+      message: `Заказ №${orderId} будет обработан с сохраненным источником. При включенном Interhub начнется покупка, а ключ после успеха будет отправлен в Яндекс Маркет.`,
+      confirmText: 'Запустить',
+      cancelText: 'Отмена',
+    })
+    if (!confirmed) return { ok: false, message: '' }
+    yandexMarketProductionStartDeliverySaving.value = orderId
+    yandexMarketCatalogDetailsError.value = ''
+    try {
+      await apiPost(yandexMarketTestPath(`/marketplaces/yandex/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}/start-delivery`), {}, { token: auth.state.token })
+      await Promise.all([loadYandexMarketOrders(), loadYandexMarketProductionManualOrders()])
+      return { ok: true, message: '' }
+    } catch (error) {
+      const message = yandexMarketError(error, 'Не удалось запустить выдачу заказа Яндекс Маркета')
+      yandexMarketCatalogDetailsError.value = message
+      return { ok: false, message }
+    } finally {
+      yandexMarketProductionStartDeliverySaving.value = 0
+    }
+  }
+
   async function syncYandexMarketOrders() {
     // Обновляет историю вручную безопасным чтением заказов, без выдачи ключей и смены статусов.
     const offerId = String(yandexMarketCatalogDetails.value?.offer_id || '').trim()
@@ -506,6 +534,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     yandexMarketProductionManualOrders,
     yandexMarketProductionManualOrdersLoading,
     yandexMarketProductionManualDeliverySaving,
+    yandexMarketProductionStartDeliverySaving,
     yandexMarketInterhubServices,
     yandexMarketInterhubServicesLoading,
     yandexMarketStoreCodes: YANDEX_MARKET_STORE_CODES,
@@ -529,6 +558,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     sendYandexMarketSandboxOrderToMarket,
     deliverYandexMarketProductionOrder,
     issueYandexMarketProductionOrderFromPool,
+    startYandexMarketProductionOrder,
     updateYandexMarketCatalogArchive,
     selectYandexMarketCatalogItem,
     closeYandexMarketStockSettings,
