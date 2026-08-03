@@ -67,6 +67,61 @@ def build_yandex_market_production_delivery_processor(
             return "paid"
         return "failed"
 
+    def save_auto_interhub_check(delivery_id: int, request: dict[str, Any], amount: float, result: dict[str, Any]) -> None:
+        # Дублирует успешную проверку в общий журнал Interhub, чтобы история поставщика включала Яндекс и Ozon.
+        state = "checked" if bool(result.get("success")) else "failed"
+        with psycopg.connect(DB_DSN) as conn:
+            exec1(
+                conn,
+                """
+                INSERT INTO app.interhub_transactions(
+                  agent_transaction_id, service_id, account, amount, request_params, state,
+                  provider_status, provider_message, provider_transaction_id, provider_response,
+                  created_by, yandex_market_delivery_id, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s::jsonb, 'yandex-auto', %s, now())
+                ON CONFLICT (agent_transaction_id) DO UPDATE
+                SET state=excluded.state,
+                    amount=excluded.amount,
+                    request_params=excluded.request_params,
+                    provider_status=excluded.provider_status,
+                    provider_message=excluded.provider_message,
+                    provider_transaction_id=excluded.provider_transaction_id,
+                    provider_response=excluded.provider_response,
+                    yandex_market_delivery_id=excluded.yandex_market_delivery_id,
+                    updated_at=now()
+                """,
+                (
+                    str(request["agent_transaction_id"]), int(request["service_id"]), str(request.get("account") or ""), amount,
+                    json.dumps(request.get("params") or {}), state, int(result.get("status") or 0), str(result.get("message") or "")[:2000],
+                    str(result.get("transaction_id") or ""), json.dumps(result.get("raw") or {}), int(delivery_id),
+                ),
+            )
+            conn.commit()
+
+    def save_auto_interhub_result(agent_transaction_id: str, result: dict[str, Any]) -> None:
+        # Обновляет общий журнал финальным ответом поставщика и сохраняет код там же, где его ожидает история Interhub.
+        state = provider_state(result)
+        params = result.get("params") if isinstance(result.get("params"), dict) else {}
+        with psycopg.connect(DB_DSN) as conn:
+            exec1(
+                conn,
+                """
+                UPDATE app.interhub_transactions
+                SET state=%s, provider_status=%s, provider_message=%s,
+                    provider_transaction_id=COALESCE(NULLIF(%s, ''), provider_transaction_id),
+                    gift_code=COALESCE(NULLIF(%s, ''), gift_code), provider_response=%s::jsonb,
+                    updated_at=now()
+                WHERE agent_transaction_id=%s
+                """,
+                (
+                    state, int(result.get("status") or 0), str(result.get("message") or "")[:2000],
+                    str(result.get("transaction_id") or ""), str(params.get("gift_code") or ""),
+                    json.dumps(result.get("raw") or {}), str(agent_transaction_id),
+                ),
+            )
+            conn.commit()
+
     def mark_manual(delivery_id: int, message: str) -> None:
         # Оставляет выдачу оператору и не отменяет уже собранный комплект ключей.
         with psycopg.connect(DB_DSN) as conn:
@@ -375,6 +430,7 @@ def build_yandex_market_production_delivery_processor(
             if not bool(calculated.get("success")) or amount <= 0:
                 raise HTTPException(502, str(calculated.get("message") or "Interhub не вернул цену"))
             checked = interhub_check({**request, "amount": amount})
+            save_auto_interhub_check(delivery_id, request, amount, checked)
             if not bool(checked.get("success")):
                 raise HTTPException(502, str(checked.get("message") or "Interhub не подтвердил выдачу"))
             # После отправки pay сетевая ошибка означает неизвестный результат, а не безопасный отказ.
@@ -422,6 +478,11 @@ def build_yandex_market_production_delivery_processor(
                 ),
             )
             conn.commit()
+        try:
+            # Журнал сверки не должен отменить уже полученный ключ, если служебная запись временно недоступна.
+            save_auto_interhub_result(transaction_id, paid)
+        except Exception:
+            pass
         if state == "paid":
             return save_supplier_code(delivery_id, str((paid.get("params") or {}).get("gift_code") or ""))
         return False
@@ -518,7 +579,18 @@ def build_yandex_market_production_delivery_processor(
                 )
                 conn.commit()
             if updated <= 0 or state == "processing":
+                if updated > 0 and state == "processing":
+                    try:
+                        # Фиксирует ожидающий ответ в общей истории без создания новой оплаты.
+                        save_auto_interhub_result(str(transaction_id), result)
+                    except Exception:
+                        pass
                 continue
+            try:
+                # Переносит финальный результат фоновой сверки в тот же общий журнал, что и Ozon.
+                save_auto_interhub_result(str(transaction_id), result)
+            except Exception:
+                pass
             if state == "paid":
                 if save_supplier_code(int(delivery_id), str((result.get("params") or {}).get("gift_code") or "")):
                     process_delivery_steps(int(delivery_id))

@@ -191,6 +191,7 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
             processor("asat", 501, 99, datetime(2026, 7, 29, tzinfo=timezone.utc))
 
         self.assertEqual(len(pay_calls), 1)
+        self.assertTrue(any("INSERT INTO app.interhub_transactions" in sql and "yandex_market_delivery_id" in sql for sql, _params in writes))
         self.assertTrue(any("SET state='processing'" in sql and "next_status_check_at" in sql for sql, _params in writes))
 
     # После принятия ключа Маркетом повторно публикуется сохраненный лимит, а не вычисленный остаток поставщика.
