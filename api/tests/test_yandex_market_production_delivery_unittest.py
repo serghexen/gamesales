@@ -112,7 +112,7 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
             processor.refresh_supplier_attempts()
 
         self.assertEqual(status_calls, [{"agent_transaction_id": "joycards-transaction"}])
-        self.assertEqual(poll_queries[0][1][1], ["joycards"])
+        self.assertEqual(poll_queries[0][1][0], ["joycards"])
 
     # Явный запуск старого заказа без источников создает только локальную ручную очередь, не вызывая внешние API.
     def test_existing_order_can_be_put_into_manual_queue(self):

@@ -484,7 +484,7 @@ def build_yandex_market_production_delivery_processor(
                 FROM due WHERE attempt.id=due.id
                 RETURNING attempt.id, attempt.delivery_id, attempt.agent_transaction_id
                 """,
-                (lock_token, sorted(enabled_store_codes)),
+                (sorted(enabled_store_codes), lock_token),
             )
             conn.commit()
         for attempt_id, delivery_id, transaction_id in attempts:
