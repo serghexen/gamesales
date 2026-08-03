@@ -76,8 +76,43 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
             exec1=lambda *_args: None,
             interhub_check_status=lambda *_args: (_ for _ in ()).throw(AssertionError("Interhub status must not run")),
         )
-        with patch.dict(os.environ, {"YANDEX_MARKET_ASAT_AUTO_DELIVERY_ENABLED": "false"}, clear=False):
+        with patch.dict(os.environ, {
+            "YANDEX_MARKET_ASAT_AUTO_DELIVERY_ENABLED": "false",
+            "YANDEX_MARKET_JOYCARDS_AUTO_DELIVERY_ENABLED": "false",
+        }, clear=False):
             processor.refresh_supplier_attempts()
+
+    # Ожидающая оплата JoyCards проверяется отдельно, даже когда ASAT оставлен на безопасном выключенном режиме.
+    def test_joycards_supplier_poll_runs_while_asat_is_disabled(self):
+        status_calls = []
+        poll_queries = []
+
+        def fake_qall(_conn, sql, params=None):
+            poll_queries.append((sql, params))
+            return [(17, 31, "joycards-transaction")]
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=lambda *_args: None,
+            qall=fake_qall,
+            exec1=lambda *_args: 1,
+            interhub_check_status=lambda payload: status_calls.append(payload) or {
+                "success": False,
+                "status": 0,
+                "message": "pending",
+                "raw": {},
+            },
+        )
+        env = {
+            "YANDEX_MARKET_ASAT_AUTO_DELIVERY_ENABLED": "false",
+            "YANDEX_MARKET_JOYCARDS_AUTO_DELIVERY_ENABLED": "true",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            processor.refresh_supplier_attempts()
+
+        self.assertEqual(status_calls, [{"agent_transaction_id": "joycards-transaction"}])
+        self.assertEqual(poll_queries[0][1][1], ["joycards"])
 
     # Ошибка сети после pay сохраняет неопределенную попытку, а повторное уведомление не запускает второй pay.
     def test_pay_timeout_waits_for_check_status_without_second_payment(self):

@@ -57,6 +57,20 @@ def yandex_market_production_auto_delivery_enabled(store_code: str | None = None
     )
 
 
+def yandex_market_production_auto_delivery_enabled_store_codes() -> set[str]:
+    # Собирает включенные кабинеты, чтобы фоновой опрос не трогал попытки выключенных магазинов.
+    prefix = "YANDEX_MARKET_"
+    suffix = "_AUTO_DELIVERY_ENABLED"
+    candidate_codes = {"asat"}
+    for env_name in os.environ:
+        if not env_name.startswith(prefix) or not env_name.endswith(suffix):
+            continue
+        raw_store_code = env_name[len(prefix):-len(suffix)].lower()
+        if raw_store_code and raw_store_code.replace("_", "").isalnum():
+            candidate_codes.add(normalize_yandex_market_store_code(raw_store_code))
+    return {store_code for store_code in candidate_codes if yandex_market_production_auto_delivery_enabled(store_code)}
+
+
 def yandex_market_production_auto_delivery_not_before(store_code: str | None = None) -> datetime | None:
     # Ограничивает обработку свежими уведомлениями, чтобы включение не захватило старый хвост заказов.
     normalized_store_code = normalize_yandex_market_store_code(store_code)

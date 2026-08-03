@@ -16,6 +16,7 @@ from .yandex_market_catalog_service import (
     update_yandex_market_stock,
     normalize_yandex_market_store_code,
     yandex_market_production_auto_delivery_enabled,
+    yandex_market_production_auto_delivery_enabled_store_codes,
     yandex_market_production_auto_delivery_not_before,
 )
 
@@ -459,8 +460,9 @@ def build_yandex_market_production_delivery_processor(
             return
 
     def refresh_supplier_attempts() -> None:
-        # Дозапрашивает только уже начатые платежи и никогда не создает новый заказ, ключ или повторный pay.
-        if not interhub_check_status or not yandex_market_production_auto_delivery_enabled("asat"):
+        # Дозапрашивает только оплаты включенных кабинетов и никогда не создает новый заказ, ключ или повторный pay.
+        enabled_store_codes = yandex_market_production_auto_delivery_enabled_store_codes()
+        if not interhub_check_status or not enabled_store_codes:
             return
         lock_token = str(uuid.uuid4())
         with psycopg.connect(DB_DSN) as conn:
@@ -472,6 +474,7 @@ def build_yandex_market_production_delivery_processor(
                   FROM app.marketplace_yandex_digital_supplier_attempts AS attempt
                   JOIN app.marketplace_yandex_digital_deliveries AS delivery ON delivery.id=attempt.delivery_id
                   WHERE attempt.state='processing' AND attempt.next_status_check_at <= now()
+                    AND delivery.store_code = ANY(%s)
                     AND (attempt.status_check_locked_until IS NULL OR attempt.status_check_locked_until <= now())
                   ORDER BY attempt.next_status_check_at, attempt.id
                   FOR UPDATE SKIP LOCKED LIMIT 50
@@ -481,7 +484,7 @@ def build_yandex_market_production_delivery_processor(
                 FROM due WHERE attempt.id=due.id
                 RETURNING attempt.id, attempt.delivery_id, attempt.agent_transaction_id
                 """,
-                (lock_token,),
+                (lock_token, sorted(enabled_store_codes)),
             )
             conn.commit()
         for attempt_id, delivery_id, transaction_id in attempts:
