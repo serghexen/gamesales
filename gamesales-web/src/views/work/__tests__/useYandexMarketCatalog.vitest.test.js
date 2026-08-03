@@ -194,6 +194,9 @@ describe('WorkYandexMarketCatalogDetailsModal', () => {
     expect(wrapper.text()).toContain('В обработке')
     await wrapper.get('button[aria-label="Запустить выдачу заказа Яндекс Маркета 501"]').trigger('click')
     expect(startYandexMarketProductionOrder).toHaveBeenCalledWith(expect.objectContaining({ order_id: 501, item_id: 99 }))
+    await wrapper.setProps({ yandexMarketProductionStartDeliverySaving: 501 })
+    expect(wrapper.get('button[aria-label="Запустить выдачу заказа Яндекс Маркета 501"]').text()).toBe('Запускаем…')
+    expect(wrapper.get('button[aria-label="Запустить выдачу заказа Яндекс Маркета 501"]').attributes('disabled')).toBeDefined()
   })
 })
 
