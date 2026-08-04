@@ -275,6 +275,8 @@ class YandexMarketProductionManualRoutesTests(unittest.TestCase):
         )
 
         client = TestClient(app)
+        # Отсутствующий кабинет должен остановить ручную операцию до запуска выдачи.
+        self.assertEqual(client.post("/marketplaces/yandex/orders/501/items/99/start-delivery").status_code, 422)
         self.assertEqual(client.get("/marketplaces/yandex/catalog/PSN-500/manual-deliveries?store_code=asat").json()["items"], [{"id": 7}])
         self.assertEqual(client.post("/marketplaces/yandex/digital-deliveries/7/deliver", json={"codes": ["AAAA-1111"]}).status_code, 200)
         self.assertEqual(client.post("/marketplaces/yandex/digital-deliveries/7/issue-from-pool").status_code, 200)

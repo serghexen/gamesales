@@ -233,3 +233,13 @@ class YandexMarketCatalogServiceTests(unittest.TestCase):
         with patch.dict(os.environ, settings, clear=True):
             self.assertEqual(yandex_market_catalog_service.find_yandex_market_store_code_by_campaign_id(12345678), "sps")
             self.assertIsNone(yandex_market_catalog_service.find_yandex_market_store_code_by_campaign_id(1))
+
+    # Дублирование campaignId не должно направлять уведомление в произвольный кабинет.
+    def test_find_store_code_by_campaign_id_rejects_duplicate_stores(self):
+        settings = {
+            "YANDEX_MARKET_ASAT_CAMPAIGN_ID": "70940298",
+            "YANDEX_MARKET_JOYCARDS_CAMPAIGN_ID": "70940298",
+        }
+        with patch.dict(os.environ, settings, clear=True):
+            with self.assertRaisesRegex(ValueError, "multiple stores"):
+                yandex_market_catalog_service.find_yandex_market_store_code_by_campaign_id(70940298)

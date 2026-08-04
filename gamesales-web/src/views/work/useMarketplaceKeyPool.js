@@ -13,7 +13,7 @@ export function useMarketplaceKeyPool({ auth, apiGet, apiPost, apiDelete, mapApi
     marketplace: '',
     product_key: '',
     product_title: '',
-    store_code: 'asat',
+    store_code: '',
     free_count: 0,
     reserved_count: 0,
     delivered_count: 0,
@@ -63,7 +63,10 @@ export function useMarketplaceKeyPool({ auth, apiGet, apiPost, apiDelete, mapApi
 
   async function loadMarketplaceKeyPool(page = marketplaceKeyPoolPage.value) {
     // Читает только маски ключей и статусы: исходные коды не возвращаются в браузер.
-    if (!marketplaceKeyPool.marketplace || !marketplaceKeyPool.product_key || marketplaceKeyPoolLoading.value) return
+    if (!marketplaceKeyPool.marketplace || !marketplaceKeyPool.product_key || !marketplaceKeyPool.store_code || marketplaceKeyPoolLoading.value) {
+      if (!marketplaceKeyPool.store_code) marketplaceKeyPoolError.value = 'Не определен кабинет для ручного пула ключей'
+      return
+    }
     marketplaceKeyPoolLoading.value = true
     marketplaceKeyPoolError.value = ''
     try {
@@ -81,12 +84,12 @@ export function useMarketplaceKeyPool({ auth, apiGet, apiPost, apiDelete, mapApi
     }
   }
 
-  function setMarketplaceKeyPoolContext({ marketplace, productKey, productTitle = '', storeCode = 'asat' } = {}) {
-    // Переключает общее состояние на пул выбранной карточки, чтобы в настройках сразу была верная таблица.
+  function setMarketplaceKeyPoolContext({ marketplace, productKey, productTitle = '', storeCode = '' } = {}) {
+    // Требует кабинет вместе с карточкой, чтобы отсутствие параметра не записывало ключи в ASAT по умолчанию.
     marketplaceKeyPool.marketplace = String(marketplace || '').trim()
     marketplaceKeyPool.product_key = String(productKey || '').trim()
     marketplaceKeyPool.product_title = String(productTitle || '').trim()
-    marketplaceKeyPool.store_code = String(storeCode || 'asat').trim().toLowerCase()
+    marketplaceKeyPool.store_code = String(storeCode || '').trim().toLowerCase()
     marketplaceKeyPoolPage.value = 1
     marketplaceKeyPoolError.value = ''
     marketplaceKeyPoolOk.value = ''

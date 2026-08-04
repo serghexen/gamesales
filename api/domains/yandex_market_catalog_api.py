@@ -6,7 +6,7 @@ from typing import Any
 import json
 import os
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from .yandex_market_catalog_service import (
@@ -383,7 +383,10 @@ def mount_yandex_market_catalog_routes(
         )
 
     @app.post("/marketplaces/yandex/catalog/sync", response_model=YandexMarketCatalogSyncOut)
-    def sync_yandex_market_catalog(store_code: str = "asat", user=Depends(require_role("owner"))):
+    def sync_yandex_market_catalog(
+        store_code: str = Query(..., min_length=1, max_length=64),
+        user=Depends(require_role("owner")),
+    ):
         # Читает каталог кабинета и обновляет локальный снимок без изменения цен, ключей или заказов.
         require_yandex_market_live()
         normalized_store_code = normalize_yandex_market_store_code(store_code)
@@ -433,7 +436,10 @@ def mount_yandex_market_catalog_routes(
         return YandexMarketCatalogSyncOut(store_code=normalized_store_code, synced_items=len(normalized_items), synced_at=synced_at)
 
     @app.get("/marketplaces/yandex/catalog", response_model=YandexMarketCatalogListOut)
-    def list_yandex_market_catalog(store_code: str = "asat", user=Depends(require_role("owner"))):
+    def list_yandex_market_catalog(
+        store_code: str = Query(..., min_length=1, max_length=64),
+        user=Depends(require_role("owner")),
+    ):
         # Отдает сохраненный снимок, чтобы открытие окна не зависело от доступности кабинета Маркета.
         normalized_store_code = normalize_yandex_market_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
@@ -451,7 +457,11 @@ def mount_yandex_market_catalog_routes(
         return YandexMarketCatalogListOut(store_code=normalized_store_code, items=[make_catalog_item_out(row) for row in rows])
 
     @app.get("/marketplaces/yandex/catalog/{offer_id}", response_model=YandexMarketCatalogDetailsOut)
-    def get_yandex_market_catalog_details(offer_id: str, store_code: str = "asat", user=Depends(require_role("owner"))):
+    def get_yandex_market_catalog_details(
+        offer_id: str,
+        store_code: str = Query(..., min_length=1, max_length=64),
+        user=Depends(require_role("owner")),
+    ):
         # Показывает полезные детали локальной карточки и не раскрывает сырой ответ Маркета браузеру.
         normalized_store_code = normalize_yandex_market_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
@@ -490,7 +500,7 @@ def mount_yandex_market_catalog_routes(
     def update_yandex_market_catalog_archive_route(
         offer_id: str,
         request: Request,
-        store_code: str = "asat",
+        store_code: str = Query(..., min_length=1, max_length=64),
         user=Depends(require_role("owner")),
     ):
         # Передает изменение архива в Маркет и сразу синхронизирует признак в нашем снимке.
@@ -513,7 +523,11 @@ def mount_yandex_market_catalog_routes(
         return YandexMarketCatalogArchiveOut(offer_id=offer_id, archived=archived)
 
     @app.get("/marketplaces/yandex/catalog/{offer_id}/orders", response_model=YandexMarketOrdersOut)
-    def list_yandex_market_orders(offer_id: str, store_code: str = "asat", user=Depends(require_role("owner"))):
+    def list_yandex_market_orders(
+        offer_id: str,
+        store_code: str = Query(..., min_length=1, max_length=64),
+        user=Depends(require_role("owner")),
+    ):
         # Показывает уже сохраненную историю позиции без обращения к внешнему API при открытии раздела.
         normalized_store_code = normalize_yandex_market_store_code(store_code)
         with psycopg.connect(DB_DSN) as conn:
@@ -535,7 +549,11 @@ def mount_yandex_market_catalog_routes(
         return YandexMarketOrdersOut(offer_id=offer_id, items=[make_order_out(row) for row in rows])
 
     @app.post("/marketplaces/yandex/catalog/{offer_id}/orders/sync", response_model=YandexMarketOrdersSyncOut)
-    def sync_yandex_market_orders_for_catalog_item(offer_id: str, store_code: str = "asat", user=Depends(require_role("owner"))):
+    def sync_yandex_market_orders_for_catalog_item(
+        offer_id: str,
+        store_code: str = Query(..., min_length=1, max_length=64),
+        user=Depends(require_role("owner")),
+    ):
         # Обновляет общий снимок заказов DBS вручную; offer_id нужен интерфейсу и не меняет данные Маркета.
         require_yandex_market_live()
         normalized_store_code = normalize_yandex_market_store_code(store_code)
@@ -822,7 +840,11 @@ def mount_yandex_market_catalog_routes(
         )
 
     @app.get("/marketplaces/yandex/catalog/{offer_id}/stock-settings", response_model=YandexMarketStockSettingsOut)
-    def get_yandex_market_stock_settings(offer_id: str, store_code: str = "asat", user=Depends(require_role("owner"))):
+    def get_yandex_market_stock_settings(
+        offer_id: str,
+        store_code: str = Query(..., min_length=1, max_length=64),
+        user=Depends(require_role("owner")),
+    ):
         # Совмещает локальный лимит с безопасным чтением текущего доступного остатка из Маркета.
         require_yandex_market_live()
         normalized_store_code = normalize_yandex_market_store_code(store_code)
@@ -846,7 +868,7 @@ def mount_yandex_market_catalog_routes(
         offer_id: str,
         payload: YandexMarketStockSettingsIn,
         publish_stock: bool = False,
-        store_code: str = "asat",
+        store_code: str = Query(..., min_length=1, max_length=64),
         user=Depends(require_role("owner")),
     ):
         # Сохраняет лимит отдельно и публикует его только по явной команде оператора.

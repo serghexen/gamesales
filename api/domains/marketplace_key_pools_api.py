@@ -64,7 +64,7 @@ def mount_marketplace_key_pool_routes(app, *, DB_DSN, psycopg, q1, qall, exec1, 
 
     def normalized_store_code(value: str) -> str:
         # Держит пулы разных магазинов раздельно, даже если артикул у них совпадает.
-        store_code = str(value or "asat").strip().lower()
+        store_code = str(value or "").strip().lower()
         if not store_code or len(store_code) > 64:
             raise HTTPException(400, "Некорректный код магазина")
         return store_code
@@ -152,7 +152,7 @@ def mount_marketplace_key_pool_routes(app, *, DB_DSN, psycopg, q1, qall, exec1, 
     def get_marketplace_key_pool(
         marketplace: str,
         product_key: str,
-        store_code: str = "asat",
+        store_code: str = Query(..., min_length=1, max_length=64),
         page: int = Query(default=1, ge=1),
         page_size: int = Query(default=20, ge=1, le=100),
         user=Depends(require_role("owner")),
@@ -169,7 +169,7 @@ def mount_marketplace_key_pool_routes(app, *, DB_DSN, psycopg, q1, qall, exec1, 
         marketplace: str,
         product_key: str,
         payload: MarketplaceManualKeysIn,
-        store_code: str = "asat",
+        store_code: str = Query(..., min_length=1, max_length=64),
         user=Depends(require_role("owner")),
     ):
         # Загружает пачку ключей в один пул и сразу отсеивает повторы, не передавая их маркетплейсам.
@@ -213,7 +213,7 @@ def mount_marketplace_key_pool_routes(app, *, DB_DSN, psycopg, q1, qall, exec1, 
         marketplace: str,
         product_key: str,
         key_id: int,
-        store_code: str = "asat",
+        store_code: str = Query(..., min_length=1, max_length=64),
         user=Depends(require_role("owner")),
     ):
         # Раскрывает один ключ владельцу для сверки, включая уже выданные ключи, не меняя его статус.
@@ -240,7 +240,7 @@ def mount_marketplace_key_pool_routes(app, *, DB_DSN, psycopg, q1, qall, exec1, 
         marketplace: str,
         product_key: str,
         key_id: int,
-        store_code: str = "asat",
+        store_code: str = Query(..., min_length=1, max_length=64),
         user=Depends(require_role("owner")),
     ):
         # Удаляет только свободный ключ выбранной карточки, сохраняя историю зарезервированных и выданных.
@@ -256,7 +256,7 @@ def mount_marketplace_key_pool_routes(app, *, DB_DSN, psycopg, q1, qall, exec1, 
     def delete_all_free_marketplace_key_pool_keys(
         marketplace: str,
         product_key: str,
-        store_code: str = "asat",
+        store_code: str = Query(..., min_length=1, max_length=64),
         user=Depends(require_role("owner")),
     ):
         # Очищает только свободный остаток пула и никогда не стирает ключи из истории заказов.

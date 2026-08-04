@@ -8,7 +8,7 @@ from threading import Timer
 import uuid
 from typing import Any, Callable
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .yandex_market_catalog_service import (
@@ -824,7 +824,11 @@ def build_yandex_market_production_delivery_processor(
 
 def mount_yandex_market_production_delivery_routes(app, *, delivery_processor, require_role) -> None:
     @app.get("/marketplaces/yandex/catalog/{offer_id}/manual-deliveries")
-    def list_yandex_market_manual_deliveries(offer_id: str, store_code: str = "asat", user=Depends(require_role("owner"))):
+    def list_yandex_market_manual_deliveries(
+        offer_id: str,
+        store_code: str = Query(..., min_length=1, max_length=64),
+        user=Depends(require_role("owner")),
+    ):
         # Возвращает локальную очередь ручной выдачи без обращения к Interhub или Яндекс Маркету.
         normalized_store_code = normalize_yandex_market_store_code(store_code)
         items = delivery_processor.list_manual_deliveries(normalized_store_code, str(offer_id))
@@ -841,14 +845,24 @@ def mount_yandex_market_production_delivery_routes(app, *, delivery_processor, r
         return delivery_processor.issue_from_pool_manually(int(delivery_id))
 
     @app.get("/marketplaces/yandex/orders/{order_id}/items/{item_id}/codes", response_model=YandexMarketDigitalOrderCodesOut)
-    def get_yandex_market_order_codes(order_id: int, item_id: int, store_code: str = "asat", user=Depends(require_role("owner"))):
+    def get_yandex_market_order_codes(
+        order_id: int,
+        item_id: int,
+        store_code: str = Query(..., min_length=1, max_length=64),
+        user=Depends(require_role("owner")),
+    ):
         # Раскрывает ключ владельцу лишь после явного клика по уже доставленной позиции Маркета.
         normalized_store_code = normalize_yandex_market_store_code(store_code)
         result = delivery_processor.reveal_delivered_codes(normalized_store_code, int(order_id), int(item_id))
         return YandexMarketDigitalOrderCodesOut(**result)
 
     @app.post("/marketplaces/yandex/orders/{order_id}/items/{item_id}/start-delivery")
-    def start_yandex_market_existing_order(order_id: int, item_id: int, store_code: str = "asat", user=Depends(require_role("owner"))):
+    def start_yandex_market_existing_order(
+        order_id: int,
+        item_id: int,
+        store_code: str = Query(..., min_length=1, max_length=64),
+        user=Depends(require_role("owner")),
+    ):
         # Позволяет владельцу один раз явно запустить выдачу по уже сохраненному заказу до порога автоматики.
         normalized_store_code = normalize_yandex_market_store_code(store_code)
         delivery_processor.start_existing_order_manually(normalized_store_code, int(order_id), int(item_id))

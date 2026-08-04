@@ -87,6 +87,14 @@ class MarketplaceKeyPoolsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"added": 2, "duplicates": 1})
 
+    # Отсутствующий кабинет не должен незаметно создавать пул ASAT для карточки другого магазина.
+    def test_key_pool_routes_require_an_explicit_store_code(self):
+        client, _writes = self.create_client()
+        with client:
+            response = client.get("/marketplaces/key-pools/yandex_market/PSN-500")
+
+        self.assertEqual(response.status_code, 422)
+
     # Выданный ключ тоже можно сверить: маршрут расшифровывает только одну строку из выбранного пула.
     def test_reveal_key_allows_owner_to_check_a_delivered_key(self):
         client, _writes = self.create_client(q1_values=[(11,), ("SENT-CODE-1234",)])

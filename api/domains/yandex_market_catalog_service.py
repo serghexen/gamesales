@@ -119,15 +119,19 @@ def find_yandex_market_store_code_by_campaign_id(campaign_id: int) -> str | None
             continue
         if configured_campaign_id == target_campaign_id:
             matched_codes.append(normalize_yandex_market_store_code(store_code))
-    if matched_codes:
-        return sorted(set(matched_codes))[0]
-
     # Поддерживает основной магазин без суффикса, который исторически считается ASAT.
     try:
         default_campaign_id = int(str(os.getenv("YANDEX_MARKET_CAMPAIGN_ID", "")).strip())
     except (TypeError, ValueError):
-        return None
-    return "asat" if default_campaign_id == target_campaign_id else None
+        default_campaign_id = None
+    if default_campaign_id == target_campaign_id:
+        matched_codes.append("asat")
+
+    # Одинаковый campaignId у двух кабинетов нельзя угадывать: уведомление остается не обработанным, а не попадает в чужой магазин.
+    unique_codes = sorted(set(matched_codes))
+    if len(unique_codes) > 1:
+        raise ValueError(f"Yandex Market campaign {target_campaign_id} is configured for multiple stores")
+    return unique_codes[0] if unique_codes else None
 
 
 def _catalog_url(base_url: str, business_id: int, *, page_token: str = "") -> str:

@@ -35,6 +35,7 @@
           </section>
           <WorkMarketplaceKeyPoolPanel
             marketplace="yandex_market"
+            :store-code="yandexMarketStoreCode"
             :product-key="yandexMarketOfferId"
             :product-title="yandexMarketTitle || yandexMarketOfferId"
             :marketplace-key-pool="marketplaceKeyPool"
@@ -325,10 +326,10 @@ async function issueProductionFromPool(order) {
 }
 
 watch(
-  () => [props.showYandexMarketDigitalSettings, props.yandexMarketOfferId, props.yandexMarketTitle],
-  ([isOpen, productKey, productTitle]) => {
+  () => [props.showYandexMarketDigitalSettings, props.yandexMarketOfferId, props.yandexMarketTitle, props.yandexMarketStoreCode],
+  ([isOpen, productKey, productTitle, storeCode]) => {
     // Подгружает отдельный пул нужного контура до показа таблицы ключей.
-    if (isOpen && productKey) props.loadMarketplaceKeyPoolFor({ marketplace: 'yandex_market', productKey: String(productKey), productTitle: String(productTitle || productKey), storeCode: props.yandexMarketStoreCode })
+    if (isOpen && productKey && storeCode) props.loadMarketplaceKeyPoolFor({ marketplace: 'yandex_market', productKey: String(productKey), productTitle: String(productTitle || productKey), storeCode: String(storeCode) })
   },
   { immediate: true },
 )

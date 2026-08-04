@@ -21,7 +21,7 @@
       <div class="marketplace-key-pool-modal__list-head marketplace-key-pool-panel__list-head">
         <div><h4>Ключи товара</h4><p class="muted">Удаляются только свободные ключи.</p></div>
         <div class="marketplace-key-pool-panel__list-actions">
-          <button class="ghost marketplace-key-pool-entry__open" type="button" :disabled="!productKey" @click="openAddDialog">
+          <button class="ghost marketplace-key-pool-entry__open" type="button" :disabled="!productKey || !storeCode" @click="openAddDialog">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>Добавить ключи
           </button>
           <button class="ghost marketplace-key-pool-modal__delete-free" type="button" :disabled="!marketplaceKeyPool.free_count || marketplaceKeyPoolSaving" @click="deleteAllFreeMarketplaceKeyPoolKeys">
@@ -66,7 +66,7 @@ import { computed, ref } from 'vue'
 import WorkHamsterLoader from './WorkHamsterLoader.vue'
 
 const props = defineProps({
-  marketplace: { type: String, required: true }, productKey: { type: String, default: '' }, productTitle: { type: String, default: '' }, marketplaceKeyPool: { type: Object, default: () => ({ free_count: 0, reserved_count: 0, delivered_count: 0, expired_count: 0, total: 0, page: 1, page_size: 20, items: [] }) }, marketplaceKeyPoolLoading: { type: Boolean, default: false }, marketplaceKeyPoolSaving: { type: Boolean, default: false }, marketplaceKeyPoolError: { type: String, default: '' }, marketplaceKeyPoolTotalPages: { type: Number, default: 1 }, marketplaceKeyPoolRevealingId: { type: Number, default: 0 }, marketplaceKeyPoolRevealedCode: { type: Function, default: () => '' }, openMarketplaceKeyPool: { type: Function, default: () => {} }, loadMarketplaceKeyPool: { type: Function, default: () => {} }, revealMarketplaceKeyPoolKey: { type: Function, default: () => {} }, deleteMarketplaceKeyPoolKey: { type: Function, default: () => {} }, deleteAllFreeMarketplaceKeyPoolKeys: { type: Function, default: () => {} },
+  marketplace: { type: String, required: true }, storeCode: { type: String, default: '' }, productKey: { type: String, default: '' }, productTitle: { type: String, default: '' }, marketplaceKeyPool: { type: Object, default: () => ({ free_count: 0, reserved_count: 0, delivered_count: 0, expired_count: 0, total: 0, page: 1, page_size: 20, items: [] }) }, marketplaceKeyPoolLoading: { type: Boolean, default: false }, marketplaceKeyPoolSaving: { type: Boolean, default: false }, marketplaceKeyPoolError: { type: String, default: '' }, marketplaceKeyPoolTotalPages: { type: Number, default: 1 }, marketplaceKeyPoolRevealingId: { type: Number, default: 0 }, marketplaceKeyPoolRevealedCode: { type: Function, default: () => '' }, openMarketplaceKeyPool: { type: Function, default: () => {} }, loadMarketplaceKeyPool: { type: Function, default: () => {} }, revealMarketplaceKeyPoolKey: { type: Function, default: () => {} }, deleteMarketplaceKeyPoolKey: { type: Function, default: () => {} }, deleteAllFreeMarketplaceKeyPoolKeys: { type: Function, default: () => {} },
 })
 
 const isOpen = ref(false)
@@ -87,8 +87,8 @@ function formatDate(value) {
 }
 
 function openAddDialog() {
-  // Открывает только форму добавления для уже выбранных маркетплейса и карточки.
-  props.openMarketplaceKeyPool({ marketplace: props.marketplace, productKey: props.productKey, productTitle: props.productTitle })
+  // Передает кабинет вместе с карточкой, чтобы добавленный ключ не попал в пул другого магазина.
+  props.openMarketplaceKeyPool({ marketplace: props.marketplace, storeCode: props.storeCode, productKey: props.productKey, productTitle: props.productTitle })
 }
 
 function toggleOpen() {

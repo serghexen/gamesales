@@ -304,19 +304,19 @@ describe('useMarketplaceKeyPool', () => {
     const apiPost = vi.fn().mockResolvedValue({ added: 2, duplicates: 0 })
     const pool = useMarketplaceKeyPool({ auth: { state: { token: 'market-token' } }, apiGet, apiPost, apiDelete: vi.fn(), mapApiError: vi.fn(), requestDealConfirm: vi.fn() })
 
-    await pool.openMarketplaceKeyPool({ marketplace: 'yandex_market', productKey: 'PSN-500', productTitle: 'PSN 500' })
+    await pool.openMarketplaceKeyPool({ marketplace: 'yandex_market', storeCode: 'joycards', productKey: 'PSN-500', productTitle: 'PSN 500' })
     const result = await pool.addMarketplaceKeyPoolKeys('AAAA-1111\nBBBB-2222', '2026-08-25')
 
     expect(pool.marketplaceKeyPool.free_count).toBe(2)
     expect(pool.marketplaceKeyPool.items[0].masked_code).toBe('••••1234')
-    expect(apiPost).toHaveBeenCalledWith('/marketplaces/key-pools/yandex_market/PSN-500/keys?store_code=asat', { codes: ['AAAA-1111', 'BBBB-2222'], expires_at: '2026-08-25' }, { token: 'market-token' })
+    expect(apiPost).toHaveBeenCalledWith('/marketplaces/key-pools/yandex_market/PSN-500/keys?store_code=joycards', { codes: ['AAAA-1111', 'BBBB-2222'], expires_at: '2026-08-25' }, { token: 'market-token' })
     expect(result.ok).toBe(true)
   })
 
   it('does not show the Excel error when the key-pool API is unavailable', async () => {
     const pool = useMarketplaceKeyPool({ auth: { state: { token: 'market-token' } }, apiGet: vi.fn().mockRejectedValue(new Error('Load failed')), apiPost: vi.fn(), apiDelete: vi.fn(), mapApiError: vi.fn(() => 'Не удалось отправить файл. Проверьте формат (.xlsx/.xls) и доступность API'), requestDealConfirm: vi.fn() })
 
-    await pool.openMarketplaceKeyPool({ marketplace: 'ozon', productKey: '103' })
+    await pool.openMarketplaceKeyPool({ marketplace: 'ozon', storeCode: 'asat', productKey: '103' })
 
     expect(pool.marketplaceKeyPoolError.value).toContain('API пула ключей')
     expect(pool.marketplaceKeyPoolError.value).not.toContain('Excel')
@@ -395,9 +395,20 @@ describe('WorkMarketplaceKeyPoolModal', () => {
 })
 
 describe('WorkMarketplaceKeyPoolPanel', () => {
+  it('keeps the selected Yandex store when opening the add-key form', async () => {
+    const openMarketplaceKeyPool = vi.fn()
+    const wrapper = mount(WorkMarketplaceKeyPoolPanel, {
+      props: { marketplace: 'yandex_market', storeCode: 'joycards', productKey: 'MRKT-L29R57N3', productTitle: 'PUBG 300 NC', marketplaceKeyPool: { free_count: 0, delivered_count: 0, total: 0, page: 1, page_size: 20, items: [] }, openMarketplaceKeyPool },
+    })
+
+    await wrapper.get('.ozon-catalog-details-modal__work-block-toggle').trigger('click')
+    await wrapper.get('.marketplace-key-pool-entry__open').trigger('click')
+    expect(openMarketplaceKeyPool).toHaveBeenCalledWith({ marketplace: 'yandex_market', storeCode: 'joycards', productKey: 'MRKT-L29R57N3', productTitle: 'PUBG 300 NC' })
+  })
+
   it('keeps the counters and key table collapsed until the operator opens the list', async () => {
     const wrapper = mount(WorkMarketplaceKeyPoolPanel, {
-      props: { marketplace: 'ozon', productKey: '103', productTitle: 'PSN 500', marketplaceKeyPool: { free_count: 1, reserved_count: 2, delivered_count: 3, expired_count: 4, total: 1, page: 1, page_size: 20, items: [{ id: 1, masked_code: '••••1234', status: 'free' }] }, marketplaceKeyPoolLoading: false, marketplaceKeyPoolSaving: false, marketplaceKeyPoolTotalPages: 1, marketplaceKeyPoolRevealingId: 0, marketplaceKeyPoolRevealedCode: vi.fn(() => ''), openMarketplaceKeyPool: vi.fn(), loadMarketplaceKeyPool: vi.fn(), revealMarketplaceKeyPoolKey: vi.fn(), deleteMarketplaceKeyPoolKey: vi.fn(), deleteAllFreeMarketplaceKeyPoolKeys: vi.fn() },
+      props: { marketplace: 'ozon', storeCode: 'asat', productKey: '103', productTitle: 'PSN 500', marketplaceKeyPool: { free_count: 1, reserved_count: 2, delivered_count: 3, expired_count: 4, total: 1, page: 1, page_size: 20, items: [{ id: 1, masked_code: '••••1234', status: 'free' }] }, marketplaceKeyPoolLoading: false, marketplaceKeyPoolSaving: false, marketplaceKeyPoolTotalPages: 1, marketplaceKeyPoolRevealingId: 0, marketplaceKeyPoolRevealedCode: vi.fn(() => ''), openMarketplaceKeyPool: vi.fn(), loadMarketplaceKeyPool: vi.fn(), revealMarketplaceKeyPoolKey: vi.fn(), deleteMarketplaceKeyPoolKey: vi.fn(), deleteAllFreeMarketplaceKeyPoolKeys: vi.fn() },
     })
 
     expect(wrapper.text()).not.toContain('Свободно')

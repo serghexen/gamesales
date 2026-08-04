@@ -79,7 +79,7 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
         }
         with patch.object(yandex_market_catalog_api, "fetch_yandex_market_catalog_items", return_value=[remote_item]):
             with client:
-                response = client.post("/marketplaces/yandex/catalog/sync")
+                response = client.post("/marketplaces/yandex/catalog/sync?store_code=asat")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["synced_items"], 1)
@@ -87,12 +87,24 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
         self.assertEqual(inserts[0][1:4], ("PSN-500", 123, "PSN 500"))
         self.assertTrue(inserts[0][7])
 
+    # Маршруты кабинета не должны молча выполнять действие в ASAT, если клиент не передал store_code.
+    def test_catalog_routes_require_explicit_store_code(self):
+        client, _writes = self.create_client()
+        with client:
+            responses = [
+                client.get("/marketplaces/yandex/catalog"),
+                client.post("/marketplaces/yandex/catalog/sync"),
+                client.put("/marketplaces/yandex/catalog/PSN-500/stock-settings", json={"manual_stock_limit": 1}),
+            ]
+
+        self.assertEqual([response.status_code for response in responses], [422, 422, 422])
+
     # Архивирование выбирает именно путь archive и сразу меняет признак в нашем снимке.
     def test_archive_catalog_item_updates_remote_and_local_snapshot(self):
         client, writes = self.create_client()
         with patch.object(yandex_market_catalog_api, "update_yandex_market_catalog_archive", return_value={}) as update_archive:
             with client:
-                response = client.post("/marketplaces/yandex/catalog/PSN-500/archive")
+                response = client.post("/marketplaces/yandex/catalog/PSN-500/archive?store_code=asat")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"offer_id": "PSN-500", "archived": True})
@@ -110,8 +122,8 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
         client, _writes = self.create_client(q1_handler=q1_handler)
         with patch.object(yandex_market_catalog_api, "update_yandex_market_stock", return_value={}) as update_stock:
             with client:
-                saved = client.put("/marketplaces/yandex/catalog/PSN-500/stock-settings", json={"manual_stock_limit": 7})
-                published = client.put("/marketplaces/yandex/catalog/PSN-500/stock-settings?publish_stock=true", json={"manual_stock_limit": 7})
+                saved = client.put("/marketplaces/yandex/catalog/PSN-500/stock-settings?store_code=asat", json={"manual_stock_limit": 7})
+                published = client.put("/marketplaces/yandex/catalog/PSN-500/stock-settings?publish_stock=true&store_code=asat", json={"manual_stock_limit": 7})
 
         self.assertEqual(saved.status_code, 200)
         self.assertEqual(published.status_code, 200)
@@ -128,7 +140,7 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
         with patch.object(yandex_market_catalog_api, "update_yandex_market_stock", return_value={}):
             with client:
                 response = client.put(
-                    "/marketplaces/yandex/catalog/PSN-500/stock-settings?publish_stock=true",
+                    "/marketplaces/yandex/catalog/PSN-500/stock-settings?publish_stock=true&store_code=asat",
                     json={"manual_stock_limit": 7},
                 )
 
@@ -143,7 +155,7 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
         market_stock = {"found": True, "available_stock": 4, "updated_at": "2026-07-25T11:33:00Z"}
         with patch.object(yandex_market_catalog_api, "fetch_yandex_market_stock", return_value=market_stock) as fetch_stock:
             with client:
-                response = client.get("/marketplaces/yandex/catalog/PSN-500/stock-settings")
+                response = client.get("/marketplaces/yandex/catalog/PSN-500/stock-settings?store_code=asat")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["market_available_stock"], 4)
@@ -159,7 +171,7 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
         }]
         with patch.object(yandex_market_catalog_api, "fetch_yandex_market_orders", return_value={"orders": remote_orders, "pages_loaded": 1, "has_more": False}) as fetch_orders:
             with client:
-                response = client.post("/marketplaces/yandex/catalog/PSN-500/orders/sync")
+                response = client.post("/marketplaces/yandex/catalog/PSN-500/orders/sync?store_code=asat")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["imported_orders"], 1)
@@ -174,7 +186,7 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
         row = (501, 99, "PSN-500", "PSN 500", 2, "PROCESSING", "STARTED", "500", "RUR", datetime(2026, 7, 25, tzinfo=timezone.utc), datetime(2026, 7, 25, 12, tzinfo=timezone.utc))
         client, _writes = self.create_client(rows=[row])
         with client:
-            response = client.get("/marketplaces/yandex/catalog/PSN-500/orders")
+            response = client.get("/marketplaces/yandex/catalog/PSN-500/orders?store_code=asat")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["items"][0]["order_id"], 501)

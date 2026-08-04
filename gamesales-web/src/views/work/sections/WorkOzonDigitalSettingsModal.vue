@@ -148,6 +148,7 @@
 
             <WorkMarketplaceKeyPoolPanel
               marketplace="ozon"
+              store-code="asat"
               :product-key="String(ozonDigitalSettings.external_product_id || '')"
               :product-title="keyPoolProductTitle"
               :marketplace-key-pool="marketplaceKeyPool"
@@ -259,7 +260,7 @@ watch(
   () => [props.showOzonDigitalSettings, props.ozonDigitalSettings.external_product_id, props.ozonDigitalProductTitle, props.ozonDigitalSettings.offer_id],
   ([isOpen, productKey, productTitle]) => {
     // Подгружает таблицу на основном экране ключей сразу после открытия настроек карточки.
-    if (isOpen && productKey) props.loadMarketplaceKeyPoolFor({ marketplace: 'ozon', productKey: String(productKey), productTitle: String(productTitle || props.ozonDigitalSettings.offer_id || 'Карточка Ozon') })
+    if (isOpen && productKey) props.loadMarketplaceKeyPoolFor({ marketplace: 'ozon', productKey: String(productKey), productTitle: String(productTitle || props.ozonDigitalSettings.offer_id || 'Карточка Ozon'), storeCode: 'asat' })
   },
   { immediate: true },
 )
