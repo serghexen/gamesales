@@ -116,7 +116,7 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
     def test_publish_stock_calls_market_only_for_explicit_request(self):
         def q1_handler(sql, _params):
             if "FROM app.marketplace_yandex_stock_settings" in sql:
-                return (7, "Активируйте код в PlayStation Store.", "", True, True, 7, datetime(2026, 7, 25, tzinfo=timezone.utc))
+                return (7, "Активируйте код в PlayStation Store.", "", True, True, False, 7, datetime(2026, 7, 25, tzinfo=timezone.utc))
             return None
 
         client, _writes = self.create_client(q1_handler=q1_handler)
@@ -133,7 +133,7 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
     def test_publish_stock_preserves_delivery_switches(self):
         def q1_handler(sql, _params):
             if "FROM app.marketplace_yandex_stock_settings" in sql:
-                return (7, "Инструкция", "", True, True, 7, datetime(2026, 7, 25, tzinfo=timezone.utc))
+                return (7, "Инструкция", "", True, True, True, 7, datetime(2026, 7, 25, tzinfo=timezone.utc))
             return None
 
         client, writes = self.create_client(q1_handler=q1_handler)
@@ -147,7 +147,19 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         upsert = next((params for sql, params in writes if "auto_issue_enabled=CASE WHEN" in sql), None)
         self.assertIsNotNone(upsert)
-        self.assertEqual(upsert[-2:], (False, False))
+        self.assertEqual(upsert[-3:], (False, False, False))
+
+    # Заглушка через поддержку включается только с понятным текстом для покупателя.
+    def test_support_message_delivery_requires_message(self):
+        client, _writes = self.create_client()
+        with client:
+            response = client.put(
+                "/marketplaces/yandex/catalog/PSN-500/stock-settings?store_code=joycards",
+                json={"support_message_delivery_enabled": True},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("сообщение покупателю", response.json()["detail"].lower())
 
     # Открытие карточки читает доступный остаток методом POST и не передает новое значение через PUT.
     def test_stock_settings_reads_live_market_stock_without_publishing(self):

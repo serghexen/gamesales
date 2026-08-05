@@ -185,7 +185,7 @@ def build_yandex_market_production_delivery_processor(
                 conn,
                 """
                 UPDATE app.marketplace_yandex_digital_deliveries
-                SET delivered_codes=%s::jsonb, status='supplier_processing', last_error='', updated_at=now()
+                SET delivered_codes=%s::jsonb, delivery_source='interhub', status='supplier_processing', last_error='', updated_at=now()
                 WHERE id=%s
                 """,
                 (json.dumps(codes, ensure_ascii=False), delivery_id),
@@ -299,7 +299,7 @@ def build_yandex_market_production_delivery_processor(
             delivery = q1(
                 conn,
                 """
-                SELECT store_code, order_id, item_id, offer_id, required_qty, delivered_codes, status
+                SELECT store_code, order_id, item_id, offer_id, required_qty, delivered_codes, status, delivery_source
                 FROM app.marketplace_yandex_digital_deliveries WHERE id=%s FOR UPDATE
                 """,
                 (delivery_id,),
@@ -308,7 +308,8 @@ def build_yandex_market_production_delivery_processor(
             if not delivery or str(delivery[6] or "") not in allowed:
                 conn.commit()
                 return False
-            current = texts(delivery[5])
+            # После неуспешной заглушки оператор может взять настоящий комплект из пула вручную.
+            current = [] if str(delivery[7] or "") == "support_message" else texts(delivery[5])
             missing = int(delivery[4]) - len(current)
             if missing <= 0:
                 conn.commit()
@@ -353,17 +354,51 @@ def build_yandex_market_production_delivery_processor(
             )
             exec1(
                 conn,
-                "UPDATE app.marketplace_yandex_digital_deliveries SET delivered_codes=%s::jsonb, status='supplier_processing', last_error='', updated_at=now() WHERE id=%s",
+                "UPDATE app.marketplace_yandex_digital_deliveries SET delivered_codes=%s::jsonb, delivery_source='pool', status='supplier_processing', last_error='', updated_at=now() WHERE id=%s",
                 (json.dumps(current + codes, ensure_ascii=False), delivery_id),
             )
             conn.commit()
         send_delivery(delivery_id)
         return True
 
-    def buy_from_interhub(delivery_id: int) -> bool:
-        # Покупает один недостающий ключ и создает попытку до pay, чтобы новый webhook не списал деньги повторно.
+    def send_support_message(delivery_id: int) -> bool:
+        # Намеренно завершает выдачу текстом поддержки только после недоступных Interhub и пула.
+        with psycopg.connect(DB_DSN) as conn:
+            row = q1(
+                conn,
+                """
+                SELECT delivery.store_code, delivery.required_qty, delivery.delivered_codes, delivery.status,
+                       delivery.delivery_source, settings.support_error_message,
+                       settings.support_message_delivery_enabled
+                FROM app.marketplace_yandex_digital_deliveries AS delivery
+                JOIN app.marketplace_yandex_stock_settings AS settings
+                  ON settings.store_code=delivery.store_code AND settings.offer_id=delivery.offer_id
+                WHERE delivery.id=%s FOR UPDATE
+                """,
+                (delivery_id,),
+            )
+            if not row or str(row[3] or "") not in {"manual_required", "supplier_processing"}:
+                conn.commit()
+                return False
+            message = str(row[5] or "").strip()
+            if not bool(row[6]) or not message or texts(row[2]):
+                conn.commit()
+                return False
+            # Это не лицензионный ключ: одинаковый текст можно отправлять разным покупателям без реестра кодов.
+            codes = [message] * max(1, int(row[1] or 1))
+            exec1(
+                conn,
+                "UPDATE app.marketplace_yandex_digital_deliveries SET delivered_codes=%s::jsonb, delivery_source='support_message', status='supplier_processing', last_error='', updated_at=now() WHERE id=%s",
+                (json.dumps(codes, ensure_ascii=False), delivery_id),
+            )
+            conn.commit()
+        send_delivery(delivery_id)
+        return True
+
+    def buy_from_interhub(delivery_id: int) -> str:
+        # Возвращает итог попытки, чтобы ожидание оплаты не перешло к следующему источнику выдачи.
         if not interhub_calculate or not interhub_check or not interhub_pay:
-            return False
+            return "failed"
         with psycopg.connect(DB_DSN) as conn:
             row = q1(
                 conn,
@@ -380,11 +415,11 @@ def build_yandex_market_production_delivery_processor(
             )
             if not row or str(row[4] or "") not in {"manual_required", "supplier_processing"}:
                 conn.commit()
-                return False
+                return "failed"
             if len(texts(row[3])) >= int(row[2] or 1):
                 conn.commit()
                 send_delivery(delivery_id)
-                return True
+                return "completed"
             active = q1(
                 conn,
                 "SELECT id FROM app.marketplace_yandex_digital_supplier_attempts WHERE delivery_id=%s AND state='processing' LIMIT 1",
@@ -392,7 +427,7 @@ def build_yandex_market_production_delivery_processor(
             )
             if active:
                 conn.commit()
-                return False
+                return "pending"
             failed = q1(
                 conn,
                 """
@@ -405,7 +440,7 @@ def build_yandex_market_production_delivery_processor(
             if failed:
                 # После окончательного отказа не повторяем оплату тем же поставщиком: дальше возможен только пул или оператор.
                 conn.commit()
-                return False
+                return "failed"
             transaction_id = f"gamesales-yandex-{uuid.uuid4().hex}"
             exec1(
                 conn,
@@ -462,7 +497,7 @@ def build_yandex_market_production_delivery_processor(
                         (message, transaction_id),
                     )
                 conn.commit()
-            return False
+            return "pending" if pay_started else "failed"
         state = provider_state(paid)
         with psycopg.connect(DB_DSN) as conn:
             exec1(
@@ -490,8 +525,8 @@ def build_yandex_market_production_delivery_processor(
         except Exception:
             pass
         if state == "paid":
-            return save_supplier_code(delivery_id, str((paid.get("params") or {}).get("gift_code") or ""))
-        return False
+            return "completed" if save_supplier_code(delivery_id, str((paid.get("params") or {}).get("gift_code") or "")) else "failed"
+        return "pending" if state == "processing" else "failed"
 
     def process_delivery_steps(delivery_id: int) -> None:
         # Собирает недостающие коды без рекурсии и останавливается на ожидании неопределенной оплаты.
@@ -499,13 +534,16 @@ def build_yandex_market_production_delivery_processor(
             with psycopg.connect(DB_DSN) as conn:
                 row = q1(
                     conn,
-                    "SELECT required_qty, delivered_codes, status, store_code, offer_id FROM app.marketplace_yandex_digital_deliveries WHERE id=%s",
+                    "SELECT required_qty, delivered_codes, status, store_code, offer_id, delivery_source FROM app.marketplace_yandex_digital_deliveries WHERE id=%s",
                     (delivery_id,),
                 )
                 conn.commit()
             if not row or str(row[2] or "") not in {"manual_required", "supplier_processing"}:
                 return
             if len(texts(row[1])) >= int(row[0] or 1):
+                # Не пытается автоматически повторить заглушку после отказа Маркета: дальше только ручной оператор.
+                if len(row) > 5 and str(row[5] or "") == "support_message":
+                    return
                 send_delivery(delivery_id)
                 return
             with psycopg.connect(DB_DSN) as conn:
@@ -516,14 +554,21 @@ def build_yandex_market_production_delivery_processor(
                 )
                 settings = q1(
                     conn,
-                    "SELECT auto_issue_enabled, pool_issue_enabled FROM app.marketplace_yandex_stock_settings WHERE store_code=%s AND offer_id=%s",
+                    "SELECT auto_issue_enabled, pool_issue_enabled, support_message_delivery_enabled FROM app.marketplace_yandex_stock_settings WHERE store_code=%s AND offer_id=%s",
                     (str(row[3]), str(row[4])),
                 )
                 conn.commit()
-            if settings and bool(settings[0]) and supplier and buy_from_interhub(delivery_id):
-                continue
-            if settings and bool(settings[1]):
-                take_from_pool(delivery_id)
+            if settings and bool(settings[0]) and supplier:
+                interhub_result = buy_from_interhub(delivery_id)
+                if interhub_result == "pending":
+                    return
+                if interhub_result == "completed":
+                    # Продолжает цикл: следующая итерация либо докупит недостающий ключ, либо отправит комплект в Маркет.
+                    continue
+            if settings and bool(settings[1]) and take_from_pool(delivery_id):
+                return
+            if settings and len(settings) > 2 and bool(settings[2]):
+                send_support_message(delivery_id)
             return
 
     def refresh_supplier_attempts() -> None:
@@ -606,13 +651,16 @@ def build_yandex_market_production_delivery_processor(
 
     def delivery_out(row: tuple[Any, ...]) -> dict[str, Any]:
         # Отдает оператору только сведения для ручной выдачи, не раскрывая уже закрепленные коды.
+        delivery_source = str(row[12] or "") if len(row) > 12 else ""
+        collected_qty = 0 if delivery_source == "support_message" and str(row[6] or "") == "manual_required" else len(texts(row[5]))
         return {
             "id": int(row[0]),
             "order_id": int(row[1]),
             "item_id": int(row[2]),
             "offer_id": str(row[3]),
             "required_qty": int(row[4] or 1),
-            "collected_qty": len(texts(row[5])),
+            "collected_qty": collected_qty,
+            "delivery_source": delivery_source,
             "status": str(row[6] or "manual_required"),
             "last_error": str(row[7] or ""),
             "item_name": str(row[8] or ""),
@@ -628,7 +676,7 @@ def build_yandex_market_production_delivery_processor(
             """
             SELECT delivery.id, delivery.order_id, delivery.item_id, delivery.offer_id, delivery.required_qty,
                    delivery.delivered_codes, delivery.status, delivery.last_error, orders.item_name, orders.status,
-                   delivery.created_at, delivery.updated_at
+                   delivery.created_at, delivery.updated_at, delivery.delivery_source
             FROM app.marketplace_yandex_digital_deliveries AS delivery
             JOIN app.marketplace_yandex_order_items AS orders
               ON orders.store_code=delivery.store_code AND orders.order_id=delivery.order_id AND orders.item_id=delivery.item_id
@@ -648,7 +696,7 @@ def build_yandex_market_production_delivery_processor(
                 """
                 SELECT delivery.id, delivery.order_id, delivery.item_id, delivery.offer_id, delivery.required_qty,
                        delivery.delivered_codes, delivery.status, delivery.last_error, orders.item_name, orders.status,
-                       delivery.created_at, delivery.updated_at
+                       delivery.created_at, delivery.updated_at, delivery.delivery_source
                 FROM app.marketplace_yandex_digital_deliveries AS delivery
                 JOIN app.marketplace_yandex_order_items AS orders
                   ON orders.store_code=delivery.store_code AND orders.order_id=delivery.order_id AND orders.item_id=delivery.item_id
@@ -675,14 +723,15 @@ def build_yandex_market_production_delivery_processor(
         with psycopg.connect(DB_DSN) as conn:
             row = q1(
                 conn,
-                "SELECT required_qty, delivered_codes, status FROM app.marketplace_yandex_digital_deliveries WHERE id=%s FOR UPDATE",
+                "SELECT required_qty, delivered_codes, status, delivery_source FROM app.marketplace_yandex_digital_deliveries WHERE id=%s FOR UPDATE",
                 (delivery_id,),
             )
             if not row:
                 raise HTTPException(404, "Цифровая выдача Яндекс Маркета не найдена")
             if str(row[2] or "") != "manual_required":
                 raise HTTPException(409, "Ручной ключ можно выдать только заказу, ожидающему ручной обработки")
-            existing = texts(row[1])
+            # Заменяет неотправленную заглушку настоящим ключом по явному действию оператора.
+            existing = [] if str(row[3] or "") == "support_message" else texts(row[1])
             new_codes = [code for code in prepared if code not in existing]
             all_codes = existing + new_codes
             required_qty = int(row[0] or 1)
@@ -705,7 +754,7 @@ def build_yandex_market_production_delivery_processor(
                     raise HTTPException(409, "Этот ключ уже закреплен за другим заказом")
             exec1(
                 conn,
-                "UPDATE app.marketplace_yandex_digital_deliveries SET delivered_codes=%s::jsonb, status='supplier_processing', last_error='', updated_at=now() WHERE id=%s",
+                "UPDATE app.marketplace_yandex_digital_deliveries SET delivered_codes=%s::jsonb, delivery_source='manual', status='supplier_processing', last_error='', updated_at=now() WHERE id=%s",
                 (json.dumps(all_codes, ensure_ascii=False), delivery_id),
             )
             conn.commit()
@@ -731,7 +780,7 @@ def build_yandex_market_production_delivery_processor(
                 conn,
                 """
                 SELECT orders.offer_id, orders.quantity, orders.status, orders.is_sandbox,
-                       settings.auto_issue_enabled, settings.pool_issue_enabled
+                       settings.auto_issue_enabled, settings.pool_issue_enabled, settings.support_message_delivery_enabled
                 FROM app.marketplace_yandex_order_items AS orders
                 LEFT JOIN app.marketplace_yandex_stock_settings AS settings
                   ON settings.store_code=orders.store_code AND settings.offer_id=orders.offer_id
@@ -761,7 +810,7 @@ def build_yandex_market_production_delivery_processor(
                 )
                 conn.commit()
                 return
-            if market_status != "PROCESSING" or (not allow_manual and not (bool(order[4]) or bool(order[5]))):
+            if market_status != "PROCESSING" or (not allow_manual and not (bool(order[4]) or bool(order[5]) or (len(order) > 6 and bool(order[6])))):
                 conn.commit()
                 return
             delivery = q1(

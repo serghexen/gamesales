@@ -60,6 +60,26 @@
               </div>
             </template>
           </WorkMarketplaceKeyPoolPanel>
+          <section v-if="!yandexMarketSandboxMode" class="ozon-catalog-details-modal__work-block ozon-key-settings__block" :class="{ 'is-open': isSupportDeliveryOpen }">
+            <div class="ozon-key-settings__block-head">
+              <button class="ozon-catalog-details-modal__work-block-toggle" type="button" :aria-expanded="isSupportDeliveryOpen" aria-controls="yandex-key-support-delivery-content" @click="toggleSupportDelivery">
+                <span class="ozon-catalog-details-modal__work-block-number">03</span>
+                <span class="ozon-catalog-details-modal__work-block-copy"><strong>Выдача через поддержку</strong></span>
+                <svg class="ozon-catalog-details-modal__work-block-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5" /></svg>
+              </button>
+              <div class="ozon-key-settings__block-actions">
+                <div class="ozon-digital-modal__auto-switch">
+                  <label class="switch" title="Отправить сообщение покупателю вместо кода после Interhub и ручного пула">
+                    <input v-model="supportMessageDeliveryEnabled" type="checkbox" aria-label="Отправлять сообщение вместо кода Яндекс Маркета" />
+                    <span class="slider"><span class="circle"><svg class="cross" viewBox="0 0 365.696 365.696" aria-hidden="true"><path fill="currentColor" d="m243.188 182.86 113.132-113.134c12.5-12.5 12.5-32.766 0-45.247L341.238 9.398c-12.504-12.503-32.77-12.503-45.25 0L182.86 122.528 69.727 9.374c-12.5-12.5-32.766-12.5-45.247 0L9.375 24.457c-12.5 12.504-12.5 32.77 0 45.25l113.152 113.152L9.398 295.99c-12.503 12.503-12.503 32.769 0 45.25L24.48 356.32c12.5 12.503 32.766 12.503 45.247 0l113.132-113.132 113.131 113.132c12.503 12.503 32.769 12.503 45.25 0l15.081-15.082c12.5-12.504 12.5-32.77 0-45.25z" /></svg><svg class="checkmark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.707 19.121a.997.997 0 0 1-1.414 0l-5.646-5.647a1.5 1.5 0 0 1 0-2.121l.707-.707a1.5 1.5 0 0 1 2.121 0L9 14.171l9.525-9.525a1.5 1.5 0 0 1 2.121 0l.707.707a1.5 1.5 0 0 1 0 2.121z" /></svg></span></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div v-if="isSupportDeliveryOpen" id="yandex-key-support-delivery-content" class="ozon-catalog-details-modal__work-block-body">
+              <label class="field"><span>Сообщение покупателю</span><textarea v-model="yandexMarketStockSettings.support_error_message" class="input textarea" rows="3" maxlength="2000" aria-label="Сообщение покупателю вместо кода Яндекс Маркета" /></label>
+            </div>
+          </section>
           <section v-if="!yandexMarketSandboxMode" class="ozon-digital-modal__orders">
             <div class="ozon-digital-modal__orders-head"><div><h4>Ручная выдача</h4><p class="muted">Заказы, для которых ключ не выдан автоматически. Отправка в Яндекс Маркет — только по вашей кнопке.</p></div><span class="ozon-digital-modal__manual-count">{{ yandexMarketProductionManualOrders.length }}</span></div>
             <p v-if="yandexMarketProductionManualOrdersLoading" class="ozon-digital-modal__empty muted">Загружаем очередь ручной выдачи…</p>
@@ -145,6 +165,7 @@ const props = defineProps({
 })
 
 const isSupplierOpen = ref(false)
+const isSupportDeliveryOpen = ref(false)
 const manualCodes = reactive({})
 const productionManualCodes = reactive({})
 const interhubServiceSearch = ref('')
@@ -164,6 +185,14 @@ const poolIssueEnabled = computed({
   set: (enabled) => {
     // Сохраняет выбор ручного пула отдельно от поставщика Interhub.
     props.yandexMarketStockSettings.pool_issue_enabled = Boolean(enabled)
+  },
+})
+
+const supportMessageDeliveryEnabled = computed({
+  get: () => Boolean(props.yandexMarketStockSettings.support_message_delivery_enabled),
+  set: (enabled) => {
+    // Хранит отдельный третий резервный сценарий после Interhub и ручного пула.
+    props.yandexMarketStockSettings.support_message_delivery_enabled = Boolean(enabled)
   },
 })
 
@@ -214,6 +243,11 @@ async function sendToMarket(order) {
 function toggleSupplier() {
   // Сворачивает настройки источника, не меняя сохраненные параметры карточки.
   isSupplierOpen.value = !isSupplierOpen.value
+}
+
+function toggleSupportDelivery() {
+  // Открывает текст намеренной выдачи через поддержку, не меняя сам переключатель.
+  isSupportDeliveryOpen.value = !isSupportDeliveryOpen.value
 }
 
 function interhubServiceLabel(service) {

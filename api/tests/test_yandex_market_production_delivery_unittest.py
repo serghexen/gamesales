@@ -254,6 +254,92 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
         update_stock.assert_called_once_with("PSN-500", 7, store_code="asat")
         self.assertTrue(any("last_stock_sync_error=''" in sql for sql, _params in writes))
 
+    # После недоступных Interhub и пула третий сценарий передает настроенное сообщение как намеренную заглушку.
+    def test_support_message_is_sent_after_interhub_and_pool(self):
+        writes = []
+
+        def fake_q1(_conn, sql, _params=None):
+            if "SELECT orders.offer_id" in sql:
+                return ("PUBG-300", 1, "PROCESSING", False, False, False, True)
+            if "INSERT INTO app.marketplace_yandex_digital_deliveries" in sql:
+                return (17,)
+            if "SELECT required_qty, delivered_codes, status, store_code, offer_id, delivery_source" in sql:
+                return (1, [], "manual_required", "joycards", "PUBG-300", "")
+            if "SELECT 1 FROM app.marketplace_yandex_digital_suppliers" in sql:
+                return None
+            if "SELECT auto_issue_enabled, pool_issue_enabled, support_message_delivery_enabled" in sql:
+                return (False, False, True)
+            if "SELECT delivery.store_code, delivery.required_qty" in sql:
+                return ("joycards", 1, [], "manual_required", "", "Заказ принят, код будет отправлен после обработки.", True)
+            if "SELECT delivery.store_code, delivery.order_id" in sql:
+                return ("joycards", 501, 99, ["Заказ принят, код будет отправлен после обработки."], "PUBG-300", "Инструкция", "supplier_processing")
+            if "SELECT manual_stock_limit" in sql:
+                return (5,)
+            return None
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=lambda *_args: [],
+            exec1=lambda _conn, sql, params=None: writes.append((sql, params)),
+            stock_republish_delay_sec=0,
+        )
+        env = {"YANDEX_MARKET_JOYCARDS_AUTO_DELIVERY_ENABLED": "true"}
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch.object(yandex_market_production_delivery, "deliver_yandex_market_digital_goods", return_value={}) as deliver,
+            patch.object(yandex_market_production_delivery, "update_yandex_market_stock", return_value={}),
+        ):
+            processor.start_existing_order_manually("joycards", 501, 99)
+
+        deliver.assert_called_once_with(
+            501,
+            item_id=99,
+            codes=["Заказ принят, код будет отправлен после обработки."],
+            slip="Инструкция",
+            store_code="joycards",
+        )
+        self.assertTrue(any("delivery_source='support_message'" in sql for sql, _params in writes))
+
+    # Ожидающая оплата — не отказ: при всех включенных сценариях пул и сообщение не должны опередить Interhub.
+    def test_pending_interhub_stops_fallback_chain_before_pool_and_support_message(self):
+        queries = []
+
+        def fake_q1(_conn, sql, _params=None):
+            queries.append(sql)
+            if "SELECT orders.offer_id" in sql:
+                return ("PUBG-300", 1, "PROCESSING", False, True, True, True)
+            if "INSERT INTO app.marketplace_yandex_digital_deliveries" in sql:
+                return (17,)
+            if "SELECT required_qty, delivered_codes, status, store_code, offer_id, delivery_source" in sql:
+                return (1, [], "manual_required", "joycards", "PUBG-300", "")
+            if "SELECT 1 FROM app.marketplace_yandex_digital_suppliers" in sql:
+                return (1,)
+            if "SELECT auto_issue_enabled, pool_issue_enabled, support_message_delivery_enabled" in sql:
+                return (True, True, True)
+            if "SELECT delivery.store_code, delivery.offer_id, delivery.required_qty" in sql:
+                return ("joycards", "PUBG-300", 1, [], "manual_required", 7, 9, "300", {})
+            if "state='processing'" in sql:
+                return (99,)
+            return None
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=lambda *_args: [],
+            exec1=lambda *_args: 1,
+            interhub_calculate=lambda *_args: (_ for _ in ()).throw(AssertionError("Нельзя начинать новую оплату")),
+            interhub_check=lambda *_args: (_ for _ in ()).throw(AssertionError("Нельзя начинать новую проверку")),
+            interhub_pay=lambda *_args: (_ for _ in ()).throw(AssertionError("Нельзя запускать повторный pay")),
+        )
+        with patch.dict(os.environ, {"YANDEX_MARKET_JOYCARDS_AUTO_DELIVERY_ENABLED": "true"}, clear=False):
+            processor.start_existing_order_manually("joycards", 501, 99)
+
+        self.assertFalse(any("marketplace_manual_key_pools" in sql for sql in queries))
+        self.assertFalse(any("settings.support_error_message" in sql for sql in queries))
+
 
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
 class YandexMarketProductionManualRoutesTests(unittest.TestCase):

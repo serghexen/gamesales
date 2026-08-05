@@ -56,7 +56,7 @@ describe('useYandexMarketCatalog', () => {
 
     expect(apiPut).toHaveBeenCalledWith(
       '/marketplaces/yandex/catalog/PSN-500/stock-settings?store_code=test',
-      expect.objectContaining({ manual_stock_limit: 0, activation_instruction: 'Активируйте код в магазине.', auto_issue_enabled: false, pool_issue_enabled: false }),
+      expect.objectContaining({ manual_stock_limit: 0, activation_instruction: 'Активируйте код в магазине.', auto_issue_enabled: false, pool_issue_enabled: false, support_message_delivery_enabled: false }),
       { token: 'market-token' },
     )
   })
@@ -255,7 +255,7 @@ describe('WorkYandexMarketDigitalSettingsModal', () => {
     const loadMarketplaceKeyPoolFor = vi.fn()
     const deliverYandexMarketProductionOrder = vi.fn().mockResolvedValue({ ok: true })
     const issueYandexMarketProductionOrderFromPool = vi.fn().mockResolvedValue({ ok: true })
-    const settings = { interhub_service_id: 25, interhub_nominal_id: '250', auto_issue_enabled: false, interhub_enabled: false, pool_issue_enabled: true }
+    const settings = { interhub_service_id: 25, interhub_nominal_id: '250', auto_issue_enabled: false, interhub_enabled: false, pool_issue_enabled: true, support_message_delivery_enabled: false, support_error_message: '' }
     const wrapper = mount(WorkYandexMarketDigitalSettingsModal, {
       props: {
         showYandexMarketDigitalSettings: true,
@@ -280,6 +280,7 @@ describe('WorkYandexMarketDigitalSettingsModal', () => {
     expect(wrapper.text()).toContain('Ручная выдача')
     expect(wrapper.get('input[aria-label="Автовыдача через Interhub Яндекс Маркета"]').attributes('disabled')).toBeUndefined()
     expect(wrapper.get('input[aria-label="Выдача из ручного пула Яндекс Маркета"]').element.checked).toBe(true)
+    expect(wrapper.get('input[aria-label="Отправлять сообщение вместо кода Яндекс Маркета"]').element.checked).toBe(false)
     expect(loadMarketplaceKeyPoolFor).toHaveBeenCalledWith(expect.objectContaining({ marketplace: 'yandex_market', productKey: 'PSN-500', storeCode: 'asat' }))
     await wrapper.get('.ozon-key-settings__block .ozon-catalog-details-modal__work-block-toggle').trigger('click')
     expect(wrapper.get('input[role="combobox"]').element.value).toContain('PlayStation Turkey')
@@ -288,6 +289,10 @@ describe('WorkYandexMarketDigitalSettingsModal', () => {
     expect(wrapper.get('select[aria-label="Номинал Interhub Яндекс Маркета"]').element.value).toBe('250')
     await wrapper.get('input[aria-label="Автовыдача через Interhub Яндекс Маркета"]').setValue(true)
     expect(settings).toMatchObject({ auto_issue_enabled: true, interhub_enabled: true, pool_issue_enabled: true })
+    await wrapper.findAll('.ozon-key-settings__block .ozon-catalog-details-modal__work-block-toggle').at(1).trigger('click')
+    await wrapper.get('input[aria-label="Отправлять сообщение вместо кода Яндекс Маркета"]').setValue(true)
+    await wrapper.get('textarea[aria-label="Сообщение покупателю вместо кода Яндекс Маркета"]').setValue('Заказ принят, код будет отправлен после обработки.')
+    expect(settings).toMatchObject({ support_message_delivery_enabled: true, support_error_message: 'Заказ принят, код будет отправлен после обработки.' })
     await wrapper.get('button[aria-label="Сохранить настройки"]').trigger('click')
     expect(saveYandexMarketStockSettings).toHaveBeenCalledTimes(1)
     await wrapper.get('textarea[aria-label="Ручные ключи для заказа Яндекс Маркета 501"]').setValue('AAAA-1111')

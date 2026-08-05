@@ -11,6 +11,7 @@ from domains.interhub_price_cache import build_interhub_prices_xlsx, collect_pri
 
 
 PENDING_STATUS = 1
+INTERHUB_HISTORY_TIMEZONE = "Europe/Moscow"
 
 
 def interhub_status_check_interval(check_attempts: int) -> str:
@@ -688,10 +689,12 @@ def mount_interhub_routes(
         clauses = ["state='paid'"]
         params: list[object] = []
         if date_from:
-            clauses.append("created_at >= %s")
+            # Привязываем начало дня к МСК, чтобы календарный фильтр совпадал с датой в интерфейсе.
+            clauses.append(f"created_at >= (%s::date::timestamp AT TIME ZONE '{INTERHUB_HISTORY_TIMEZONE}')")
             params.append(date_from)
         if date_to:
-            clauses.append("created_at < %s + interval '1 day'")
+            # Берём начало следующего дня по МСК, сохраняя включительность даты «по».
+            clauses.append(f"created_at < ((%s::date + 1)::timestamp AT TIME ZONE '{INTERHUB_HISTORY_TIMEZONE}')")
             params.append(date_to)
         with psycopg.connect(DB_DSN) as conn:
             with conn.cursor() as cur:

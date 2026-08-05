@@ -66,6 +66,7 @@ class YandexMarketStockSettingsIn(BaseModel):
     support_error_message: str = Field(default="", max_length=2000)
     auto_issue_enabled: bool = False
     pool_issue_enabled: bool = False
+    support_message_delivery_enabled: bool = False
     interhub_service_id: int | None = Field(default=None, gt=0)
     interhub_nominal_id: str = Field(default="", max_length=255)
     interhub_enabled: bool = False
@@ -359,7 +360,7 @@ def mount_yandex_market_catalog_routes(
             conn,
             """
             SELECT manual_stock_limit, activation_instruction, support_error_message, auto_issue_enabled,
-                   pool_issue_enabled, published_stock, last_stock_sync_at,
+                   pool_issue_enabled, support_message_delivery_enabled, published_stock, last_stock_sync_at,
                    (SELECT service_id FROM app.marketplace_yandex_digital_suppliers supplier WHERE supplier.store_code=settings.store_code AND supplier.offer_id=settings.offer_id AND supplier.provider_code='interhub' AND supplier.priority=1),
                    (SELECT nominal_id FROM app.marketplace_yandex_digital_suppliers supplier WHERE supplier.store_code=settings.store_code AND supplier.offer_id=settings.offer_id AND supplier.provider_code='interhub' AND supplier.priority=1),
                    COALESCE((SELECT enabled FROM app.marketplace_yandex_digital_suppliers supplier WHERE supplier.store_code=settings.store_code AND supplier.offer_id=settings.offer_id AND supplier.provider_code='interhub' AND supplier.priority=1), false)
@@ -375,11 +376,11 @@ def mount_yandex_market_catalog_routes(
             offer_id=offer_id,
             manual_stock_limit=max(0, int(row[0] or 0)),
             activation_instruction=str(row[1] or ""), support_error_message=str(row[2] or ""),
-            auto_issue_enabled=bool(row[3]), pool_issue_enabled=bool(row[4]),
-            published_stock=max(0, int(row[5] or 0)), last_stock_sync_at=row[6],
-            interhub_service_id=int(row[7]) if len(row) > 7 and row[7] else None,
-            interhub_nominal_id=str(row[8] or "") if len(row) > 8 else "",
-            interhub_enabled=bool(row[9]) if len(row) > 9 else False,
+            auto_issue_enabled=bool(row[3]), pool_issue_enabled=bool(row[4]), support_message_delivery_enabled=bool(row[5]),
+            published_stock=max(0, int(row[6] or 0)), last_stock_sync_at=row[7],
+            interhub_service_id=int(row[8]) if len(row) > 8 and row[8] else None,
+            interhub_nominal_id=str(row[9] or "") if len(row) > 9 else "",
+            interhub_enabled=bool(row[10]) if len(row) > 10 else False,
         )
 
     @app.post("/marketplaces/yandex/catalog/sync", response_model=YandexMarketCatalogSyncOut)
@@ -873,21 +874,25 @@ def mount_yandex_market_catalog_routes(
     ):
         # Сохраняет лимит отдельно и публикует его только по явной команде оператора.
         normalized_store_code = normalize_yandex_market_store_code(store_code)
+        if payload.support_message_delivery_enabled and not payload.support_error_message.strip():
+            # Не включает заглушку без текста, чтобы заказ не получил пустой код вместо понятного сообщения.
+            raise HTTPException(400, "Введите сообщение покупателю для выдачи через поддержку")
         with psycopg.connect(DB_DSN) as conn:
             exec1(
                 conn,
                 """
                 INSERT INTO app.marketplace_yandex_stock_settings(
                   store_code, offer_id, manual_stock_limit, activation_instruction, support_error_message,
-                  auto_issue_enabled, pool_issue_enabled, updated_at
+                  auto_issue_enabled, pool_issue_enabled, support_message_delivery_enabled, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now())
                 ON CONFLICT (store_code, offer_id) DO UPDATE
                 SET manual_stock_limit=excluded.manual_stock_limit,
                     activation_instruction=excluded.activation_instruction,
                     support_error_message=excluded.support_error_message,
                     auto_issue_enabled=CASE WHEN %s THEN excluded.auto_issue_enabled ELSE marketplace_yandex_stock_settings.auto_issue_enabled END,
                     pool_issue_enabled=CASE WHEN %s THEN excluded.pool_issue_enabled ELSE marketplace_yandex_stock_settings.pool_issue_enabled END,
+                    support_message_delivery_enabled=CASE WHEN %s THEN excluded.support_message_delivery_enabled ELSE marketplace_yandex_stock_settings.support_message_delivery_enabled END,
                     updated_at=now()
                 """,
                 (
@@ -898,6 +903,8 @@ def mount_yandex_market_catalog_routes(
                     payload.support_error_message.strip(),
                     payload.auto_issue_enabled,
                     payload.pool_issue_enabled,
+                    payload.support_message_delivery_enabled,
+                    not publish_stock,
                     not publish_stock,
                     not publish_stock,
                 ),
