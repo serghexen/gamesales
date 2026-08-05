@@ -27,6 +27,7 @@ class OzonNotifierMessageTests(unittest.TestCase):
         text = APP.alert_text(order)
 
         self.assertIn("Требуется оператор", text)
+        self.assertIn("Площадка: Ozon", text)
         self.assertIn("Заказ: OZN-7", text)
         self.assertIn("Количество: 2", text)
         self.assertIn("Причина: Необходим ручной ввод или ручная отправка.", text)
@@ -50,7 +51,36 @@ class OzonNotifierMessageTests(unittest.TestCase):
 
         self.assertEqual(APP.notification_key(order), "resolved")
         self.assertIn("✅ Проблема решена", APP.resolution_text(order))
+        self.assertIn("Площадка: Ozon", APP.resolution_text(order))
         self.assertIn("Текущий статус: Выполнен", APP.resolution_text(order))
+
+    def test_yandex_market_error_alert_hides_provider_detail(self):
+        # Проверяет, что тревога Яндекс Маркета показывает оператору действие без технической ошибки поставщика.
+        delivery = {
+            "order_id": 101,
+            "offer_id": "PSN-500",
+            "item_name": "PlayStation Store 500 ₽",
+            "required_qty": 1,
+            "status": "market_unknown",
+            "last_error": "Сетевая ошибка поставщика",
+        }
+
+        text = APP.yandex_alert_text(delivery)
+
+        self.assertIn("Требуется оператор", text)
+        self.assertIn("Площадка: Яндекс Маркет", text)
+        self.assertIn("Заказ: 101", text)
+        self.assertIn("Необходим ручной ввод или ручная отправка.", text)
+        self.assertNotIn("Сетевая ошибка поставщика", text)
+
+    def test_yandex_market_resolution_requires_a_previous_alert(self):
+        # Проверяет, что успешная выдача Яндекс Маркета сама по себе не создаёт сообщение о решении.
+        successful_delivery = {"status": "market_delivered", "last_status": ""}
+        resolved_delivery = {"status": "market_delivered", "last_status": "alert:market_unknown"}
+
+        self.assertEqual(APP.yandex_notification_key(successful_delivery), "")
+        self.assertEqual(APP.yandex_notification_key(resolved_delivery), "resolved")
+        self.assertIn("✅ Проблема решена", APP.yandex_resolution_text(resolved_delivery))
 
     def test_manual_order_and_changed_error_have_distinct_alerts(self):
         # Проверяет, что ручная обработка и новая причина ошибки доставляются как отдельные полезные тревоги.
