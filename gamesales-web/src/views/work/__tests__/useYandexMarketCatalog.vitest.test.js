@@ -61,6 +61,18 @@ describe('useYandexMarketCatalog', () => {
     )
   })
 
+  it('keeps a production pool error inside the key-delivery screen', async () => {
+    const apiPost = vi.fn().mockRejectedValue(new Error('В ручном пуле нет полного комплекта ключей для этого заказа'))
+    const instance = useYandexMarketCatalog({
+      auth: { state: { token: 'market-token' } }, apiGet: vi.fn(), apiPost, apiPut: vi.fn(), mapApiError: (message) => message, requestDealConfirm: vi.fn(),
+    })
+
+    await instance.issueYandexMarketProductionOrderFromPool({ id: 25 })
+
+    expect(instance.yandexMarketProductionManualDeliveryError.value).toContain('полного комплекта')
+    expect(instance.yandexMarketCatalogDetailsError.value).toBe('')
+  })
+
   it('opens the key screen without saving settings or sending anything to Market', async () => {
     const instance = useYandexMarketCatalog({
       auth: { state: { token: 'market-token' } }, apiGet: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), mapApiError: vi.fn(), requestDealConfirm: vi.fn(),
@@ -269,6 +281,7 @@ describe('WorkYandexMarketDigitalSettingsModal', () => {
         loadMarketplaceKeyPoolFor,
         yandexMarketInterhubServices: [{ service_id: 25, title: 'PlayStation Turkey', category: 'Турция', fields: [{ name: 'nominal', value_list: [{ id: 250, title: '250 TRY' }] }] }],
         yandexMarketProductionManualOrders: [{ id: 25, order_id: 501, offer_id: 'PSN-500', item_name: 'PSN 500', required_qty: 1, collected_qty: 0, status: 'manual_required' }],
+        yandexMarketProductionManualDeliveryError: 'В ручном пуле нет полного комплекта ключей для этого заказа',
         deliverYandexMarketProductionOrder,
         issueYandexMarketProductionOrderFromPool,
       },
@@ -278,6 +291,7 @@ describe('WorkYandexMarketDigitalSettingsModal', () => {
     expect(wrapper.text()).toContain('Ключи Яндекс Маркета')
     expect(wrapper.text()).not.toContain('Локальная выдача fake-заказов')
     expect(wrapper.text()).toContain('Ручная выдача')
+    expect(wrapper.text()).toContain('В ручном пуле нет полного комплекта ключей для этого заказа')
     expect(wrapper.get('input[aria-label="Автовыдача через Interhub Яндекс Маркета"]').attributes('disabled')).toBeUndefined()
     expect(wrapper.get('input[aria-label="Выдача из ручного пула Яндекс Маркета"]').element.checked).toBe(true)
     expect(wrapper.get('input[aria-label="Отправлять сообщение вместо кода Яндекс Маркета"]').element.checked).toBe(false)

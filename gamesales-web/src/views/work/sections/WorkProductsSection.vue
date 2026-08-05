@@ -138,6 +138,7 @@
         :yandex-market-production-manual-orders="ctx.yandexMarketProductionManualOrders"
         :yandex-market-production-manual-orders-loading="ctx.yandexMarketProductionManualOrdersLoading"
         :yandex-market-production-manual-delivery-saving="ctx.yandexMarketProductionManualDeliverySaving"
+        :yandex-market-production-manual-delivery-error="ctx.yandexMarketProductionManualDeliveryError"
         :yandex-market-orders="ctx.yandexMarketOrders"
         :yandex-market-sandbox-delivery-saving="ctx.yandexMarketSandboxDeliverySaving"
         :deliver-yandex-market-sandbox-order="ctx.deliverYandexMarketSandboxOrder"

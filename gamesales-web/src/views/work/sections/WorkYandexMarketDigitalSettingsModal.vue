@@ -82,6 +82,7 @@
           </section>
           <section v-if="!yandexMarketSandboxMode" class="ozon-digital-modal__orders">
             <div class="ozon-digital-modal__orders-head"><div><h4>Ручная выдача</h4><p class="muted">Заказы, для которых ключ не выдан автоматически. Отправка в Яндекс Маркет — только по вашей кнопке.</p></div><span class="ozon-digital-modal__manual-count">{{ yandexMarketProductionManualOrders.length }}</span></div>
+            <p v-if="yandexMarketProductionManualDeliveryError" class="bad">{{ yandexMarketProductionManualDeliveryError }}</p>
             <p v-if="yandexMarketProductionManualOrdersLoading" class="ozon-digital-modal__empty muted">Загружаем очередь ручной выдачи…</p>
             <p v-else-if="!yandexMarketProductionManualOrders.length" class="ozon-digital-modal__empty muted">Заказов, требующих ручного ключа, пока нет.</p>
             <article v-for="order in yandexMarketProductionManualOrders" :key="order.id" class="ozon-digital-order">
@@ -142,6 +143,7 @@ const props = defineProps({
   yandexMarketProductionManualOrders: { type: Array, default: () => [] },
   yandexMarketProductionManualOrdersLoading: { type: Boolean, default: false },
   yandexMarketProductionManualDeliverySaving: { type: Number, default: 0 },
+  yandexMarketProductionManualDeliveryError: { type: String, default: '' },
   deliverYandexMarketProductionOrder: { type: Function, default: async () => ({ ok: false }) },
   issueYandexMarketProductionOrderFromPool: { type: Function, default: async () => ({ ok: false }) },
   yandexMarketOrders: { type: Array, default: () => [] },

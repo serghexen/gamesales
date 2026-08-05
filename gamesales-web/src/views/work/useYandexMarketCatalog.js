@@ -29,6 +29,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
   const yandexMarketProductionManualOrders = ref([])
   const yandexMarketProductionManualOrdersLoading = ref(false)
   const yandexMarketProductionManualDeliverySaving = ref(0)
+  const yandexMarketProductionManualDeliveryError = ref('')
   const yandexMarketProductionStartDeliverySaving = ref(0)
   const yandexMarketInterhubServices = ref([])
   const yandexMarketInterhubServicesLoading = ref(false)
@@ -253,11 +254,12 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     const offerId = String(yandexMarketCatalogDetails.value?.offer_id || '').trim()
     if (!offerId || yandexMarketSandboxMode.value || yandexMarketProductionManualOrdersLoading.value) return
     yandexMarketProductionManualOrdersLoading.value = true
+    yandexMarketProductionManualDeliveryError.value = ''
     try {
       const data = await apiGet(yandexMarketTestPath(`/marketplaces/yandex/catalog/${encodeURIComponent(offerId)}/manual-deliveries`), { token: auth.state.token })
       yandexMarketProductionManualOrders.value = Array.isArray(data?.items) ? data.items : []
     } catch (error) {
-      yandexMarketCatalogDetailsError.value = yandexMarketError(error, 'Не удалось загрузить очередь ручной выдачи Яндекс Маркета')
+      yandexMarketProductionManualDeliveryError.value = yandexMarketError(error, 'Не удалось загрузить очередь ручной выдачи Яндекс Маркета')
     } finally {
       yandexMarketProductionManualOrdersLoading.value = false
     }
@@ -284,13 +286,14 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     const codes = String(rawCodes || '').split(/\r?\n/).map((code) => code.trim()).filter(Boolean)
     if (!deliveryId || !codes.length) return { ok: false, message: 'Введите ключ для отправки' }
     yandexMarketProductionManualDeliverySaving.value = deliveryId
+    yandexMarketProductionManualDeliveryError.value = ''
     try {
       await apiPost(`/marketplaces/yandex/digital-deliveries/${encodeURIComponent(deliveryId)}/deliver`, { codes }, { token: auth.state.token })
       await loadYandexMarketProductionManualOrders()
       return { ok: true, message: '' }
     } catch (error) {
       const message = yandexMarketError(error, 'Не удалось отправить ключ в Яндекс Маркет')
-      yandexMarketCatalogDetailsError.value = message
+      yandexMarketProductionManualDeliveryError.value = message
       return { ok: false, message }
     } finally {
       yandexMarketProductionManualDeliverySaving.value = 0
@@ -302,13 +305,14 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     const deliveryId = Number(order?.id || 0)
     if (!deliveryId) return { ok: false, message: 'Не удалось определить выдачу' }
     yandexMarketProductionManualDeliverySaving.value = deliveryId
+    yandexMarketProductionManualDeliveryError.value = ''
     try {
       await apiPost(`/marketplaces/yandex/digital-deliveries/${encodeURIComponent(deliveryId)}/issue-from-pool`, {}, { token: auth.state.token })
       await loadYandexMarketProductionManualOrders()
       return { ok: true, message: '' }
     } catch (error) {
       const message = yandexMarketError(error, 'Не удалось выдать ключ из ручного пула')
-      yandexMarketCatalogDetailsError.value = message
+      yandexMarketProductionManualDeliveryError.value = message
       return { ok: false, message }
     } finally {
       yandexMarketProductionManualDeliverySaving.value = 0
@@ -554,6 +558,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     yandexMarketProductionManualOrders,
     yandexMarketProductionManualOrdersLoading,
     yandexMarketProductionManualDeliverySaving,
+    yandexMarketProductionManualDeliveryError,
     yandexMarketProductionStartDeliverySaving,
     yandexMarketInterhubServices,
     yandexMarketInterhubServicesLoading,
