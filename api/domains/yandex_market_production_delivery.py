@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from hashlib import sha256
 import json
 import os
@@ -22,7 +22,7 @@ from .yandex_market_catalog_service import (
 
 
 class YandexMarketManualDeliveryIn(BaseModel):
-    codes: list[str] = Field(min_length=1, max_length=100)
+    codes: list[str] = Field(default_factory=list, max_length=100)
 
 
 class YandexMarketDigitalOrderCodesOut(BaseModel):
@@ -43,6 +43,7 @@ def build_yandex_market_production_delivery_processor(
     interhub_pay=None,
     interhub_check_status=None,
     stock_republish_delay_sec: float = 3,
+    outbound_delivery_recovery_grace_sec: int = 600,
 ) -> Callable[[str, int, int, datetime | None], None]:
     # Создает боевой обработчик отдельно от приема уведомления: выключенный флаг исключает резерв и внешние API.
     def pool_secret() -> str:
@@ -143,29 +144,69 @@ def build_yandex_market_production_delivery_processor(
             )
             conn.commit()
 
-    def save_supplier_code(delivery_id: int, code: str) -> bool:
-        # Закрепляет полученный ключ до следующей покупки, чтобы повторный ответ поставщика не ушел другому покупателю.
-        normalized = str(code or "").strip()
-        if not normalized:
-            mark_manual(delivery_id, "Interhub подтвердил оплату, но не вернул ключ. Проверьте операцию у поставщика.")
-            return False
+    def finalize_paid_supplier_attempt(attempt_id: int) -> tuple[bool, int]:
+        # Одним коммитом переносит оплаченный ключ InterHub в выдачу и отмечает попытку полностью примененной.
         with psycopg.connect(DB_DSN) as conn:
             row = q1(
                 conn,
-                "SELECT required_qty, delivered_codes, status FROM app.marketplace_yandex_digital_deliveries WHERE id=%s FOR UPDATE",
-                (delivery_id,),
+                """
+                SELECT attempt.delivery_id,
+                       COALESCE(NULLIF(attempt.gift_code, ''), NULLIF(transaction.gift_code, '')),
+                       attempt.state, attempt.code_applied_at,
+                       delivery.required_qty, delivery.delivered_codes, delivery.status
+                FROM app.marketplace_yandex_digital_supplier_attempts AS attempt
+                JOIN app.marketplace_yandex_digital_deliveries AS delivery ON delivery.id=attempt.delivery_id
+                LEFT JOIN app.interhub_transactions AS transaction
+                  ON transaction.agent_transaction_id=attempt.agent_transaction_id
+                WHERE attempt.id=%s
+                FOR UPDATE OF attempt, delivery
+                """,
+                (attempt_id,),
             )
-            if not row or str(row[2] or "") not in {"manual_required", "supplier_processing"}:
+            if not row:
+                return False, 0
+            delivery_id = int(row[0])
+            normalized = str(row[1] or "").strip()
+            attempt_state = str(row[2] or "")
+            if row[3] is not None:
                 conn.commit()
-                return False
-            codes = texts(row[1])
+                return True, delivery_id
+            required_qty = int(row[4] or 1)
+            codes = texts(row[5])
+            delivery_status = str(row[6] or "")
+            if attempt_state != "paid":
+                conn.commit()
+                return False, delivery_id
+            if not normalized:
+                message = "InterHub подтвердил оплату, но ключ пока не найден в сохраненном результате. Повторная покупка заблокирована."
+                exec1(conn, "UPDATE app.marketplace_yandex_digital_supplier_attempts SET finalization_error=%s, next_status_check_at=COALESCE(next_status_check_at, now() + interval '5 minutes'), updated_at=now() WHERE id=%s", (message, attempt_id))
+                exec1(
+                    conn,
+                    "UPDATE app.marketplace_yandex_digital_deliveries SET status=CASE WHEN status IN ('cancelled', 'market_sending', 'market_submitted', 'market_unknown', 'market_delivered') THEN status ELSE 'supplier_processing' END, last_error=%s, updated_at=now() WHERE id=%s",
+                    (message, delivery_id),
+                )
+                conn.commit()
+                return False, delivery_id
             if normalized in codes:
+                exec1(
+                    conn,
+                    "UPDATE app.marketplace_yandex_digital_supplier_attempts SET gift_code=%s, code_applied_at=now(), finalization_error='', updated_at=now() WHERE id=%s",
+                    (normalized, attempt_id),
+                )
                 conn.commit()
-                mark_manual(delivery_id, "Interhub вернул повторный ключ. Добавьте недостающий ключ вручную.")
-                return False
-            if len(codes) >= int(row[0] or 1):
+                return True, delivery_id
+            if delivery_status in {"market_sending", "market_submitted", "market_unknown", "market_delivered"}:
+                message = f"Оплаченный ключ InterHub не совпал с уже отправленным комплектом выдачи со статусом {delivery_status}"
+                exec1(conn, "UPDATE app.marketplace_yandex_digital_supplier_attempts SET gift_code=%s, finalization_error=%s, updated_at=now() WHERE id=%s", (normalized, message[:2000], attempt_id))
+                exec1(conn, "UPDATE app.marketplace_yandex_digital_deliveries SET last_error=%s, updated_at=now() WHERE id=%s", (message[:2000], delivery_id))
                 conn.commit()
-                return False
+                return False, delivery_id
+            if len(codes) >= required_qty:
+                message = "Оплаченный ключ InterHub не помещается в уже собранный комплект выдачи"
+                exec1(conn, "UPDATE app.marketplace_yandex_digital_supplier_attempts SET gift_code=%s, finalization_error=%s, updated_at=now() WHERE id=%s", (normalized, message, attempt_id))
+                exec1(conn, "UPDATE app.marketplace_yandex_digital_deliveries SET last_error=%s, updated_at=now() WHERE id=%s", (message, delivery_id))
+                conn.commit()
+                return False, delivery_id
             owner = q1(
                 conn,
                 """
@@ -177,21 +218,41 @@ def build_yandex_market_production_delivery_processor(
                 (code_hash(normalized), delivery_id),
             )
             if not owner:
-                conn.commit()
-                mark_manual(delivery_id, "Interhub вернул ключ, уже закрепленный за другим заказом.")
-                return False
+                existing_owner = q1(
+                    conn,
+                    "SELECT delivery_id FROM app.marketplace_yandex_digital_code_registry WHERE code_hash=%s",
+                    (code_hash(normalized),),
+                )
+                if not existing_owner or int(existing_owner[0]) != delivery_id:
+                    message = "InterHub вернул ключ, уже закрепленный за другим заказом"
+                    exec1(conn, "UPDATE app.marketplace_yandex_digital_supplier_attempts SET gift_code=%s, finalization_error=%s, updated_at=now() WHERE id=%s", (normalized, message, attempt_id))
+                    exec1(conn, "UPDATE app.marketplace_yandex_digital_deliveries SET status=CASE WHEN status='cancelled' THEN status ELSE 'manual_required' END, last_error=%s, updated_at=now() WHERE id=%s", (message, delivery_id))
+                    conn.commit()
+                    return False, delivery_id
             codes.append(normalized)
             exec1(
                 conn,
                 """
                 UPDATE app.marketplace_yandex_digital_deliveries
-                SET delivered_codes=%s::jsonb, delivery_source='interhub', status='supplier_processing', last_error='', updated_at=now()
+                SET delivered_codes=%s::jsonb, delivery_source='interhub',
+                    status=CASE WHEN status='cancelled' THEN status ELSE 'supplier_processing' END,
+                    last_error='', updated_at=now()
                 WHERE id=%s
                 """,
                 (json.dumps(codes, ensure_ascii=False), delivery_id),
             )
+            exec1(
+                conn,
+                "UPDATE app.marketplace_yandex_digital_supplier_attempts SET gift_code=%s, code_applied_at=now(), finalization_error='', updated_at=now() WHERE id=%s",
+                (normalized, attempt_id),
+            )
+            exec1(
+                conn,
+                "UPDATE app.interhub_transactions SET gift_code=COALESCE(NULLIF(gift_code, ''), %s), updated_at=now() WHERE agent_transaction_id=(SELECT agent_transaction_id FROM app.marketplace_yandex_digital_supplier_attempts WHERE id=%s)",
+                (normalized, attempt_id),
+            )
             conn.commit()
-        return True
+        return True, delivery_id
 
     def republish_yandex_target_stock(store_code: str, offer_id: str) -> None:
         # После принятого ключа повторяет сохраненный оператором остаток и не пытается вычислять запас поставщика.
@@ -265,7 +326,7 @@ def build_yandex_market_production_delivery_processor(
                 return
             exec1(
                 conn,
-                "UPDATE app.marketplace_yandex_digital_deliveries SET status='market_sending', last_error='', updated_at=now() WHERE id=%s",
+                "UPDATE app.marketplace_yandex_digital_deliveries SET status='market_sending', market_send_started_at=now(), last_error='', updated_at=now() WHERE id=%s",
                 (delivery_id,),
             )
             conn.commit()
@@ -278,19 +339,60 @@ def build_yandex_market_production_delivery_processor(
             with psycopg.connect(DB_DSN) as conn:
                 exec1(
                     conn,
-                    "UPDATE app.marketplace_yandex_digital_deliveries SET status=%s, last_error=%s, updated_at=now() WHERE id=%s",
+                    "UPDATE app.marketplace_yandex_digital_deliveries SET status=%s, last_error=%s, updated_at=now() WHERE id=%s AND status='market_sending'",
                     ("manual_required" if definite else "market_unknown", str(error.detail)[:2000], delivery_id),
                 )
                 conn.commit()
             return
         with psycopg.connect(DB_DSN) as conn:
+            submitted_at = datetime.now(timezone.utc)
             exec1(
                 conn,
-                "UPDATE app.marketplace_yandex_digital_deliveries SET status='market_submitted', market_submitted_at=now(), updated_at=now() WHERE id=%s",
-                (delivery_id,),
+                "UPDATE app.marketplace_yandex_digital_deliveries SET status='market_submitted', market_submitted_at=%s, updated_at=now() WHERE id=%s AND status='market_sending'",
+                (submitted_at, delivery_id),
+            )
+            # Подтвержденная отправка завершает тот же резерв пула, не освобождая и не меняя закрепленный ключ.
+            exec1(
+                conn,
+                """
+                UPDATE app.marketplace_manual_keys AS key
+                SET status='delivered', issued_at=%s, updated_at=now()
+                FROM app.marketplace_manual_key_pools AS pool
+                WHERE key.pool_id=pool.id
+                  AND pool.marketplace='yandex_market'
+                  AND pool.store_code=%s
+                  AND pool.product_key=%s
+                  AND key.issued_order_ref=%s
+                  AND key.status IN ('reserved', 'sending')
+                """,
+                (submitted_at, str(row[0]), str(row[4]), f"yandex:{row[0]}:{row[1]}:{row[2]}"),
             )
             conn.commit()
         schedule_yandex_target_stock_republish(str(row[0]), str(row[4]))
+
+    def recover_stale_market_sendings(enabled_store_codes: set[str]) -> None:
+        # Помечает прерванную отправку как неоднозначную, чтобы повторный цикл не отправил тот же ключ в Маркет автоматически.
+        if not enabled_store_codes:
+            return
+        grace_seconds = max(60, int(outbound_delivery_recovery_grace_sec or 600))
+        recovery_error = (
+            "Процесс остановился во время отправки закрепленного ключа. "
+            "Автоматический повтор запрещен; дождитесь статуса DELIVERED или проверьте заказ в Яндекс Маркете."
+        )
+        with psycopg.connect(DB_DSN) as conn:
+            exec1(
+                conn,
+                """
+                UPDATE app.marketplace_yandex_digital_deliveries
+                SET status='market_unknown', last_error=%s, updated_at=now()
+                WHERE status='market_sending'
+                  AND store_code = ANY(%s)
+                  AND market_send_started_at IS NOT NULL
+                  AND market_send_started_at <= now() - (%s * interval '1 second')
+                """,
+                (recovery_error, sorted(enabled_store_codes), grace_seconds),
+            )
+            conn.commit()
 
     def take_from_pool(delivery_id: int, allowed_statuses: set[str] | None = None) -> bool:
         # Резервирует полный комплект из пула транзакционно: частичный заказ автоматически не отправляется.
@@ -428,6 +530,20 @@ def build_yandex_market_production_delivery_processor(
             if active:
                 conn.commit()
                 return "pending"
+            paid_unapplied = q1(
+                conn,
+                """
+                SELECT id FROM app.marketplace_yandex_digital_supplier_attempts
+                WHERE delivery_id=%s AND state='paid' AND code_applied_at IS NULL
+                ORDER BY updated_at, id
+                LIMIT 1
+                """,
+                (delivery_id,),
+            )
+            if paid_unapplied:
+                # Уже оплаченный ключ сначала восстановит фоновый финализатор; новый pay здесь запрещен.
+                conn.commit()
+                return "pending"
             failed = q1(
                 conn,
                 """
@@ -499,13 +615,17 @@ def build_yandex_market_production_delivery_processor(
                 conn.commit()
             return "pending" if pay_started else "failed"
         state = provider_state(paid)
+        paid_gift_code = str((paid.get("params") or {}).get("gift_code") or "").strip()
+        needs_status_retry = state == "processing" or (state == "paid" and not paid_gift_code)
         with psycopg.connect(DB_DSN) as conn:
             exec1(
                 conn,
                 """
                 UPDATE app.marketplace_yandex_digital_supplier_attempts
                 SET state=%s, provider_status=%s, provider_message=%s, provider_response=%s::jsonb,
-                    next_status_check_at=CASE WHEN %s='processing' THEN now() + interval '1 minute' ELSE NULL END,
+                    next_status_check_at=CASE WHEN %s THEN now() + interval '1 minute' ELSE NULL END,
+                    gift_code=CASE WHEN %s='paid' AND %s<>'' THEN %s ELSE gift_code END,
+                    finalization_error=CASE WHEN %s='paid' THEN '' ELSE finalization_error END,
                     updated_at=now()
                 WHERE agent_transaction_id=%s
                 """,
@@ -514,6 +634,10 @@ def build_yandex_market_production_delivery_processor(
                     int(paid.get("status") or 0),
                     str(paid.get("message") or "")[:2000],
                     json.dumps(paid.get("raw") or {}),
+                    needs_status_retry,
+                    state,
+                    paid_gift_code,
+                    paid_gift_code,
                     state,
                     transaction_id,
                 ),
@@ -525,7 +649,15 @@ def build_yandex_market_production_delivery_processor(
         except Exception:
             pass
         if state == "paid":
-            return "completed" if save_supplier_code(delivery_id, str((paid.get("params") or {}).get("gift_code") or "")) else "failed"
+            with psycopg.connect(DB_DSN) as conn:
+                attempt = q1(
+                    conn,
+                    "SELECT id FROM app.marketplace_yandex_digital_supplier_attempts WHERE agent_transaction_id=%s",
+                    (transaction_id,),
+                )
+                conn.commit()
+            applied, _applied_delivery_id = finalize_paid_supplier_attempt(int(attempt[0])) if attempt else (False, delivery_id)
+            return "completed" if applied else "pending"
         return "pending" if state == "processing" else "failed"
 
     def process_delivery_steps(delivery_id: int) -> None:
@@ -571,10 +703,66 @@ def build_yandex_market_production_delivery_processor(
                 send_support_message(delivery_id)
             return
 
+    def recover_paid_supplier_attempts(enabled_store_codes: set[str]) -> None:
+        # После рестарта применяет уже оплаченные ключи и продолжает выдачи, остановленные между коммитами.
+        with psycopg.connect(DB_DSN) as conn:
+            paid_attempts = qall(
+                conn,
+                """
+                SELECT attempt.id
+                FROM app.marketplace_yandex_digital_supplier_attempts AS attempt
+                JOIN app.marketplace_yandex_digital_deliveries AS delivery ON delivery.id=attempt.delivery_id
+                WHERE attempt.state='paid' AND attempt.code_applied_at IS NULL
+                  AND delivery.store_code = ANY(%s)
+                ORDER BY attempt.updated_at, attempt.id
+                LIMIT 100
+                """,
+                (sorted(enabled_store_codes),),
+            )
+            conn.commit()
+        delivery_ids: set[int] = set()
+        for paid_attempt in paid_attempts:
+            applied, delivery_id = finalize_paid_supplier_attempt(int(paid_attempt[0]))
+            if applied and delivery_id:
+                delivery_ids.add(delivery_id)
+        with psycopg.connect(DB_DSN) as conn:
+            stranded_deliveries = qall(
+                conn,
+                """
+                SELECT delivery.id
+                FROM app.marketplace_yandex_digital_deliveries AS delivery
+                WHERE delivery.status='supplier_processing'
+                  AND delivery.store_code = ANY(%s)
+                  AND NOT EXISTS (
+                    SELECT 1 FROM app.marketplace_yandex_digital_supplier_attempts AS attempt
+                    WHERE attempt.delivery_id=delivery.id AND attempt.state='processing'
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM app.marketplace_yandex_digital_supplier_attempts AS attempt
+                    WHERE attempt.delivery_id=delivery.id AND attempt.state='paid' AND attempt.code_applied_at IS NULL
+                  )
+                ORDER BY delivery.updated_at, delivery.id
+                LIMIT 100
+                """,
+                (sorted(enabled_store_codes),),
+            )
+            conn.commit()
+        delivery_ids.update(int(row[0]) for row in stranded_deliveries)
+        for delivery_id in sorted(delivery_ids):
+            try:
+                process_delivery_steps(delivery_id)
+            except Exception:
+                # Следующий цикл повторит локальное продолжение, не создавая pay поверх незавершенной попытки.
+                continue
+
     def refresh_supplier_attempts() -> None:
         # Дозапрашивает только оплаты включенных кабинетов и никогда не создает новый заказ, ключ или повторный pay.
         enabled_store_codes = yandex_market_production_auto_delivery_enabled_store_codes()
-        if not interhub_check_status or not enabled_store_codes:
+        if not enabled_store_codes:
+            return
+        recover_stale_market_sendings(enabled_store_codes)
+        recover_paid_supplier_attempts(enabled_store_codes)
+        if not interhub_check_status:
             return
         lock_token = str(uuid.uuid4())
         with psycopg.connect(DB_DSN) as conn:
@@ -585,7 +773,11 @@ def build_yandex_market_production_delivery_processor(
                   SELECT attempt.id
                   FROM app.marketplace_yandex_digital_supplier_attempts AS attempt
                   JOIN app.marketplace_yandex_digital_deliveries AS delivery ON delivery.id=attempt.delivery_id
-                  WHERE attempt.state='processing' AND attempt.next_status_check_at <= now()
+                  WHERE (
+                      attempt.state='processing'
+                      OR (attempt.state='paid' AND attempt.code_applied_at IS NULL AND attempt.gift_code='')
+                    )
+                    AND attempt.next_status_check_at <= now()
                     AND delivery.store_code = ANY(%s)
                     AND (attempt.status_check_locked_until IS NULL OR attempt.status_check_locked_until <= now())
                   ORDER BY attempt.next_status_check_at, attempt.id
@@ -594,26 +786,33 @@ def build_yandex_market_production_delivery_processor(
                 UPDATE app.marketplace_yandex_digital_supplier_attempts AS attempt
                 SET status_check_lock_token=%s::uuid, status_check_locked_until=now() + interval '5 minutes', updated_at=now()
                 FROM due WHERE attempt.id=due.id
-                RETURNING attempt.id, attempt.delivery_id, attempt.agent_transaction_id
+                RETURNING attempt.id, attempt.delivery_id, attempt.agent_transaction_id, attempt.state
                 """,
                 (sorted(enabled_store_codes), lock_token),
             )
             conn.commit()
-        for attempt_id, delivery_id, transaction_id in attempts:
+        for attempt_id, delivery_id, transaction_id, saved_attempt_state in attempts:
             try:
                 result = interhub_check_status({"agent_transaction_id": str(transaction_id)})
-                state = provider_state(result)
+                result_state = provider_state(result)
             except Exception as error:
                 result = {"success": False, "status": 0, "message": str(getattr(error, "detail", error)), "raw": {}}
-                state = "processing"
+                result_state = "processing"
+            # После paid продолжаем искать ключ, но не считаем оплату отмененной из-за временной сверки.
+            state = "paid" if str(saved_attempt_state or "") == "paid" else result_state
+            result_gift_code = str((result.get("params") or {}).get("gift_code") or "").strip()
+            confirmed_gift_code = result_state == "paid" and bool(result_gift_code)
+            needs_status_retry = state == "processing" or (state == "paid" and not confirmed_gift_code)
             with psycopg.connect(DB_DSN) as conn:
                 updated = exec1(
                     conn,
                     """
                     UPDATE app.marketplace_yandex_digital_supplier_attempts
                     SET state=%s, provider_status=%s, provider_message=%s, provider_response=%s::jsonb,
-                        next_status_check_at=CASE WHEN %s='processing' THEN now() + interval '5 minutes' ELSE NULL END,
-                        status_check_attempts=CASE WHEN %s='processing' THEN status_check_attempts + 1 ELSE status_check_attempts END,
+                        next_status_check_at=CASE WHEN %s THEN now() + interval '5 minutes' ELSE NULL END,
+                        status_check_attempts=CASE WHEN %s THEN status_check_attempts + 1 ELSE status_check_attempts END,
+                        gift_code=CASE WHEN %s='paid' AND %s<>'' THEN %s ELSE gift_code END,
+                        finalization_error=CASE WHEN %s='paid' THEN '' ELSE finalization_error END,
                         status_check_lock_token=NULL, status_check_locked_until=NULL, updated_at=now()
                     WHERE id=%s AND status_check_lock_token=%s::uuid
                     """,
@@ -622,8 +821,12 @@ def build_yandex_market_production_delivery_processor(
                         int(result.get("status") or 0),
                         str(result.get("message") or "")[:2000],
                         json.dumps(result.get("raw") or {}),
-                        state,
-                        state,
+                        needs_status_retry,
+                        needs_status_retry,
+                        result_state,
+                        result_gift_code,
+                        result_gift_code,
+                        result_state,
                         int(attempt_id),
                         lock_token,
                     ),
@@ -637,14 +840,16 @@ def build_yandex_market_production_delivery_processor(
                     except Exception:
                         pass
                 continue
-            try:
-                # Переносит финальный результат фоновой сверки в тот же общий журнал, что и Ozon.
-                save_auto_interhub_result(str(transaction_id), result)
-            except Exception:
-                pass
+            if str(saved_attempt_state or "") != "paid" or result_state == "paid":
+                try:
+                    # Переносит финальный результат фоновой сверки в тот же общий журнал, что и Ozon.
+                    save_auto_interhub_result(str(transaction_id), result)
+                except Exception:
+                    pass
             if state == "paid":
-                if save_supplier_code(int(delivery_id), str((result.get("params") or {}).get("gift_code") or "")):
-                    process_delivery_steps(int(delivery_id))
+                applied, finalized_delivery_id = finalize_paid_supplier_attempt(int(attempt_id))
+                if applied:
+                    process_delivery_steps(finalized_delivery_id)
             else:
                 # Финальный отказ может перейти к пулу, но никогда не повторяет исходный Interhub pay.
                 process_delivery_steps(int(delivery_id))
@@ -700,7 +905,9 @@ def build_yandex_market_production_delivery_processor(
                 FROM app.marketplace_yandex_digital_deliveries AS delivery
                 JOIN app.marketplace_yandex_order_items AS orders
                   ON orders.store_code=delivery.store_code AND orders.order_id=delivery.order_id AND orders.item_id=delivery.item_id
-                WHERE delivery.store_code=%s AND delivery.offer_id=%s AND delivery.status='manual_required'
+                WHERE delivery.store_code=%s
+                  AND delivery.offer_id=%s
+                  AND delivery.status IN ('manual_required', 'market_unknown')
                 ORDER BY delivery.created_at DESC, delivery.id DESC
                 """,
                 (store_code, offer_id),
@@ -728,13 +935,20 @@ def build_yandex_market_production_delivery_processor(
             )
             if not row:
                 raise HTTPException(404, "Цифровая выдача Яндекс Маркета не найдена")
-            if str(row[2] or "") != "manual_required":
+            delivery_status = str(row[2] or "")
+            if delivery_status not in {"manual_required", "market_unknown"}:
                 raise HTTPException(409, "Ручной ключ можно выдать только заказу, ожидающему ручной обработки")
             # Заменяет неотправленную заглушку настоящим ключом по явному действию оператора.
-            existing = [] if str(row[3] or "") == "support_message" else texts(row[1])
+            existing = [] if str(row[3] or "") == "support_message" and delivery_status == "manual_required" else texts(row[1])
+            required_qty = int(row[0] or 1)
+            if delivery_status == "market_unknown":
+                # Не дает заменить секрет после неоднозначного ответа: оператор может повторить только уже закрепленный комплект.
+                if prepared:
+                    raise HTTPException(400, "Для этой выдачи повторите уже закрепленные ключи без ввода новых")
+                if len(existing) != required_qty:
+                    raise HTTPException(409, "Для безопасного повтора не найден полный закрепленный комплект ключей")
             new_codes = [code for code in prepared if code not in existing]
             all_codes = existing + new_codes
-            required_qty = int(row[0] or 1)
             if len(all_codes) != required_qty:
                 raise HTTPException(400, f"Для этой позиции нужно ключей: {required_qty - len(existing)}")
             for code in new_codes:
@@ -796,8 +1010,23 @@ def build_yandex_market_production_delivery_processor(
                 # Закрывает локальную историю по подтвержденному уведомлению Маркета и не выполняет никаких внешних действий.
                 exec1(
                     conn,
-                    "UPDATE app.marketplace_yandex_digital_deliveries SET status='market_delivered', delivered_at=now(), updated_at=now() WHERE store_code=%s AND order_id=%s AND item_id=%s AND status IN ('market_submitted', 'market_unknown')",
+                    "UPDATE app.marketplace_yandex_digital_deliveries SET status='market_delivered', delivered_at=now(), last_error='', updated_at=now() WHERE store_code=%s AND order_id=%s AND item_id=%s AND status IN ('market_sending', 'market_submitted', 'market_unknown')",
                     (store_code, order_id, item_id),
+                )
+                exec1(
+                    conn,
+                    """
+                    UPDATE app.marketplace_manual_keys AS key
+                    SET status='delivered', issued_at=COALESCE(key.issued_at, now()), updated_at=now()
+                    FROM app.marketplace_manual_key_pools AS pool
+                    WHERE key.pool_id=pool.id
+                      AND pool.marketplace='yandex_market'
+                      AND pool.store_code=%s
+                      AND pool.product_key=%s
+                      AND key.issued_order_ref=%s
+                      AND key.status IN ('reserved', 'sending')
+                    """,
+                    (store_code, str(order[0]), f"yandex:{store_code}:{order_id}:{item_id}"),
                 )
                 conn.commit()
                 return
@@ -868,6 +1097,10 @@ def build_yandex_market_production_delivery_processor(
     process.issue_from_pool_manually = issue_from_pool_manually  # type: ignore[attr-defined]
     process.start_existing_order_manually = start_existing_order_manually  # type: ignore[attr-defined]
     process.reveal_delivered_codes = reveal_delivered_codes  # type: ignore[attr-defined]
+    process.finalize_paid_supplier_attempt = finalize_paid_supplier_attempt  # type: ignore[attr-defined]
+    process.recover_paid_supplier_attempts = recover_paid_supplier_attempts  # type: ignore[attr-defined]
+    process.recover_stale_market_sendings = recover_stale_market_sendings  # type: ignore[attr-defined]
+    process.buy_from_interhub = buy_from_interhub  # type: ignore[attr-defined]
     return process
 
 

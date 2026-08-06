@@ -82,6 +82,126 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
         }, clear=False):
             processor.refresh_supplier_attempts()
 
+    # Оплаченный ключ и отметка его применения должны сохраняться одним финальным коммитом выдачи Яндекса.
+    def test_paid_yandex_attempt_finalization_applies_code_and_marks_attempt(self):
+        writes = []
+
+        def fake_q1(_conn, sql, _params=None):
+            if "SELECT attempt.delivery_id" in sql:
+                return (31, "PAID-CODE-ONE", "paid", None, 1, [], "supplier_processing")
+            if "INSERT INTO app.marketplace_yandex_digital_code_registry" in sql:
+                return (31,)
+            return None
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=lambda *_args: [],
+            exec1=lambda _conn, sql, params=None: writes.append((sql, params)),
+        )
+
+        applied, delivery_id = processor.finalize_paid_supplier_attempt(17)
+
+        self.assertTrue(applied)
+        self.assertEqual(delivery_id, 31)
+        self.assertTrue(any("SET delivered_codes=%s::jsonb" in sql and params[0] == '[\"PAID-CODE-ONE\"]' for sql, params in writes))
+        self.assertTrue(any("code_applied_at=now()" in sql and params == ("PAID-CODE-ONE", 17) for sql, params in writes))
+
+    # Ответ paid сначала сохраняет строковое состояние и ключ попытки, а затем запускает атомарный финализатор.
+    def test_yandex_paid_response_is_persisted_before_finalization(self):
+        writes = []
+
+        def fake_q1(_conn, sql, _params=None):
+            if "SELECT delivery.store_code, delivery.offer_id, delivery.required_qty" in sql:
+                return ("joycards", "PUBG-300", 1, [], "supplier_processing", 7, 9, "300", {})
+            if "state='processing'" in sql or "state='paid' AND code_applied_at IS NULL" in sql:
+                return None
+            if "state IN ('failed', 'manual_required')" in sql:
+                return None
+            if "WHERE agent_transaction_id=%s" in sql and sql.lstrip().startswith("SELECT id"):
+                return (17,)
+            if "SELECT attempt.delivery_id" in sql:
+                return (31, "PAID-CODE-ONE", "paid", None, 1, [], "supplier_processing")
+            if "INSERT INTO app.marketplace_yandex_digital_code_registry" in sql:
+                return (31,)
+            return None
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=lambda *_args: [],
+            exec1=lambda _conn, sql, params=None: writes.append((sql, params)) or 1,
+            interhub_calculate=lambda _payload: {"success": True, "fixed_amount": "100"},
+            interhub_check=lambda _payload: {"success": True, "status": 0, "raw": {}},
+            interhub_pay=lambda _payload: {
+                "success": True,
+                "status": 0,
+                "message": "paid",
+                "params": {"gift_code": "PAID-CODE-ONE"},
+                "raw": {},
+            },
+        )
+
+        result = processor.buy_from_interhub(31)
+
+        self.assertEqual(result, "completed")
+        paid_updates = [params for sql, params in writes if "provider_response=%s::jsonb" in sql and "next_status_check_at=CASE WHEN %s THEN" in sql]
+        self.assertEqual(paid_updates[0][0], "paid")
+        self.assertFalse(paid_updates[0][4])
+        self.assertEqual(paid_updates[0][6:8], ("PAID-CODE-ONE", "PAID-CODE-ONE"))
+
+    # Повторный финализатор Яндекса не должен повторно добавлять уже примененный ключ.
+    def test_paid_yandex_attempt_finalization_is_idempotent(self):
+        writes = []
+        applied_at = datetime(2026, 8, 5, 12, 0, tzinfo=timezone.utc)
+
+        def fake_q1(_conn, sql, _params=None):
+            if "SELECT attempt.delivery_id" in sql:
+                return (31, "PAID-CODE-ONE", "paid", applied_at, 1, ["PAID-CODE-ONE"], "supplier_processing")
+            return None
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=lambda *_args: [],
+            exec1=lambda _conn, sql, params=None: writes.append((sql, params)),
+        )
+
+        applied, delivery_id = processor.finalize_paid_supplier_attempt(17)
+
+        self.assertTrue(applied)
+        self.assertEqual(delivery_id, 31)
+        self.assertEqual(writes, [])
+
+    # Paid без gift_code блокирует ручную и повторную выдачу, пока фоновая сверка ищет оплаченный ключ.
+    def test_paid_yandex_attempt_without_code_stays_unapplied(self):
+        writes = []
+
+        def fake_q1(_conn, sql, _params=None):
+            if "SELECT attempt.delivery_id" in sql:
+                return (31, None, "paid", None, 1, [], "supplier_processing")
+            return None
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=lambda *_args: [],
+            exec1=lambda _conn, sql, params=None: writes.append((sql, params)),
+        )
+
+        applied, delivery_id = processor.finalize_paid_supplier_attempt(17)
+
+        self.assertFalse(applied)
+        self.assertEqual(delivery_id, 31)
+        self.assertTrue(any("finalization_error=%s" in sql for sql, _params in writes))
+        self.assertTrue(any("ELSE 'supplier_processing'" in sql for sql, _params in writes))
+        self.assertTrue(any("next_status_check_at=COALESCE" in sql for sql, _params in writes))
+        self.assertFalse(any("digital_code_registry" in sql for sql, _params in writes))
+
     # Ожидающая оплата JoyCards проверяется отдельно, даже когда ASAT оставлен на безопасном выключенном режиме.
     def test_joycards_supplier_poll_runs_while_asat_is_disabled(self):
         status_calls = []
@@ -89,7 +209,7 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
 
         def fake_qall(_conn, sql, params=None):
             poll_queries.append((sql, params))
-            return [(17, 31, "joycards-transaction")]
+            return [(17, 31, "joycards-transaction", "processing")]
 
         processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
             DB_DSN="postgresql://test",
@@ -252,6 +372,9 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
 
         deliver.assert_called_once_with(501, item_id=99, codes=["CODE-ONE"], slip="Инструкция", store_code="asat")
         update_stock.assert_called_once_with("PSN-500", 7, store_code="asat")
+        self.assertTrue(any("status='market_sending', market_send_started_at=now()" in sql for sql, _params in writes))
+        self.assertTrue(any("status='market_submitted'" in sql and "status='market_sending'" in sql for sql, _params in writes))
+        self.assertTrue(any("UPDATE app.marketplace_manual_keys" in sql and "pool.marketplace='yandex_market'" in sql for sql, _params in writes))
         self.assertTrue(any("last_stock_sync_error=''" in sql for sql, _params in writes))
 
     # После недоступных Interhub и пула третий сценарий передает настроенное сообщение как намеренную заглушку.
@@ -339,6 +462,160 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
 
         self.assertFalse(any("marketplace_manual_key_pools" in sql for sql in queries))
         self.assertFalse(any("settings.support_error_message" in sql for sql in queries))
+
+    # Paid без примененного ключа не должен запускать второй pay, пул или сообщение поддержки.
+    def test_paid_unapplied_yandex_attempt_blocks_second_payment_and_fallbacks(self):
+        queries = []
+
+        def fake_q1(_conn, sql, _params=None):
+            queries.append(sql)
+            if "SELECT orders.offer_id" in sql:
+                return ("PUBG-300", 1, "PROCESSING", False, True, True, True)
+            if "INSERT INTO app.marketplace_yandex_digital_deliveries" in sql:
+                return (17,)
+            if "SELECT required_qty, delivered_codes, status, store_code, offer_id, delivery_source" in sql:
+                return (1, [], "supplier_processing", "joycards", "PUBG-300", "")
+            if "SELECT 1 FROM app.marketplace_yandex_digital_suppliers" in sql:
+                return (1,)
+            if "SELECT auto_issue_enabled, pool_issue_enabled, support_message_delivery_enabled" in sql:
+                return (True, True, True)
+            if "SELECT delivery.store_code, delivery.offer_id, delivery.required_qty" in sql:
+                return ("joycards", "PUBG-300", 1, [], "supplier_processing", 7, 9, "300", {})
+            if "state='processing'" in sql:
+                return None
+            if "state='paid' AND code_applied_at IS NULL" in sql:
+                return (99,)
+            return None
+
+        forbidden = lambda *_args: (_ for _ in ()).throw(AssertionError("Нельзя запускать повторную оплату"))
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=lambda *_args: [],
+            exec1=lambda *_args: 1,
+            interhub_calculate=forbidden,
+            interhub_check=forbidden,
+            interhub_pay=forbidden,
+        )
+        with patch.dict(os.environ, {"YANDEX_MARKET_JOYCARDS_AUTO_DELIVERY_ENABLED": "true"}, clear=False):
+            processor.start_existing_order_manually("joycards", 501, 99)
+
+        self.assertFalse(any("marketplace_manual_key_pools" in sql for sql in queries))
+        self.assertFalse(any("settings.support_error_message" in sql for sql in queries))
+
+    # Временный check_status не должен откатить paid или открыть Яндекс-заказ для второго источника.
+    def test_paid_yandex_attempt_without_code_keeps_polling_after_status_error(self):
+        writes = []
+
+        def fake_qall(_conn, sql, _params=None):
+            if "SELECT attempt.id" in sql and "WITH due AS" not in sql:
+                return []
+            if "SELECT delivery.id" in sql:
+                return []
+            if "WITH due AS" in sql:
+                return [(17, 31, "paid-without-code", "paid")]
+            return []
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=lambda *_args: None,
+            qall=fake_qall,
+            exec1=lambda _conn, sql, params=None: writes.append((sql, params)) or 1,
+            interhub_check_status=lambda *_args: (_ for _ in ()).throw(TimeoutError("temporary")),
+        )
+        with patch.dict(os.environ, {"YANDEX_MARKET_JOYCARDS_AUTO_DELIVERY_ENABLED": "true"}, clear=False):
+            processor.refresh_supplier_attempts()
+
+        status_updates = [
+            params
+            for sql, params in writes
+            if "status_check_lock_token=NULL" in sql and "marketplace_yandex_digital_supplier_attempts" in sql
+        ]
+        self.assertEqual(status_updates[0][0], "paid")
+        self.assertTrue(status_updates[0][4])
+        self.assertFalse(any("marketplace_manual_key_pools" in sql for sql, _params in writes))
+
+    # Зависший вызов Маркета переводится в явное неоднозначное состояние без автоматической повторной отправки ключа.
+    def test_stale_yandex_market_sending_becomes_unknown_without_resend(self):
+        writes = []
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=lambda *_args: None,
+            qall=lambda *_args: [],
+            exec1=lambda _conn, sql, params=None: writes.append((sql, params)),
+        )
+
+        with patch.object(yandex_market_production_delivery, "deliver_yandex_market_digital_goods") as deliver:
+            processor.recover_stale_market_sendings({"asat"})
+
+        deliver.assert_not_called()
+        recovery = [(sql, params) for sql, params in writes if "SET status='market_unknown'" in sql]
+        self.assertEqual(len(recovery), 1)
+        self.assertIn("market_send_started_at", recovery[0][0])
+        self.assertEqual(recovery[0][1][1], ["asat"])
+
+    # Поздний подтвержденный статус Маркета закрывает даже процесс, упавший прямо во время внешнего запроса.
+    def test_delivered_webhook_reconciles_market_sending(self):
+        writes = []
+
+        def fake_q1(_conn, sql, _params=None):
+            if "SELECT orders.offer_id" in sql:
+                return ("PSN-500", 1, "DELIVERED", False, True, False, False)
+            return None
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=lambda *_args: [],
+            exec1=lambda _conn, sql, params=None: writes.append((sql, params)),
+        )
+        env = {
+            "YANDEX_MARKET_ASAT_AUTO_DELIVERY_ENABLED": "true",
+            "YANDEX_MARKET_ASAT_AUTO_DELIVERY_NOT_BEFORE": "2026-01-01T00:00:00+00:00",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            processor("asat", 501, 99, datetime(2026, 8, 6, tzinfo=timezone.utc))
+
+        terminal_updates = [sql for sql, _params in writes if "status='market_delivered'" in sql]
+        self.assertEqual(len(terminal_updates), 1)
+        self.assertIn("'market_sending'", terminal_updates[0])
+        self.assertIn("last_error=''", terminal_updates[0])
+        self.assertTrue(any("UPDATE app.marketplace_manual_keys" in sql for sql, _params in writes))
+
+    # Операторский повтор market_unknown использует сохраненный комплект и не требует раскрывать ключ в браузер.
+    def test_manual_retry_of_unknown_delivery_reuses_saved_codes(self):
+        writes = []
+
+        def fake_q1(_conn, sql, _params=None):
+            if "SELECT required_qty, delivered_codes, status, delivery_source" in sql:
+                return (1, ["CODE-ONE"], "market_unknown", "interhub")
+            if "SELECT delivery.store_code, delivery.order_id" in sql:
+                return ("asat", 501, 99, ["CODE-ONE"], "PSN-500", "Инструкция", "supplier_processing")
+            if "SELECT delivery.id, delivery.order_id" in sql:
+                return (25, 501, 99, "PSN-500", 1, ["CODE-ONE"], "market_submitted", "", "PSN 500", "PROCESSING", datetime(2026, 8, 6, tzinfo=timezone.utc), datetime(2026, 8, 6, tzinfo=timezone.utc), "interhub")
+            return None
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=lambda *_args: [],
+            exec1=lambda _conn, sql, params=None: writes.append((sql, params)),
+            stock_republish_delay_sec=0,
+        )
+        with (
+            patch.object(yandex_market_production_delivery, "deliver_yandex_market_digital_goods", return_value={}) as deliver,
+            patch.object(yandex_market_production_delivery, "update_yandex_market_stock", return_value={}),
+        ):
+            result = processor.deliver_manually(25, [])
+
+        deliver.assert_called_once_with(501, item_id=99, codes=["CODE-ONE"], slip="Инструкция", store_code="asat")
+        self.assertEqual(result["status"], "market_submitted")
+        self.assertTrue(any("status='supplier_processing'" in sql for sql, _params in writes))
 
 
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")

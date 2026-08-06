@@ -34,6 +34,10 @@ class _FakeCursor:
         # История пуста: тест проверяет только границы запроса, а не данные БД.
         return []
 
+    def fetchone(self):
+        # Возвращаем пустые итоги для агрегатного запроса истории.
+        return (0, 0)
+
 
 class _FakeConnection:
     def __init__(self, queries):
@@ -100,11 +104,34 @@ class InterhubApiTests(unittest.TestCase):
             response = client.get("/integrations/interhub/transactions/paid?date_from=2026-08-03&date_to=2026-08-03")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(queries), 1)
-        sql, params = queries[0]
-        self.assertIn("created_at >= (%s::date::timestamp AT TIME ZONE 'Europe/Moscow')", sql)
-        self.assertIn("created_at < ((%s::date + 1)::timestamp AT TIME ZONE 'Europe/Moscow')", sql)
-        self.assertEqual(params, [date(2026, 8, 3), date(2026, 8, 3)])
+        self.assertEqual(response.json(), {"total": 0, "total_amount": 0.0, "page": 1, "page_size": 25, "items": []})
+        self.assertEqual(len(queries), 2)
+        totals_sql, totals_params = queries[0]
+        page_sql, page_params = queries[1]
+        self.assertIn("created_at >= (%s::date::timestamp AT TIME ZONE 'Europe/Moscow')", totals_sql)
+        self.assertIn("created_at < ((%s::date + 1)::timestamp AT TIME ZONE 'Europe/Moscow')", totals_sql)
+        self.assertIn("SELECT COUNT(*), COALESCE(SUM(amount), 0)", totals_sql)
+        self.assertIn("LIMIT %s OFFSET %s", page_sql)
+        self.assertEqual(totals_params, [date(2026, 8, 3), date(2026, 8, 3)])
+        self.assertEqual(page_params, [date(2026, 8, 3), date(2026, 8, 3), 25, 0])
+
+    # Поиск, сортировка и номер страницы должны применяться на сервере ко всей истории.
+    def test_paid_history_applies_server_pagination_search_and_sort(self):
+        client, queries = self.create_client()
+
+        with client:
+            response = client.get(
+                "/integrations/interhub/transactions/paid?search=Steam%25_&sort_by=price&sort_direction=asc&page=3&page_size=50"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(queries), 2)
+        totals_sql, totals_params = queries[0]
+        page_sql, page_params = queries[1]
+        self.assertIn("service_title ILIKE %s", totals_sql)
+        self.assertIn("ORDER BY amount ASC, agent_transaction_id ASC", page_sql)
+        self.assertEqual(totals_params, [r"%Steam\%\_%", r"%Steam\%\_%", r"%Steam\%\_%"])
+        self.assertEqual(page_params, [r"%Steam\%\_%", r"%Steam\%\_%", r"%Steam\%\_%", 50, 100])
 
 
 class _ApiModel(BaseModel):

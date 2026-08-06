@@ -10,6 +10,18 @@ import WorkMarketplaceKeyPoolPanel from '../sections/WorkMarketplaceKeyPoolPanel
 import { useMarketplaceKeyPool } from '../useMarketplaceKeyPool.js'
 
 describe('useYandexMarketCatalog', () => {
+  it('repeats a fully saved production delivery without returning its keys to the browser', async () => {
+    const apiPost = vi.fn().mockResolvedValue({ status: 'market_submitted' })
+    const instance = useYandexMarketCatalog({
+      auth: { state: { token: 'market-token' } }, apiGet: vi.fn(), apiPost, apiPut: vi.fn(), mapApiError: vi.fn(), requestDealConfirm: vi.fn(),
+    })
+
+    const result = await instance.deliverYandexMarketProductionOrder({ id: 25, required_qty: 1, collected_qty: 1 }, '')
+
+    expect(result.ok).toBe(true)
+    expect(apiPost).toHaveBeenCalledWith('/marketplaces/yandex/digital-deliveries/25/deliver', { codes: [] }, { token: 'market-token' })
+  })
+
   it('syncs the catalog and then reloads its local snapshot', async () => {
     const apiPost = vi.fn().mockResolvedValue({ synced_items: 2 })
     const apiGet = vi.fn().mockResolvedValue({ items: [{ offer_id: 'PSN-500' }] })
@@ -314,6 +326,33 @@ describe('WorkYandexMarketDigitalSettingsModal', () => {
     expect(deliverYandexMarketProductionOrder).toHaveBeenCalledWith(expect.objectContaining({ id: 25 }), 'AAAA-1111')
     await wrapper.get('button.btn--secondary').trigger('click')
     expect(issueYandexMarketProductionOrderFromPool).toHaveBeenCalledWith(expect.objectContaining({ id: 25 }))
+  })
+
+  it('shows an explicit saved-key retry for an ambiguous production delivery', async () => {
+    const deliverYandexMarketProductionOrder = vi.fn().mockResolvedValue({ ok: true })
+    const wrapper = mount(WorkYandexMarketDigitalSettingsModal, {
+      props: {
+        showYandexMarketDigitalSettings: true,
+        closeYandexMarketDigitalSettings: vi.fn(),
+        yandexMarketSandboxMode: false,
+        yandexMarketOfferId: 'PSN-500',
+        yandexMarketTitle: 'PSN 500',
+        yandexMarketStockSettings: {},
+        saveYandexMarketStockSettings: vi.fn(),
+        openMarketplaceKeyPool: vi.fn(),
+        loadMarketplaceKeyPoolFor: vi.fn(),
+        yandexMarketInterhubServices: [],
+        yandexMarketProductionManualOrders: [{ id: 25, order_id: 501, offer_id: 'PSN-500', required_qty: 1, collected_qty: 1, status: 'market_unknown' }],
+        deliverYandexMarketProductionOrder,
+        issueYandexMarketProductionOrderFromPool: vi.fn(),
+      },
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(wrapper.text()).toContain('Проверить отправку')
+    expect(wrapper.find('textarea[aria-label="Ручные ключи для заказа Яндекс Маркета 501"]').exists()).toBe(false)
+    await wrapper.get('.ozon-digital-order .btn--primary').trigger('click')
+    expect(deliverYandexMarketProductionOrder).toHaveBeenCalledWith(expect.objectContaining({ id: 25 }), undefined)
   })
 })
 

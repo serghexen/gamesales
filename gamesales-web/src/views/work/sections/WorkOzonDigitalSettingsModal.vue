@@ -195,17 +195,17 @@
                     <strong>{{ order.product_name || 'Цифровой товар' }}</strong>
                     <p>Отправление {{ order.posting_number }} · SKU {{ order.sku }}</p>
                   </div>
-                  <span class="ozon-digital-order__status ozon-digital-order__status--manual_required">Нужен ключ</span>
+                  <span class="ozon-digital-order__status ozon-digital-order__status--manual_required">{{ hasSavedDelivery(order) ? 'Проверить отправку' : 'Нужен ключ' }}</span>
                 </div>
                 <p v-if="order.waiting_deadline_at" class="muted">Код ожидается до: {{ formatOzonDate(order.waiting_deadline_at) }}</p>
                 <p v-if="order.last_error" class="bad">{{ order.last_error }}</p>
                 <div class="ozon-digital-order__delivery">
-                  <label class="field">
+                  <label v-if="!hasSavedDelivery(order)" class="field">
                     <span>{{ manualDeliveryLabel(order) }}</span>
                     <textarea v-model="deliveryDrafts[order.id]" class="input textarea" rows="2" placeholder="Вставьте ключ для покупателя"></textarea>
                   </label>
                   <button class="btn btn--primary" type="button" :disabled="deliveryBusy[order.id]" @click="submitDelivery(order)">
-                    {{ deliveryBusy[order.id] ? 'Отправляем…' : 'Отправить ключ' }}
+                    {{ deliveryBusy[order.id] ? 'Отправляем…' : (hasSavedDelivery(order) ? 'Повторить закреплённый ключ' : 'Отправить ключ') }}
                   </button>
                 </div>
               </article>
@@ -406,6 +406,11 @@ function manualDeliveryLabel(order) {
   return remainingQty === requiredQty
     ? `Ключи — по одному в строке (${requiredQty})`
     : `Добавьте ключи — по одному в строке (осталось ${remainingQty} из ${requiredQty})`
+}
+
+function hasSavedDelivery(order) {
+  // Показывает безопасный повтор без раскрытия ключа, когда полный комплект уже закреплен до прошлого сбоя.
+  return Number(order?.remaining_qty ?? order?.required_qty ?? 1) === 0
 }
 
 async function submitDelivery(order) {

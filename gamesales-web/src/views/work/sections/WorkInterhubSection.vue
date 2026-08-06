@@ -114,7 +114,7 @@
           </form>
           <p v-if="ctx.salesHistoryError" class="error">{{ ctx.salesHistoryError }}</p>
           <div class="interhub-history__cards" aria-label="Итоги выборки">
-            <div class="mini"><div class="mini__label">Операций</div><div class="mini__value">{{ sortedSalesHistory.length }}</div></div>
+            <div class="mini"><div class="mini__label">Операций</div><div class="mini__value">{{ salesHistoryTotal }}</div></div>
             <div class="mini"><div class="mini__label">Сумма платежей</div><div class="mini__value">{{ formatMoney(salesHistoryTotalAmount) }} ₽</div></div>
           </div>
           <div class="table-wrap interhub-history__table-wrap">
@@ -130,7 +130,7 @@
               </thead>
               <tbody>
                 <tr v-if="ctx.salesHistoryLoading"><td colspan="5" class="muted">Загружаем историю продаж…</td></tr>
-                <tr v-else-if="!sortedSalesHistory.length"><td colspan="5" class="muted">За выбранный период оплаченных операций нет.</td></tr>
+                <tr v-else-if="!salesHistoryRows.length"><td colspan="5" class="muted">За выбранный период оплаченных операций нет.</td></tr>
                 <tr v-for="item in pagedSalesHistory" :key="`${item.serviceId}-${item.createdAt}-${item.giftCode}`">
                   <td>{{ item.service }}</td>
                   <td>{{ item.nominal || '—' }}</td>
@@ -141,7 +141,7 @@
               </tbody>
             </table>
           </div>
-          <div v-if="sortedSalesHistory.length" class="interhub-history__pagination">
+          <div v-if="salesHistoryTotal" class="interhub-history__pagination">
             <span>{{ salesHistoryRange }}</span>
             <div>
               <button class="ghost" type="button" aria-label="Предыдущая страница истории продаж" :disabled="activeSalesHistoryPage <= 1" @click="changeSalesHistoryPage(-1)">Назад</button>
@@ -340,55 +340,34 @@ const salesHistoryRows = computed(() => {
   })
 })
 const filteredSalesHistory = computed(() => {
-  // Ищем по двум понятным оператору полям без нового запроса к истории.
-  const query = salesHistorySearch.value.toLocaleLowerCase('ru-RU')
-  if (!query) return salesHistoryRows.value
-  return salesHistoryRows.value.filter((item) => `${item.service} ${item.nominal}`.toLocaleLowerCase('ru-RU').includes(query))
+  // Сервер уже применил поиск ко всей истории, поэтому отображаем полученную страницу без повторной фильтрации.
+  return salesHistoryRows.value
 })
 const sortedSalesHistory = computed(() => {
-  // Сортируем уже загруженную выборку по любому видимому столбцу без повторного запроса.
-  const { field, direction } = salesHistorySort
-  const multiplier = direction === 'asc' ? 1 : -1
-  return [...filteredSalesHistory.value].sort((left, right) => {
-    if (field === 'price') return multiplier * (left.price - right.price)
-    if (field === 'createdAt') return multiplier * (new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
-    return multiplier * titleCollator.compare(String(left[field] || ''), String(right[field] || ''))
-  })
+  // Сервер сортирует всю выборку до пагинации, а не только видимые строки.
+  return filteredSalesHistory.value
 })
-const salesHistoryTotalAmount = computed(() => {
-  // Складываем только строки текущей выборки, уже ограниченной датами и поиском.
-  return filteredSalesHistory.value.reduce((total, item) => total + item.price, 0)
-})
-const salesHistoryPageSize = 25
-const salesHistoryPageCount = computed(() => Math.max(1, Math.ceil(sortedSalesHistory.value.length / salesHistoryPageSize)))
+const salesHistoryTotal = computed(() => Math.max(0, Number(props.ctx.salesHistoryTotal || 0)))
+const salesHistoryTotalAmount = computed(() => Number(props.ctx.salesHistoryTotalAmount || 0))
+const salesHistoryPageSize = computed(() => Math.max(1, Number(props.ctx.salesHistoryPageSize || 25)))
+const salesHistoryPageCount = computed(() => Math.max(1, Math.ceil(salesHistoryTotal.value / salesHistoryPageSize.value)))
 const activeSalesHistoryPage = computed(() => Math.min(Math.max(salesHistoryPage.value, 1), salesHistoryPageCount.value))
 const pagedSalesHistory = computed(() => {
-  // Показываем короткую страницу, чтобы длинная история не растягивала модальное окно.
-  const offset = (activeSalesHistoryPage.value - 1) * salesHistoryPageSize
-  return sortedSalesHistory.value.slice(offset, offset + salesHistoryPageSize)
+  // API уже вернул нужную страницу, поэтому не разрезаем её повторно в браузере.
+  return sortedSalesHistory.value
 })
 const salesHistoryRange = computed(() => {
   // Подсказываем границы страницы и общее число найденных оплаченных операций.
-  const total = sortedSalesHistory.value.length
+  const total = salesHistoryTotal.value
   if (!total) return ''
-  const start = (activeSalesHistoryPage.value - 1) * salesHistoryPageSize + 1
-  const end = Math.min(start + salesHistoryPageSize - 1, total)
+  const start = (activeSalesHistoryPage.value - 1) * salesHistoryPageSize.value + 1
+  const end = Math.min(start + sortedSalesHistory.value.length - 1, total)
   return `Показаны ${start}–${end} из ${total}`
 })
 
 watch(() => props.ctx.search, () => {
   // Возвращаемся на первую страницу после поиска, иначе выдача может выглядеть пустой.
   currentPage.value = 1
-})
-
-watch(() => props.ctx.salesHistory, () => {
-  // Возвращаемся к началу при новой выборке по датам, чтобы не показать пустую страницу.
-  salesHistoryPage.value = 1
-})
-
-watch(salesHistorySearch, () => {
-  // Возвращаемся к началу, чтобы фильтр не оставил пользователя на пустой странице.
-  salesHistoryPage.value = 1
 })
 
 async function selectService(service) {
@@ -428,24 +407,39 @@ function closeSalesHistory() {
 }
 
 function applySalesHistoryFilter() {
-  // Передаём пустые границы как отсутствие фильтра, а заполненные — как включительный период.
+  // Применяем даты и поиск ко всей истории на сервере, начиная с первой страницы.
   salesHistoryPage.value = 1
-  props.ctx.loadSalesHistory({ dateFrom: salesHistoryDateFrom.value, dateTo: salesHistoryDateTo.value })
+  loadCurrentSalesHistory()
 }
 
 function sortSalesHistory(field) {
-  // Повторный клик по столбцу меняет направление, другой столбец начинает с прямого порядка.
+  // Повторный клик меняет серверную сортировку всей истории, а не только текущей страницы.
   if (salesHistorySort.field === field) salesHistorySort.direction = salesHistorySort.direction === 'asc' ? 'desc' : 'asc'
   else {
     salesHistorySort.field = field
     salesHistorySort.direction = field === 'createdAt' ? 'desc' : 'asc'
   }
   salesHistoryPage.value = 1
+  loadCurrentSalesHistory()
 }
 
 function changeSalesHistoryPage(direction) {
-  // Переключаем страницу в допустимых границах без повторной загрузки истории.
+  // Запрашиваем соседнюю серверную страницу в допустимых границах.
   salesHistoryPage.value = Math.min(salesHistoryPageCount.value, Math.max(1, activeSalesHistoryPage.value + direction))
+  loadCurrentSalesHistory()
+}
+
+function loadCurrentSalesHistory() {
+  // Собираем единый набор параметров, чтобы фильтр, сортировка и страницы не расходились между запросами.
+  return props.ctx.loadSalesHistory({
+    dateFrom: salesHistoryDateFrom.value,
+    dateTo: salesHistoryDateTo.value,
+    search: salesHistorySearch.value,
+    sortBy: salesHistorySort.field,
+    sortDirection: salesHistorySort.direction,
+    page: salesHistoryPage.value,
+    pageSize: salesHistoryPageSize.value,
+  })
 }
 
 function sortMark(field) {

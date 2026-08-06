@@ -86,11 +86,11 @@
             <p v-if="yandexMarketProductionManualOrdersLoading" class="ozon-digital-modal__empty muted">Загружаем очередь ручной выдачи…</p>
             <p v-else-if="!yandexMarketProductionManualOrders.length" class="ozon-digital-modal__empty muted">Заказов, требующих ручного ключа, пока нет.</p>
             <article v-for="order in yandexMarketProductionManualOrders" :key="order.id" class="ozon-digital-order">
-              <div class="ozon-digital-order__head"><div><strong>{{ order.item_name || yandexMarketTitle || 'Цифровой товар' }}</strong><p>Заказ {{ order.order_id }} · SKU {{ order.offer_id }} · {{ order.required_qty }} шт.</p></div><span class="ozon-digital-order__status ozon-digital-order__status--manual_required">Нужен ключ</span></div>
+              <div class="ozon-digital-order__head"><div><strong>{{ order.item_name || yandexMarketTitle || 'Цифровой товар' }}</strong><p>Заказ {{ order.order_id }} · SKU {{ order.offer_id }} · {{ order.required_qty }} шт.</p></div><span class="ozon-digital-order__status ozon-digital-order__status--manual_required">{{ isSavedProductionRetry(order) ? 'Проверить отправку' : 'Нужен ключ' }}</span></div>
               <p v-if="order.last_error" class="bad">{{ order.last_error }}</p>
               <div class="ozon-digital-order__delivery">
-                <label class="field"><span>{{ productionManualDeliveryLabel(order) }}</span><textarea v-model="productionManualCodes[order.id]" class="input textarea" rows="2" placeholder="Вставьте ключ для покупателя" :disabled="isProductionSaving(order)" :aria-label="`Ручные ключи для заказа Яндекс Маркета ${order.order_id}`" /></label>
-                <div class="toolbar-actions"><button class="btn btn--secondary" type="button" :disabled="isProductionSaving(order)" @click="issueProductionFromPool(order)">Взять из пула</button><button class="btn btn--primary" type="button" :disabled="isProductionSaving(order)" @click="deliverProductionManually(order)">{{ isProductionSaving(order) ? 'Отправляем…' : 'Отправить ключ' }}</button></div>
+                <label v-if="!isSavedProductionRetry(order)" class="field"><span>{{ productionManualDeliveryLabel(order) }}</span><textarea v-model="productionManualCodes[order.id]" class="input textarea" rows="2" placeholder="Вставьте ключ для покупателя" :disabled="isProductionSaving(order)" :aria-label="`Ручные ключи для заказа Яндекс Маркета ${order.order_id}`" /></label>
+                <div class="toolbar-actions"><button v-if="!isSavedProductionRetry(order)" class="btn btn--secondary" type="button" :disabled="isProductionSaving(order)" @click="issueProductionFromPool(order)">Взять из пула</button><button class="btn btn--primary" type="button" :disabled="isProductionSaving(order)" @click="deliverProductionManually(order)">{{ isProductionSaving(order) ? 'Отправляем…' : (isSavedProductionRetry(order) ? 'Повторить закреплённые ключи' : 'Отправить ключ') }}</button></div>
               </div>
             </article>
           </section>
@@ -343,6 +343,11 @@ function productionManualDeliveryLabel(order) {
   const collectedQty = Math.max(0, Number(order?.collected_qty || 0))
   const remainingQty = Math.max(0, requiredQty - collectedQty)
   return remainingQty === 1 ? 'Ключ' : `Ключи — по одному в строке (${remainingQty})`
+}
+
+function isSavedProductionRetry(order) {
+  // Разрешает оператору повторить только уже закрепленный полный комплект после неоднозначной отправки.
+  return Number(order?.collected_qty || 0) >= Math.max(1, Number(order?.required_qty || 1))
 }
 
 function isProductionSaving(order) {

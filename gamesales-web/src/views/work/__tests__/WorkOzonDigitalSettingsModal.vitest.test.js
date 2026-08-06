@@ -207,4 +207,28 @@ describe('WorkOzonDigitalSettingsModal', () => {
 
     expect(wrapper.find('.ozon-digital-order__delivery').text()).toContain('осталось 1 из 3')
   })
+
+  it('offers an explicit retry when the full key set was already saved before a crash', async () => {
+    const props = buildProps()
+    props.deliverOzonDigitalOrder = vi.fn().mockResolvedValue({ ok: true })
+    props.ozonDigitalOrders = [{
+      id: 1,
+      product_name: 'PUBG 300 NC',
+      posting_number: '04259716-0123-1',
+      sku: 5196324554,
+      status: 'manual_required',
+      required_qty: 1,
+      collected_qty: 1,
+      remaining_qty: 0,
+    }]
+    const wrapper = mount(WorkOzonDigitalSettingsModal, {
+      props,
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(wrapper.text()).toContain('Проверить отправку')
+    expect(wrapper.find('.ozon-digital-order textarea').exists()).toBe(false)
+    await wrapper.get('.ozon-digital-order .btn--primary').trigger('click')
+    expect(props.deliverOzonDigitalOrder).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), undefined)
+  })
 })

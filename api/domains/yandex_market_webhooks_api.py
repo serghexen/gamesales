@@ -147,7 +147,7 @@ def mount_yandex_market_webhooks_routes(
 
         event_id = int(event_row[0]) if event_row else 0
         if process_event and event_id:
-            # Читаем конкретный заказ после ответа Маркету и не выполняем никаких действий выдачи.
+            # Ускоряет claim конкретного события; периодический DB-воркер остается гарантированным путем обработки.
             background_tasks.add_task(process_event, event_id)
 
         return JSONResponse(status_code=200, content=integration_response(event_time_raw))

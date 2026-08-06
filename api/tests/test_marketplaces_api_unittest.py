@@ -46,8 +46,270 @@ class MarketplacesApiTests(unittest.TestCase):
         self.assertTrue(auto_supplier_wait_expired(2, datetime(2026, 7, 24, 12, 9, tzinfo=timezone.utc), max_status_checks=30, deadline_buffer_sec=600, now=now))
         self.assertFalse(auto_supplier_wait_expired(2, datetime(2026, 7, 24, 12, 11, tzinfo=timezone.utc), max_status_checks=30, deadline_buffer_sec=600, now=now))
 
+    # Оплаченный ключ и отметка его применения должны сохраняться одним финальным коммитом заказа Ozon.
+    def test_paid_ozon_attempt_finalization_applies_code_and_marks_attempt(self):
+        writes = []
+
+        def q1_handler(sql, _params):
+            if "SELECT attempt.order_id" in sql:
+                return (42, "PAID-CODE-ONE", "paid", None, "supplier_processing", 1, [])
+            if "WHERE id<>%s AND delivered_codes" in sql:
+                return None
+            if "INSERT INTO app.marketplace_ozon_digital_code_registry" in sql:
+                return (42,)
+            return None
+
+        _client, _writes = self.create_client(writes=writes, q1_handler=q1_handler)
+
+        applied, order_id = self._refresh_orders.finalize_paid_supplier_attempt(17)
+
+        self.assertTrue(applied)
+        self.assertEqual(order_id, 42)
+        self.assertTrue(any("SET delivered_codes=%s::jsonb" in sql and params[0] == '[\"PAID-CODE-ONE\"]' for sql, params in writes))
+        self.assertTrue(any("code_applied_at=now()" in sql and params == ("PAID-CODE-ONE", 17) for sql, params in writes))
+
+    # Ответ paid сохраняется в попытке Ozon до отдельного атомарного закрепления ключа за заказом.
+    def test_ozon_paid_response_is_persisted_before_finalization(self):
+        writes = []
+
+        def q1_handler(sql, _params):
+            if "SELECT store_code, external_product_id, required_qty" in sql:
+                return ("asat", 103, 1, "supplier_processing", [])
+            if "SELECT status, required_qty, delivered_codes" in sql:
+                return ("supplier_processing", 1, [])
+            if "state='processing'" in sql or "state='paid' AND code_applied_at IS NULL" in sql:
+                return None
+            if "WHERE agent_transaction_id=%s" in sql and sql.lstrip().startswith("SELECT id"):
+                return (17,)
+            if "SELECT attempt.order_id" in sql:
+                return (42, "PAID-CODE-ONE", "paid", None, "supplier_processing", 1, [])
+            if "WHERE id<>%s AND delivered_codes" in sql:
+                return None
+            if "INSERT INTO app.marketplace_ozon_digital_code_registry" in sql:
+                return (42,)
+            return None
+
+        def qall_handler(sql, _params):
+            if "FROM app.marketplace_ozon_digital_suppliers" in sql:
+                return [(7, "interhub", 1, True, 9, "300", {})]
+            if "SELECT DISTINCT ON (supplier_id)" in sql:
+                return []
+            return []
+
+        self.create_client(
+            writes=writes,
+            q1_handler=q1_handler,
+            qall_handler=qall_handler,
+            interhub_calculate=lambda _payload: {"success": True, "fixed_amount": "100"},
+            interhub_check=lambda _payload: {"success": True, "status": 0, "raw": {}},
+            interhub_pay=lambda _payload: {
+                "success": True,
+                "status": 0,
+                "message": "paid",
+                "params": {"gift_code": "PAID-CODE-ONE"},
+                "raw": {},
+            },
+            exec1_result=1,
+        )
+
+        should_continue = self._refresh_orders.process_order_with_suppliers_step(42)
+
+        self.assertTrue(should_continue)
+        paid_updates = [params for sql, params in writes if "provider_response=%s::jsonb" in sql and "next_status_check_at=CASE WHEN %s THEN" in sql]
+        self.assertEqual(paid_updates[0][0], "paid")
+        self.assertFalse(paid_updates[0][4])
+        self.assertEqual(paid_updates[0][6:8], ("PAID-CODE-ONE", "PAID-CODE-ONE"))
+
+    # Повторный финализатор не должен второй раз регистрировать или добавлять уже примененный ключ.
+    def test_paid_ozon_attempt_finalization_is_idempotent(self):
+        writes = []
+        applied_at = datetime(2026, 8, 5, 12, 0, tzinfo=timezone.utc)
+
+        def q1_handler(sql, _params):
+            if "SELECT attempt.order_id" in sql:
+                return (42, "PAID-CODE-ONE", "paid", applied_at, "supplier_processing", 1, ["PAID-CODE-ONE"])
+            return None
+
+        self.create_client(writes=writes, q1_handler=q1_handler)
+
+        applied, order_id = self._refresh_orders.finalize_paid_supplier_attempt(17)
+
+        self.assertTrue(applied)
+        self.assertEqual(order_id, 42)
+        self.assertEqual(writes, [])
+
+    # Paid без gift_code блокирует ручную и повторную выдачу, пока фоновая сверка ищет оплаченный ключ.
+    def test_paid_ozon_attempt_without_code_stays_unapplied(self):
+        writes = []
+
+        def q1_handler(sql, _params):
+            if "SELECT attempt.order_id" in sql:
+                return (42, None, "paid", None, "supplier_processing", 1, [])
+            return None
+
+        self.create_client(writes=writes, q1_handler=q1_handler)
+
+        applied, order_id = self._refresh_orders.finalize_paid_supplier_attempt(17)
+
+        self.assertFalse(applied)
+        self.assertEqual(order_id, 42)
+        self.assertTrue(any("finalization_error=%s" in sql for sql, _params in writes))
+        self.assertTrue(any("ELSE 'supplier_processing'" in sql for sql, _params in writes))
+        self.assertTrue(any("next_status_check_at=COALESCE" in sql for sql, _params in writes))
+        self.assertFalse(any("digital_code_registry" in sql for sql, _params in writes))
+
+    # Незавершенный paid должен остановить Ozon до calculate/check/pay и не создавать вторую попытку.
+    def test_paid_unapplied_ozon_attempt_blocks_second_payment(self):
+        writes = []
+
+        def q1_handler(sql, _params):
+            if "SELECT store_code, external_product_id, required_qty" in sql:
+                return ("asat", 103, 1, "supplier_processing", [])
+            if "SELECT status, required_qty, delivered_codes" in sql:
+                return ("supplier_processing", 1, [])
+            if "state='processing'" in sql:
+                return None
+            if "state='paid' AND code_applied_at IS NULL" in sql:
+                return (99,)
+            return None
+
+        def qall_handler(sql, _params):
+            if "FROM app.marketplace_ozon_digital_suppliers" in sql:
+                return [(7, "interhub", 1, True, 9, "300", {})]
+            if "SELECT DISTINCT ON (supplier_id)" in sql:
+                return [(7, "paid")]
+            return []
+
+        forbidden = lambda *_args: (_ for _ in ()).throw(AssertionError("Нельзя запускать повторную оплату"))
+        self.create_client(
+            writes=writes,
+            q1_handler=q1_handler,
+            qall_handler=qall_handler,
+            interhub_calculate=forbidden,
+            interhub_check=forbidden,
+            interhub_pay=forbidden,
+        )
+
+        should_continue = self._refresh_orders.process_order_with_suppliers_step(42)
+
+        self.assertFalse(should_continue)
+        self.assertFalse(any("INSERT INTO app.marketplace_ozon_digital_supplier_attempts" in sql for sql, _params in writes))
+
+    # Временный ответ check_status не должен откатить уже подтвержденный paid или снять блокировку Ozon.
+    def test_paid_ozon_attempt_without_code_keeps_polling_after_status_error(self):
+        writes = []
+
+        def q1_handler(sql, _params):
+            if "SELECT attempt.status_check_attempts" in sql:
+                return (999, None)
+            return None
+
+        def qall_handler(sql, _params):
+            if "FROM app.marketplace_ozon_digital_settings AS settings" in sql:
+                return []
+            if "SELECT attempt.id" in sql and "attempt.state='paid'" in sql and "WITH due_attempts" not in sql:
+                return []
+            if "SELECT orders.id" in sql:
+                return []
+            if "WITH due_attempts" in sql:
+                return [(17, 42, "paid-without-code", "paid")]
+            return []
+
+        self.create_client(
+            writes=writes,
+            q1_handler=q1_handler,
+            qall_handler=qall_handler,
+            interhub_check_status=lambda *_args: (_ for _ in ()).throw(TimeoutError("temporary")),
+            exec1_result=1,
+        )
+
+        self._refresh_orders()
+
+        status_updates = [
+            params
+            for sql, params in writes
+            if "status_check_lock_token=NULL" in sql and "marketplace_ozon_digital_supplier_attempts" in sql
+        ]
+        self.assertEqual(status_updates[0][0], "paid")
+        self.assertTrue(status_updates[0][4])
+        self.assertFalse(any("SET state='manual_required'" in sql for sql, _params in writes))
+
+    # Зависшая внешняя отправка выходит в ручную очередь без повторного сетевого вызова и без замены закрепленного ключа.
+    def test_stale_ozon_delivery_recovery_does_not_repeat_upload(self):
+        writes = []
+        self.create_client(writes=writes)
+
+        with patch("api.domains.marketplaces_api.upload_ozon_digital_codes") as upload:
+            self._refresh_orders.recover_stale_ozon_deliveries()
+
+        upload.assert_not_called()
+        self.assertTrue(any("SET status='manual_required'" in sql and "delivery_started_at" in sql for sql, _params in writes))
+        self.assertTrue(any("SET status='delivered'" in sql and "ozon_status" in sql for sql, _params in writes))
+        self.assertTrue(any("UPDATE app.marketplace_manual_keys" in sql and "orders.delivery_started_at" in sql for sql, _params in writes))
+
+    # Перед внешним вызовом Ozon сохраняется отдельная отметка старта, которую синхронизация заказа не сдвигает.
+    def test_ozon_delivery_marks_outbound_start_before_upload(self):
+        def q1_handler(sql, _params):
+            if "WHERE id=%s FOR UPDATE" in sql:
+                return ("asat", 103, "posting-1", 555, 1, "manual_required", [])
+            if "WHERE id<>%s AND delivered_codes" in sql:
+                return None
+            if "INSERT INTO app.marketplace_ozon_digital_code_registry" in sql:
+                return (41,)
+            if "SELECT orders.id, orders.posting_number" in sql:
+                return (41, "posting-1", "order-1", "PSN 500", 555, 1, "delivered", "done", None, None, datetime(2026, 8, 6, tzinfo=timezone.utc), "", "", ["CODE-ONE"])
+            return None
+
+        client, writes = self.create_client(q1_handler=q1_handler, qall_handler=lambda *_args: [])
+        with (
+            patch("api.domains.marketplaces_api.upload_ozon_digital_codes", return_value={"exemplars_by_sku": [{"sku": 555, "received_qty": 1, "rejected_qty": 0}]}),
+            patch("api.domains.marketplaces_api.update_ozon_digital_stock", return_value={}),
+        ):
+            with client:
+                response = client.post("/marketplaces/ozon/digital-orders/41/deliver", json={"codes": ["CODE-ONE"]})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(any("status='delivering', delivery_started_at=now()" in sql for sql, _params in writes))
+        self.assertFalse(any("SET status='manual_required'" in sql and "status='delivering'" not in sql for sql, _params in writes))
+
+    # Пустой операторский повтор передает только уже закрепленный код и не создает новую запись секрета.
+    def test_ozon_manual_retry_reuses_saved_code(self):
+        def q1_handler(sql, _params):
+            if "WHERE id=%s FOR UPDATE" in sql:
+                return ("asat", 103, "posting-1", 555, 1, "manual_required", ["CODE-ONE"])
+            if "SELECT orders.id, orders.posting_number" in sql:
+                return (41, "posting-1", "order-1", "PSN 500", 555, 1, "delivered", "done", None, None, datetime(2026, 8, 6, tzinfo=timezone.utc), "", "", ["CODE-ONE"])
+            return None
+
+        client, writes = self.create_client(q1_handler=q1_handler, qall_handler=lambda *_args: [])
+        with (
+            patch("api.domains.marketplaces_api.upload_ozon_digital_codes", return_value={"exemplars_by_sku": [{"sku": 555, "received_qty": 1, "rejected_qty": 0}]}) as upload,
+            patch("api.domains.marketplaces_api.update_ozon_digital_stock", return_value={}),
+        ):
+            with client:
+                response = client.post("/marketplaces/ozon/digital-orders/41/deliver", json={"codes": []})
+
+        self.assertEqual(response.status_code, 200)
+        upload.assert_called_once_with(posting_number="posting-1", sku=555, codes=["CODE-ONE"], store_code="asat")
+        self.assertFalse(any("INSERT INTO app.marketplace_ozon_digital_code_registry" in sql for sql, _params in writes))
+
     # Поднимает маршрут с памятью вместо БД, чтобы проверять контракт без доступа к Ozon.
-    def create_client(self, rows=None, writes=None, detail_row=None, q1_handler=None, qall_handler=None, required_roles=None, ozon_live_enabled=True, stock_republish_delay_sec=0):
+    def create_client(
+        self,
+        rows=None,
+        writes=None,
+        detail_row=None,
+        q1_handler=None,
+        qall_handler=None,
+        required_roles=None,
+        ozon_live_enabled=True,
+        stock_republish_delay_sec=0,
+        interhub_calculate=None,
+        interhub_check=None,
+        interhub_pay=None,
+        interhub_check_status=None,
+        exec1_result=None,
+    ):
         app = FastAPI()
         stored_rows = list(rows or [])
         write_log = writes if writes is not None else []
@@ -64,6 +326,7 @@ class MarketplacesApiTests(unittest.TestCase):
 
         def fake_exec1(_conn, sql, params=None):
             write_log.append((sql, params))
+            return exec1_result
 
         def fake_require_role(*roles):
             # Запоминает роли маршрутов, чтобы Ozon не открылся через прямой API-вызов.
@@ -80,6 +343,10 @@ class MarketplacesApiTests(unittest.TestCase):
             exec1=fake_exec1,
             get_current_user=lambda: SimpleNamespace(username="owner", role="owner"),
             require_role=fake_require_role,
+            interhub_calculate=interhub_calculate,
+            interhub_check=interhub_check,
+            interhub_pay=interhub_pay,
+            interhub_check_status=interhub_check_status,
             ozon_live_enabled=ozon_live_enabled,
             stock_republish_delay_sec=stock_republish_delay_sec,
         )
@@ -132,15 +399,16 @@ class MarketplacesApiTests(unittest.TestCase):
 
         def fake_qall(_conn, sql, params=None):
             sql_calls.append((sql, params))
-            return [(17, 42, "transaction-17")]
+            return [(17, 42, "transaction-17", "processing")]
 
         claimed = claim_due_supplier_attempts(object(), fake_qall, "9baed8dc-5a0b-441e-938a-a4b6d39bee22")
 
-        self.assertEqual(claimed, [(17, 42, "transaction-17")])
+        self.assertEqual(claimed, [(17, 42, "transaction-17", "processing")])
         sql, params = sql_calls[0]
         self.assertIn("FOR UPDATE SKIP LOCKED", sql)
         self.assertIn("status_check_lock_token", sql)
         self.assertIn("status_check_locked_until", sql)
+        self.assertIn("attempt.state='paid'", sql)
         self.assertEqual(params, ("9baed8dc-5a0b-441e-938a-a4b6d39bee22",))
 
     # История показывает источник и только маску ключа, а полный код остается отдельным защищенным запросом.

@@ -1177,6 +1177,10 @@ const interhubPriceError = ref('')
 const interhubSalesHistory = ref([])
 const interhubSalesHistoryLoading = ref(false)
 const interhubSalesHistoryError = ref('')
+const interhubSalesHistoryTotal = ref(0)
+const interhubSalesHistoryTotalAmount = ref(0)
+const interhubSalesHistoryPage = ref(1)
+const interhubSalesHistoryPageSize = ref(25)
 const canPayInterhub = computed(() => normalizeRole(auth.state.role) === 'owner')
 const editProductState = reactive({
   open: false,
@@ -2267,19 +2271,29 @@ async function loadInterhubPrices() {
   }
 }
 
-async function loadInterhubSalesHistory({ dateFrom = '', dateTo = '' } = {}) {
-  // Загружаем только оплаченные операции за выбранный период из внутреннего журнала.
+async function loadInterhubSalesHistory({ dateFrom = '', dateTo = '', search = '', sortBy = 'createdAt', sortDirection = 'desc', page = 1, pageSize = 25 } = {}) {
+  // Загружаем одну серверную страницу и точные итоги по всей отфильтрованной истории.
   interhubSalesHistoryLoading.value = true
   interhubSalesHistoryError.value = ''
   try {
     const query = new URLSearchParams()
     if (dateFrom) query.set('date_from', dateFrom)
     if (dateTo) query.set('date_to', dateTo)
-    const suffix = query.size ? `?${query.toString()}` : ''
-    const data = await apiGet(`/integrations/interhub/transactions/paid${suffix}`, { token: auth.state.token })
+    if (search) query.set('search', search)
+    query.set('sort_by', sortBy)
+    query.set('sort_direction', sortDirection)
+    query.set('page', String(page))
+    query.set('page_size', String(pageSize))
+    const data = await apiGet(`/integrations/interhub/transactions/paid?${query.toString()}`, { token: auth.state.token })
     interhubSalesHistory.value = Array.isArray(data?.items) ? data.items : []
+    interhubSalesHistoryTotal.value = Math.max(0, Number(data?.total || 0))
+    interhubSalesHistoryTotalAmount.value = Number(data?.total_amount || 0)
+    interhubSalesHistoryPage.value = Math.max(1, Number(data?.page || page))
+    interhubSalesHistoryPageSize.value = Math.max(1, Number(data?.page_size || pageSize))
   } catch (err) {
     interhubSalesHistory.value = []
+    interhubSalesHistoryTotal.value = 0
+    interhubSalesHistoryTotalAmount.value = 0
     interhubSalesHistoryError.value = mapApiError(err?.message || 'Не удалось загрузить историю продаж')
   } finally {
     interhubSalesHistoryLoading.value = false
@@ -4007,6 +4021,10 @@ const interhubSectionCtx = asCtx({
   salesHistory: interhubSalesHistory,
   salesHistoryLoading: interhubSalesHistoryLoading,
   salesHistoryError: interhubSalesHistoryError,
+  salesHistoryTotal: interhubSalesHistoryTotal,
+  salesHistoryTotalAmount: interhubSalesHistoryTotalAmount,
+  salesHistoryPage: interhubSalesHistoryPage,
+  salesHistoryPageSize: interhubSalesHistoryPageSize,
   canPay: canPayInterhub,
   canManagePrices: canPayInterhub,
   pay: payInterhub,

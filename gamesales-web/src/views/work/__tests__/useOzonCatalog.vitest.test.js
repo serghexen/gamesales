@@ -20,6 +20,16 @@ function createHarness({ requestDealConfirm = vi.fn().mockResolvedValue(true) } 
 }
 
 describe('useOzonCatalog', () => {
+  it('repeats a fully saved delivery without asking the browser for the secret code', async () => {
+    const { apiPost, catalog } = createHarness()
+    apiPost.mockResolvedValueOnce({ status: 'delivered' })
+
+    const result = await catalog.deliverOzonDigitalOrder({ id: 41, required_qty: 1, remaining_qty: 0 }, '')
+
+    expect(result.ok).toBe(true)
+    expect(apiPost).toHaveBeenCalledWith('/marketplaces/ozon/digital-orders/41/deliver', { codes: [] }, { token: 'ozon-token' })
+  })
+
   it('opens the local Ozon snapshot without starting a synchronization', async () => {
     const { apiGet, apiPost, catalog } = createHarness()
     apiGet.mockResolvedValueOnce({ items: [{ external_product_id: 101, offer_id: 'steam-1000' }] })

@@ -51,6 +51,7 @@ async def lifespan(_: FastAPI):
     interhub_polling_task = asyncio.create_task(poll_interhub_pending_transactions())
     stop_ozon_supplier_polling = asyncio.Event()
     stop_yandex_market_supplier_polling = asyncio.Event()
+    stop_yandex_market_webhook_polling = asyncio.Event()
 
     async def poll_ozon_supplier_orders():
         # Продолжаем выдачу уже оплаченных ключей Interhub, даже если оператор закрыл вкладку Ozon.
@@ -83,6 +84,24 @@ async def lifespan(_: FastAPI):
 
     # Запускается всегда, но при выключенном флаге обработчик не делает внешний запрос к Interhub.
     yandex_market_supplier_polling_task = asyncio.create_task(poll_yandex_market_supplier_attempts())
+
+    async def poll_yandex_market_webhook_events():
+        # После короткой паузы и далее по таймеру восстанавливает durable webhook-очередь из PostgreSQL.
+        while not stop_yandex_market_webhook_polling.is_set():
+            try:
+                await asyncio.wait_for(
+                    stop_yandex_market_webhook_polling.wait(),
+                    timeout=_YANDEX_MARKET_WEBHOOK_POLL_INTERVAL_SEC,
+                )
+                continue
+            except asyncio.TimeoutError:
+                pass
+            try:
+                await asyncio.to_thread(yandex_market_process_pending_webhook_events)
+            except Exception:
+                logger.exception("Yandex Market webhook queue polling failed")
+
+    yandex_market_webhook_polling_task = asyncio.create_task(poll_yandex_market_webhook_events())
     try:
         yield
     finally:
@@ -90,10 +109,12 @@ async def lifespan(_: FastAPI):
         stop_interhub_polling.set()
         stop_ozon_supplier_polling.set()
         stop_yandex_market_supplier_polling.set()
+        stop_yandex_market_webhook_polling.set()
         await interhub_polling_task
         if ozon_supplier_polling_task:
             await ozon_supplier_polling_task
         await yandex_market_supplier_polling_task
+        await yandex_market_webhook_polling_task
     # Закрываем пул при остановке приложения.
     _pool.close()
     _pool = None
@@ -706,8 +727,15 @@ _INTERHUB_PRICE_CALCULATE_DELAY_MS = int(os.getenv("INTERHUB_PRICE_CALCULATE_DEL
 _OZON_SUPPLIER_POLL_INTERVAL_SEC = max(10, int(os.getenv("OZON_SUPPLIER_POLL_INTERVAL_SEC", "60") or "60"))
 # Пауза между подтвержденной выдачей цифрового кода и повторной публикацией сохраненного остатка.
 _MARKETPLACE_STOCK_REPUBLISH_DELAY_SEC = max(0.0, float(os.getenv("MARKETPLACE_STOCK_REPUBLISH_DELAY_SEC", "3") or "3"))
+# Защитное окно перед восстановлением процесса, оборванного во время внешней отправки ключа.
+_MARKETPLACE_OUTBOUND_DELIVERY_RECOVERY_GRACE_SEC = max(
+    60,
+    int(os.getenv("MARKETPLACE_OUTBOUND_DELIVERY_RECOVERY_GRACE_SEC", "600") or "600"),
+)
 # Интервал опроса только уже начатых оплат Яндекс Маркета; новые заказы запускают исключительно webhook-уведомления.
 _YANDEX_MARKET_SUPPLIER_POLL_INTERVAL_SEC = max(10, int(os.getenv("YANDEX_MARKET_SUPPLIER_POLL_INTERVAL_SEC", "60") or "60"))
+# Интервал подбора сохраненных webhook; обработка конкретного события дополнительно запускается сразу после HTTP 200.
+_YANDEX_MARKET_WEBHOOK_POLL_INTERVAL_SEC = max(2, int(os.getenv("YANDEX_MARKET_WEBHOOK_POLL_INTERVAL_SEC", "10") or "10"))
 # Разрешает живые действия Ozon отдельно от общего доступа к Interhub для других маркетплейсов.
 _OZON_LIVE_ENABLED = str(os.getenv("OZON_LIVE_ENABLED", "true") or "true").strip().lower() in ("1", "true", "yes", "on")
 # Разрешает отдельно остановить товарные действия Яндекс Маркета, не отключая финансовую синхронизацию.
@@ -1173,6 +1201,7 @@ ozon_refresh_digital_supplier_orders = mount_marketplaces_routes(
     max_supplier_status_checks=_OZON_SUPPLIER_MAX_STATUS_CHECKS,
     supplier_deadline_buffer_sec=_OZON_SUPPLIER_DEADLINE_BUFFER_SEC,
     stock_republish_delay_sec=_MARKETPLACE_STOCK_REPUBLISH_DELAY_SEC,
+    outbound_delivery_recovery_grace_sec=_MARKETPLACE_OUTBOUND_DELIVERY_RECOVERY_GRACE_SEC,
 )
 mount_yandex_market_catalog_routes(
     app,
@@ -1205,6 +1234,7 @@ yandex_market_production_delivery_processor = build_yandex_market_production_del
     interhub_pay=interhub_pay,
     interhub_check_status=interhub_check_status,
     stock_republish_delay_sec=_MARKETPLACE_STOCK_REPUBLISH_DELAY_SEC,
+    outbound_delivery_recovery_grace_sec=_MARKETPLACE_OUTBOUND_DELIVERY_RECOVERY_GRACE_SEC,
 )
 # Отдельная функция фоновой сверки не умеет создавать выдачи и потому безопасна при выключенном боевом флаге.
 yandex_market_refresh_digital_supplier_attempts = yandex_market_production_delivery_processor.refresh_supplier_attempts
@@ -1221,6 +1251,8 @@ yandex_market_webhook_event_processor = build_yandex_market_webhook_event_proces
     exec1=exec1,
     process_delivery=yandex_market_production_delivery_processor,
 )
+# Периодический воркер использует тот же атомарный claim, что и быстрый BackgroundTask webhook-маршрута.
+yandex_market_process_pending_webhook_events = yandex_market_webhook_event_processor.process_pending_events
 mount_yandex_market_webhooks_routes(
     app,
     DB_DSN=DB_DSN,

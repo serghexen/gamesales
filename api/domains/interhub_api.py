@@ -3,6 +3,7 @@ import threading
 import time
 import uuid
 from datetime import date
+from typing import Literal
 
 from fastapi import Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -680,9 +681,14 @@ def mount_interhub_routes(
     def list_paid_interhub_transactions(
         date_from: date | None = Query(default=None),
         date_to: date | None = Query(default=None),
+        search: str = Query(default="", max_length=200),
+        sort_by: Literal["service", "nominal", "price", "giftCode", "createdAt"] = Query(default="createdAt"),
+        sort_direction: Literal["asc", "desc"] = Query(default="desc"),
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=25, ge=1, le=100),
         user: UserOut = Depends(get_current_user),
     ):
-        # Выдаём только завершённые продажи и ограничиваем выборку периодом без передачи SQL из браузера.
+        # Выдаём одну страницу завершённых продаж и считаем итоги по всей отфильтрованной истории.
         _ = user
         if date_from and date_to and date_from > date_to:
             raise HTTPException(422, "Дата «с» не может быть позже даты «по»")
@@ -696,41 +702,89 @@ def mount_interhub_routes(
             # Берём начало следующего дня по МСК, сохраняя включительность даты «по».
             clauses.append(f"created_at < ((%s::date + 1)::timestamp AT TIME ZONE '{INTERHUB_HISTORY_TIMEZONE}')")
             params.append(date_to)
+        base_query = f"""
+            SELECT history_transaction.agent_transaction_id,
+                   history_transaction.service_id,
+                   COALESCE(service_calculation.service_title, '') AS service_title,
+                   COALESCE(history_transaction.request_params->>'nominal', '') AS nominal,
+                   COALESCE(nominal_calculation.nominal_title, '') AS nominal_title,
+                   history_transaction.amount,
+                   history_transaction.gift_code,
+                   history_transaction.created_at
+            FROM app.interhub_transactions AS history_transaction
+            LEFT JOIN LATERAL (
+              SELECT service_title
+              FROM app.interhub_price_calculations
+              WHERE success=true AND service_id=history_transaction.service_id
+              ORDER BY calculated_at DESC, id DESC
+              LIMIT 1
+            ) AS service_calculation ON true
+            LEFT JOIN LATERAL (
+              SELECT nominal_title
+              FROM app.interhub_price_calculations
+              WHERE success=true
+                AND service_id=history_transaction.service_id
+                AND nominal_id::text=COALESCE(history_transaction.request_params->>'nominal', '')
+              ORDER BY calculated_at DESC, id DESC
+              LIMIT 1
+            ) AS nominal_calculation ON true
+            WHERE {' AND '.join(f'history_transaction.{clause}' for clause in clauses)}
+        """
+        filtered_params = list(params)
+        search_clause = ""
+        if search.strip():
+            # Экранируем шаблонные символы LIKE, чтобы поиск совпадал с буквальным текстом пользователя.
+            escaped_search = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            search_pattern = f"%{escaped_search}%"
+            search_clause = """
+                WHERE service_title ILIKE %s ESCAPE '\\'
+                   OR nominal ILIKE %s ESCAPE '\\'
+                   OR nominal_title ILIKE %s ESCAPE '\\'
+            """
+            filtered_params.extend([search_pattern, search_pattern, search_pattern])
+        sort_columns = {
+            "service": "service_title",
+            "nominal": "COALESCE(NULLIF(nominal_title, ''), nominal)",
+            "price": "amount",
+            "giftCode": "gift_code",
+            "createdAt": "created_at",
+        }
+        sort_column = sort_columns[sort_by]
+        sort_order = sort_direction.upper()
+        offset = (page - 1) * page_size
         with psycopg.connect(DB_DSN) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     f"""
-                    SELECT history_transaction.service_id,
-                           COALESCE(service_calculation.service_title, ''),
-                           COALESCE(history_transaction.request_params->>'nominal', ''),
-                           COALESCE(nominal_calculation.nominal_title, ''),
-                           history_transaction.amount, history_transaction.gift_code, history_transaction.created_at
-                    FROM app.interhub_transactions AS history_transaction
-                    LEFT JOIN LATERAL (
-                      SELECT service_title
-                      FROM app.interhub_price_calculations
-                      WHERE success=true AND service_id=history_transaction.service_id
-                      ORDER BY calculated_at DESC, id DESC
-                      LIMIT 1
-                    ) AS service_calculation ON true
-                    LEFT JOIN LATERAL (
-                      SELECT nominal_title
-                      FROM app.interhub_price_calculations
-                      WHERE success=true
-                        AND service_id=history_transaction.service_id
-                        AND nominal_id::text=COALESCE(history_transaction.request_params->>'nominal', '')
-                      ORDER BY calculated_at DESC, id DESC
-                      LIMIT 1
-                    ) AS nominal_calculation ON true
-                    WHERE {' AND '.join(f'history_transaction.{clause}' for clause in clauses)}
-                    ORDER BY history_transaction.created_at DESC, history_transaction.agent_transaction_id DESC
-                    LIMIT 5000
+                    WITH filtered_history AS ({base_query})
+                    SELECT COUNT(*), COALESCE(SUM(amount), 0)
+                    FROM filtered_history
+                    {search_clause}
                     """,
-                    params,
+                    filtered_params,
+                )
+                total_row = cur.fetchone()
+                cur.execute(
+                    f"""
+                    WITH filtered_history AS ({base_query})
+                    SELECT service_id, service_title, nominal, nominal_title,
+                           amount, gift_code, created_at
+                    FROM filtered_history
+                    {search_clause}
+                    ORDER BY {sort_column} {sort_order}, agent_transaction_id {sort_order}
+                    LIMIT %s OFFSET %s
+                    """,
+                    [*filtered_params, page_size, offset],
                 )
                 rows = cur.fetchall()
+        total = int(total_row[0] or 0) if total_row else 0
+        total_amount = float(total_row[1] or 0) if total_row else 0.0
         # Преобразуем сумму в float, чтобы контракт JSON оставался одинаковым для PostgreSQL numeric.
         return {
+            "total": total,
+            "total_amount": total_amount,
+            "page": page,
+            "page_size": page_size,
             "items": [
                 {
                     "service_id": int(row[0]),

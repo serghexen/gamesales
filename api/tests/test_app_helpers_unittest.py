@@ -1,8 +1,12 @@
 import unittest
+import asyncio
 from datetime import date, datetime, timedelta, timezone
+from threading import Event
 from unittest.mock import patch
 
 from fastapi import HTTPException
+
+import app as app_module
 
 from app import (
     MIN_DATE,
@@ -131,6 +135,27 @@ class AppHelpersTests(unittest.TestCase):
         with patch("app.urllib.request.urlopen", return_value=_FakeUrlResp(data, "image/jpeg")):
             with self.assertRaises(ValueError):
                 fetch_logo_from_url("https://example.com/huge.jpg")
+
+
+class AppLifespanTests(unittest.IsolatedAsyncioTestCase):
+    # Durable webhook-воркер запускается по таймеру после старта, не ожидая нового уведомления от Маркета.
+    async def test_lifespan_starts_yandex_market_webhook_queue_worker(self):
+        worker_called = Event()
+
+        class FakePool:
+            def close(self):
+                return None
+
+        with (
+            patch.object(app_module, "ConnectionPool", return_value=FakePool()),
+            patch.object(app_module, "yandex_market_process_pending_webhook_events", side_effect=worker_called.set),
+            patch.object(app_module, "_OZON_LIVE_ENABLED", False),
+            patch.object(app_module, "_YANDEX_MARKET_WEBHOOK_POLL_INTERVAL_SEC", 0.01),
+        ):
+            async with app_module.lifespan(app_module.app):
+                started = await asyncio.to_thread(worker_called.wait, 1)
+
+        self.assertTrue(started)
 
 
 if __name__ == "__main__":

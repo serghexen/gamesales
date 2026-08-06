@@ -298,7 +298,8 @@ export function useOzonCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, req
     // Передает операторские ключи в один заказ Ozon и обновляет локальную очередь после подтверждения.
     const orderId = Number(order?.id || 0)
     const codes = String(rawCodes || '').split(/\r?\n/).map((code) => code.trim()).filter(Boolean)
-    if (!orderId || !codes.length) return { ok: false, message: 'Введите ключ для отправки' }
+    const repeatsSavedCodes = Number(order?.remaining_qty ?? order?.required_qty ?? 1) === 0
+    if (!orderId || (!codes.length && !repeatsSavedCodes)) return { ok: false, message: 'Введите ключ для отправки' }
     try {
       await apiPost(
         `/marketplaces/ozon/digital-orders/${encodeURIComponent(orderId)}/deliver`,

@@ -284,7 +284,8 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     // Передает ручные коды только выбранной остановленной выдаче и обновляет локальную очередь после ответа Маркета.
     const deliveryId = Number(order?.id || 0)
     const codes = String(rawCodes || '').split(/\r?\n/).map((code) => code.trim()).filter(Boolean)
-    if (!deliveryId || !codes.length) return { ok: false, message: 'Введите ключ для отправки' }
+    const repeatsSavedCodes = Number(order?.collected_qty || 0) >= Math.max(1, Number(order?.required_qty || 1))
+    if (!deliveryId || (!codes.length && !repeatsSavedCodes)) return { ok: false, message: 'Введите ключ для отправки' }
     yandexMarketProductionManualDeliverySaving.value = deliveryId
     yandexMarketProductionManualDeliveryError.value = ''
     try {
