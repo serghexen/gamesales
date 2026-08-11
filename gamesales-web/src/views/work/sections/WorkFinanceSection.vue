@@ -316,6 +316,7 @@
                   <option value="asat">ASAT - ym</option>
                   <option value="sps">SPS - ym</option>
                   <option value="mds">MDS - ym</option>
+                  <option value="joycards">JoyCards - ym</option>
                 </select>
               </label>
               <label class="field">

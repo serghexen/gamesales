@@ -464,6 +464,7 @@ describe('WorkFinanceSection', () => {
     expect(wrapper.text()).toContain('Магазин')
     expect(wrapper.text()).toContain('SPS - ym')
     expect(wrapper.text()).toContain('MDS - ym')
+    expect(wrapper.text()).toContain('JoyCards - ym')
     expect(wrapper.text()).toContain('Строк Яндекса')
     expect(wrapper.text()).toContain('Дней добавлено')
     expect(wrapper.text()).toContain('Дней обновлено')
