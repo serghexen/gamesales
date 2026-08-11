@@ -504,6 +504,94 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
         self.assertFalse(any("marketplace_manual_key_pools" in sql for sql in queries))
         self.assertFalse(any("settings.support_error_message" in sql for sql in queries))
 
+    # Окончательный отказ Interhub без резервов сразу открывает заказ для ручного ключа.
+    def test_terminal_interhub_failure_moves_delivery_to_manual_queue(self):
+        writes = []
+        pay_calls = []
+
+        def fake_q1(_conn, sql, _params=None):
+            if "SELECT orders.offer_id" in sql:
+                return ("PUBG-300", 1, "PROCESSING", False, True, False, False)
+            if "INSERT INTO app.marketplace_yandex_digital_deliveries" in sql:
+                return (31,)
+            if "SELECT required_qty, delivered_codes, status, store_code, offer_id, delivery_source" in sql:
+                return (1, [], "manual_required", "joycards", "PUBG-300", "")
+            if "SELECT 1 FROM app.marketplace_yandex_digital_suppliers" in sql:
+                return (1,)
+            if "SELECT auto_issue_enabled, pool_issue_enabled, support_message_delivery_enabled" in sql:
+                return (True, False, False)
+            if "SELECT delivery.store_code, delivery.offer_id, delivery.required_qty" in sql:
+                return ("joycards", "PUBG-300", 1, [], "manual_required", 7, 9, "300", {})
+            if "state='processing'" in sql or "state='paid' AND code_applied_at IS NULL" in sql:
+                return None
+            if "state IN ('failed', 'manual_required')" in sql:
+                return None
+            return None
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=lambda *_args: [],
+            exec1=lambda _conn, sql, params=None: writes.append((sql, params)) or 1,
+            interhub_calculate=lambda _payload: {"success": True, "fixed_amount": "100"},
+            interhub_check=lambda _payload: {"success": False, "status": -136, "message": "not enough gift codes", "raw": {}},
+            interhub_pay=lambda payload: pay_calls.append(payload),
+        )
+
+        with patch.dict(os.environ, {"YANDEX_MARKET_JOYCARDS_AUTO_DELIVERY_ENABLED": "true"}, clear=False):
+            processor.start_existing_order_manually("joycards", 501, 99)
+
+        self.assertEqual(pay_calls, [])
+        manual_updates = [sql for sql, _params in writes if "SET status='manual_required'" in sql]
+        self.assertEqual(len(manual_updates), 1)
+        self.assertIn("attempt.provider_message", manual_updates[0])
+        self.assertIn("attempt.state='processing'", manual_updates[0])
+        self.assertIn("attempt.state='paid' AND attempt.code_applied_at IS NULL", manual_updates[0])
+
+    # Фоновое восстановление исправляет старую выдачу с уже сохраненным окончательным отказом.
+    def test_stranded_failed_attempt_is_recovered_to_manual_queue(self):
+        writes = []
+
+        def fake_qall(_conn, sql, _params=None):
+            if "SELECT attempt.id" in sql:
+                return []
+            if "SELECT delivery.id" in sql:
+                return [(31,)]
+            return []
+
+        def fake_q1(_conn, sql, _params=None):
+            if "SELECT required_qty, delivered_codes, status, store_code, offer_id, delivery_source" in sql:
+                return (1, [], "supplier_processing", "joycards", "PUBG-300", "")
+            if "SELECT 1 FROM app.marketplace_yandex_digital_suppliers" in sql:
+                return (1,)
+            if "SELECT auto_issue_enabled, pool_issue_enabled, support_message_delivery_enabled" in sql:
+                return (True, False, False)
+            if "SELECT delivery.store_code, delivery.offer_id, delivery.required_qty" in sql:
+                return ("joycards", "PUBG-300", 1, [], "supplier_processing", 7, 9, "300", {})
+            if "state='processing'" in sql or "state='paid' AND code_applied_at IS NULL" in sql:
+                return None
+            if "state IN ('failed', 'manual_required')" in sql:
+                return (17,)
+            return None
+
+        forbidden = lambda *_args: (_ for _ in ()).throw(AssertionError("Нельзя повторно обращаться к поставщику"))
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=fake_qall,
+            exec1=lambda _conn, sql, params=None: writes.append((sql, params)) or 1,
+            interhub_calculate=forbidden,
+            interhub_check=forbidden,
+            interhub_pay=forbidden,
+        )
+
+        processor.recover_paid_supplier_attempts({"joycards"})
+
+        manual_updates = [sql for sql, _params in writes if "SET status='manual_required'" in sql]
+        self.assertEqual(len(manual_updates), 1)
+
     # Временный check_status не должен откатить paid или открыть Яндекс-заказ для второго источника.
     def test_paid_yandex_attempt_without_code_keeps_polling_after_status_error(self):
         writes = []

@@ -129,16 +129,39 @@ def build_yandex_market_production_delivery_processor(
             )
             conn.commit()
 
-    def mark_manual(delivery_id: int, message: str) -> None:
-        # Оставляет выдачу оператору и не отменяет уже собранный комплект ключей.
+    def mark_manual(delivery_id: int, message: str = "") -> None:
+        # Открывает ручную выдачу только после завершения всех неопределенных попыток поставщика.
         with psycopg.connect(DB_DSN) as conn:
             exec1(
                 conn,
                 """
-                UPDATE app.marketplace_yandex_digital_deliveries
-                SET status=CASE WHEN status='cancelled' THEN 'cancelled' ELSE 'manual_required' END,
-                    last_error=%s, updated_at=now()
-                WHERE id=%s
+                UPDATE app.marketplace_yandex_digital_deliveries AS delivery
+                SET status='manual_required',
+                    last_error=COALESCE(
+                      NULLIF(%s, ''),
+                      (
+                        SELECT NULLIF(attempt.provider_message, '')
+                        FROM app.marketplace_yandex_digital_supplier_attempts AS attempt
+                        WHERE attempt.delivery_id=delivery.id
+                          AND attempt.state IN ('failed', 'manual_required')
+                        ORDER BY attempt.updated_at DESC, attempt.id DESC
+                        LIMIT 1
+                      ),
+                      NULLIF(delivery.last_error, ''),
+                      'Поставщик не выдал код'
+                    ),
+                    updated_at=now()
+                WHERE delivery.id=%s
+                  AND delivery.status='supplier_processing'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM app.marketplace_yandex_digital_supplier_attempts AS attempt
+                    WHERE attempt.delivery_id=delivery.id AND attempt.state='processing'
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM app.marketplace_yandex_digital_supplier_attempts AS attempt
+                    WHERE attempt.delivery_id=delivery.id
+                      AND attempt.state='paid' AND attempt.code_applied_at IS NULL
+                  )
                 """,
                 (str(message)[:2000], delivery_id),
             )
@@ -701,6 +724,9 @@ def build_yandex_market_production_delivery_processor(
                 return
             if settings and len(settings) > 2 and bool(settings[2]):
                 send_support_message(delivery_id)
+                return
+            # Финальный отказ без рабочего резерва не должен оставлять карточку в бесконечном ожидании поставщика.
+            mark_manual(delivery_id)
             return
 
     def recover_paid_supplier_attempts(enabled_store_codes: set[str]) -> None:
