@@ -230,6 +230,28 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
         self.assertIsNotNone(upsert)
         self.assertEqual(upsert[-3:], (False, False, False))
 
+    # Пустой дневной лимит остаётся безлимитом и имеет явный SQL-тип при смене способа выдачи.
+    def test_save_pool_delivery_with_unlimited_sales_limit_types_null_parameter(self):
+        client, writes = self.create_client()
+        with client:
+            response = client.put(
+                "/marketplaces/yandex/catalog/PSN-500/stock-settings?store_code=joycards",
+                json={
+                    "manual_stock_limit": 5,
+                    "sales_limit": None,
+                    "auto_issue_enabled": False,
+                    "pool_issue_enabled": True,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        upsert_sql, upsert_params = next(
+            (sql, params) for sql, params in writes if "sales_limit_revision=CASE" in sql
+        )
+        self.assertIn("CASE WHEN %s::integer IS NULL THEN 0 ELSE 1 END", upsert_sql)
+        self.assertEqual(upsert_params[8:10], (None, None))
+        self.assertEqual(upsert_params[-3:], (True, True, True))
+
     # Заглушка через поддержку включается только с понятным текстом для покупателя.
     def test_support_message_delivery_requires_message(self):
         client, _writes = self.create_client()

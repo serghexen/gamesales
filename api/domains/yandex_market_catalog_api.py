@@ -944,7 +944,7 @@ def mount_yandex_market_catalog_routes(
                   sales_limit, sales_limit_revision, sales_limit_day, updated_at
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        CASE WHEN %s IS NULL THEN 0 ELSE 1 END, %s, now())
+                        CASE WHEN %s::integer IS NULL THEN 0 ELSE 1 END, %s, now())
                 ON CONFLICT (store_code, offer_id) DO UPDATE
                 SET manual_stock_limit=excluded.manual_stock_limit,
                     activation_instruction=excluded.activation_instruction,
