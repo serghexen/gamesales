@@ -20,6 +20,8 @@ from psycopg.rows import dict_row
 LOGGER = logging.getLogger("ozon_notifier")
 NOTIFIER_CODE = "telegram_ozon_orders"
 YANDEX_NOTIFIER_CODE = "telegram_yandex_market_orders"
+TELEGRAM_REQUEST_ATTEMPTS = 3
+TELEGRAM_RETRY_DELAY_SEC = 2
 STOP_REQUESTED = False
 
 
@@ -217,24 +219,35 @@ def yandex_resolution_text(delivery: dict[str, Any]) -> str:
 
 
 def telegram_request(settings: Settings, method: str, payload: dict[str, Any]) -> dict[str, Any]:
-    # Вызывает Bot API напрямую, поэтому сервис не зависит от Telegram-аккаунта, подключённого в основном приложении.
+    # Повторяет временный сетевой сбой, чтобы уведомление дошло всем подписчикам в одном цикле.
     request = urllib.request.Request(
         f"https://api.telegram.org/bot{settings.bot_token}/{method}",
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         method="POST",
         headers={"Content-Type": "application/json"},
     )
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            data = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Telegram API returned HTTP {exc.code}: {detail[:500]}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Telegram API is unavailable: {exc.reason}") from exc
-    if not isinstance(data, dict) or not data.get("ok"):
-        raise RuntimeError(f"Telegram API rejected request: {str(data)[:500]}")
-    return data
+    for attempt in range(1, TELEGRAM_REQUEST_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"Telegram API returned HTTP {exc.code}: {detail[:500]}") from exc
+        except urllib.error.URLError as exc:
+            if attempt == TELEGRAM_REQUEST_ATTEMPTS:
+                raise RuntimeError(f"Telegram API is unavailable: {exc.reason}") from exc
+            LOGGER.warning(
+                "Telegram API request %s failed on attempt %s/%s; retrying",
+                method,
+                attempt,
+                TELEGRAM_REQUEST_ATTEMPTS,
+            )
+            time.sleep(TELEGRAM_RETRY_DELAY_SEC)
+            continue
+        if not isinstance(data, dict) or not data.get("ok"):
+            raise RuntimeError(f"Telegram API rejected request: {str(data)[:500]}")
+        return data
+    raise RuntimeError("Telegram API request exhausted retries")
 
 
 def send_text(settings: Settings, chat_id: int, text: str) -> int:
@@ -577,7 +590,11 @@ def run_cycle(settings: Settings) -> None:
     with psycopg.connect(settings.database_url) as conn:
         initialize_tracking(conn)
         initialize_yandex_tracking(conn)
-    sync_recipients(settings)
+    try:
+        sync_recipients(settings)
+    except Exception:
+        # Не даёт недоступности getUpdates задерживать уже найденные тревоги по заказам.
+        LOGGER.exception("Cannot sync Telegram recipients; order notifications will continue")
     with psycopg.connect(settings.database_url) as conn:
         orders = read_pending_orders(conn, settings)
         yandex_deliveries = read_pending_yandex_deliveries(conn, settings)

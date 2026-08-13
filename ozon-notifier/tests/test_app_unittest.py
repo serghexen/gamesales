@@ -2,6 +2,8 @@ import importlib.util
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+import urllib.error
 
 
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
@@ -111,3 +113,41 @@ class OzonNotifierMessageTests(unittest.TestCase):
                 APP.os.environ.pop("OZON_NOTIFIER_TEST_INTERVAL", None)
             else:
                 APP.os.environ["OZON_NOTIFIER_TEST_INTERVAL"] = previous
+
+    def test_telegram_request_retries_a_temporary_network_failure(self):
+        # Проверяет, что временный обрыв сети не оставляет второго подписчика без сообщения до следующего цикла.
+        response = MagicMock()
+        response.read.return_value = b'{"ok": true, "result": {}}'
+        context = MagicMock()
+        context.__enter__.return_value = response
+        settings = APP.Settings("postgresql://unused", "test-token", 15, 120)
+
+        with patch.object(
+            APP.urllib.request,
+            "urlopen",
+            side_effect=[urllib.error.URLError("network is unreachable"), context],
+        ) as request_mock, patch.object(APP.time, "sleep") as sleep_mock:
+            result = APP.telegram_request(settings, "sendMessage", {"chat_id": 1, "text": "test"})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(request_mock.call_count, 2)
+        sleep_mock.assert_called_once_with(APP.TELEGRAM_RETRY_DELAY_SEC)
+
+    def test_subscription_sync_failure_does_not_stop_order_checks(self):
+        # Проверяет, что краткая недоступность getUpdates не отменяет рассылку уже найденных тревог.
+        settings = APP.Settings("postgresql://unused", "test-token", 15, 120)
+        connection = MagicMock()
+        connection.__enter__.return_value = MagicMock()
+
+        with patch.object(APP.psycopg, "connect", return_value=connection), \
+             patch.object(APP, "initialize_tracking"), \
+             patch.object(APP, "initialize_yandex_tracking"), \
+             patch.object(APP, "sync_recipients", side_effect=RuntimeError("Telegram is unavailable")), \
+             patch.object(APP, "read_pending_orders", return_value=[]) as orders_mock, \
+             patch.object(APP, "read_pending_yandex_deliveries", return_value=[]) as deliveries_mock, \
+             patch.object(APP.LOGGER, "exception") as log_mock:
+            APP.run_cycle(settings)
+
+        orders_mock.assert_called_once()
+        deliveries_mock.assert_called_once()
+        log_mock.assert_called_once()
