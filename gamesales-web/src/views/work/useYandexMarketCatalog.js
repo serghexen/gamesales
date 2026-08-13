@@ -38,6 +38,16 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
   const yandexMarketStockSettings = reactive({
     offer_id: '',
     manual_stock_limit: 0,
+    sales_limit: null,
+    sales_limit_daily_extra: 0,
+    sales_limit_effective: null,
+    sales_limit_day: null,
+    sales_limit_add_units: '',
+    sales_limit_used: 0,
+    sales_limit_reserved: 0,
+    sales_limit_remaining: null,
+    archived_by_sales_limit: false,
+    sales_limit_exhausted_at: null,
     activation_instruction: '',
     support_error_message: '',
     auto_issue_enabled: false,
@@ -69,9 +79,20 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
   function applyYandexMarketStockSettings(value) {
     // Переносит серверные настройки остатка в форму, не смешивая их с данными карточки каталога.
     const source = value && typeof value === 'object' ? value : {}
+    const hasMarketStock = Object.prototype.hasOwnProperty.call(source, 'market_available_stock')
+    const hasMarketStockUpdatedAt = Object.prototype.hasOwnProperty.call(source, 'market_stock_updated_at')
     Object.assign(yandexMarketStockSettings, {
       offer_id: String(source.offer_id || yandexMarketSelectedOfferId.value || ''),
       manual_stock_limit: Math.max(0, Number(source.manual_stock_limit || 0)),
+      sales_limit: source.sales_limit === null || source.sales_limit === undefined ? null : Math.max(1, Number(source.sales_limit || 1)),
+      sales_limit_daily_extra: Math.max(0, Number(source.sales_limit_daily_extra || 0)),
+      sales_limit_effective: source.sales_limit_effective === null || source.sales_limit_effective === undefined ? null : Math.max(1, Number(source.sales_limit_effective || 1)),
+      sales_limit_day: source.sales_limit_day || null,
+      sales_limit_used: Math.max(0, Number(source.sales_limit_used || 0)),
+      sales_limit_reserved: Math.max(0, Number(source.sales_limit_reserved || 0)),
+      sales_limit_remaining: source.sales_limit_remaining === null || source.sales_limit_remaining === undefined ? null : Math.max(0, Number(source.sales_limit_remaining || 0)),
+      archived_by_sales_limit: Boolean(source.archived_by_sales_limit),
+      sales_limit_exhausted_at: source.sales_limit_exhausted_at || null,
       activation_instruction: String(source.activation_instruction || ''),
       support_error_message: String(source.support_error_message || ''),
       auto_issue_enabled: Boolean(source.auto_issue_enabled), pool_issue_enabled: Boolean(source.pool_issue_enabled),
@@ -80,8 +101,10 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
       interhub_nominal_id: String(source.interhub_nominal_id || ''), interhub_enabled: Boolean(source.interhub_enabled),
       published_stock: Math.max(0, Number(source.published_stock || 0)),
       last_stock_sync_at: source.last_stock_sync_at || null,
-      market_available_stock: source.market_available_stock === null || source.market_available_stock === undefined ? null : Math.max(0, Number(source.market_available_stock || 0)),
-      market_stock_updated_at: source.market_stock_updated_at || null,
+      market_available_stock: hasMarketStock
+        ? (source.market_available_stock === null || source.market_available_stock === undefined ? null : Math.max(0, Number(source.market_available_stock || 0)))
+        : yandexMarketStockSettings.market_available_stock,
+      market_stock_updated_at: hasMarketStockUpdatedAt ? (source.market_stock_updated_at || null) : yandexMarketStockSettings.market_stock_updated_at,
     })
   }
 
@@ -507,11 +530,18 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     yandexMarketStockSettingsSaving.value = true
     yandexMarketCatalogError.value = ''
     yandexMarketCatalogOk.value = ''
+    yandexMarketCatalogDetailsError.value = ''
     try {
+      // Пустое поле передает NULL как безлимит, а введенное значение нормализует до целого положительного числа.
+      const rawSalesLimit = yandexMarketStockSettings.sales_limit
+      const salesLimit = rawSalesLimit === '' || rawSalesLimit === null || rawSalesLimit === undefined
+        ? null
+        : Math.max(1, Math.floor(Number(rawSalesLimit) || 1))
       const saved = await apiPut(
         yandexMarketTestPath(`/marketplaces/yandex/catalog/${encodeURIComponent(offerId)}/stock-settings${publishStock ? '?publish_stock=true' : ''}`),
         {
-          manual_stock_limit: Math.max(0, Number(yandexMarketStockSettings.manual_stock_limit || 0)),
+          manual_stock_limit: Math.max(0, Math.floor(Number(yandexMarketStockSettings.manual_stock_limit || 0))),
+          sales_limit: salesLimit,
           activation_instruction: String(yandexMarketStockSettings.activation_instruction || '').trim(),
           support_error_message: String(yandexMarketStockSettings.support_error_message || '').trim(),
           auto_issue_enabled: Boolean(yandexMarketStockSettings.auto_issue_enabled), pool_issue_enabled: Boolean(yandexMarketStockSettings.pool_issue_enabled),
@@ -524,11 +554,40 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
       applyYandexMarketStockSettings(saved)
       yandexMarketCatalogOk.value = publishStock
         ? `На Яндекс Маркете опубликован остаток: ${yandexMarketStockSettings.published_stock}`
-        : 'Инструкция покупателю сохранена'
+        : 'Настройки карточки сохранены'
     } catch (error) {
-      yandexMarketCatalogError.value = yandexMarketError(error, (
+      const message = yandexMarketError(error, (
         publishStock ? 'Не удалось обновить остаток на Яндекс Маркете' : 'Не удалось сохранить лимит остатка'
       ))
+      yandexMarketCatalogError.value = message
+      yandexMarketCatalogDetailsError.value = message
+    } finally {
+      yandexMarketStockSettingsSaving.value = false
+    }
+  }
+
+  async function addYandexMarketDailyLimitUnits() {
+    // Прибавляет введенное количество только к текущему дню и не меняет базовый лимит следующих дней.
+    const offerId = yandexMarketSelectedOfferId.value
+    const units = Math.floor(Number(yandexMarketStockSettings.sales_limit_add_units || 0))
+    if (!offerId || yandexMarketStockSettingsSaving.value || !Number.isFinite(units) || units <= 0) return
+    yandexMarketStockSettingsSaving.value = true
+    yandexMarketCatalogError.value = ''
+    yandexMarketCatalogOk.value = ''
+    yandexMarketCatalogDetailsError.value = ''
+    try {
+      const saved = await apiPost(
+        yandexMarketTestPath(`/marketplaces/yandex/catalog/${encodeURIComponent(offerId)}/daily-limit/add`),
+        { units },
+        { token: auth.state.token },
+      )
+      applyYandexMarketStockSettings(saved)
+      yandexMarketStockSettings.sales_limit_add_units = ''
+      yandexMarketCatalogOk.value = `К дневному лимиту добавлено: ${units}`
+    } catch (error) {
+      const message = yandexMarketError(error, 'Не удалось увеличить лимит на сегодня')
+      yandexMarketCatalogError.value = message
+      yandexMarketCatalogDetailsError.value = message
     } finally {
       yandexMarketStockSettingsSaving.value = false
     }
@@ -590,5 +649,6 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     selectYandexMarketCatalogItem,
     closeYandexMarketStockSettings,
     saveYandexMarketStockSettings,
+    addYandexMarketDailyLimitUnits,
   }
 }

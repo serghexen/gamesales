@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from hashlib import sha256
 from typing import Any
 import json
@@ -22,6 +22,7 @@ from .yandex_market_catalog_service import (
     update_yandex_market_stock,
 )
 from .yandex_market_order_storage import save_yandex_market_order_snapshot
+from .yandex_market_sales_limit import YandexMarketSalesLimitManager
 
 
 class YandexMarketCatalogItemOut(BaseModel):
@@ -62,6 +63,7 @@ class YandexMarketCatalogDetailsOut(YandexMarketCatalogItemOut):
 
 class YandexMarketStockSettingsIn(BaseModel):
     manual_stock_limit: int = Field(default=0, ge=0, le=100000)
+    sales_limit: int | None = Field(default=None, ge=1, le=1000000)
     activation_instruction: str = Field(default="", max_length=5000)
     support_error_message: str = Field(default="", max_length=2000)
     auto_issue_enabled: bool = False
@@ -78,6 +80,18 @@ class YandexMarketStockSettingsOut(YandexMarketStockSettingsIn):
     last_stock_sync_at: datetime | None = None
     market_available_stock: int | None = None
     market_stock_updated_at: datetime | None = None
+    sales_limit_used: int = 0
+    sales_limit_reserved: int = 0
+    sales_limit_remaining: int | None = None
+    sales_limit_daily_extra: int = 0
+    sales_limit_effective: int | None = None
+    sales_limit_day: date | None = None
+    archived_by_sales_limit: bool = False
+    sales_limit_exhausted_at: datetime | None = None
+
+
+class YandexMarketDailyLimitAdditionIn(BaseModel):
+    units: int = Field(ge=1, le=1000000)
 
 
 class YandexMarketOrderOut(BaseModel):
@@ -131,7 +145,24 @@ def mount_yandex_market_catalog_routes(
     exec1,
     require_role,
     yandex_market_live_enabled: bool = True,
+    sales_limit_manager=None,
 ):
+    if sales_limit_manager is None:
+        # Использует единый расчет лимита и для ручной кнопки, и для production-выдачи.
+        sales_limit_manager = YandexMarketSalesLimitManager(
+            DB_DSN=DB_DSN,
+            psycopg=psycopg,
+            q1=q1,
+            qall=qall,
+            exec1=exec1,
+            update_stock=lambda offer_id, stock, *, store_code: update_yandex_market_stock(
+                offer_id, stock, store_code=store_code,
+            ),
+            update_archive=lambda offer_id, *, archived, store_code: update_yandex_market_catalog_archive(
+                offer_id, archived=archived, store_code=store_code,
+            ),
+        )
+
     def require_yandex_market_live() -> None:
         # Не дает тестовому или подготовительному контуру изменить кабинет Маркета внешним запросом.
         if not yandex_market_live_enabled:
@@ -355,7 +386,8 @@ def mount_yandex_market_catalog_routes(
         )
 
     def make_stock_settings_out(conn, store_code: str, offer_id: str) -> YandexMarketStockSettingsOut:
-        # Возвращает локальный лимит и последнюю публикацию, не считая остатки из будущей очереди заказов.
+        # Возвращает локальные настройки вместе с проданными, зарезервированными и оставшимися единицами лимита.
+        sales_state = sales_limit_manager.read_state(conn, store_code, offer_id)
         row = q1(
             conn,
             """
@@ -371,7 +403,14 @@ def mount_yandex_market_catalog_routes(
             (store_code, offer_id),
         )
         if not row:
-            return YandexMarketStockSettingsOut(offer_id=offer_id)
+            return YandexMarketStockSettingsOut(offer_id=offer_id, **{
+                key: sales_state[key]
+                for key in (
+                    "sales_limit", "sales_limit_used", "sales_limit_reserved", "sales_limit_remaining",
+                    "sales_limit_daily_extra", "sales_limit_effective", "sales_limit_day",
+                    "archived_by_sales_limit", "sales_limit_exhausted_at",
+                )
+            })
         return YandexMarketStockSettingsOut(
             offer_id=offer_id,
             manual_stock_limit=max(0, int(row[0] or 0)),
@@ -381,6 +420,15 @@ def mount_yandex_market_catalog_routes(
             interhub_service_id=int(row[8]) if len(row) > 8 and row[8] else None,
             interhub_nominal_id=str(row[9] or "") if len(row) > 9 else "",
             interhub_enabled=bool(row[10]) if len(row) > 10 else False,
+            sales_limit=sales_state["sales_limit"],
+            sales_limit_used=sales_state["sales_limit_used"],
+            sales_limit_reserved=sales_state["sales_limit_reserved"],
+            sales_limit_remaining=sales_state["sales_limit_remaining"],
+            sales_limit_daily_extra=sales_state["sales_limit_daily_extra"],
+            sales_limit_effective=sales_state["sales_limit_effective"],
+            sales_limit_day=sales_state["sales_limit_day"],
+            archived_by_sales_limit=sales_state["archived_by_sales_limit"],
+            sales_limit_exhausted_at=sales_state["sales_limit_exhausted_at"],
         )
 
     @app.post("/marketplaces/yandex/catalog/sync", response_model=YandexMarketCatalogSyncOut)
@@ -519,6 +567,15 @@ def mount_yandex_market_catalog_routes(
                 WHERE store_code=%s AND offer_id=%s
                 """,
                 (archived, normalized_store_code, offer_id),
+            )
+            exec1(
+                conn,
+                """
+                UPDATE app.marketplace_yandex_stock_settings
+                SET archived_by_sales_limit=false, updated_at=now()
+                WHERE store_code=%s AND offer_id=%s
+                """,
+                (normalized_store_code, offer_id),
             )
             conn.commit()
         return YandexMarketCatalogArchiveOut(offer_id=offer_id, archived=archived)
@@ -883,9 +940,11 @@ def mount_yandex_market_catalog_routes(
                 """
                 INSERT INTO app.marketplace_yandex_stock_settings(
                   store_code, offer_id, manual_stock_limit, activation_instruction, support_error_message,
-                  auto_issue_enabled, pool_issue_enabled, support_message_delivery_enabled, updated_at
+                  auto_issue_enabled, pool_issue_enabled, support_message_delivery_enabled,
+                  sales_limit, sales_limit_revision, sales_limit_day, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        CASE WHEN %s IS NULL THEN 0 ELSE 1 END, %s, now())
                 ON CONFLICT (store_code, offer_id) DO UPDATE
                 SET manual_stock_limit=excluded.manual_stock_limit,
                     activation_instruction=excluded.activation_instruction,
@@ -893,6 +952,33 @@ def mount_yandex_market_catalog_routes(
                     auto_issue_enabled=CASE WHEN %s THEN excluded.auto_issue_enabled ELSE marketplace_yandex_stock_settings.auto_issue_enabled END,
                     pool_issue_enabled=CASE WHEN %s THEN excluded.pool_issue_enabled ELSE marketplace_yandex_stock_settings.pool_issue_enabled END,
                     support_message_delivery_enabled=CASE WHEN %s THEN excluded.support_message_delivery_enabled ELSE marketplace_yandex_stock_settings.support_message_delivery_enabled END,
+                    sales_limit_revision=CASE
+                      WHEN excluded.sales_limit IS NOT NULL
+                       AND (marketplace_yandex_stock_settings.sales_limit IS NULL
+                            OR marketplace_yandex_stock_settings.sales_limit_day < excluded.sales_limit_day)
+                      THEN marketplace_yandex_stock_settings.sales_limit_revision + 1
+                      ELSE marketplace_yandex_stock_settings.sales_limit_revision
+                    END,
+                    sales_limit_daily_extra=CASE
+                      WHEN excluded.sales_limit IS NULL
+                        OR marketplace_yandex_stock_settings.sales_limit_day < excluded.sales_limit_day
+                      THEN 0
+                      ELSE marketplace_yandex_stock_settings.sales_limit_daily_extra
+                    END,
+                    sales_limit_day=excluded.sales_limit_day,
+                    sales_limit_rollover_pending=CASE
+                      WHEN excluded.sales_limit IS NULL THEN false
+                      WHEN marketplace_yandex_stock_settings.sales_limit_day < excluded.sales_limit_day
+                      THEN true
+                      ELSE marketplace_yandex_stock_settings.sales_limit_rollover_pending
+                    END,
+                    sales_limit=excluded.sales_limit,
+                    sales_limit_exhausted_at=CASE
+                      WHEN excluded.sales_limit IS NULL
+                        OR marketplace_yandex_stock_settings.sales_limit_day < excluded.sales_limit_day
+                      THEN NULL
+                      ELSE marketplace_yandex_stock_settings.sales_limit_exhausted_at
+                    END,
                     updated_at=now()
                 """,
                 (
@@ -904,6 +990,9 @@ def mount_yandex_market_catalog_routes(
                     payload.auto_issue_enabled,
                     payload.pool_issue_enabled,
                     payload.support_message_delivery_enabled,
+                    payload.sales_limit,
+                    payload.sales_limit,
+                    sales_limit_manager.current_day(),
                     not publish_stock,
                     not publish_stock,
                     not publish_stock,
@@ -915,22 +1004,37 @@ def mount_yandex_market_catalog_routes(
             else:
                 # Не удаляет историю попыток, а выключает поставщика при очистке настройки.
                 exec1(conn, "UPDATE app.marketplace_yandex_digital_suppliers SET enabled=false, updated_at=now() WHERE store_code=%s AND offer_id=%s AND provider_code='interhub' AND priority=1", (normalized_store_code, offer_id))
+            if publish_stock and payload.sales_limit is not None:
+                # Фоновый цикл повторит конечный остаток, если явная публикация временно не пройдет во внешний API.
+                exec1(
+                    conn,
+                    "UPDATE app.marketplace_yandex_stock_settings SET sales_limit_rollover_pending=true, updated_at=now() WHERE store_code=%s AND offer_id=%s",
+                    (normalized_store_code, offer_id),
+                )
             conn.commit()
         if publish_stock:
             require_yandex_market_live()
-            update_yandex_market_stock(offer_id, payload.manual_stock_limit, store_code=normalized_store_code)
+            sales_limit_manager.sync_target_stock(normalized_store_code, offer_id)
             with psycopg.connect(DB_DSN) as conn:
-                exec1(
-                    conn,
-                    """
-                    UPDATE app.marketplace_yandex_stock_settings
-                    SET published_stock=%s, last_stock_sync_at=now(), updated_at=now()
-                    WHERE store_code=%s AND offer_id=%s
-                    """,
-                    (payload.manual_stock_limit, normalized_store_code, offer_id),
-                )
                 result = make_stock_settings_out(conn, normalized_store_code, offer_id)
                 conn.commit()
                 return result
+        with psycopg.connect(DB_DSN) as conn:
+            return make_stock_settings_out(conn, normalized_store_code, offer_id)
+
+    @app.post("/marketplaces/yandex/catalog/{offer_id}/daily-limit/add", response_model=YandexMarketStockSettingsOut)
+    def add_yandex_market_daily_limit(
+        offer_id: str,
+        payload: YandexMarketDailyLimitAdditionIn,
+        store_code: str = Query(..., min_length=1, max_length=64),
+        user=Depends(require_role("owner")),
+    ):
+        # Добавляет единицы только к текущему дню и сразу публикует увеличившийся доступный остаток.
+        require_yandex_market_live()
+        normalized_store_code = normalize_yandex_market_store_code(store_code)
+        try:
+            sales_limit_manager.add_daily_units(normalized_store_code, offer_id, payload.units)
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from error
         with psycopg.connect(DB_DSN) as conn:
             return make_stock_settings_out(conn, normalized_store_code, offer_id)

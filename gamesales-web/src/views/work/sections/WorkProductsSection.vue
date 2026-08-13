@@ -110,6 +110,7 @@
         :yandex-market-stock-settings="ctx.yandexMarketStockSettings"
         :yandex-market-stock-settings-saving="ctx.yandexMarketStockSettingsSaving"
         :save-yandex-market-stock-settings="ctx.saveYandexMarketStockSettings"
+        :add-yandex-market-daily-limit-units="ctx.addYandexMarketDailyLimitUnits"
         :yandex-market-orders="ctx.yandexMarketOrders"
         :yandex-market-orders-loading="ctx.yandexMarketOrdersLoading"
         :yandex-market-orders-syncing="ctx.yandexMarketOrdersSyncing"

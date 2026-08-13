@@ -1946,6 +1946,7 @@ const {
   selectYandexMarketCatalogItem,
   closeYandexMarketStockSettings,
   saveYandexMarketStockSettings,
+  addYandexMarketDailyLimitUnits,
 } = useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiError, requestDealConfirm })
 
 const {
@@ -3902,6 +3903,7 @@ const productsSectionCtx = asCtx({
   revealYandexMarketProductionOrderCodes,
   closeYandexMarketStockSettings,
   saveYandexMarketStockSettings,
+  addYandexMarketDailyLimitUnits,
   showMarketplaceKeyPool,
   marketplaceKeyPool,
   marketplaceKeyPoolLoading,

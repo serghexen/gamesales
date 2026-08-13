@@ -68,9 +68,88 @@ describe('useYandexMarketCatalog', () => {
 
     expect(apiPut).toHaveBeenCalledWith(
       '/marketplaces/yandex/catalog/PSN-500/stock-settings?store_code=test',
-      expect.objectContaining({ manual_stock_limit: 0, activation_instruction: 'Активируйте код в магазине.', auto_issue_enabled: false, pool_issue_enabled: false, support_message_delivery_enabled: false }),
+      expect.objectContaining({ manual_stock_limit: 0, sales_limit: null, activation_instruction: 'Активируйте код в магазине.', auto_issue_enabled: false, pool_issue_enabled: false, support_message_delivery_enabled: false }),
       { token: 'market-token' },
     )
+  })
+
+  it('sends a finite sales limit and keeps an empty field unlimited', async () => {
+    const apiPut = vi.fn().mockResolvedValue({ offer_id: 'PSN-500', sales_limit: 10, sales_limit_remaining: 10 })
+    const instance = useYandexMarketCatalog({
+      auth: { state: { token: 'market-token' } }, apiGet: vi.fn(), apiPost: vi.fn(), apiPut, mapApiError: vi.fn(), requestDealConfirm: vi.fn(),
+    })
+    instance.yandexMarketSelectedOfferId.value = 'PSN-500'
+    instance.yandexMarketStockSettings.sales_limit = 10
+
+    await instance.saveYandexMarketStockSettings()
+
+    expect(apiPut).toHaveBeenLastCalledWith(
+      '/marketplaces/yandex/catalog/PSN-500/stock-settings?store_code=test',
+      expect.objectContaining({ sales_limit: 10 }),
+      { token: 'market-token' },
+    )
+
+    instance.yandexMarketStockSettings.sales_limit = ''
+    apiPut.mockResolvedValueOnce({ offer_id: 'PSN-500', sales_limit: null, sales_limit_remaining: null })
+    await instance.saveYandexMarketStockSettings()
+
+    expect(apiPut).toHaveBeenLastCalledWith(
+      '/marketplaces/yandex/catalog/PSN-500/stock-settings?store_code=test',
+      expect.objectContaining({ sales_limit: null }),
+      { token: 'market-token' },
+    )
+  })
+
+  it('adds units only to todays limit and clears the temporary input', async () => {
+    const apiPost = vi.fn().mockResolvedValue({
+      offer_id: 'PSN-500', sales_limit: 50, sales_limit_daily_extra: 10,
+      sales_limit_effective: 60, sales_limit_used: 45, sales_limit_remaining: 15,
+    })
+    const instance = useYandexMarketCatalog({
+      auth: { state: { token: 'market-token' } }, apiGet: vi.fn(), apiPost, apiPut: vi.fn(), mapApiError: vi.fn(), requestDealConfirm: vi.fn(),
+    })
+    instance.yandexMarketSelectedOfferId.value = 'PSN-500'
+    instance.yandexMarketStockSettings.sales_limit = 50
+    instance.yandexMarketStockSettings.sales_limit_add_units = 10
+    instance.yandexMarketCatalogDetailsError.value = 'Старая ошибка'
+
+    await instance.addYandexMarketDailyLimitUnits()
+
+    expect(apiPost).toHaveBeenCalledWith(
+      '/marketplaces/yandex/catalog/PSN-500/daily-limit/add?store_code=test',
+      { units: 10 },
+      { token: 'market-token' },
+    )
+    expect(instance.yandexMarketStockSettings.sales_limit).toBe(50)
+    expect(instance.yandexMarketStockSettings.sales_limit_daily_extra).toBe(10)
+    expect(instance.yandexMarketStockSettings.sales_limit_effective).toBe(60)
+    expect(instance.yandexMarketStockSettings.sales_limit_add_units).toBe('')
+    expect(instance.yandexMarketCatalogDetailsError.value).toBe('')
+  })
+
+  it('shows a daily limit request error inside the open card', async () => {
+    const apiPost = vi.fn().mockRejectedValue(new Error('API unavailable'))
+    const instance = useYandexMarketCatalog({
+      auth: { state: { token: 'market-token' } }, apiGet: vi.fn(), apiPost, apiPut: vi.fn(), mapApiError: () => 'Сервис временно недоступен', requestDealConfirm: vi.fn(),
+    })
+    instance.yandexMarketSelectedOfferId.value = 'PSN-500'
+    instance.yandexMarketStockSettings.sales_limit_add_units = 10
+
+    await instance.addYandexMarketDailyLimitUnits()
+
+    expect(instance.yandexMarketCatalogDetailsError.value).toBe('Сервис временно недоступен')
+  })
+
+  it('shows a settings save error inside the open card', async () => {
+    const apiPut = vi.fn().mockRejectedValue(new Error('API unavailable'))
+    const instance = useYandexMarketCatalog({
+      auth: { state: { token: 'market-token' } }, apiGet: vi.fn(), apiPost: vi.fn(), apiPut, mapApiError: () => 'Не удалось сохранить карточку', requestDealConfirm: vi.fn(),
+    })
+    instance.yandexMarketSelectedOfferId.value = 'PSN-500'
+
+    await instance.saveYandexMarketStockSettings()
+
+    expect(instance.yandexMarketCatalogDetailsError.value).toBe('Не удалось сохранить карточку')
   })
 
   it('keeps a production pool error inside the key-delivery screen', async () => {
@@ -200,11 +279,12 @@ describe('WorkYandexMarketCatalogModal', () => {
 describe('WorkYandexMarketCatalogDetailsModal', () => {
   it('publishes stock explicitly and keeps delivery settings out of the stock form', async () => {
     const saveYandexMarketStockSettings = vi.fn()
+    const addYandexMarketDailyLimitUnits = vi.fn()
     const startYandexMarketProductionOrder = vi.fn().mockResolvedValue({ ok: true })
     const revealYandexMarketProductionOrderCodes = vi.fn().mockResolvedValue({ ok: true, codes: ['AAAA-1111'] })
     const wrapper = mount(WorkYandexMarketCatalogDetailsModal, {
       props: {
-        showYandexMarketCatalogDetails: true, closeYandexMarketCatalogDetails: vi.fn(), openYandexMarketDigitalSettings: vi.fn(), yandexMarketSandboxMode: false, yandexMarketCatalogDetailsLoading: false, yandexMarketCatalogDetails: { offer_id: 'PSN-500', market_sku: '123', title: 'PSN 500', category_name: 'Игровые карты', price: '500', currency_code: 'RUB', card_status: 'HAS_CARD_CAN_UPDATE' }, yandexMarketStockSettings: { manual_stock_limit: 4, market_available_stock: 4, market_stock_updated_at: '2026-07-25T11:33:00Z', activation_instruction: 'Активируйте ключ здесь.', auto_issue_enabled: true, pool_issue_enabled: true }, yandexMarketStockSettingsSaving: false, saveYandexMarketStockSettings, yandexMarketOrders: [{ order_id: 501, item_id: 99, offer_id: 'PSN-500', quantity: 2, status: 'PROCESSING', created_at: '2026-07-25T12:00:00Z' }], yandexMarketOrdersLoading: false, yandexMarketOrdersSyncing: false, yandexMarketOrdersLastSyncedAt: '2026-07-25T12:01:00Z', canRevealYandexMarketDigitalCodes: true, loadYandexMarketOrders: vi.fn(), syncYandexMarketOrders: vi.fn(), startYandexMarketProductionOrder, revealYandexMarketProductionOrderCodes,
+        showYandexMarketCatalogDetails: true, closeYandexMarketCatalogDetails: vi.fn(), openYandexMarketDigitalSettings: vi.fn(), yandexMarketSandboxMode: false, yandexMarketCatalogDetailsLoading: false, yandexMarketCatalogDetails: { offer_id: 'PSN-500', market_sku: '123', title: 'PSN 500', category_name: 'Игровые карты', price: '500', currency_code: 'RUB', card_status: 'HAS_CARD_CAN_UPDATE' }, yandexMarketStockSettings: { manual_stock_limit: 4, sales_limit: 10, sales_limit_daily_extra: 0, sales_limit_add_units: '', sales_limit_used: 6, sales_limit_reserved: 1, sales_limit_remaining: 3, market_available_stock: 4, market_stock_updated_at: '2026-07-25T11:33:00Z', activation_instruction: 'Активируйте ключ здесь.', auto_issue_enabled: true, pool_issue_enabled: true }, yandexMarketStockSettingsSaving: false, saveYandexMarketStockSettings, addYandexMarketDailyLimitUnits, yandexMarketOrders: [{ order_id: 501, item_id: 99, offer_id: 'PSN-500', quantity: 2, status: 'PROCESSING', created_at: '2026-07-25T12:00:00Z' }], yandexMarketOrdersLoading: false, yandexMarketOrdersSyncing: false, yandexMarketOrdersLastSyncedAt: '2026-07-25T12:01:00Z', canRevealYandexMarketDigitalCodes: true, loadYandexMarketOrders: vi.fn(), syncYandexMarketOrders: vi.fn(), startYandexMarketProductionOrder, revealYandexMarketProductionOrderCodes,
       },
       global: { stubs: { teleport: true } },
     })
@@ -215,14 +295,29 @@ describe('WorkYandexMarketCatalogDetailsModal', () => {
     expect(wrapper.text()).toContain('4')
     expect(wrapper.findAll('.yandex-catalog-details-modal__work-block-toggle')).toHaveLength(2)
     await wrapper.findAll('.yandex-catalog-details-modal__work-block-toggle').at(0).trigger('click')
-    expect(wrapper.get('input[aria-label="Остаток для публикации на Маркете"]').element.value).toBe('4')
+    expect(wrapper.get('input[aria-label="Остаток"]').element.value).toBe('4')
+    expect(wrapper.get('input[aria-label="Дневной лимит продаж на Маркете"]').element.value).toBe('10')
+    expect(wrapper.get('.yandex-catalog-details-modal__inventory-row').findAll('.field')).toHaveLength(2)
+    expect(wrapper.get('.yandex-catalog-details-modal__instruction-field').findAll('textarea')).toHaveLength(1)
+    expect(wrapper.find('textarea[aria-label="Сообщение при проблеме Яндекс Маркета"]').exists()).toBe(false)
+    expect(wrapper.get('.yandex-catalog-details-modal__settings-footer').text()).toContain('Сохранить — записать настройки')
+    expect(wrapper.text()).toContain('Временная прибавка сбросится в 00:00 МСК')
+    expect(wrapper.text()).toContain('Продано')
+    expect(wrapper.text()).toContain('В резерве')
+    expect(wrapper.text()).toContain('Осталось')
+    expect(wrapper.text()).toContain('3 из 10')
+    expect(wrapper.get('button.yandex-catalog-details-modal__daily-boost-button').attributes('disabled')).toBeDefined()
+    await wrapper.get('input[aria-label="Добавить единиц к дневному лимиту"]').setValue('10')
+    await wrapper.get('button.yandex-catalog-details-modal__daily-boost-button').trigger('click')
+    expect(addYandexMarketDailyLimitUnits).toHaveBeenCalledTimes(1)
     await wrapper.get('button[title="Опубликовать указанный остаток в Яндекс Маркете"]').trigger('click')
     expect(saveYandexMarketStockSettings).toHaveBeenCalledWith({ publishStock: true })
     expect(wrapper.find('input[aria-label="Автовыдача Яндекс Маркета"]').exists()).toBe(false)
     expect(wrapper.find('input[aria-label="Выдача из ручного пула Яндекс Маркета"]').exists()).toBe(false)
     expect(wrapper.get('textarea[aria-label="Инструкция покупателю"]').element.value).toBe('Активируйте ключ здесь.')
     const saveSettingsButton = wrapper.get('button[aria-label="Сохранить настройки карточки"]')
-    expect(saveSettingsButton.attributes('title')).toBe('Сохранить инструкцию и настройки выдачи')
+    expect(saveSettingsButton.attributes('title')).toBe('Сохранить остаток, лимит и инструкцию')
+    expect(saveSettingsButton.text()).toBe('Сохранить')
     await saveSettingsButton.trigger('click')
     expect(saveYandexMarketStockSettings).toHaveBeenLastCalledWith()
     await wrapper.findAll('.yandex-catalog-details-modal__work-block-toggle').at(1).trigger('click')
@@ -239,6 +334,38 @@ describe('WorkYandexMarketCatalogDetailsModal', () => {
     await Promise.resolve()
     expect(revealYandexMarketProductionOrderCodes).toHaveBeenCalledWith(expect.objectContaining({ order_id: 501, item_id: 99 }))
     expect(wrapper.text()).toContain('AAAA-1111')
+  })
+
+  it('shows an empty limit as unlimited without fake zero counters', async () => {
+    const wrapper = mount(WorkYandexMarketCatalogDetailsModal, {
+      props: {
+        showYandexMarketCatalogDetails: true, closeYandexMarketCatalogDetails: vi.fn(), openYandexMarketDigitalSettings: vi.fn(), yandexMarketCatalogDetailsLoading: false, yandexMarketCatalogDetails: { offer_id: 'APEX-1000', title: 'Apex Coins' }, yandexMarketStockSettings: { manual_stock_limit: 5, sales_limit: null, sales_limit_used: 0, sales_limit_reserved: 0, sales_limit_remaining: null }, yandexMarketStockSettingsSaving: false, saveYandexMarketStockSettings: vi.fn(), addYandexMarketDailyLimitUnits: vi.fn(), yandexMarketOrdersLoading: false, yandexMarketOrdersSyncing: false, loadYandexMarketOrders: vi.fn(), syncYandexMarketOrders: vi.fn(),
+      },
+      global: { stubs: { teleport: true } },
+    })
+
+    await wrapper.findAll('.yandex-catalog-details-modal__work-block-toggle').at(0).trigger('click')
+
+    expect(wrapper.get('input[aria-label="Дневной лимит продаж на Маркете"]').element.value).toBe('')
+    expect(wrapper.text()).toContain('Без ограничений')
+    expect(wrapper.text()).toContain('Поле «Дневной лимит» пустое')
+  })
+
+  it('shows a card action error in a separate dismissible alert dialog', async () => {
+    const wrapper = mount(WorkYandexMarketCatalogDetailsModal, {
+      props: {
+        showYandexMarketCatalogDetails: true, closeYandexMarketCatalogDetails: vi.fn(), openYandexMarketDigitalSettings: vi.fn(), yandexMarketCatalogDetailsLoading: false, yandexMarketCatalogDetailsError: 'Сначала задайте дневной лимит', yandexMarketCatalogDetails: { offer_id: 'APEX-1000', title: 'Apex Coins' }, yandexMarketStockSettings: { manual_stock_limit: 5, sales_limit: null }, yandexMarketStockSettingsSaving: false, saveYandexMarketStockSettings: vi.fn(), addYandexMarketDailyLimitUnits: vi.fn(), yandexMarketOrdersLoading: false, yandexMarketOrdersSyncing: false, loadYandexMarketOrders: vi.fn(), syncYandexMarketOrders: vi.fn(),
+      },
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(wrapper.get('[role="alertdialog"]').text()).toContain('Действие не выполнено')
+    expect(wrapper.get('[role="alertdialog"]').text()).toContain('Сначала задайте дневной лимит')
+    expect(wrapper.find('.modal__body > .bad').exists()).toBe(false)
+
+    await wrapper.get('.yandex-catalog-details-modal__error-action').trigger('click')
+
+    expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false)
   })
 })
 

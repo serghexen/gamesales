@@ -37,6 +37,17 @@ class _FakeUrlResp:
         return False
 
 
+class _FakeDbConnection:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+    def commit(self):
+        return None
+
+
 class AppHelpersTests(unittest.TestCase):
     # Проверяем очистку, приведение к нижнему регистру и удаление дублей платформ.
     def test_normalize_platform_codes_deduplicates_and_trims(self):
@@ -136,11 +147,41 @@ class AppHelpersTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 fetch_logo_from_url("https://example.com/huge.jpg")
 
+    # Интервал фоновой проверки должен читаться из единственной строки системных настроек Маркета.
+    def test_yandex_market_daily_limit_poll_interval_reads_database(self):
+        with (
+            patch.object(app_module.pooled_psycopg, "connect", return_value=_FakeDbConnection()),
+            patch.object(app_module, "q1", return_value=(27,)) as query,
+        ):
+            interval = app_module.yandex_market_daily_limit_poll_interval_sec()
+
+        self.assertEqual(interval, 27)
+        self.assertIn("app.marketplace_yandex_runtime_settings", query.call_args.args[1])
+
+    # Защитные границы не позволяют ошибочной настройке создать слишком частый или редкий цикл.
+    def test_yandex_market_daily_limit_poll_interval_clamps_database_value(self):
+        with patch.object(app_module.pooled_psycopg, "connect", return_value=_FakeDbConnection()):
+            for raw_value, expected in ((1, 5), (5000, 3600)):
+                with self.subTest(raw_value=raw_value), patch.object(app_module, "q1", return_value=(raw_value,)):
+                    self.assertEqual(app_module.yandex_market_daily_limit_poll_interval_sec(), expected)
+
+    # При временной недоступности настроек воркер продолжает работать с интервалом 15 секунд.
+    def test_yandex_market_daily_limit_poll_interval_uses_default_on_database_error(self):
+        with (
+            patch.object(app_module.pooled_psycopg, "connect", side_effect=RuntimeError("database unavailable")),
+            patch.object(app_module.logger, "exception") as log_exception,
+        ):
+            interval = app_module.yandex_market_daily_limit_poll_interval_sec()
+
+        self.assertEqual(interval, 15)
+        log_exception.assert_called_once()
+
 
 class AppLifespanTests(unittest.IsolatedAsyncioTestCase):
-    # Durable webhook-воркер запускается по таймеру после старта, не ожидая нового уведомления от Маркета.
-    async def test_lifespan_starts_yandex_market_webhook_queue_worker(self):
-        worker_called = Event()
+    # Фоновые воркеры восстанавливают webhook-очередь и переключают дневные лимиты без открытой вкладки.
+    async def test_lifespan_starts_yandex_market_background_workers(self):
+        webhook_worker_called = Event()
+        daily_limit_worker_called = Event()
 
         class FakePool:
             def close(self):
@@ -148,14 +189,46 @@ class AppLifespanTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(app_module, "ConnectionPool", return_value=FakePool()),
-            patch.object(app_module, "yandex_market_process_pending_webhook_events", side_effect=worker_called.set),
+            patch.object(app_module, "yandex_market_process_pending_webhook_events", side_effect=webhook_worker_called.set),
+            patch.object(app_module, "yandex_market_refresh_daily_sales_limits", side_effect=daily_limit_worker_called.set),
             patch.object(app_module, "_OZON_LIVE_ENABLED", False),
+            patch.object(app_module, "_YANDEX_MARKET_CATALOG_LIVE_ENABLED", True),
             patch.object(app_module, "_YANDEX_MARKET_WEBHOOK_POLL_INTERVAL_SEC", 0.01),
+            patch.object(app_module, "_YANDEX_MARKET_DAILY_LIMIT_POLL_INTERVAL_DEFAULT_SEC", 0.01),
+            patch.object(
+                app_module,
+                "yandex_market_daily_limit_poll_interval_sec",
+                return_value=0.01,
+            ) as interval_reader,
         ):
             async with app_module.lifespan(app_module.app):
-                started = await asyncio.to_thread(worker_called.wait, 1)
+                webhook_started = await asyncio.to_thread(webhook_worker_called.wait, 1)
+                daily_limit_started = await asyncio.to_thread(daily_limit_worker_called.wait, 1)
 
-        self.assertTrue(started)
+        self.assertTrue(webhook_started)
+        self.assertTrue(daily_limit_started)
+        interval_reader.assert_called()
+
+    # Выключенный товарный контур staging не должен фоном обращаться к реальному кабинету Маркета.
+    async def test_lifespan_does_not_sync_daily_limits_when_market_catalog_is_disabled(self):
+        daily_limit_worker_called = Event()
+
+        class FakePool:
+            def close(self):
+                return None
+
+        with (
+            patch.object(app_module, "ConnectionPool", return_value=FakePool()),
+            patch.object(app_module, "yandex_market_refresh_daily_sales_limits", side_effect=daily_limit_worker_called.set),
+            patch.object(app_module, "_OZON_LIVE_ENABLED", False),
+            patch.object(app_module, "_YANDEX_MARKET_CATALOG_LIVE_ENABLED", False),
+            patch.object(app_module, "yandex_market_daily_limit_poll_interval_sec", return_value=0.01) as interval_reader,
+        ):
+            async with app_module.lifespan(app_module.app):
+                await asyncio.sleep(0.03)
+
+        self.assertFalse(daily_limit_worker_called.is_set())
+        interval_reader.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -4,16 +4,16 @@ PY ?= ../.venv/bin/python
 
 # Базовый запуск тестов, работает даже без pytest.
 test:
-	$(PY) -m unittest discover -s tests
+	PYTHONPATH=.. $(PY) -m unittest discover -s tests
 
 # Подробный режим для локальной отладки.
 test-v:
-	$(PY) -m unittest discover -s tests -v
+	PYTHONPATH=.. $(PY) -m unittest discover -s tests -v
 
 # Запуск через pytest (если установлен в окружении).
 test-pytest:
-	$(PY) -m pytest
+	PYTHONPATH=.. $(PY) -m pytest
 
 # Отчет покрытия через pytest-cov (если установлен в окружении).
 test-cov:
-	$(PY) -m pytest --cov=. --cov-report=term-missing
+	PYTHONPATH=.. $(PY) -m pytest --cov=. --cov-report=term-missing

@@ -40,6 +40,37 @@ class _FakePsycopg:
         return _FakeConn()
 
 
+class _FakeSalesLimitManager:
+    def __init__(self, *, reserve_allowed=True):
+        self.reserve_allowed = reserve_allowed
+        self.calls = []
+
+    def reserve_delivery(self, delivery_id):
+        # Запоминает проверку квоты до любого получения или отправки ключа.
+        self.calls.append(("reserve", delivery_id))
+        return self.reserve_allowed
+
+    def consume_delivery(self, delivery_id):
+        self.calls.append(("consume_delivery", delivery_id))
+        return ("asat", "PSN-500")
+
+    def consume_order(self, store_code, order_id, item_id):
+        self.calls.append(("consume_order", store_code, order_id, item_id))
+        return (store_code, "PSN-500")
+
+    def release_delivery(self, store_code, order_id, item_id):
+        self.calls.append(("release", store_code, order_id, item_id))
+        return (store_code, "PSN-500")
+
+    def sync_target_stock(self, store_code, offer_id, **_kwargs):
+        self.calls.append(("sync", store_code, offer_id))
+        return {}
+
+    def rollover_due_limits(self):
+        self.calls.append(("rollover",))
+        return 0
+
+
 class YandexMarketProductionDeliveryTests(unittest.TestCase):
     # Автовыдача изолирована настройкой каждого кабинета, а не зарезервированным именем магазина.
     def test_auto_delivery_flag_is_resolved_for_each_store(self):
@@ -81,6 +112,38 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
             "YANDEX_MARKET_JOYCARDS_AUTO_DELIVERY_ENABLED": "false",
         }, clear=False):
             processor.refresh_supplier_attempts()
+
+    # Исчерпанная квота останавливает выдачу до обращения к пулу или поставщику.
+    def test_sales_limit_reservation_stops_delivery_before_supplier(self):
+        limit_manager = _FakeSalesLimitManager(reserve_allowed=False)
+        supplier_called = []
+
+        def fake_q1(_conn, sql, _params=None):
+            if "SELECT orders.offer_id" in sql:
+                return ("PSN-500", 1, "PROCESSING", False, True, False, False)
+            if "INSERT INTO app.marketplace_yandex_digital_deliveries" in sql:
+                return (25,)
+            return None
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=lambda *_args: [],
+            exec1=lambda *_args: 1,
+            interhub_calculate=lambda *_args: supplier_called.append("calculate"),
+            sales_limit_manager=limit_manager,
+        )
+        env = {
+            "YANDEX_MARKET_ASAT_AUTO_DELIVERY_ENABLED": "true",
+            "YANDEX_MARKET_ASAT_AUTO_DELIVERY_NOT_BEFORE": "2026-01-01T00:00:00+00:00",
+        }
+
+        with patch.dict(os.environ, env, clear=False):
+            processor("asat", 501, 99, datetime(2026, 8, 12, tzinfo=timezone.utc))
+
+        self.assertEqual(limit_manager.calls, [("reserve", 25)])
+        self.assertEqual(supplier_called, [])
 
     # Оплаченный ключ и отметка его применения должны сохраняться одним финальным коммитом выдачи Яндекса.
     def test_paid_yandex_attempt_finalization_applies_code_and_marks_attempt(self):
@@ -294,6 +357,8 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
         pay_calls = []
 
         def fake_q1(_conn, sql, _params=None):
+            if "FROM app.marketplace_yandex_catalog_items AS catalog" in sql:
+                return (7, 7, None, 0, False, None, False, 0, 0)
             if "SELECT orders.offer_id" in sql:
                 return ("PSN-500", 1, "PROCESSING", False, True, False)
             if "INSERT INTO app.marketplace_yandex_digital_deliveries" in sql:
@@ -339,6 +404,8 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
         writes = []
 
         def fake_q1(_conn, sql, _params=None):
+            if "FROM app.marketplace_yandex_catalog_items AS catalog" in sql:
+                return (7, 7, None, 0, False, None, False, 0, 0)
             if "SELECT orders.offer_id" in sql:
                 return ("PSN-500", 1, "PROCESSING", False, True, False)
             if "INSERT INTO app.marketplace_yandex_digital_deliveries" in sql:
@@ -648,6 +715,7 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
     # Поздний подтвержденный статус Маркета закрывает даже процесс, упавший прямо во время внешнего запроса.
     def test_delivered_webhook_reconciles_market_sending(self):
         writes = []
+        limit_manager = _FakeSalesLimitManager()
 
         def fake_q1(_conn, sql, _params=None):
             if "SELECT orders.offer_id" in sql:
@@ -660,6 +728,7 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
             q1=fake_q1,
             qall=lambda *_args: [],
             exec1=lambda _conn, sql, params=None: writes.append((sql, params)),
+            sales_limit_manager=limit_manager,
         )
         env = {
             "YANDEX_MARKET_ASAT_AUTO_DELIVERY_ENABLED": "true",
@@ -673,6 +742,40 @@ class YandexMarketProductionDeliveryTests(unittest.TestCase):
         self.assertIn("'market_sending'", terminal_updates[0])
         self.assertIn("last_error=''", terminal_updates[0])
         self.assertTrue(any("UPDATE app.marketplace_manual_keys" in sql for sql, _params in writes))
+        self.assertEqual(limit_manager.calls, [
+            ("consume_order", "asat", 501, 99),
+            ("sync", "asat", "PSN-500"),
+        ])
+
+    # Отмена заказа освобождает только его незавершенный резерв и возвращает доступный остаток.
+    def test_cancelled_webhook_releases_sales_limit_reservation(self):
+        limit_manager = _FakeSalesLimitManager()
+
+        def fake_q1(_conn, sql, _params=None):
+            if "SELECT orders.offer_id" in sql:
+                return ("PSN-500", 1, "CANCELLED", False, True, False, False)
+            return None
+
+        processor = yandex_market_production_delivery.build_yandex_market_production_delivery_processor(
+            DB_DSN="postgresql://test",
+            psycopg=_FakePsycopg(),
+            q1=fake_q1,
+            qall=lambda *_args: [],
+            exec1=lambda *_args: 1,
+            sales_limit_manager=limit_manager,
+        )
+        env = {
+            "YANDEX_MARKET_ASAT_AUTO_DELIVERY_ENABLED": "true",
+            "YANDEX_MARKET_ASAT_AUTO_DELIVERY_NOT_BEFORE": "2026-01-01T00:00:00+00:00",
+        }
+
+        with patch.dict(os.environ, env, clear=False):
+            processor("asat", 501, 99, datetime(2026, 8, 12, tzinfo=timezone.utc))
+
+        self.assertEqual(limit_manager.calls, [
+            ("release", "asat", 501, 99),
+            ("sync", "asat", "PSN-500"),
+        ])
 
     # Операторский повтор market_unknown использует сохраненный комплект и не требует раскрывать ключ в браузер.
     def test_manual_retry_of_unknown_delivery_reuses_saved_codes(self):

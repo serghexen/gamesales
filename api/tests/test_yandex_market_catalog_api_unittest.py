@@ -38,7 +38,7 @@ class _FakePsycopg:
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
 class YandexMarketCatalogApiTests(unittest.TestCase):
     # Поднимает изолированные маршруты, чтобы проверить контракт без реального кабинета Маркета.
-    def create_client(self, rows=None, detail_row=None, q1_handler=None, required_roles=None):
+    def create_client(self, rows=None, detail_row=None, q1_handler=None, required_roles=None, sales_limit_manager=None):
         app = FastAPI()
         write_log = []
 
@@ -67,6 +67,7 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
             qall=fake_qall,
             exec1=fake_exec1,
             require_role=fake_require_role,
+            sales_limit_manager=sales_limit_manager,
         )
         return TestClient(app), write_log
 
@@ -111,10 +112,13 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
         update_archive.assert_called_once_with("PSN-500", archived=True, store_code="asat")
         updates = [params for sql, params in writes if "SET archived=%s" in sql]
         self.assertEqual(updates[0], (True, "asat", "PSN-500"))
+        self.assertTrue(any("archived_by_sales_limit=false" in sql for sql, _params in writes))
 
     # Лимит хранится локально, а отправка остатка происходит только с явным publish_stock=true.
     def test_publish_stock_calls_market_only_for_explicit_request(self):
         def q1_handler(sql, _params):
+            if "FROM app.marketplace_yandex_catalog_items AS catalog" in sql:
+                return (7, 7, None, 0, False, None, False, 0, 0)
             if "FROM app.marketplace_yandex_stock_settings" in sql:
                 return (7, "Активируйте код в PlayStation Store.", "", True, True, False, 7, datetime(2026, 7, 25, tzinfo=timezone.utc))
             return None
@@ -129,9 +133,86 @@ class YandexMarketCatalogApiTests(unittest.TestCase):
         self.assertEqual(published.status_code, 200)
         update_stock.assert_called_once_with("PSN-500", 7, store_code="asat")
 
+    # Конечный лимит уменьшает публикуемый остаток на уже проданные и зарезервированные единицы.
+    def test_publish_stock_uses_remaining_sales_limit(self):
+        def q1_handler(sql, _params):
+            if "FROM app.marketplace_yandex_catalog_items AS catalog" in sql:
+                return (5, 5, 10, 1, False, None, False, 6, 1)
+            if "FROM app.marketplace_yandex_stock_settings" in sql:
+                return (5, "Инструкция", "", True, True, False, 5, datetime(2026, 8, 12, tzinfo=timezone.utc))
+            return None
+
+        client, writes = self.create_client(q1_handler=q1_handler)
+        with patch.object(yandex_market_catalog_api, "update_yandex_market_stock", return_value={}) as update_stock:
+            with client:
+                response = client.put(
+                    "/marketplaces/yandex/catalog/PSN-500/stock-settings?publish_stock=true&store_code=asat",
+                    json={"manual_stock_limit": 5, "sales_limit": 10},
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["sales_limit_remaining"], 3)
+        update_stock.assert_called_once_with("PSN-500", 3, store_code="asat")
+        upsert = next(params for sql, params in writes if "sales_limit_revision=CASE" in sql)
+        self.assertEqual(upsert[8:10], (10, 10))
+        self.assertTrue(any("sales_limit_rollover_pending=true" in sql for sql, _params in writes))
+
+    # Разовая прибавка имеет отдельный маршрут и возвращает уже пересчитанный лимит текущего дня.
+    def test_add_daily_limit_units_uses_daily_action(self):
+        calls = []
+
+        class FakeSalesLimitManager:
+            def add_daily_units(self, store_code, offer_id, units):
+                calls.append((store_code, offer_id, units))
+                return {}
+
+            def read_state(self, _conn, _store_code, _offer_id):
+                return {
+                    "sales_limit": 50, "sales_limit_daily_extra": 10, "sales_limit_effective": 60,
+                    "sales_limit_day": "2026-08-12", "sales_limit_used": 45,
+                    "sales_limit_reserved": 0, "sales_limit_remaining": 15,
+                    "archived_by_sales_limit": False, "sales_limit_exhausted_at": None,
+                }
+
+        client, _writes = self.create_client(
+            detail_row=(5, "Инструкция", "", False, False, False, 5, None, None, "", False),
+            sales_limit_manager=FakeSalesLimitManager(),
+        )
+        with client:
+            response = client.post(
+                "/marketplaces/yandex/catalog/PSN-500/daily-limit/add?store_code=asat",
+                json={"units": 10},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(calls, [("asat", "PSN-500", 10)])
+        self.assertEqual(response.json()["sales_limit_effective"], 60)
+        self.assertEqual(response.json()["sales_limit_remaining"], 15)
+
+    # Без базового дневного лимита временную прибавку нельзя создать отдельным скрытым счетчиком.
+    def test_add_daily_limit_units_requires_base_limit(self):
+        class FakeSalesLimitManager:
+            def add_daily_units(self, _store_code, _offer_id, _units):
+                raise ValueError("Сначала задайте дневной лимит")
+
+            def read_state(self, _conn, _store_code, _offer_id):
+                return {}
+
+        client, _writes = self.create_client(sales_limit_manager=FakeSalesLimitManager())
+        with client:
+            response = client.post(
+                "/marketplaces/yandex/catalog/PSN-500/daily-limit/add?store_code=asat",
+                json={"units": 10},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("задайте дневной лимит", response.json()["detail"].lower())
+
     # Публикация остатка не сбрасывает включенные ранее авто-выдачу и пул, даже если форма пришла без их значений.
     def test_publish_stock_preserves_delivery_switches(self):
         def q1_handler(sql, _params):
+            if "FROM app.marketplace_yandex_catalog_items AS catalog" in sql:
+                return (7, 7, None, 0, False, None, False, 0, 0)
             if "FROM app.marketplace_yandex_stock_settings" in sql:
                 return (7, "Инструкция", "", True, True, True, 7, datetime(2026, 7, 25, tzinfo=timezone.utc))
             return None

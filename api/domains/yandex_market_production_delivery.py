@@ -13,12 +13,14 @@ from pydantic import BaseModel, Field
 
 from .yandex_market_catalog_service import (
     deliver_yandex_market_digital_goods,
+    update_yandex_market_catalog_archive,
     update_yandex_market_stock,
     normalize_yandex_market_store_code,
     yandex_market_production_auto_delivery_enabled,
     yandex_market_production_auto_delivery_enabled_store_codes,
     yandex_market_production_auto_delivery_not_before,
 )
+from .yandex_market_sales_limit import YandexMarketSalesLimitManager
 
 
 class YandexMarketManualDeliveryIn(BaseModel):
@@ -44,8 +46,25 @@ def build_yandex_market_production_delivery_processor(
     interhub_check_status=None,
     stock_republish_delay_sec: float = 3,
     outbound_delivery_recovery_grace_sec: int = 600,
+    sales_limit_manager=None,
 ) -> Callable[[str, int, int, datetime | None], None]:
     # Создает боевой обработчик отдельно от приема уведомления: выключенный флаг исключает резерв и внешние API.
+    if sales_limit_manager is None:
+        # Использует тот же расчет лимита, что и кнопка публикации в карточке.
+        sales_limit_manager = YandexMarketSalesLimitManager(
+            DB_DSN=DB_DSN,
+            psycopg=psycopg,
+            q1=q1,
+            qall=qall,
+            exec1=exec1,
+            update_stock=lambda offer_id, stock, *, store_code: update_yandex_market_stock(
+                offer_id, stock, store_code=store_code,
+            ),
+            update_archive=lambda offer_id, *, archived, store_code: update_yandex_market_catalog_archive(
+                offer_id, archived=archived, store_code=store_code,
+            ),
+        )
+
     def pool_secret() -> str:
         # Использует отдельный секрет пула, чтобы ключи расшифровывались только внутри серверной выдачи.
         value = str(os.getenv("MARKETPLACE_KEY_POOL_SECRET", "")).strip()
@@ -278,36 +297,8 @@ def build_yandex_market_production_delivery_processor(
         return True, delivery_id
 
     def republish_yandex_target_stock(store_code: str, offer_id: str) -> None:
-        # После принятого ключа повторяет сохраненный оператором остаток и не пытается вычислять запас поставщика.
-        try:
-            with psycopg.connect(DB_DSN) as conn:
-                settings = q1(
-                    conn,
-                    "SELECT manual_stock_limit FROM app.marketplace_yandex_stock_settings WHERE store_code=%s AND offer_id=%s",
-                    (store_code, offer_id),
-                )
-                conn.commit()
-            if not settings:
-                return
-            target_stock = max(0, int(settings[0] or 0))
-            update_yandex_market_stock(offer_id, target_stock, store_code=store_code)
-            with psycopg.connect(DB_DSN) as conn:
-                exec1(
-                    conn,
-                    "UPDATE app.marketplace_yandex_stock_settings SET published_stock=%s, last_stock_sync_at=now(), last_stock_sync_error='', updated_at=now() WHERE store_code=%s AND offer_id=%s",
-                    (target_stock, store_code, offer_id),
-                )
-                conn.commit()
-
-        except Exception as error:
-            # Выдача уже подтверждена Маркетом, поэтому ошибку остатка сохраняем отдельно и не откатываем ключ.
-            with psycopg.connect(DB_DSN) as conn:
-                exec1(
-                    conn,
-                    "UPDATE app.marketplace_yandex_stock_settings SET last_stock_sync_error=%s, updated_at=now() WHERE store_code=%s AND offer_id=%s",
-                    (str(getattr(error, "detail", error))[:2000], store_code, offer_id),
-                )
-                conn.commit()
+        # После принятого ключа публикует остаток с учетом общего лимита и при необходимости архивирует карточку.
+        sales_limit_manager.sync_target_stock(store_code, offer_id, raise_errors=False)
 
     def schedule_yandex_target_stock_republish(store_code: str, offer_id: str) -> None:
         # Откладывает публикацию остатка, чтобы Маркет успел принять цифровой код до следующего товарного метода.
@@ -391,7 +382,8 @@ def build_yandex_market_production_delivery_processor(
                 (submitted_at, str(row[0]), str(row[4]), f"yandex:{row[0]}:{row[1]}:{row[2]}"),
             )
             conn.commit()
-        schedule_yandex_target_stock_republish(str(row[0]), str(row[4]))
+        consumed_target = sales_limit_manager.consume_delivery(delivery_id)
+        schedule_yandex_target_stock_republish(*(consumed_target or (str(row[0]), str(row[4]))))
 
     def recover_stale_market_sendings(enabled_store_codes: set[str]) -> None:
         # Помечает прерванную отправку как неоднозначную, чтобы повторный цикл не отправил тот же ключ в Маркет автоматически.
@@ -685,6 +677,8 @@ def build_yandex_market_production_delivery_processor(
 
     def process_delivery_steps(delivery_id: int) -> None:
         # Собирает недостающие коды без рекурсии и останавливается на ожидании неопределенной оплаты.
+        if not sales_limit_manager.reserve_delivery(delivery_id):
+            return
         while True:
             with psycopg.connect(DB_DSN) as conn:
                 row = q1(
@@ -693,7 +687,14 @@ def build_yandex_market_production_delivery_processor(
                     (delivery_id,),
                 )
                 conn.commit()
-            if not row or str(row[2] or "") not in {"manual_required", "supplier_processing"}:
+            delivery_status = str(row[2] or "") if row else ""
+            if delivery_status in {"market_submitted", "market_delivered"}:
+                # Завершает учет после сбоя между внешним успехом и переводом резерва в продажу.
+                consumed_target = sales_limit_manager.consume_delivery(delivery_id)
+                if consumed_target:
+                    schedule_yandex_target_stock_republish(*consumed_target)
+                return
+            if not row or delivery_status not in {"manual_required", "supplier_processing"}:
                 return
             if len(texts(row[1])) >= int(row[0] or 1):
                 # Не пытается автоматически повторить заглушку после отказа Маркета: дальше только ручной оператор.
@@ -943,6 +944,8 @@ def build_yandex_market_production_delivery_processor(
 
     def deliver_manually(delivery_id: int, raw_codes: list[str]) -> dict[str, Any]:
         # Закрепляет ручные коды за одной остановленной выдачей и только затем однократно отправляет их в Маркет.
+        if not sales_limit_manager.reserve_delivery(delivery_id):
+            raise HTTPException(409, "Для заказа недостаточно оставшегося лимита продаж")
         prepared: list[str] = []
         seen: set[str] = set()
         for raw_code in raw_codes:
@@ -1006,6 +1009,8 @@ def build_yandex_market_production_delivery_processor(
 
     def issue_from_pool_manually(delivery_id: int) -> dict[str, Any]:
         # Берет ключи только для остановленной выдачи, не вмешиваясь в активную покупку у Interhub.
+        if not sales_limit_manager.reserve_delivery(delivery_id):
+            raise HTTPException(409, "Для заказа недостаточно оставшегося лимита продаж")
         if not take_from_pool(delivery_id, {"manual_required"}):
             raise HTTPException(409, "В ручном пуле нет полного комплекта ключей для этого заказа")
         with psycopg.connect(DB_DSN) as conn:
@@ -1055,6 +1060,9 @@ def build_yandex_market_production_delivery_processor(
                     (store_code, str(order[0]), f"yandex:{store_code}:{order_id}:{item_id}"),
                 )
                 conn.commit()
+                consumed_target = sales_limit_manager.consume_order(store_code, order_id, item_id)
+                if consumed_target:
+                    sales_limit_manager.sync_target_stock(*consumed_target)
                 return
             if market_status == "CANCELLED":
                 # Не возобновляет отмененную позицию: закрепленные ключи остаются в истории для ручной сверки.
@@ -1064,6 +1072,9 @@ def build_yandex_market_production_delivery_processor(
                     (store_code, order_id, item_id),
                 )
                 conn.commit()
+                released_target = sales_limit_manager.release_delivery(store_code, order_id, item_id)
+                if released_target:
+                    sales_limit_manager.sync_target_stock(*released_target)
                 return
             if market_status != "PROCESSING" or (not allow_manual and not (bool(order[4]) or bool(order[5]) or (len(order) > 6 and bool(order[6])))):
                 conn.commit()
@@ -1081,7 +1092,8 @@ def build_yandex_market_production_delivery_processor(
             )
             conn.commit()
         if delivery:
-            process_delivery_steps(int(delivery[0]))
+            delivery_id = int(delivery[0])
+            process_delivery_steps(delivery_id)
 
     def process(store_code: str, order_id: int, item_id: int, event_time: datetime | None = None) -> None:
         # Запускается только после двух глобальных предохранителей, чтобы выключенная автоматика не читала и не меняла очередь.
@@ -1127,6 +1139,7 @@ def build_yandex_market_production_delivery_processor(
     process.recover_paid_supplier_attempts = recover_paid_supplier_attempts  # type: ignore[attr-defined]
     process.recover_stale_market_sendings = recover_stale_market_sendings  # type: ignore[attr-defined]
     process.buy_from_interhub = buy_from_interhub  # type: ignore[attr-defined]
+    process.refresh_daily_sales_limits = sales_limit_manager.rollover_due_limits  # type: ignore[attr-defined]
     return process
 
 

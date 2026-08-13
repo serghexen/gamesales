@@ -8,7 +8,6 @@
         </div>
         <div class="modal__body" :class="{ 'modal__body--locked': yandexMarketCatalogDetailsLoading, 'modal__body--loader': yandexMarketCatalogDetailsLoading }">
           <div v-if="yandexMarketCatalogDetailsLoading" class="modal__body-overlay"><WorkHamsterLoader label="Загружаем параметры и остаток Маркета…" /></div>
-          <p v-if="!yandexMarketCatalogDetailsLoading && yandexMarketCatalogDetailsError" class="bad">{{ yandexMarketCatalogDetailsError }}</p>
           <template v-if="!yandexMarketCatalogDetailsLoading && yandexMarketCatalogDetails">
             <section class="yandex-catalog-details-modal__overview ozon-catalog-details-modal__overview" :class="{ 'has-image': yandexMarketCatalogDetails.primary_image }">
               <div v-if="yandexMarketCatalogDetails.primary_image" class="yandex-catalog-details-modal__image-wrap ozon-catalog-details-modal__image-wrap"><img class="yandex-catalog-details-modal__image ozon-catalog-details-modal__image" :src="yandexMarketCatalogDetails.primary_image" alt="Главное изображение товара Яндекс Маркета" /></div>
@@ -25,25 +24,55 @@
                   <svg class="yandex-catalog-details-modal__work-block-chevron ozon-catalog-details-modal__work-block-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5" /></svg>
                 </button>
                 <div v-if="isStockOpen" class="yandex-catalog-details-modal__work-block-body ozon-catalog-details-modal__work-block-body">
-                  <div class="ozon-catalog-details-modal__sale-settings-form">
-                    <label class="field ozon-catalog-details-modal__stock-field">
-                      <span>Остаток на Маркете</span>
-                      <input v-model.number="yandexMarketStockSettings.manual_stock_limit" class="input" type="number" min="0" aria-label="Остаток для публикации на Маркете" />
-                      <div class="ozon-catalog-details-modal__stock-actions">
-                        <button class="btn btn--primary ozon-catalog-details-modal__stock-submit" type="button" :disabled="yandexMarketStockSettingsSaving" title="Опубликовать указанный остаток в Яндекс Маркете" @click="saveYandexMarketStockSettings({ publishStock: true })">Отправить</button>
-                        <button class="btn btn--icon-plain ozon-catalog-details-modal__stock-settings-save" type="button" :disabled="yandexMarketStockSettingsSaving" title="Сохранить инструкцию и настройки выдачи" aria-label="Сохранить настройки карточки" @click="saveYandexMarketStockSettings()">
-                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h12l4 4v12H4z" /><path d="M7 4v6h8V4" /><path d="M7 20v-6h10v6" /></svg>
-                        </button>
+                  <div class="ozon-catalog-details-modal__sale-settings-form yandex-catalog-details-modal__sale-settings-form">
+                    <div class="yandex-catalog-details-modal__inventory-row">
+                      <label class="field">
+                        <span>Остаток</span>
+                        <input v-model.number="yandexMarketStockSettings.manual_stock_limit" class="input" type="number" min="0" step="1" aria-label="Остаток" />
+                      </label>
+                      <label class="field">
+                        <span>Дневной лимит</span>
+                        <input v-model.number="yandexMarketStockSettings.sales_limit" class="input" type="number" min="1" step="1" placeholder="Безлимит" aria-label="Дневной лимит продаж на Маркете" />
+                      </label>
+                      <div class="yandex-catalog-details-modal__limit-field">
+                        <span>Состояние лимита</span>
+                        <div class="yandex-catalog-details-modal__limit-summary" :class="limitSummaryClass" aria-live="polite">
+                          <div class="yandex-catalog-details-modal__limit-heading">
+                            <span>{{ hasSalesLimit ? 'Лимит сегодня' : 'Без ограничений' }}</span>
+                            <strong>{{ limitHeadline }}</strong>
+                          </div>
+                          <div v-if="hasSalesLimit" class="yandex-catalog-details-modal__limit-metrics">
+                            <span><small>Продано</small><strong>{{ salesLimitUsed }}</strong></span>
+                            <span><small>В резерве</small><strong>{{ salesLimitReserved }}</strong></span>
+                            <span><small>Осталось</small><strong>{{ salesLimitRemaining }}</strong></span>
+                          </div>
+                          <small v-else>Поле «Дневной лимит» пустое — после выдачи восстанавливается заданный остаток.</small>
+                        </div>
                       </div>
-                    </label>
-                    <label class="field">
+                      <div v-if="hasSalesLimit" class="yandex-catalog-details-modal__daily-boost">
+                        <div class="yandex-catalog-details-modal__daily-boost-copy">
+                          <strong>Добавить только сегодня</strong>
+                          <small>Временная прибавка сбросится в 00:00 МСК</small>
+                        </div>
+                        <span v-if="salesLimitDailyExtra" class="yandex-catalog-details-modal__daily-boost-current">+{{ salesLimitDailyExtra }} сегодня</span>
+                        <input v-model.number="yandexMarketStockSettings.sales_limit_add_units" class="input" type="number" min="1" step="1" placeholder="Например, 10" aria-label="Добавить единиц к дневному лимиту" />
+                        <button class="btn yandex-catalog-details-modal__daily-boost-button" type="button" :disabled="yandexMarketStockSettingsSaving || !dailyBoostUnits" @click="addYandexMarketDailyLimitUnits">Добавить</button>
+                      </div>
+                    </div>
+                    <label class="field yandex-catalog-details-modal__instruction-field">
                       <span>Инструкция покупателю</span>
-                      <textarea v-model="yandexMarketStockSettings.activation_instruction" class="input textarea" rows="3" placeholder="Например: активируйте ключ в PlayStation Store." aria-label="Инструкция покупателю"></textarea>
+                      <textarea v-model="yandexMarketStockSettings.activation_instruction" class="input textarea" rows="4" placeholder="Например: активируйте ключ в PlayStation Store." aria-label="Инструкция покупателю"></textarea>
                     </label>
-                    <label class="field">
-                      <span>Сообщение при проблеме</span>
-                      <textarea v-model="yandexMarketStockSettings.support_error_message" class="input textarea" rows="2" placeholder="Например: обратитесь в поддержку." aria-label="Сообщение при проблеме Яндекс Маркета"></textarea>
-                    </label>
+                    <div class="yandex-catalog-details-modal__settings-footer">
+                      <p><strong>Сохранить</strong> — записать настройки. <strong>Отправить</strong> — записать их и обновить остаток на Маркете.</p>
+                      <div class="ozon-catalog-details-modal__stock-actions">
+                        <button class="btn yandex-catalog-details-modal__save-settings" type="button" :disabled="yandexMarketStockSettingsSaving" title="Сохранить остаток, лимит и инструкцию" aria-label="Сохранить настройки карточки" @click="saveYandexMarketStockSettings()">
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h12l4 4v12H4z" /><path d="M7 4v6h8V4" /><path d="M7 20v-6h10v6" /></svg>
+                          <span>Сохранить</span>
+                        </button>
+                        <button class="btn btn--primary ozon-catalog-details-modal__stock-submit" type="button" :disabled="yandexMarketStockSettingsSaving" title="Опубликовать указанный остаток в Яндекс Маркете" @click="saveYandexMarketStockSettings({ publishStock: true })">Отправить</button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -113,17 +142,31 @@
             </dl>
           </section>
         </div>
+        <div v-if="showDetailsErrorDialog" class="yandex-catalog-details-modal__error-backdrop" @click.self="dismissDetailsError">
+          <section class="yandex-catalog-details-modal__error-dialog" role="alertdialog" aria-modal="true" aria-labelledby="yandex-market-error-title" aria-describedby="yandex-market-error-message" @keydown.esc.stop="dismissDetailsError">
+            <button class="yandex-catalog-details-modal__error-close" type="button" aria-label="Закрыть сообщение об ошибке" title="Закрыть" @click="dismissDetailsError">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+            </button>
+            <div class="yandex-catalog-details-modal__error-mark" aria-hidden="true">!</div>
+            <div class="yandex-catalog-details-modal__error-copy">
+              <span>Яндекс Маркет</span>
+              <h4 id="yandex-market-error-title">Действие не выполнено</h4>
+              <p id="yandex-market-error-message">{{ yandexMarketCatalogDetailsError }}</p>
+            </div>
+            <button ref="detailsErrorDismissButton" class="btn yandex-catalog-details-modal__error-action" type="button" @click="dismissDetailsError">Вернуться к настройкам</button>
+          </section>
+        </div>
       </div>
     </div>
   </teleport>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import WorkHamsterLoader from './WorkHamsterLoader.vue'
 
 const props = defineProps({
-  showYandexMarketCatalogDetails: { type: Boolean, required: true }, closeYandexMarketCatalogDetails: { type: Function, required: true }, openYandexMarketDigitalSettings: { type: Function, required: true }, yandexMarketSandboxMode: { type: Boolean, default: true }, yandexMarketCatalogDetails: { type: Object, default: null }, yandexMarketCatalogDetailsLoading: { type: Boolean, required: true }, yandexMarketCatalogDetailsError: { type: String, default: '' }, yandexMarketStockSettings: { type: Object, required: true }, yandexMarketStockSettingsSaving: { type: Boolean, required: true }, saveYandexMarketStockSettings: { type: Function, required: true }, yandexMarketOrders: { type: Array, default: () => [] }, yandexMarketOrdersLoading: { type: Boolean, required: true }, yandexMarketOrdersSyncing: { type: Boolean, required: true }, yandexMarketOrdersLastSyncedAt: { type: String, default: null }, yandexMarketProductionStartDeliverySaving: { type: Number, default: 0 }, canRevealYandexMarketDigitalCodes: { type: Boolean, default: false }, loadYandexMarketOrders: { type: Function, required: true }, syncYandexMarketOrders: { type: Function, required: true }, startYandexMarketProductionOrder: { type: Function, default: async () => ({ ok: false }) }, revealYandexMarketProductionOrderCodes: { type: Function, default: null },
+  showYandexMarketCatalogDetails: { type: Boolean, required: true }, closeYandexMarketCatalogDetails: { type: Function, required: true }, openYandexMarketDigitalSettings: { type: Function, required: true }, yandexMarketSandboxMode: { type: Boolean, default: true }, yandexMarketCatalogDetails: { type: Object, default: null }, yandexMarketCatalogDetailsLoading: { type: Boolean, required: true }, yandexMarketCatalogDetailsError: { type: String, default: '' }, yandexMarketStockSettings: { type: Object, required: true }, yandexMarketStockSettingsSaving: { type: Boolean, required: true }, saveYandexMarketStockSettings: { type: Function, required: true }, addYandexMarketDailyLimitUnits: { type: Function, required: true }, yandexMarketOrders: { type: Array, default: () => [] }, yandexMarketOrdersLoading: { type: Boolean, required: true }, yandexMarketOrdersSyncing: { type: Boolean, required: true }, yandexMarketOrdersLastSyncedAt: { type: String, default: null }, yandexMarketProductionStartDeliverySaving: { type: Number, default: 0 }, canRevealYandexMarketDigitalCodes: { type: Boolean, default: false }, loadYandexMarketOrders: { type: Function, required: true }, syncYandexMarketOrders: { type: Function, required: true }, startYandexMarketProductionOrder: { type: Function, default: async () => ({ ok: false }) }, revealYandexMarketProductionOrderCodes: { type: Function, default: null },
 })
 
 const isStockOpen = ref(false)
@@ -135,7 +178,61 @@ const yandexMarketDigitalCodesLoading = ref(false)
 const yandexMarketDigitalCodesError = ref('')
 const yandexMarketDigitalCodesOrder = ref(null)
 const yandexMarketDigitalCodes = ref([])
+const dismissedDetailsError = ref('')
+const detailsErrorDismissButton = ref(null)
 const ORDERS_PAGE_SIZE = 10
+
+const showDetailsErrorDialog = computed(() => !props.yandexMarketCatalogDetailsLoading
+  && Boolean(props.yandexMarketCatalogDetailsError)
+  && dismissedDetailsError.value !== props.yandexMarketCatalogDetailsError)
+
+function dismissDetailsError() {
+  // Скрывает текущее уведомление, не очищая серверную ошибку и введенные пользователем значения формы.
+  dismissedDetailsError.value = props.yandexMarketCatalogDetailsError
+}
+
+watch(() => props.yandexMarketCatalogDetailsError, () => {
+  // Каждая новая попытка снова показывает ошибку, даже если её текст совпал с предыдущей.
+  dismissedDetailsError.value = ''
+})
+
+watch(showDetailsErrorDialog, async (isVisible) => {
+  // Переводит фокус на понятное действие, чтобы уведомление заметили и пользователи клавиатуры.
+  if (!isVisible) return
+  await nextTick()
+  detailsErrorDismissButton.value?.focus()
+}, { immediate: true })
+
+const hasSalesLimit = computed(() => props.yandexMarketStockSettings.sales_limit !== null
+  && props.yandexMarketStockSettings.sales_limit !== undefined
+  && props.yandexMarketStockSettings.sales_limit !== '')
+const salesLimitUsed = computed(() => Math.max(0, Number(props.yandexMarketStockSettings.sales_limit_used || 0)))
+const salesLimitReserved = computed(() => Math.max(0, Number(props.yandexMarketStockSettings.sales_limit_reserved || 0)))
+const salesLimitDailyExtra = computed(() => Math.max(0, Number(props.yandexMarketStockSettings.sales_limit_daily_extra || 0)))
+const salesLimitEffective = computed(() => Math.max(1, Math.floor(Number(props.yandexMarketStockSettings.sales_limit || 1))) + salesLimitDailyExtra.value)
+const dailyBoostUnits = computed(() => {
+  // Не включает кнопку для пустого, дробного или неположительного количества добавочных единиц.
+  const units = Math.floor(Number(props.yandexMarketStockSettings.sales_limit_add_units || 0))
+  return Number.isFinite(units) && units > 0 ? units : 0
+})
+const salesLimitRemaining = computed(() => {
+  // Сразу отражает отредактированный лимит, используя подтвержденные сервером продажи и резервы.
+  if (!hasSalesLimit.value) return 0
+  return Math.max(0, salesLimitEffective.value - salesLimitUsed.value - salesLimitReserved.value)
+})
+const limitHeadline = computed(() => {
+  // Показывает главное состояние лимита одной короткой строкой без пересчета на клиенте.
+  if (!hasSalesLimit.value) return '∞'
+  if (salesLimitRemaining.value === 0) return 'Лимит исчерпан'
+  return `${salesLimitRemaining.value} из ${salesLimitEffective.value}`
+})
+const limitSummaryClass = computed(() => {
+  // Подсвечивает приближение к лимиту относительно выставляемого остатка карточки.
+  if (!hasSalesLimit.value) return 'is-unlimited'
+  if (salesLimitRemaining.value === 0) return 'is-exhausted'
+  if (salesLimitRemaining.value <= Math.max(0, Number(props.yandexMarketStockSettings.manual_stock_limit || 0))) return 'is-low'
+  return ''
+})
 
 watch(() => props.showYandexMarketCatalogDetails, (isOpen) => {
   // Закрывает секции при новом открытии карточки, как в эталонной форме Ozon.

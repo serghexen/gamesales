@@ -21,6 +21,10 @@ import logging
 ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env.dev", override=True)
 logger = logging.getLogger(__name__)
+# Границы защищают БД и внешний API от слишком частого цикла при ошибочном значении настройки.
+_YANDEX_MARKET_DAILY_LIMIT_POLL_INTERVAL_DEFAULT_SEC = 15
+_YANDEX_MARKET_DAILY_LIMIT_POLL_INTERVAL_MIN_SEC = 5
+_YANDEX_MARKET_DAILY_LIMIT_POLL_INTERVAL_MAX_SEC = 3600
 
 
 def ensure_analytics_schema():
@@ -52,6 +56,7 @@ async def lifespan(_: FastAPI):
     stop_ozon_supplier_polling = asyncio.Event()
     stop_yandex_market_supplier_polling = asyncio.Event()
     stop_yandex_market_webhook_polling = asyncio.Event()
+    stop_yandex_market_daily_limit_polling = asyncio.Event()
 
     async def poll_ozon_supplier_orders():
         # Продолжаем выдачу уже оплаченных ключей Interhub, даже если оператор закрыл вкладку Ozon.
@@ -102,6 +107,30 @@ async def lifespan(_: FastAPI):
                 logger.exception("Yandex Market webhook queue polling failed")
 
     yandex_market_webhook_polling_task = asyncio.create_task(poll_yandex_market_webhook_events())
+
+    async def poll_yandex_market_daily_limits():
+        # Коротким циклом переключает дневную квоту в полночь по Москве, не блокируя запуск API.
+        poll_interval_sec = _YANDEX_MARKET_DAILY_LIMIT_POLL_INTERVAL_DEFAULT_SEC
+        while not stop_yandex_market_daily_limit_polling.is_set():
+            try:
+                await asyncio.wait_for(
+                    stop_yandex_market_daily_limit_polling.wait(),
+                    timeout=poll_interval_sec,
+                )
+                continue
+            except asyncio.TimeoutError:
+                pass
+            try:
+                await asyncio.to_thread(yandex_market_refresh_daily_sales_limits)
+            except Exception:
+                logger.exception("Yandex Market daily sales limit polling failed")
+            # Перечитываем интервал после прохода, чтобы изменение применялось без перезапуска API.
+            poll_interval_sec = await asyncio.to_thread(yandex_market_daily_limit_poll_interval_sec)
+
+    # В выключенном контуре не запускает фоновые товарные запросы к реальному кабинету Маркета.
+    yandex_market_daily_limit_polling_task = (
+        asyncio.create_task(poll_yandex_market_daily_limits()) if _YANDEX_MARKET_CATALOG_LIVE_ENABLED else None
+    )
     try:
         yield
     finally:
@@ -110,11 +139,14 @@ async def lifespan(_: FastAPI):
         stop_ozon_supplier_polling.set()
         stop_yandex_market_supplier_polling.set()
         stop_yandex_market_webhook_polling.set()
+        stop_yandex_market_daily_limit_polling.set()
         await interhub_polling_task
         if ozon_supplier_polling_task:
             await ozon_supplier_polling_task
         await yandex_market_supplier_polling_task
         await yandex_market_webhook_polling_task
+        if yandex_market_daily_limit_polling_task:
+            await yandex_market_daily_limit_polling_task
     # Закрываем пул при остановке приложения.
     _pool.close()
     _pool = None
@@ -626,6 +658,33 @@ def exec1(conn, sql, params=None):
     with conn.cursor() as cur:
         cur.execute(sql, params or ())
         return cur.rowcount
+
+
+def yandex_market_daily_limit_poll_interval_sec() -> int:
+    # Читает интервал фоновой проверки из БД и сохраняет безопасный режим при временной ошибке.
+    try:
+        with pooled_psycopg.connect(DB_DSN) as conn:
+            row = q1(
+                conn,
+                """
+                SELECT daily_limit_poll_interval_sec
+                FROM app.marketplace_yandex_runtime_settings
+                WHERE singleton_id = 1
+                """,
+            )
+            conn.commit()
+    except Exception:
+        logger.exception("Failed to read Yandex Market daily limit polling interval")
+        return _YANDEX_MARKET_DAILY_LIMIT_POLL_INTERVAL_DEFAULT_SEC
+
+    try:
+        value = int(row[0]) if row else _YANDEX_MARKET_DAILY_LIMIT_POLL_INTERVAL_DEFAULT_SEC
+    except (TypeError, ValueError):
+        value = _YANDEX_MARKET_DAILY_LIMIT_POLL_INTERVAL_DEFAULT_SEC
+    return max(
+        _YANDEX_MARKET_DAILY_LIMIT_POLL_INTERVAL_MIN_SEC,
+        min(_YANDEX_MARKET_DAILY_LIMIT_POLL_INTERVAL_MAX_SEC, value),
+    )
 
 db_helpers = build_db_helpers(
     q1=lambda conn, sql, params=None: q1(conn, sql, params),
@@ -1238,6 +1297,7 @@ yandex_market_production_delivery_processor = build_yandex_market_production_del
 )
 # Отдельная функция фоновой сверки не умеет создавать выдачи и потому безопасна при выключенном боевом флаге.
 yandex_market_refresh_digital_supplier_attempts = yandex_market_production_delivery_processor.refresh_supplier_attempts
+yandex_market_refresh_daily_sales_limits = yandex_market_production_delivery_processor.refresh_daily_sales_limits
 mount_yandex_market_production_delivery_routes(
     app,
     delivery_processor=yandex_market_production_delivery_processor,
