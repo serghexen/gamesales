@@ -34,21 +34,34 @@ export function useDealsViewState({
     return releasedAt
   }
 
-  // Проверяет, можно ли показывать слот в списке дублей (не раньше 2 месяцев с момента назначения).
+  // Возвращает границу прошлого календарного месяца без переполнения коротких месяцев.
+  function getDuplicateMonthThreshold() {
+    const threshold = new Date()
+    const sourceDay = threshold.getDate()
+    threshold.setDate(1)
+    threshold.setMonth(threshold.getMonth() - 1)
+    const targetMonthLastDay = new Date(
+      threshold.getFullYear(),
+      threshold.getMonth() + 1,
+      0,
+    ).getDate()
+    threshold.setDate(Math.min(sourceDay, targetMonthLastDay))
+    return threshold
+  }
+
+  // Проверяет, можно ли показывать слот в списке дублей (не раньше 1 месяца с момента назначения).
   function canUseAssignmentForDuplicateFlow(assignment) {
     const assignedAt = getAssignmentDate(assignment)
     if (!assignedAt) return false
-    const threshold = new Date()
-    threshold.setMonth(threshold.getMonth() - 2)
+    const threshold = getDuplicateMonthThreshold()
     return assignedAt.getTime() <= threshold.getTime()
   }
 
-  // Возвращает аккаунты, где за последние 2 месяца уже был дубль по выбранному методу.
+  // Возвращает аккаунты, где за последний месяц уже был дубль по выбранному методу.
   function getRecentDuplicateLockedAccountIds(assignments, slotTypeCode) {
     const selectedSlotType = normalizeSlotTypeCode(slotTypeCode)
     if (!selectedSlotType) return new Set()
-    const threshold = new Date()
-    threshold.setMonth(threshold.getMonth() - 2)
+    const threshold = getDuplicateMonthThreshold()
 
     const assignmentsByMethod = (assignments || [])
       .map((assignment) => {
@@ -156,7 +169,7 @@ export function useDealsViewState({
     return (dealProductAssignmentsEdit.value || [])
       .filter((s) => {
         const accountId = Number(s?.account_id || 0)
-        // Для edit используем тот же порог 2 месяца, чтобы сценарий дубля был одинаковым с create.
+        // Для edit используем тот же порог 1 месяц, чтобы сценарий дубля был одинаковым с create.
         return !s.released_at
           && accountId > 0
           && !lockedAccountIds.has(accountId)

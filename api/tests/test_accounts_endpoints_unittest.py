@@ -718,8 +718,8 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(len(res.json()), 1)
             self.assertEqual(res.json()[0]["account_id"], 7)
 
-    # При выдаче аккаунтов для P2 учитываем задержку 2 месяца для второго слота.
-    def test_list_accounts_for_deal_applies_two_month_p2_gate(self):
+    # При выдаче аккаунтов для P2 учитываем задержку 1 месяц для второго слота.
+    def test_list_accounts_for_deal_applies_one_month_p2_gate(self):
         script = [
             {"one": ("game", False)},
             {"all": []},
@@ -739,7 +739,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertTrue(any("active_play_assignments" in sql for sql in sql_collector))
             self.assertTrue(any("asa.released_at IS NULL" in sql for sql in sql_collector))
-            self.assertTrue(any("INTERVAL '2 months'" in sql for sql in sql_collector))
+            self.assertTrue(any("INTERVAL '1 month'" in sql for sql in sql_collector))
             self.assertTrue(any("ILIKE 'П2%%'" in sql for sql in sql_collector))
             self.assertTrue(any("COALESCE(apa.active_count, 0) >= 2" in sql for sql in sql_collector))
             self.assertTrue(any("active_slot_type_codes" in sql for sql in sql_collector))
@@ -804,8 +804,8 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json()[0]["slot_type_code"], "ps5_p1")
 
-    # В сводной доступности слотов для сделки также учитываем 2-месячный порог по второму P2.
-    def test_slot_availability_for_deal_applies_two_month_p2_gate(self):
+    # В сводной доступности слотов для сделки также учитываем месячный порог по второму P2.
+    def test_slot_availability_for_deal_applies_one_month_p2_gate(self):
         script = [
             {"one": ("game", False)},
             {"all": [("play_ps5", False)]},
@@ -826,7 +826,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.json()[0]["slot_type_code"], "play_ps5")
             self.assertTrue(any("active_play_assignments" in sql for sql in sql_collector))
             self.assertTrue(any("asa.released_at IS NULL" in sql for sql in sql_collector))
-            self.assertTrue(any("INTERVAL '2 months'" in sql for sql in sql_collector))
+            self.assertTrue(any("INTERVAL '1 month'" in sql for sql in sql_collector))
             self.assertTrue(any("ILIKE 'П2%%'" in sql for sql in sql_collector))
             self.assertTrue(any("COALESCE(apa.active_count, 0) >= 2" in sql for sql in sql_collector))
             self.assertTrue(any("active_slot_type_codes" in sql for sql in sql_collector))

@@ -1160,11 +1160,11 @@ def mount_accounts_routes(
                             AND COALESCE(ss.capacity, 0) >= 2
                             AND COALESCE(apa.active_count, 0) >= 2
                           THEN 0
-                          -- Для игрового П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
+                          -- Для игрового П2 не открываем второй слот сразу: ждем 1 месяц с первого активного занятия.
                           WHEN st_gate.name ILIKE 'П2%%'
                             AND COALESCE(ss.capacity, 0) >= 2
                             AND COALESCE(apa.active_count, 0) = 1
-                            AND COALESCE(apa.first_assigned_at, now()) > (now() - INTERVAL '2 months')
+                            AND COALESCE(apa.first_assigned_at, now()) > (now() - INTERVAL '1 month')
                           THEN 0
                           ELSE COALESCE(ss.free, 0)
                         END
@@ -1289,11 +1289,11 @@ def mount_accounts_routes(
                           AND COALESCE(ss.capacity, 0) >= 2
                           AND COALESCE(apa.active_count, 0) >= 2
                         THEN 0
-                        -- Для игрового П2 не открываем второй слот сразу: ждем 2 месяца с первого активного занятия.
+                        -- Для игрового П2 не открываем второй слот сразу: ждем 1 месяц с первого активного занятия.
                         WHEN st.name ILIKE 'П2%%'
                           AND COALESCE(ss.capacity, 0) >= 2
                           AND COALESCE(apa.active_count, 0) = 1
-                          AND COALESCE(apa.first_assigned_at, now()) > (now() - INTERVAL '2 months')
+                          AND COALESCE(apa.first_assigned_at, now()) > (now() - INTERVAL '1 month')
                         THEN 0
                         ELSE COALESCE(ss.free, 0)
                       END

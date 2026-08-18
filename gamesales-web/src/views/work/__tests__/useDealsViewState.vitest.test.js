@@ -77,7 +77,7 @@ describe('useDealsViewState', () => {
     expect(h.state.dealAccountsForNew.value).toEqual([{ account_id: 10 }])
   })
 
-  it('filters assignments by slot, released flag and 2-month duplicate rule', () => {
+  it('filters assignments by slot, released flag and 1-month duplicate rule', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-02-25T00:00:00Z'))
     const h = createHarness()
@@ -93,6 +93,34 @@ describe('useDealsViewState', () => {
     ])
     expect(h.state.hasAnyProductAssignmentsNew.value).toBe(true)
     expect(h.state.hasAnyProductAssignmentsEdit.value).toBe(true)
+  })
+
+  it('allows a duplicate exactly after one calendar month and hides newer assignments', () => {
+    // Фиксируем точную границу месячного правила, чтобы дальнейшая смена срока была заметна в тестах.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-25T00:00:00Z'))
+    const h = createHarness()
+    h.newDeal.slot_type_code = 'full'
+    h.dealGameAssignmentsNew.value = [
+      { assignment_id: 10, account_id: 10, slot_type_code: 'full', released_at: null, assigned_at: '2026-01-25T00:00:00Z' },
+      { assignment_id: 11, account_id: 20, slot_type_code: 'full', released_at: null, assigned_at: '2026-01-26T00:00:00Z' },
+    ]
+
+    expect(h.state.dealProductAssignmentsForSelectedSlotNew.value.map((item) => item.assignment_id)).toEqual([10])
+  })
+
+  it('clamps the one-month boundary to the last day of a shorter month', () => {
+    // На 31 марта календарный месяц назад должен означать 28 февраля, а не переполнение в март.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-03-31T00:00:00Z'))
+    const h = createHarness()
+    h.newDeal.slot_type_code = 'full'
+    h.dealGameAssignmentsNew.value = [
+      { assignment_id: 12, account_id: 10, slot_type_code: 'full', released_at: null, assigned_at: '2026-02-28T00:00:00Z' },
+      { assignment_id: 13, account_id: 20, slot_type_code: 'full', released_at: null, assigned_at: '2026-03-01T00:00:00Z' },
+    ]
+
+    expect(h.state.dealProductAssignmentsForSelectedSlotNew.value.map((item) => item.assignment_id)).toEqual([12])
   })
 
   it('matches slot codes case-insensitively for release list', () => {
@@ -134,5 +162,19 @@ describe('useDealsViewState', () => {
       },
     ]
     expect(h.state.dealProductAssignmentsForSelectedSlotNew.value.map((item) => item.assignment_id)).toEqual([2])
+  })
+
+  it('unlocks an account when its overlapping duplicate is older than one month', () => {
+    // Подтверждаем, что месячный cooldown не блокирует аккаунт после прохождения границы.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-25T00:00:00Z'))
+    const h = createHarness()
+    h.newDeal.slot_type_code = 'full'
+    h.dealGameAssignmentsNew.value = [
+      { assignment_id: 20, account_id: 10, slot_type_code: 'full', assigned_at: '2025-10-01T00:00:00Z', released_at: null },
+      { assignment_id: 21, account_id: 10, slot_type_code: 'full', assigned_at: '2026-01-20T00:00:00Z', released_at: null },
+    ]
+
+    expect(h.state.dealProductAssignmentsForSelectedSlotNew.value.map((item) => item.assignment_id)).toEqual([20, 21])
   })
 })

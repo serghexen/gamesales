@@ -622,7 +622,7 @@ def mount_deals_routes(
         occupied = int((occupied_row[0] if occupied_row else 0) or 0)
         return max(slot_capacity - occupied, 0)
 
-    # Блокирует второй игровой П2, пока первому активному назначению нет 2 месяцев.
+    # Блокирует второй игровой П2, пока первому активному назначению нет 1 месяца.
     def ensure_game_second_p2_slot_is_open(
         conn,
         *,
@@ -663,11 +663,11 @@ def mount_deals_routes(
             return
         is_open_row = q1(
             conn,
-            "SELECT %s::timestamptz <= (now() - INTERVAL '2 months')",
+            "SELECT %s::timestamptz <= (now() - INTERVAL '1 month')",
             (first_assigned_at,),
         )
         if not bool(is_open_row[0] if is_open_row else False):
-            raise HTTPException(409, "Second P2 game slot is available only after 2 months")
+            raise HTTPException(409, "Second P2 game slot is available only after 1 month")
 
     @app.post("/rentals")
     def create_rental(payload: RentalCreate, user=Depends(get_current_user)):
