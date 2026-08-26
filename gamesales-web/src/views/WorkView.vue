@@ -2272,8 +2272,8 @@ async function loadInterhubPrices() {
   }
 }
 
-async function loadInterhubSalesHistory({ dateFrom = '', dateTo = '', search = '', sortBy = 'createdAt', sortDirection = 'desc', page = 1, pageSize = 25 } = {}) {
-  // Загружаем одну серверную страницу и точные итоги по всей отфильтрованной истории.
+async function loadInterhubSalesHistory({ source = 'hub', dateFrom = '', dateTo = '', search = '', state = '', sortBy = 'createdAt', sortDirection = 'desc', page = 1, pageSize = 25 } = {}) {
+  // По умолчанию читаем Supplier Hub, а старую таблицу CRM оставляем отдельным архивом.
   interhubSalesHistoryLoading.value = true
   interhubSalesHistoryError.value = ''
   try {
@@ -2281,11 +2281,15 @@ async function loadInterhubSalesHistory({ dateFrom = '', dateTo = '', search = '
     if (dateFrom) query.set('date_from', dateFrom)
     if (dateTo) query.set('date_to', dateTo)
     if (search) query.set('search', search)
+    if (source === 'hub' && state) query.set('state', state)
     query.set('sort_by', sortBy)
     query.set('sort_direction', sortDirection)
     query.set('page', String(page))
     query.set('page_size', String(pageSize))
-    const data = await apiGet(`/integrations/interhub/transactions/paid?${query.toString()}`, { token: auth.state.token })
+    const historyPath = source === 'crm'
+      ? '/integrations/interhub/transactions/paid'
+      : '/integrations/supplier-hub/transactions'
+    const data = await apiGet(`${historyPath}?${query.toString()}`, { token: auth.state.token })
     interhubSalesHistory.value = Array.isArray(data?.items) ? data.items : []
     interhubSalesHistoryTotal.value = Math.max(0, Number(data?.total || 0))
     interhubSalesHistoryTotalAmount.value = Number(data?.total_amount || 0)
@@ -2299,6 +2303,15 @@ async function loadInterhubSalesHistory({ dateFrom = '', dateTo = '', search = '
   } finally {
     interhubSalesHistoryLoading.value = false
   }
+}
+
+async function revealSupplierHubResult(purchaseId) {
+  // Раскрываем код только по отдельному действию владельца; обычная загрузка истории его не возвращает.
+  return apiPost(
+    `/integrations/supplier-hub/transactions/${encodeURIComponent(String(purchaseId || ''))}/result`,
+    {},
+    { token: auth.state.token },
+  )
 }
 
 async function reloadInterhubData() {
@@ -4034,6 +4047,7 @@ const interhubSectionCtx = asCtx({
   refreshPrices: refreshInterhubPrices,
   exportPrices: exportInterhubPrices,
   loadSalesHistory: loadInterhubSalesHistory,
+  revealSalesHistoryResult: revealSupplierHubResult,
   reload: reloadInterhubData,
   calculate: calculateInterhub,
   checkPayment: checkInterhub,

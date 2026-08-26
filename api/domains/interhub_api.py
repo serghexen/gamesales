@@ -686,9 +686,9 @@ def mount_interhub_routes(
         sort_direction: Literal["asc", "desc"] = Query(default="desc"),
         page: int = Query(default=1, ge=1),
         page_size: int = Query(default=25, ge=1, le=100),
-        user: UserOut = Depends(get_current_user),
+        user: UserOut = Depends(require_role("owner")),
     ):
-        # Выдаём одну страницу завершённых продаж и считаем итоги по всей отфильтрованной истории.
+        # Архив CRM содержит секретные коды, поэтому доступен только владельцу.
         _ = user
         if date_from and date_to and date_from > date_to:
             raise HTTPException(422, "Дата «с» не может быть позже даты «по»")

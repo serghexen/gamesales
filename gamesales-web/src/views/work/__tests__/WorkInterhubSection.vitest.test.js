@@ -61,6 +61,7 @@ function buildCtx(overrides = {}) {
     refreshPrices: vi.fn(),
     exportPrices: vi.fn(),
     loadSalesHistory: vi.fn(),
+    revealSalesHistoryResult: vi.fn(),
     resetPaymentFlow: vi.fn(),
     setSearchFromEvent: vi.fn(),
     ...overrides,
@@ -144,22 +145,30 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.findAll('tbody tr')[0].text()).toContain('Mobile top up')
   })
 
-  it('opens paid sales history with a date range filter', async () => {
+  it('opens Supplier Hub history, reveals a result explicitly and keeps CRM as an archive', async () => {
     const ctx = buildCtx({
-      salesHistory: [{ service_id: 7, service_title: 'Steam Wallet', nominal: '15', nominal_title: '15 USD', price: 12.5, gift_code: 'GIFT-15', created_at: '2026-07-27T10:30:00Z' }],
+      canPay: true,
+      salesHistory: [{ purchase_id: 'purchase-1', service_id: 7, nominal: '15', price: 12.5, state: 'succeeded', result_available: true, created_at: '2026-07-27T10:30:00Z' }],
+      cachedPrices: [{ service_id: 7, nominal_id: '15', nominal_title: '15 USD' }],
     })
+    ctx.revealSalesHistoryResult = vi.fn(async () => ({ value: 'GIFT-15' }))
     const wrapper = mount(WorkInterhubSection, { props: { ctx }, attachTo: document.body })
 
     await wrapper.get('.interhub-catalog__history-action').trigger('click')
-    expect(ctx.loadSalesHistory).toHaveBeenCalledWith({ dateFrom: '', dateTo: '', search: '', sortBy: 'createdAt', sortDirection: 'desc', page: 1, pageSize: 25 })
+    expect(ctx.loadSalesHistory).toHaveBeenCalledWith({ source: 'hub', dateFrom: '', dateTo: '', search: '', state: '', sortBy: 'createdAt', sortDirection: 'desc', page: 1, pageSize: 25 })
     expect(document.body.querySelector('.interhub-history-backdrop')?.classList.contains('work-modal-root')).toBe(true)
     expect(document.body.querySelector('.interhub-history__head')?.classList.contains('modal__head')).toBe(true)
     expect(document.body.querySelector('[aria-label="Закрыть"]')?.classList.contains('deal-create-action-btn--close')).toBe(true)
-    expect(document.body.textContent).toContain('История продаж')
-    expect(document.body.textContent).toContain('Steam Wallet')
+    expect(document.body.textContent).toContain('История покупок')
+    expect(document.body.textContent).toContain('Mobile top up')
     expect(document.body.textContent).toContain('15 USD')
+    expect(document.body.textContent).toContain('Выполнено')
+    expect(document.body.textContent).not.toContain('GIFT-15')
+    await document.body.querySelector('.interhub-history__reveal').dispatchEvent(new Event('click'))
+    await Promise.resolve()
     expect(document.body.textContent).toContain('GIFT-15')
-    expect(document.body.querySelector('.interhub-history__cards').textContent).toContain('Сумма платежей')
+    expect(ctx.revealSalesHistoryResult).toHaveBeenCalledWith('purchase-1')
+    expect(document.body.querySelector('.interhub-history__cards').textContent).toContain('Успешно оплачено')
     expect(document.body.querySelector('.interhub-history__cards').textContent).toContain('12,50 ₽')
 
     const dates = document.body.querySelectorAll('.interhub-history input[type="date"]')
@@ -168,7 +177,11 @@ describe('WorkInterhubSection', () => {
     dates[1].value = '2026-07-27'
     await dates[1].dispatchEvent(new Event('input'))
     await document.body.querySelector('.interhub-history__filters').dispatchEvent(new Event('submit', { cancelable: true }))
-    expect(ctx.loadSalesHistory).toHaveBeenLastCalledWith({ dateFrom: '2026-07-01', dateTo: '2026-07-27', search: '', sortBy: 'createdAt', sortDirection: 'desc', page: 1, pageSize: 25 })
+    expect(ctx.loadSalesHistory).toHaveBeenLastCalledWith({ source: 'hub', dateFrom: '2026-07-01', dateTo: '2026-07-27', search: '', state: '', sortBy: 'createdAt', sortDirection: 'desc', page: 1, pageSize: 25 })
+
+    const archiveTab = [...document.body.querySelectorAll('.interhub-history__sources button')].find((item) => item.textContent.includes('Архив CRM'))
+    await archiveTab.dispatchEvent(new Event('click'))
+    expect(ctx.loadSalesHistory).toHaveBeenLastCalledWith({ source: 'crm', dateFrom: '2026-07-01', dateTo: '2026-07-27', search: '', state: '', sortBy: 'createdAt', sortDirection: 'desc', page: 1, pageSize: 25 })
     wrapper.unmount()
   })
 
@@ -176,6 +189,7 @@ describe('WorkInterhubSection', () => {
     const wrapper = mount(WorkInterhubSection, {
       props: {
         ctx: buildCtx({
+          canPay: true,
           salesHistory: [
             { service_id: 8, nominal: '50', price: 40, gift_code: 'Z-CODE', created_at: '2026-07-26T10:30:00Z' },
             { service_id: 7, nominal: '15', price: 12.5, gift_code: 'A-CODE', created_at: '2026-07-27T10:30:00Z' },
@@ -188,7 +202,7 @@ describe('WorkInterhubSection', () => {
     const priceHeader = document.body.querySelectorAll('.interhub-history__sort')[2]
     await priceHeader.dispatchEvent(new Event('click'))
 
-    expect(wrapper.props('ctx').loadSalesHistory).toHaveBeenLastCalledWith({ dateFrom: '', dateTo: '', search: '', sortBy: 'price', sortDirection: 'asc', page: 1, pageSize: 25 })
+    expect(wrapper.props('ctx').loadSalesHistory).toHaveBeenLastCalledWith({ source: 'hub', dateFrom: '', dateTo: '', search: '', state: '', sortBy: 'price', sortDirection: 'asc', page: 1, pageSize: 25 })
     wrapper.unmount()
   })
 
@@ -196,6 +210,7 @@ describe('WorkInterhubSection', () => {
     const wrapper = mount(WorkInterhubSection, {
       props: {
         ctx: buildCtx({
+          canPay: true,
           salesHistory: [
             { service_id: 7, service_title: 'Steam Wallet', nominal_title: '300 NC', price: 79.2, gift_code: 'STEAM-CODE', created_at: '2026-07-27T10:30:00Z' },
             { service_id: 8, service_title: 'Apple Gift Card', nominal_title: 'TRY 250', price: 492, gift_code: 'APPLE-CODE', created_at: '2026-07-26T10:30:00Z' },
@@ -210,7 +225,7 @@ describe('WorkInterhubSection', () => {
     search.value = 'steam'
     await search.dispatchEvent(new Event('input'))
     await document.body.querySelector('.interhub-history__filters').dispatchEvent(new Event('submit', { cancelable: true }))
-    expect(wrapper.props('ctx').loadSalesHistory).toHaveBeenLastCalledWith({ dateFrom: '', dateTo: '', search: 'steam', sortBy: 'createdAt', sortDirection: 'desc', page: 1, pageSize: 25 })
+    expect(wrapper.props('ctx').loadSalesHistory).toHaveBeenLastCalledWith({ source: 'hub', dateFrom: '', dateTo: '', search: 'steam', state: '', sortBy: 'createdAt', sortDirection: 'desc', page: 1, pageSize: 25 })
     wrapper.unmount()
   })
 
@@ -222,7 +237,7 @@ describe('WorkInterhubSection', () => {
       gift_code: `CODE-${index + 1}`,
       created_at: `2026-07-27T10:${String(59 - index).padStart(2, '0')}:00Z`,
     }))
-    const ctx = buildCtx({ salesHistory: salesHistory.slice(0, 25), salesHistoryTotal: 26, salesHistoryTotalAmount: 351 })
+    const ctx = buildCtx({ canPay: true, salesHistory: salesHistory.slice(0, 25), salesHistoryTotal: 26, salesHistoryTotalAmount: 351 })
     const wrapper = mount(WorkInterhubSection, { props: { ctx }, attachTo: document.body })
 
     await wrapper.get('.interhub-catalog__history-action').trigger('click')
@@ -234,7 +249,7 @@ describe('WorkInterhubSection', () => {
     await next.dispatchEvent(new Event('click'))
     expect(document.body.querySelector('.interhub-history__pagination').textContent).toContain('Показаны 26–26 из 26')
     expect(ctx.loadSalesHistory).toHaveBeenCalledTimes(2)
-    expect(ctx.loadSalesHistory).toHaveBeenLastCalledWith({ dateFrom: '', dateTo: '', search: '', sortBy: 'createdAt', sortDirection: 'desc', page: 2, pageSize: 25 })
+    expect(ctx.loadSalesHistory).toHaveBeenLastCalledWith({ source: 'hub', dateFrom: '', dateTo: '', search: '', state: '', sortBy: 'createdAt', sortDirection: 'desc', page: 2, pageSize: 25 })
     wrapper.unmount()
   })
 

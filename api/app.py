@@ -364,6 +364,7 @@ from domains.catalogs_api import mount_catalogs_routes
 from domains.auth_api import mount_auth_routes
 from domains.slots_import_api import mount_slots_import_routes
 from domains.interhub_api import mount_interhub_routes
+from domains.supplier_hub_api import mount_supplier_hub_routes
 from domains.ns_gift_api import mount_ns_gift_routes
 from domains.rbac_api import mount_rbac_routes
 from domains.import_jobs import build_import_jobs
@@ -375,6 +376,7 @@ from domains.auth_service import build_auth_service
 from domains.db_helpers import build_db_helpers
 from domains.games_lookup_service import build_games_lookup_service
 from domains.interhub_service import build_interhub_service
+from domains.supplier_hub_service import build_supplier_hub_operator_client
 from domains.ns_gift_service import build_ns_gift_service
 
 class ProductCreate(BaseModel):
@@ -782,6 +784,10 @@ _INTERHUB_PAY_PATH = os.getenv("INTERHUB_PAY_PATH", "/api/agent/payment/pay")
 _INTERHUB_CHECK_STATUS_PATH = os.getenv("INTERHUB_CHECK_STATUS_PATH", "/api/agent/payment/check_status")
 _INTERHUB_DEPOSIT_PATH = os.getenv("INTERHUB_DEPOSIT_PATH", "/api/agent/deposit")
 _INTERHUB_PRICE_CALCULATE_DELAY_MS = int(os.getenv("INTERHUB_PRICE_CALCULATE_DELAY_MS", "700") or "700")
+_SUPPLIER_HUB_BASE_URL = os.getenv("SUPPLIER_HUB_BASE_URL", "")
+_SUPPLIER_HUB_OPERATOR_ID = os.getenv("SUPPLIER_HUB_OPERATOR_ID", "")
+_SUPPLIER_HUB_OPERATOR_KEY = os.getenv("SUPPLIER_HUB_OPERATOR_KEY", "")
+_SUPPLIER_HUB_TIMEOUT_SEC = int(os.getenv("SUPPLIER_HUB_TIMEOUT_SEC", "10") or "10")
 # Интервал фоновой проверки заказов Ozon и незавершённых выдач Interhub, чтобы менять его без правки кода.
 _OZON_SUPPLIER_POLL_INTERVAL_SEC = max(10, int(os.getenv("OZON_SUPPLIER_POLL_INTERVAL_SEC", "60") or "60"))
 # Пауза между подтвержденной выдачей цифрового кода и повторной публикацией сохраненного остатка.
@@ -925,6 +931,14 @@ interhub_service = build_interhub_service(
     pay_path=_INTERHUB_PAY_PATH,
     check_status_path=_INTERHUB_CHECK_STATUS_PATH,
     deposit_path=_INTERHUB_DEPOSIT_PATH,
+)
+
+supplier_hub_operator_client = build_supplier_hub_operator_client(
+    HTTPException=HTTPException,
+    base_url=_SUPPLIER_HUB_BASE_URL,
+    operator_id=_SUPPLIER_HUB_OPERATOR_ID,
+    operator_key=_SUPPLIER_HUB_OPERATOR_KEY,
+    timeout_sec=_SUPPLIER_HUB_TIMEOUT_SEC,
 )
 
 def ns_gift_get_balance():
@@ -1365,6 +1379,13 @@ interhub_refresh_pending = mount_interhub_routes(
     interhub_pay=interhub_pay,
     interhub_check_status=interhub_check_status,
     price_calculate_delay_ms=_INTERHUB_PRICE_CALCULATE_DELAY_MS,
+)
+
+mount_supplier_hub_routes(
+    app,
+    require_role=require_role,
+    UserOut=UserOut,
+    supplier_hub_client=supplier_hub_operator_client,
 )
 
 mount_rbac_routes(
