@@ -55,7 +55,10 @@
             <div v-if="tab === 'new'" class="sbp-modal__content">
               <form v-if="!activePayment" class="sbp-form" @submit.prevent="createPayment">
                 <label class="sbp-field">
-                  <span>Описание услуги</span>
+                  <span class="sbp-field__head">
+                    <b>Описание услуги</b>
+                    <small>{{ description.trim().length }}/128</small>
+                  </span>
                   <input
                     v-model="description"
                     data-test="sbp-description"
@@ -65,39 +68,49 @@
                     placeholder="Например, A Way Out для PS5"
                     @input="error = ''"
                   />
-                  <small>{{ description.trim().length }}/128 · попадёт в платёж и кассовый чек</small>
+                  <small class="sbp-field__hint">Попадёт в платёж и кассовый чек</small>
                 </label>
 
-                <label class="sbp-field">
-                  <span>Покупатель</span>
-                  <input
-                    v-model="buyer"
-                    data-test="sbp-buyer"
-                    type="text"
-                    maxlength="200"
-                    autocomplete="off"
-                    placeholder="Имя, ник или номер заказа"
-                    @input="error = ''"
-                  />
-                  <small>Только для истории CRM — в банк и чек не передаётся</small>
-                </label>
-
-                <label class="sbp-field">
-                  <span>Сумма</span>
-                  <span class="sbp-amount">
+                <div class="sbp-form__row">
+                  <label class="sbp-field">
+                    <span class="sbp-field__head"><b>Покупатель</b></span>
                     <input
-                      v-model="amount"
-                      data-test="sbp-amount"
+                      v-model="buyer"
+                      data-test="sbp-buyer"
                       type="text"
-                      inputmode="decimal"
+                      maxlength="200"
                       autocomplete="off"
-                      placeholder="0"
+                      placeholder="Имя, ник или номер заказа"
                       @input="error = ''"
                     />
-                    <b>₽</b>
-                  </span>
-                  <small>{{ limitsLabel }} · QR действует {{ config.qr_lifetime_minutes || 15 }} минут</small>
-                </label>
+                    <small class="sbp-field__hint">Только для истории CRM</small>
+                  </label>
+
+                  <label class="sbp-field sbp-field--amount">
+                    <span class="sbp-field__head"><b>Сумма</b></span>
+                    <span class="sbp-amount">
+                      <input
+                        v-model="amount"
+                        data-test="sbp-amount"
+                        type="text"
+                        inputmode="decimal"
+                        autocomplete="off"
+                        placeholder="0"
+                        @input="error = ''"
+                      />
+                      <b>₽</b>
+                    </span>
+                    <small class="sbp-field__hint">{{ limitsLabel }}</small>
+                  </label>
+                </div>
+
+                <p class="sbp-form__notice">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 10v6M12 7h.01" />
+                  </svg>
+                  QR действует {{ config.qr_lifetime_minutes || 15 }} минут. Покупатель не передаётся в банк и чек.
+                </p>
 
                 <p v-if="configLoaded && !config.enabled" class="sbp-message sbp-message--warning">
                   Интеграция пока выключена или заполнена не полностью. Проверьте переменные окружения API.
@@ -617,16 +630,23 @@ onBeforeUnmount(() => {
 .sbp-tabs button.is-active, .sbp-scope button.is-active { background: rgba(62,232,181,.14); color: #72efca; }
 .sbp-tabs button span { min-width: 18px; height: 18px; display: inline-grid; place-items: center; border-radius: 99px; background: #ff7167; color: #101527; font-size: 10px; }
 .sbp-modal__content { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: 18px 22px 22px; }
-.sbp-form { display: grid; gap: 13px; max-width: 620px; margin: 0 auto; }
-.sbp-field { display: grid; gap: 6px; }
-.sbp-field > span:first-child { color: #dfe7fa; font-size: 12px; font-weight: 800; }
-.sbp-field input { width: 100%; box-sizing: border-box; border: 1px solid rgba(140,160,211,.28); border-radius: 12px; padding: 11px 14px; outline: none; background: rgba(4,9,24,.62); color: #f4f7ff; font: inherit; font-size: 15px; }
+.sbp-form { display: grid; gap: 14px; max-width: 620px; margin: 0 auto; }
+.sbp-form__row { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(180px, .85fr); gap: 12px; align-items: start; }
+.sbp-field { min-width: 0; display: grid; grid-template-rows: auto 44px auto; gap: 6px; }
+.sbp-field__head { min-height: 18px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: #dfe7fa; }
+.sbp-field__head b { font-size: 12px; font-weight: 800; }
+.sbp-field__head small { color: #667596; font-size: 9px; font-variant-numeric: tabular-nums; }
+.sbp-field input { width: 100%; height: 44px; box-sizing: border-box; border: 1px solid rgba(140,160,211,.28); border-radius: 12px; padding: 0 14px; outline: none; background: rgba(4,9,24,.62); color: #f4f7ff; font: inherit; font-size: 14px; transition: border-color .16s ease, box-shadow .16s ease, background .16s ease; }
+.sbp-field input::placeholder { color: #7884a1; }
 .sbp-field input:focus { border-color: #55e9bd; box-shadow: 0 0 0 3px rgba(62,232,181,.1); }
-.sbp-field small { color: #7f8dad; font-size: 11px; line-height: 1.3; }
-.sbp-amount { display: flex; align-items: center; border: 1px solid rgba(140,160,211,.28); border-radius: 12px; background: rgba(4,9,24,.62); }
+.sbp-field__hint { min-height: 14px; color: #7f8dad; font-size: 10px; line-height: 1.35; }
+.sbp-amount { height: 44px; display: flex; align-items: center; border: 1px solid rgba(140,160,211,.28); border-radius: 12px; background: rgba(4,9,24,.62); transition: border-color .16s ease, box-shadow .16s ease, background .16s ease; }
 .sbp-amount:focus-within { border-color: #55e9bd; box-shadow: 0 0 0 3px rgba(62,232,181,.1); }
-.sbp-amount input { border: 0; background: transparent; box-shadow: none !important; font-size: 22px; font-weight: 800; }
-.sbp-amount b { padding-right: 15px; color: #8f9cbd; font-size: 20px; }
+.sbp-amount input { height: 42px; border: 0; background: transparent; box-shadow: none !important; font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.sbp-amount b { padding-right: 14px; color: #8f9cbd; font-size: 17px; }
+.sbp-form__notice { min-height: 34px; display: flex; align-items: center; gap: 8px; margin: -2px 0 0; padding: 8px 10px; border: 1px solid rgba(108,133,190,.14); border-radius: 10px; background: rgba(92,115,170,.055); color: #8190b1; font-size: 10px; line-height: 1.35; }
+.sbp-form__notice svg { width: 15px; height: 15px; flex: 0 0 auto; fill: none; stroke: #58dcb8; stroke-width: 1.7; stroke-linecap: round; }
+.sbp-form > .sbp-primary { margin-top: 2px; }
 .sbp-primary, .sbp-secondary { border-radius: 12px; font: inherit; font-weight: 800; cursor: pointer; }
 .sbp-primary { min-height: 46px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 0; background: linear-gradient(135deg, #47e7ba, #8df3d3); color: #071427; box-shadow: 0 12px 30px rgba(62,232,181,.16); }
 .sbp-primary:disabled { cursor: not-allowed; filter: saturate(.2); opacity: .55; }
@@ -709,6 +729,7 @@ onBeforeUnmount(() => {
   .sbp-modal { width: 100%; max-height: 94svh; border-radius: 24px 24px 0 0; }
   .sbp-modal__head, .sbp-modal__content { padding-left: 16px; padding-right: 16px; }
   .sbp-tabs { padding-left: 16px; padding-right: 16px; }
+  .sbp-form__row { grid-template-columns: 1fr; gap: 14px; }
   .sbp-payment__details { grid-template-columns: 1fr; }
   .sbp-history__filters { grid-template-columns: 1fr; }
   .sbp-history__columns { display: none; }
