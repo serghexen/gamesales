@@ -31,6 +31,7 @@ describe('accountUtils', () => {
       product_q: '',
       region_q: '',
       status_q: '',
+      without_products: false,
       date_from: '',
       date_to: '',
     })

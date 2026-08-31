@@ -55,7 +55,7 @@ function createHarness() {
     accountsTotal: ref(0),
     accountsPage: ref(1),
     accountsPageSize: ref(20),
-    accountFilters: reactive({ search_q: '', login_q: '', product_q: '', region_q: '', status_q: '', date_from: '', date_to: '' }),
+    accountFilters: reactive({ search_q: '', login_q: '', product_q: '', region_q: '', status_q: '', without_products: false, date_from: '', date_to: '' }),
     accountSort: ref('login_asc'),
     accountSecrets: ref({}),
     accountsError: ref(null),
@@ -73,6 +73,19 @@ function createHarness() {
 }
 
 describe('useAccountsFlow', () => {
+  it('loadAccounts sends without_products only when the quick filter is active', async () => {
+    const h = createHarness()
+    h.accountFilters.without_products = true
+    h.apiGet.mockResolvedValueOnce({ total: 0, items: [] })
+
+    await h.loadAccounts()
+
+    expect(h.apiGet).toHaveBeenCalledWith(
+      expect.stringContaining('without_products=true'),
+      { token: 'token-1' },
+    )
+  })
+
   it('loadAccountProducts prefers /accounts/{id}/products', async () => {
     const h = createHarness()
     h.apiGet.mockResolvedValueOnce([{ product_id: 55, title: 'Game A' }, { product_id: 56, title: 'PS Plus до 09/04/27' }])

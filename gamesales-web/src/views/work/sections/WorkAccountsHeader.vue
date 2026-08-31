@@ -13,6 +13,18 @@
             </span>
           </button>
         </div>
+        <button
+          class="account-empty-toggle"
+          :class="{ 'account-empty-toggle--active': accountFilters.without_products }"
+          type="button"
+          :aria-pressed="accountFilters.without_products ? 'true' : 'false'"
+          :disabled="accountsLoading"
+          title="Показать аккаунты без игр и подписок"
+          @click="toggleEmptyAccounts"
+        >
+          <span class="account-empty-toggle__mark" aria-hidden="true"></span>
+          <span>Без привязок</span>
+        </button>
         <div class="toolbar-actions toolbar-actions--account-search">
           <label class="field field--compact">
             <input
@@ -119,6 +131,7 @@
 <script setup>
 defineProps({
   accountFilters: { type: Object, required: true },
+  toggleEmptyAccounts: { type: Function, required: true },
   applyAccountSearch: { type: Function, required: true },
   openCreateAccountModal: { type: Function, required: true },
   openAccountImport: { type: Function, required: true },

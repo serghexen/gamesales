@@ -5,7 +5,8 @@ import WorkAccountsHeader from '../sections/WorkAccountsHeader.vue'
 
 function buildProps(overrides = {}) {
   return {
-    accountFilters: { search_q: '' },
+    accountFilters: { search_q: '', without_products: false },
+    toggleEmptyAccounts: vi.fn(),
     applyAccountSearch: vi.fn(),
     openCreateAccountModal: vi.fn(),
     openAccountImport: vi.fn(),
@@ -45,6 +46,23 @@ describe('WorkAccountsHeader', () => {
     await wrapper.find('[aria-label="Выгрузить историю слотов"]').trigger('click')
 
     expect(downloadSlotsExport).toHaveBeenCalledTimes(1)
+  })
+
+  it('toggles accounts without linked games or subscriptions', async () => {
+    const toggleEmptyAccounts = vi.fn()
+    const wrapper = mount(WorkAccountsHeader, {
+      props: buildProps({
+        accountFilters: { search_q: '', without_products: true },
+        toggleEmptyAccounts,
+      }),
+    })
+
+    const button = wrapper.get('.account-empty-toggle')
+    expect(button.attributes('aria-pressed')).toBe('true')
+
+    await button.trigger('click')
+
+    expect(toggleEmptyAccounts).toHaveBeenCalledTimes(1)
   })
 
   it('shows progress and disables slots export button while file is generated', () => {

@@ -56,6 +56,14 @@ export function useWorkFilters({
     loadAccounts()
   }
 
+  // Переключает быстрый фильтр полностью пустых аккаунтов и возвращает список на первую страницу.
+  function toggleEmptyAccounts() {
+    accountFilters.without_products = !accountFilters.without_products
+    accountsPage.value = 1
+    accountsPageInput.value = 1
+    loadAccounts()
+  }
+
   // Переключает сортировку списка товаров.
   function toggleProductsSort(key) {
     const current = productsSort.value
@@ -285,6 +293,8 @@ export function useWorkFilters({
     } else if (kind === 'status') {
       accountFilters.status_q = ''
       accountFilterDraft.status = ''
+    } else if (kind === 'without_products') {
+      accountFilters.without_products = false
     } else if (kind === 'date') {
       accountFilters.date_from = ''
       accountFilters.date_to = ''
@@ -297,6 +307,7 @@ export function useWorkFilters({
       accountFilters.product_q = ''
       accountFilters.region_q = ''
       accountFilters.status_q = ''
+      accountFilters.without_products = false
       accountFilters.date_from = ''
       accountFilters.date_to = ''
       accountFilterDraft.login = ''
@@ -343,6 +354,7 @@ export function useWorkFilters({
 
   return {
     toggleAccountSort,
+    toggleEmptyAccounts,
     toggleProductsSort,
     toggleUsersSort,
     toggleDomainsSort,

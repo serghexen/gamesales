@@ -57,6 +57,7 @@ function createHarness() {
     product_q: 'game',
     region_q: 'RU',
     status_q: 'active',
+    without_products: true,
     date_from: '',
     date_to: '',
   })
@@ -203,6 +204,20 @@ describe('useWorkFilters', () => {
     expect(h.loadAccounts).not.toHaveBeenCalled()
   })
 
+  it('toggleEmptyAccounts applies quick filter and reloads the first page', () => {
+    const h = createHarness()
+    h.accountFilters.without_products = false
+    h.accountsPage.value = 3
+    h.accountsPageInput.value = 3
+
+    h.api.toggleEmptyAccounts()
+
+    expect(h.accountFilters.without_products).toBe(true)
+    expect(h.accountsPage.value).toBe(1)
+    expect(h.accountsPageInput.value).toBe(1)
+    expect(h.loadAccounts).toHaveBeenCalledTimes(1)
+  })
+
   it('applyAccountFilter date applies valid range and reloads', () => {
     const h = createHarness()
     h.activeAccountFilter.value = 'date'
@@ -232,6 +247,7 @@ describe('useWorkFilters', () => {
     expect(h.accountFilters.product_q).toBe('')
     expect(h.accountFilters.region_q).toBe('')
     expect(h.accountFilters.status_q).toBe('')
+    expect(h.accountFilters.without_products).toBe(false)
     expect(h.accountFilters.date_from).toBe('')
     expect(h.accountFilters.date_to).toBe('')
     expect(h.accountFilterDraft.login).toBe('')

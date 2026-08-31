@@ -128,6 +128,7 @@ def mount_accounts_routes(
         product_q: Optional[str] = None,
         region_q: Optional[str] = None,
         status_q: Optional[str] = None,
+        without_products: bool = False,
         slots_q: Optional[str] = None,
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
@@ -195,6 +196,24 @@ def mount_accounts_routes(
             params.append(f"%{status_q}%")
         else:
             filters.append("a.status_code <> 'archived'")
+        if without_products:
+            # Оставляем полностью пустые аккаунты без игр, подписок и старых сроков подписки.
+            filters.append(
+                """
+                NOT EXISTS (
+                  SELECT 1
+                  FROM app.account_assets aa_product
+                  WHERE aa_product.account_id = a.account_id
+                    AND aa_product.asset_type_code IN ('game', 'subscription')
+                )
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM app.subscription_terms st_product
+                  WHERE st_product.account_id = a.account_id
+                    AND st_product.is_archived IS NOT TRUE
+                )
+                """
+            )
         if date_from:
             filters.append("a.account_date >= %s")
             params.append(date_from)

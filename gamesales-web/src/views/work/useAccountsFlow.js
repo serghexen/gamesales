@@ -263,6 +263,7 @@ export function useAccountsFlow({
       if (accountFilters.product_q) params.set('product_q', accountFilters.product_q)
       if (accountFilters.region_q) params.set('region_q', accountFilters.region_q)
       if (accountFilters.status_q) params.set('status_q', accountFilters.status_q)
+      if (accountFilters.without_products) params.set('without_products', 'true')
       if (accountFilters.date_from) params.set('date_from', accountFilters.date_from)
       if (accountFilters.date_to) params.set('date_to', accountFilters.date_to)
       const sort = resolveAccountSort(accountSort.value)

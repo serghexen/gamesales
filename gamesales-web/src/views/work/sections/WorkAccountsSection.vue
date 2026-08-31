@@ -2,6 +2,7 @@
   <section class="panel panel--wide">
     <WorkAccountsHeader
       :account-filters="ctx.accountFilters"
+      :toggle-empty-accounts="ctx.toggleEmptyAccounts"
       :apply-account-search="ctx.applyAccountSearch"
       :open-create-account-modal="ctx.openCreateAccountModal"
       :open-account-import="ctx.openAccountImport"

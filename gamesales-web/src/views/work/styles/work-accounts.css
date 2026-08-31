@@ -9,6 +9,59 @@
   flex: 0 0 auto;
 }
 
+.work-page .account-empty-toggle {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid color-mix(in srgb, var(--muted) 34%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 94%, var(--muted) 6%);
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.work-page .account-empty-toggle:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 58%, transparent);
+  color: var(--text);
+}
+
+.work-page .account-empty-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 58%, transparent);
+  outline-offset: 2px;
+}
+
+.work-page .account-empty-toggle--active {
+  border-color: color-mix(in srgb, var(--accent) 72%, transparent);
+  background: color-mix(in srgb, var(--accent) 15%, var(--panel));
+  color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent) inset;
+}
+
+.work-page .account-empty-toggle:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.work-page .account-empty-toggle__mark {
+  width: 9px;
+  height: 9px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.work-page .account-empty-toggle--active .account-empty-toggle__mark {
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
 .work-page .toolbar-actions--account-tools {
   flex: 0 0 auto;
   margin-left: auto;
@@ -186,6 +239,10 @@
     flex: 1 1 100%;
     max-width: 100%;
     min-width: 0;
+  }
+
+  .work-page .account-empty-toggle {
+    order: 1;
   }
 
   .work-page .accounts-table-wrap {

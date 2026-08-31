@@ -79,6 +79,7 @@ export function useActiveTabWatcher({
       accountFilters.product_q = ''
       accountFilters.region_q = ''
       accountFilters.status_q = ''
+      accountFilters.without_products = false
       accountFilters.date_from = ''
       accountFilters.date_to = ''
     }

@@ -152,6 +152,22 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertTrue(any("d_q.order_number ILIKE" in sql for sql in sql_collector))
 
+    # Быстрый фильтр должен исключать аккаунты с играми и подписками, включая старые сроки.
+    def test_list_accounts_without_products_adds_not_exists_filters(self):
+        script = [{"all": []}]
+        sql_collector = []
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+        ):
+            with self._client() as client:
+                res = client.get("/accounts?without_products=true", headers=self._auth_headers(role="manager"))
+            self.assertEqual(res.status_code, 200)
+            self.assertTrue(any("aa_product.asset_type_code IN ('game', 'subscription')" in sql for sql in sql_collector))
+            self.assertTrue(any("st_product.is_archived IS NOT TRUE" in sql for sql in sql_collector))
+
     # В списке аккаунтов поле товаров должно заполняться и для подписок.
     def test_list_accounts_includes_subscription_products(self):
         script = [

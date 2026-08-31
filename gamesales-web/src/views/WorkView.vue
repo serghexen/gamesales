@@ -701,6 +701,7 @@ const activeAccountChips = computed(() => {
   if (accountFilters.product_q) chips.push({ key: 'product', label: 'Товар', value: accountFilters.product_q })
   if (accountFilters.region_q) chips.push({ key: 'region', label: 'Регион', value: accountFilters.region_q })
   if (accountFilters.status_q) chips.push({ key: 'status', label: 'Статус', value: accountFilters.status_q })
+  if (accountFilters.without_products) chips.push({ key: 'without_products', label: 'Товары', value: 'Не привязаны' })
   if (accountFilters.date_from || accountFilters.date_to) {
     const from = accountFilters.date_from ? formatDateOnly(accountFilters.date_from) : '—'
     const to = accountFilters.date_to ? formatDateOnly(accountFilters.date_to) : '—'
@@ -3225,6 +3226,7 @@ const {
 // Общие фильтры, сортировки и переходы между страницами.
 const {
   toggleAccountSort,
+  toggleEmptyAccounts,
   toggleProductsSort,
   toggleUsersSort,
   toggleDomainsSort,
@@ -3342,6 +3344,7 @@ loadProductSlotAssignmentsDeferred.set(loadProductSlotAssignmentsFromActions)
 // Контекст вкладки аккаунтов: фильтры, таблица, пагинация и модалки.
 const accountsSectionCtx = asCtx({
   accountFilters,
+  toggleEmptyAccounts,
   applyAccountSearch,
   openCreateAccountModal,
   openAccountImport,
