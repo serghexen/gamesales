@@ -2940,6 +2940,8 @@ const {
 // Контекст верхней панели: вкладки, пользователь и кнопка выхода.
 const topBarCtx = asCtx({
   userRoleName: topBarUserName,
+  currentUsername: computed(() => String(auth.state.user || '')),
+  authToken: computed(() => String(auth.state.token || '')),
   activeTab,
   routeQuery: computed(() => route.query || {}),
   isAdmin,

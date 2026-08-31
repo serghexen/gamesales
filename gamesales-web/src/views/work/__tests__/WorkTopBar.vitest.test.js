@@ -3,6 +3,13 @@ import { mount } from '@vue/test-utils'
 
 import WorkTopBar from '../sections/WorkTopBar.vue'
 
+vi.mock('../../../api/http', () => ({
+  apiGet: vi.fn(async (path) => path.includes('/config')
+    ? { enabled: true, min_amount: 1000, max_amount: 10000000, qr_lifetime_minutes: 15 }
+    : { total: 0, unseen_confirmed_count: 0, items: [] }),
+  apiPost: vi.fn(async () => null),
+}))
+
 function buildCtx(overrides = {}) {
   return {
     activeTab: 'deals',
@@ -21,6 +28,8 @@ function buildCtx(overrides = {}) {
     showUsersTab: false,
     showDashboard: false,
     userRoleName: 'Админ',
+    currentUsername: 'admin',
+    authToken: 'token-1',
     managersLoadItems: [],
     managersLoadOnlineCount: 0,
     managersLoadLoading: false,
@@ -102,6 +111,16 @@ describe('WorkTopBar', () => {
     expect(wrapper.find('[data-test="finance-tr-card-balance"]').text()).toContain('19000 TRY')
     expect(wrapper.find('[data-test="finance-edit-tr-card-balance"]').exists()).toBe(false)
     expect(wrapper.html().indexOf('data-test="finance-tr-card-balance"')).toBeLessThan(wrapper.html().indexOf('tab-workload'))
+  })
+
+  it('shows the SBP payment center to an ordinary authenticated user', async () => {
+    const wrapper = mountTopBar(buildCtx({ isAdmin: false, canManageRolePermissions: false }))
+
+    expect(wrapper.find('[data-test="sbp-open"]').exists()).toBe(true)
+    await wrapper.find('[data-test="sbp-open"]').trigger('click')
+    expect(wrapper.find('[data-test="sbp-description"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="sbp-buyer"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('Быстрый выбор суммы')
   })
 
   it('allows privileged users to refresh and edit TR card balance', async () => {

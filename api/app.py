@@ -53,6 +53,25 @@ async def lifespan(_: FastAPI):
                 logger.exception("InterHub pending payment polling failed")
 
     interhub_polling_task = asyncio.create_task(poll_interhub_pending_transactions())
+    stop_tbank_payment_polling = asyncio.Event()
+
+    async def poll_tbank_payments():
+        # Сверяем только незавершённые QR-платежи, даже когда операторы закрыли платёжное окно.
+        while not stop_tbank_payment_polling.is_set():
+            try:
+                await asyncio.wait_for(
+                    stop_tbank_payment_polling.wait(),
+                    timeout=_TBANK_RECONCILIATION_POLL_INTERVAL_SEC,
+                )
+                continue
+            except asyncio.TimeoutError:
+                pass
+            try:
+                await asyncio.to_thread(tbank_reconcile_pending)
+            except Exception:
+                logger.exception("TBank SBP payment reconciliation failed")
+
+    tbank_payment_polling_task = asyncio.create_task(poll_tbank_payments())
     stop_ozon_supplier_polling = asyncio.Event()
     stop_yandex_market_supplier_polling = asyncio.Event()
     stop_yandex_market_webhook_polling = asyncio.Event()
@@ -136,11 +155,13 @@ async def lifespan(_: FastAPI):
     finally:
         # Останавливаем фоновую проверку до закрытия пула, чтобы она не работала с уже закрытой БД.
         stop_interhub_polling.set()
+        stop_tbank_payment_polling.set()
         stop_ozon_supplier_polling.set()
         stop_yandex_market_supplier_polling.set()
         stop_yandex_market_webhook_polling.set()
         stop_yandex_market_daily_limit_polling.set()
         await interhub_polling_task
+        await tbank_payment_polling_task
         if ozon_supplier_polling_task:
             await ozon_supplier_polling_task
         await yandex_market_supplier_polling_task
@@ -367,6 +388,7 @@ from domains.interhub_api import mount_interhub_routes
 from domains.supplier_hub_api import mount_supplier_hub_routes
 from domains.ns_gift_api import mount_ns_gift_routes
 from domains.rbac_api import mount_rbac_routes
+from domains.tbank_sbp_payments import build_tbank_reconciliation_processor, mount_tbank_sbp_payment_routes
 from domains.import_jobs import build_import_jobs
 from domains.import_report_utils import build_import_report_xlsx
 from domains.import_parsers import build_import_parsers
@@ -784,6 +806,15 @@ _INTERHUB_PAY_PATH = os.getenv("INTERHUB_PAY_PATH", "/api/agent/payment/pay")
 _INTERHUB_CHECK_STATUS_PATH = os.getenv("INTERHUB_CHECK_STATUS_PATH", "/api/agent/payment/check_status")
 _INTERHUB_DEPOSIT_PATH = os.getenv("INTERHUB_DEPOSIT_PATH", "/api/agent/deposit")
 _INTERHUB_PRICE_CALCULATE_DELAY_MS = int(os.getenv("INTERHUB_PRICE_CALCULATE_DELAY_MS", "700") or "700")
+# Частота фоновой сверки QR-платежей; claim в БД защищает от параллельных API-реплик.
+_TBANK_RECONCILIATION_POLL_INTERVAL_SEC = max(
+    5,
+    int(os.getenv("CRM_TBANK_RECONCILIATION_POLL_INTERVAL_SEC", "15") or "15"),
+)
+_TBANK_RECONCILIATION_BATCH_SIZE = max(
+    1,
+    min(int(os.getenv("CRM_TBANK_RECONCILIATION_BATCH_SIZE", "5") or "5"), 50),
+)
 _SUPPLIER_HUB_BASE_URL = os.getenv("SUPPLIER_HUB_BASE_URL", "")
 _SUPPLIER_HUB_OPERATOR_ID = os.getenv("SUPPLIER_HUB_OPERATOR_ID", "")
 _SUPPLIER_HUB_OPERATOR_KEY = os.getenv("SUPPLIER_HUB_OPERATOR_KEY", "")
@@ -1397,4 +1428,24 @@ mount_rbac_routes(
     exec1=exec1,
     get_current_user=get_current_user,
     require_role=require_role,
+)
+
+# Платежи CRM не меняют внутренние балансы: модуль хранит только операции, статусы и историю.
+tbank_reconciliation_processor = build_tbank_reconciliation_processor(
+    database_url=DB_DSN,
+    psycopg=pooled_psycopg,
+)
+
+
+def tbank_reconcile_pending() -> int:
+    # Передаёт фоновому циклу ограниченную пачку, чтобы не занять весь пул соединений.
+    return tbank_reconciliation_processor.process_pending(limit=_TBANK_RECONCILIATION_BATCH_SIZE)
+
+
+mount_tbank_sbp_payment_routes(
+    app,
+    database_url=DB_DSN,
+    psycopg=pooled_psycopg,
+    get_current_user=get_current_user,
+    get_user_id=get_user_id,
 )

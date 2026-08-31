@@ -51,6 +51,7 @@
           </router-link>
         </nav>
         <WorkTrCardBalanceWidget :ctx="ctx" />
+        <WorkSbpPaymentCenter :ctx="ctx" />
         <div class="tab-workload">
           <span class="tab-workload__title">Сделок в работе:</span>
           <div class="tab-workload__line">
@@ -108,6 +109,7 @@ import { computed, unref } from 'vue'
 import defaultLogoSrc from '../../../assets/logo.jpg'
 import stagingLogoSrc from '../../../assets/logo-staging.jpg'
 import WorkTrCardBalanceWidget from './WorkTrCardBalanceWidget.vue'
+import WorkSbpPaymentCenter from './WorkSbpPaymentCenter.vue'
 
 // Контекст верхней панели (табы, пользователь, выход).
 const props = defineProps({
