@@ -23,6 +23,9 @@ from pydantic import BaseModel, Field
 
 FINAL_FAILURE_STATUSES = {"REJECTED", "REVERSED", "CANCELED", "DEADLINE_EXPIRED"}
 FINAL_PAYMENT_STATES = {"confirmed", "rejected", "expired", "cancelled", "failed"}
+PAYMENT_FILTER_STATES = {
+    "created", "init_pending", "init_unknown", "pending", "confirmed", "rejected", "expired", "cancelled", "failed",
+}
 RECEIPT_TAXATIONS = {"osn", "usn_income", "usn_income_outcome", "esn", "patent"}
 RECEIPT_TAXES = {
     "none", "vat0", "vat5", "vat7", "vat10", "vat22", "vat105", "vat107", "vat110", "vat122",
@@ -341,6 +344,31 @@ LEFT JOIN app.users creator ON creator.user_id=p.created_by_user_id
 """
 
 
+def payment_list_where(*, mine: bool, user_id: int, state: str, search: str) -> tuple[str, tuple[Any, ...]]:
+    """Собирает безопасные фильтры истории без подстановки пользовательского текста в SQL."""
+    conditions: list[str] = []
+    params: list[Any] = []
+    normalized_state = str(state or "").strip().lower()
+    normalized_search = str(search or "").strip()
+    if mine:
+        conditions.append("p.created_by_user_id=%s")
+        params.append(user_id)
+    if normalized_state:
+        if normalized_state not in PAYMENT_FILTER_STATES:
+            raise ValueError("Неизвестный статус платежа")
+        conditions.append("p.state=%s")
+        params.append(normalized_state)
+    if normalized_search:
+        pattern = f"%{normalized_search}%"
+        conditions.append(
+            "(p.description ILIKE %s OR p.buyer ILIKE %s OR p.order_id ILIKE %s "
+            "OR COALESCE(NULLIF(BTRIM(creator.name), ''), p.created_by_username) ILIKE %s)"
+        )
+        params.extend((pattern, pattern, pattern, pattern))
+    where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    return where_sql, tuple(params)
+
+
 def _payment_out(row) -> SbpPaymentOut:
     # Преобразует стабильный SQL-кортеж в публичную модель без внутренних ключей.
     return SbpPaymentOut(
@@ -634,17 +662,31 @@ def mount_tbank_sbp_payment_routes(
     @app.get("/payments/tbank/sbp", response_model=SbpPaymentListOut)
     def list_payments(
         mine: bool = Query(False),
-        limit: int = Query(50, ge=1, le=100),
+        limit: int = Query(12, ge=1, le=100),
         offset: int = Query(0, ge=0),
+        state: str = Query("", max_length=32),
+        q: str = Query("", max_length=100),
         user=Depends(get_current_user),
     ) -> SbpPaymentListOut:
-        # Возвращает общую историю; mine оставляет удобный фильтр по текущему сотруднику.
+        # Возвращает только нужную страницу и применяет фильтры до LIMIT для большой истории.
         with psycopg.connect(database_url) as connection:
             user_id = current_user_id(connection, user)
-            filters = "WHERE p.created_by_user_id=%s" if mine else ""
-            filter_params = (user_id,) if mine else ()
+            try:
+                filters, filter_params = payment_list_where(
+                    mine=mine, user_id=user_id, state=state, search=q,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
             with connection.cursor() as cursor:
-                cursor.execute(f"SELECT COUNT(*) FROM app.tbank_sbp_payments p {filters}", filter_params)
+                cursor.execute(
+                    f"""
+                    SELECT COUNT(*)
+                    FROM app.tbank_sbp_payments p
+                    LEFT JOIN app.users creator ON creator.user_id=p.created_by_user_id
+                    {filters}
+                    """,
+                    filter_params,
+                )
                 total = int(cursor.fetchone()[0])
                 cursor.execute(
                     """

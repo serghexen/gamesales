@@ -19,6 +19,7 @@ from domains.tbank_sbp_payments import (
     make_token,
     mount_tbank_sbp_payment_routes,
     notification_token_is_valid,
+    payment_list_where,
     payment_receipt,
     provider_state,
     qr_data_url,
@@ -124,6 +125,22 @@ class TBankSbpPaymentsTests(unittest.TestCase):
         self.assertIn("NULLIF(BTRIM(creator.name), '')", source)
         self.assertIn("LEFT JOIN app.users creator", source)
         self.assertIn("WHERE order_id=%s AND terminal_key=%s", source)
+
+    def test_history_filters_are_parameterized_for_large_lists(self) -> None:
+        where_sql, params = payment_list_where(
+            mine=True,
+            user_id=17,
+            state="confirmed",
+            search="FIFA 27",
+        )
+
+        self.assertIn("p.created_by_user_id=%s", where_sql)
+        self.assertIn("p.state=%s", where_sql)
+        self.assertIn("p.description ILIKE %s", where_sql)
+        self.assertNotIn("FIFA 27", where_sql)
+        self.assertEqual(params, (17, "confirmed", "%FIFA 27%", "%FIFA 27%", "%FIFA 27%", "%FIFA 27%"))
+        with self.assertRaises(ValueError):
+            payment_list_where(mine=False, user_id=17, state="unknown-state", search="")
 
     def test_custom_ca_bundle_extends_normal_trust_store(self) -> None:
         expected = MagicMock()

@@ -152,9 +152,47 @@
                   <button :class="{ 'is-active': !mineOnly }" type="button" @click="setScope(false)">Все</button>
                   <button :class="{ 'is-active': mineOnly }" type="button" @click="setScope(true)">Мои</button>
                 </div>
-                <button data-test="sbp-refresh" class="sbp-secondary" type="button" @click="loadHistory({ notify: false })">
+                <button
+                  data-test="sbp-refresh"
+                  class="sbp-secondary sbp-refresh"
+                  :class="{ 'is-refreshing': manualRefreshing }"
+                  type="button"
+                  :disabled="manualRefreshing"
+                  @click="refreshHistory"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 6v5h-5M4 18v-5h5M6.1 9a7 7 0 0 1 11.6-2.6L20 11M4 13l2.3 4.6A7 7 0 0 0 17.9 15" />
+                  </svg>
                   Обновить
                 </button>
+              </div>
+              <div class="sbp-history__filters">
+                <form class="sbp-search" role="search" @submit.prevent="applyHistorySearch">
+                  <input
+                    v-model="historySearch"
+                    data-test="sbp-history-search"
+                    type="search"
+                    maxlength="100"
+                    autocomplete="off"
+                    placeholder="Услуга, покупатель, сотрудник…"
+                  />
+                  <button v-if="historySearch" class="sbp-search__clear" type="button" aria-label="Очистить поиск" @click="clearHistorySearch">×</button>
+                  <button class="sbp-search__submit" type="submit" aria-label="Найти" title="Найти">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
+                  </button>
+                </form>
+                <label class="sbp-state-filter">
+                  <span>Статус</span>
+                  <select v-model="historyState" data-test="sbp-history-state" @change="applyHistoryFilters">
+                    <option value="">Все статусы</option>
+                    <option value="pending">Ожидает оплату</option>
+                    <option value="confirmed">Оплачен</option>
+                    <option value="expired">Истёк</option>
+                    <option value="rejected">Отклонён</option>
+                    <option value="cancelled">Отменён</option>
+                    <option value="failed">Ошибка</option>
+                  </select>
+                </label>
               </div>
               <p v-if="historyError" class="sbp-message sbp-message--error">{{ historyError }}</p>
               <div v-if="!historyLoading && !payments.length" class="sbp-history__empty">
@@ -184,6 +222,14 @@
                   </button>
                 </article>
               </div>
+              <footer v-if="historyTotal" class="sbp-pagination">
+                <span>{{ historyRangeLabel }}</span>
+                <div>
+                  <button data-test="sbp-page-prev" type="button" :disabled="historyPage <= 1" aria-label="Предыдущая страница" @click="goToHistoryPage(historyPage - 1)">‹</button>
+                  <b>{{ historyPage }} / {{ historyPageCount }}</b>
+                  <button data-test="sbp-page-next" type="button" :disabled="historyPage >= historyPageCount" aria-label="Следующая страница" @click="goToHistoryPage(historyPage + 1)">›</button>
+                </div>
+              </footer>
             </div>
           </section>
         </div>
@@ -221,11 +267,19 @@ const activePayment = ref(null)
 const payments = ref([])
 const mineOnly = ref(false)
 const historyLoading = ref(false)
+const manualRefreshing = ref(false)
 const historyError = ref('')
+const historyTotal = ref(0)
+const historyPage = ref(1)
+const historyPageSize = 12
+const historySearch = ref('')
+const appliedHistorySearch = ref('')
+const historyState = ref('')
 const unseenCount = ref(0)
 const toasts = ref([])
 const knownConfirmedIds = new Set()
 let historyInitialized = false
+let historyRequestSequence = 0
 let pollTimer = null
 
 const token = computed(() => String(unref(props.ctx.authToken) || ''))
@@ -247,6 +301,14 @@ const limitsLabel = computed(() => (
   `От ${formatLimit(config.value.min_amount)} до ${formatLimit(config.value.max_amount)} ₽`
 ))
 const badgeLabel = computed(() => unseenCount.value > 99 ? '99+' : String(unseenCount.value))
+const historyPageCount = computed(() => Math.max(1, Math.ceil(historyTotal.value / historyPageSize)))
+const historyRangeLabel = computed(() => {
+  // Показываем диапазон текущей серверной страницы без перечисления всех операций в браузере.
+  if (!historyTotal.value) return 'Нет операций'
+  const first = (historyPage.value - 1) * historyPageSize + 1
+  const last = Math.min(historyPage.value * historyPageSize, historyTotal.value)
+  return `${first}–${last} из ${historyTotal.value}`
+})
 
 function formatRubles(kopecks) {
   // Форматируем сумму из копеек одинаково в QR и истории.
@@ -318,13 +380,21 @@ async function refreshActivePayment() {
 }
 
 async function loadHistory({ notify = true } = {}) {
-  // Получаем общую либо личную историю; первый ответ только задаёт базовую линию уведомлений.
-  if (!token.value || historyLoading.value) return
+  // Последний запрос побеждает предыдущий, поэтому ручное обновление не теряется на фоне polling.
+  if (!token.value) return
+  const requestId = ++historyRequestSequence
   historyLoading.value = true
   historyError.value = ''
   try {
-    const query = new URLSearchParams({ limit: '100', offset: '0', mine: mineOnly.value ? 'true' : 'false' })
+    const query = new URLSearchParams({
+      limit: String(historyPageSize),
+      offset: String((historyPage.value - 1) * historyPageSize),
+      mine: mineOnly.value ? 'true' : 'false',
+    })
+    if (appliedHistorySearch.value) query.set('q', appliedHistorySearch.value)
+    if (historyState.value) query.set('state', historyState.value)
     const response = await apiGet(`/payments/tbank/sbp?${query.toString()}`, { token: token.value })
+    if (requestId !== historyRequestSequence) return
     const items = Array.isArray(response?.items) ? response.items : []
     if (historyInitialized && notify) {
       for (const payment of items) {
@@ -336,16 +406,59 @@ async function loadHistory({ notify = true } = {}) {
     }
     historyInitialized = true
     payments.value = items
+    historyTotal.value = Number(response?.total || 0)
     unseenCount.value = Number(response?.unseen_confirmed_count || 0)
     if (activePayment.value) {
       const updated = items.find((item) => item.id === activePayment.value.id)
       if (updated) activePayment.value = updated
     }
   } catch (requestError) {
-    historyError.value = requestError?.message || 'Не удалось загрузить историю платежей'
+    if (requestId === historyRequestSequence) {
+      historyError.value = requestError?.message || 'Не удалось загрузить историю платежей'
+    }
   } finally {
-    historyLoading.value = false
+    if (requestId === historyRequestSequence) historyLoading.value = false
   }
+}
+
+async function refreshHistory() {
+  // Ручная кнопка всегда запускает свежий запрос и показывает только свою короткую анимацию.
+  if (manualRefreshing.value) return
+  manualRefreshing.value = true
+  try {
+    await loadHistory({ notify: false })
+  } finally {
+    manualRefreshing.value = false
+  }
+}
+
+async function applyHistorySearch() {
+  // Применяем поиск по Enter или кнопке и возвращаемся на первую страницу результата.
+  appliedHistorySearch.value = historySearch.value.trim()
+  historyPage.value = 1
+  await loadHistory({ notify: false })
+}
+
+async function clearHistorySearch() {
+  // Очищаем видимый и применённый запрос одним действием.
+  historySearch.value = ''
+  appliedHistorySearch.value = ''
+  historyPage.value = 1
+  await loadHistory({ notify: false })
+}
+
+async function applyHistoryFilters() {
+  // Любая смена статуса начинает выборку с первой страницы.
+  historyPage.value = 1
+  await loadHistory({ notify: false })
+}
+
+async function goToHistoryPage(page) {
+  // Загружаем только допустимую серверную страницу и сохраняем текущие фильтры.
+  const nextPage = Math.min(Math.max(1, Number(page) || 1), historyPageCount.value)
+  if (nextPage === historyPage.value) return
+  historyPage.value = nextPage
+  await loadHistory({ notify: false })
 }
 
 async function pollPayments() {
@@ -410,6 +523,7 @@ async function openHistory() {
 async function setScope(value) {
   // Переключаем общие и собственные операции без смены прав доступа.
   mineOnly.value = Boolean(value)
+  historyPage.value = 1
   await loadHistory({ notify: false })
 }
 
@@ -542,12 +656,29 @@ onBeforeUnmount(() => {
 .sbp-payment__actions { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
 .sbp-payment__actions .sbp-primary, .sbp-payment__actions .sbp-secondary { min-height: 38px; }
 .sbp-history { min-height: 360px; }
-.sbp-history__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.sbp-history__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .sbp-scope { display: flex; gap: 6px; }
+.sbp-refresh { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 0 12px; font-size: 11px; }
+.sbp-refresh svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sbp-refresh.is-refreshing svg { animation: sbp-spin .7s linear infinite; }
+.sbp-refresh:disabled { cursor: wait; opacity: .72; }
+.sbp-history__filters { display: grid; grid-template-columns: minmax(0,1fr) 176px; gap: 8px; margin-bottom: 10px; }
+.sbp-search { min-width: 0; display: flex; align-items: center; min-height: 38px; overflow: hidden; border: 1px solid rgba(140,160,211,.24); border-radius: 10px; background: rgba(4,9,24,.48); }
+.sbp-search:focus-within { border-color: rgba(62,232,181,.56); box-shadow: 0 0 0 3px rgba(62,232,181,.07); }
+.sbp-search input { min-width: 0; flex: 1 1 auto; padding: 0 11px; border: 0; outline: 0; background: transparent; color: #e8edfc; font: inherit; font-size: 11px; }
+.sbp-search input::-webkit-search-cancel-button { display: none; }
+.sbp-search__clear, .sbp-search__submit { flex: 0 0 auto; display: grid; place-items: center; border: 0; background: transparent; color: #7887a8; cursor: pointer; }
+.sbp-search__clear { width: 28px; height: 28px; font-size: 18px; }
+.sbp-search__submit { width: 38px; height: 38px; border-left: 1px solid rgba(140,160,211,.15); color: #62e9c1; }
+.sbp-search__submit:hover, .sbp-search__clear:hover { color: #b9ffe9; background: rgba(62,232,181,.06); }
+.sbp-search__submit svg { width: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.sbp-state-filter { min-width: 0; display: flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 9px; border: 1px solid rgba(140,160,211,.24); border-radius: 10px; background: rgba(4,9,24,.48); }
+.sbp-state-filter span { color: #697897; font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.sbp-state-filter select { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: #cbd5ef; font: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }
 .sbp-history__empty { padding: 70px 20px; text-align: center; color: #8090b3; border: 1px dashed rgba(151,168,211,.22); border-radius: 16px; }
-.sbp-history__list { display: grid; gap: 0; border: 1px solid rgba(151,168,211,.17); border-radius: 13px; overflow: hidden; background: rgba(255,255,255,.02); }
+.sbp-history__list { max-height: 350px; display: grid; gap: 0; border: 1px solid rgba(151,168,211,.17); border-radius: 13px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: rgba(83,232,190,.35) transparent; background: rgba(255,255,255,.02); }
 .sbp-history__columns, .sbp-history-row { display: grid; grid-template-columns: 92px minmax(160px,1fr) 106px 78px 72px; align-items: center; gap: 10px; }
-.sbp-history__columns { min-height: 28px; padding: 0 12px; color: #657493; background: rgba(255,255,255,.025); font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.sbp-history__columns { position: sticky; top: 0; z-index: 2; min-height: 28px; padding: 0 12px; color: #657493; background: #10172d; box-shadow: 0 1px rgba(151,168,211,.12); font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .sbp-history-row { min-width: 0; padding: 10px 12px; border-top: 1px solid rgba(151,168,211,.12); }
 .sbp-history-row:hover { background: rgba(255,255,255,.035); }
 .sbp-history-row__main, .sbp-history-row__meta { min-width: 0; display: grid; gap: 3px; }
@@ -560,18 +691,26 @@ onBeforeUnmount(() => {
 .sbp-history-row__amount { color: #e8edfc; font-size: 10.5px; text-align: right; white-space: nowrap; }
 .sbp-history-row__open { min-height: 30px; padding: 0 8px; border: 1px solid rgba(62,232,181,.2); border-radius: 8px; background: rgba(62,232,181,.07); color: #65e9c1; font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
 .sbp-history-row__open:hover { border-color: rgba(62,232,181,.42); background: rgba(62,232,181,.12); }
+.sbp-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 9px; color: #7180a1; font-size: 9px; }
+.sbp-pagination div { display: flex; align-items: center; gap: 6px; }
+.sbp-pagination b { min-width: 48px; color: #9eaccb; text-align: center; font-size: 9px; }
+.sbp-pagination button { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(140,160,211,.22); border-radius: 8px; background: rgba(255,255,255,.035); color: #cbd5ef; font: inherit; font-size: 17px; cursor: pointer; }
+.sbp-pagination button:hover:not(:disabled) { border-color: rgba(62,232,181,.42); color: #6debc6; }
+.sbp-pagination button:disabled { cursor: not-allowed; opacity: .3; }
 .sbp-toasts { position: fixed; z-index: 1100; right: 22px; bottom: 22px; display: grid; gap: 10px; }
 .sbp-toasts button { width: min(360px, calc(100vw - 32px)); display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid rgba(62,232,181,.38); border-radius: 15px; background: #101a32; color: #eff5ff; box-shadow: 0 18px 50px rgba(0,0,0,.42); text-align: left; cursor: pointer; }
 .sbp-toasts button > span { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: #50e3b9; color: #071427; font-weight: 900; }
 .sbp-toasts div { display: grid; gap: 2px; }.sbp-toasts small { color: #9ba9c9; }
 .sbp-fade-enter-active, .sbp-fade-leave-active, .sbp-toast-enter-active, .sbp-toast-leave-active { transition: opacity .18s ease, transform .18s ease; }
 .sbp-fade-enter-from, .sbp-fade-leave-to, .sbp-toast-enter-from, .sbp-toast-leave-to { opacity: 0; transform: translateY(8px); }
+@keyframes sbp-spin { to { transform: rotate(360deg); } }
 @media (max-width: 700px) {
   .sbp-backdrop { padding: 0; align-items: end; }
   .sbp-modal { width: 100%; max-height: 94svh; border-radius: 24px 24px 0 0; }
   .sbp-modal__head, .sbp-modal__content { padding-left: 16px; padding-right: 16px; }
   .sbp-tabs { padding-left: 16px; padding-right: 16px; }
   .sbp-payment__details { grid-template-columns: 1fr; }
+  .sbp-history__filters { grid-template-columns: 1fr; }
   .sbp-history__columns { display: none; }
   .sbp-history-row { grid-template-columns: 1fr auto; gap: 8px 12px; }
   .sbp-history-row .sbp-status, .sbp-history-row__main { grid-column: 1; }

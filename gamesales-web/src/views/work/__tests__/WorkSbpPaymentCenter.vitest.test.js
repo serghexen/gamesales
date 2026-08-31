@@ -81,10 +81,14 @@ describe('WorkSbpPaymentCenter', () => {
 
   it('shows shared history and marks confirmed payments seen only when history is opened', async () => {
     const confirmed = payment({ state: 'confirmed', confirmed_at: '2026-08-31T15:02:00Z' })
+    let unseenConfirmed = 1
     apiGet.mockImplementation(async (path) => path.includes('/config')
       ? { enabled: true, min_amount: 1000, max_amount: 10000000, qr_lifetime_minutes: 15 }
-      : { total: 1, unseen_confirmed_count: 1, items: [confirmed] })
-    apiPost.mockResolvedValue(null)
+      : { total: 25, unseen_confirmed_count: unseenConfirmed, items: [confirmed] })
+    apiPost.mockImplementation(async (path) => {
+      if (path.includes('/mark-seen')) unseenConfirmed = 0
+      return null
+    })
     const wrapper = mountCenter()
     await flushPromises()
 
@@ -97,6 +101,32 @@ describe('WorkSbpPaymentCenter', () => {
     expect(wrapper.text()).toContain('manager-1')
     expect(wrapper.findAll('[data-test="sbp-history-row"]')).toHaveLength(1)
     expect(wrapper.find('[data-test="sbp-refresh"]').text()).toBe('Обновить')
+
+    const historyCallCount = () => apiGet.mock.calls.filter(([path]) => path.startsWith('/payments/tbank/sbp?')).length
+    const callsBeforeRefresh = historyCallCount()
+    await wrapper.find('[data-test="sbp-refresh"]').trigger('click')
+    await flushPromises()
+    expect(historyCallCount()).toBe(callsBeforeRefresh + 1)
+
+    await wrapper.find('[data-test="sbp-history-search"]').setValue('FIFA 27')
+    await wrapper.find('.sbp-search').trigger('submit')
+    await flushPromises()
+    let historyParams = new URLSearchParams(apiGet.mock.calls.at(-1)[0].split('?')[1])
+    expect(historyParams.get('q')).toBe('FIFA 27')
+    expect(historyParams.get('offset')).toBe('0')
+
+    await wrapper.find('[data-test="sbp-history-state"]').setValue('confirmed')
+    await flushPromises()
+    historyParams = new URLSearchParams(apiGet.mock.calls.at(-1)[0].split('?')[1])
+    expect(historyParams.get('state')).toBe('confirmed')
+
+    await wrapper.find('[data-test="sbp-page-next"]').trigger('click')
+    await flushPromises()
+    historyParams = new URLSearchParams(apiGet.mock.calls.at(-1)[0].split('?')[1])
+    expect(historyParams.get('limit')).toBe('12')
+    expect(historyParams.get('offset')).toBe('12')
+    expect(historyParams.get('q')).toBe('FIFA 27')
+    expect(historyParams.get('state')).toBe('confirmed')
     expect(apiPost).toHaveBeenCalledWith('/payments/tbank/sbp/mark-seen', {}, { token: 'token-1' })
     expect(wrapper.find('[data-test="sbp-unseen"]').exists()).toBe(false)
     wrapper.unmount()
