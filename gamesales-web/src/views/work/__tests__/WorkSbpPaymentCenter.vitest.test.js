@@ -94,6 +94,8 @@ describe('WorkSbpPaymentCenter', () => {
 
     expect(wrapper.text()).toContain('A Way Out для PS5')
     expect(wrapper.text()).toContain('manager-1')
+    expect(wrapper.findAll('[data-test="sbp-history-row"]')).toHaveLength(1)
+    expect(wrapper.find('[data-test="sbp-refresh"]').text()).toBe('Обновить')
     expect(apiPost).toHaveBeenCalledWith('/payments/tbank/sbp/mark-seen', {}, { token: 'token-1' })
     expect(wrapper.find('[data-test="sbp-unseen"]').exists()).toBe(false)
     wrapper.unmount()

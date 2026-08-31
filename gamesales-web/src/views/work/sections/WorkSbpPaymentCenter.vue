@@ -152,8 +152,8 @@
                   <button :class="{ 'is-active': !mineOnly }" type="button" @click="setScope(false)">Все</button>
                   <button :class="{ 'is-active': mineOnly }" type="button" @click="setScope(true)">Мои</button>
                 </div>
-                <button class="sbp-secondary" type="button" :disabled="historyLoading" @click="loadHistory({ notify: false })">
-                  {{ historyLoading ? 'Обновляем…' : 'Обновить' }}
+                <button data-test="sbp-refresh" class="sbp-secondary" type="button" @click="loadHistory({ notify: false })">
+                  Обновить
                 </button>
               </div>
               <p v-if="historyError" class="sbp-message sbp-message--error">{{ historyError }}</p>
@@ -161,18 +161,25 @@
                 Здесь появятся созданные QR и результаты оплат.
               </div>
               <div v-else class="sbp-history__list">
-                <article v-for="payment in payments" :key="payment.id" class="sbp-history-card">
-                  <div class="sbp-history-card__top">
-                    <span class="sbp-status" :class="`sbp-status--${payment.state}`"><i></i>{{ statusLabel(payment.state) }}</span>
-                    <strong>{{ formatRubles(payment.amount) }}</strong>
+                <div class="sbp-history__columns" aria-hidden="true">
+                  <span>Статус</span>
+                  <span>Платёж</span>
+                  <span>Создал</span>
+                  <span>Сумма</span>
+                  <span></span>
+                </div>
+                <article v-for="payment in payments" :key="payment.id" data-test="sbp-history-row" class="sbp-history-row">
+                  <span class="sbp-status" :class="`sbp-status--${payment.state}`"><i></i>{{ statusLabel(payment.state) }}</span>
+                  <div class="sbp-history-row__main">
+                    <h3>{{ payment.description }}</h3>
+                    <p>{{ payment.buyer }}</p>
                   </div>
-                  <h3>{{ payment.description }}</h3>
-                  <p><b>Покупатель:</b> {{ payment.buyer }}</p>
-                  <footer>
-                    <span>{{ payment.created_by }}</span>
+                  <div class="sbp-history-row__meta">
+                    <b>{{ payment.created_by }}</b>
                     <time :datetime="payment.created_at">{{ formatDate(payment.created_at) }}</time>
-                  </footer>
-                  <button class="sbp-history-card__open" type="button" @click="showPayment(payment)">
+                  </div>
+                  <strong class="sbp-history-row__amount">{{ formatRubles(payment.amount) }}</strong>
+                  <button class="sbp-history-row__open" type="button" @click="showPayment(payment)">
                     {{ payment.state === 'pending' ? 'Открыть QR' : 'Открыть' }}
                   </button>
                 </article>
@@ -514,7 +521,7 @@ onBeforeUnmount(() => {
 .sbp-message--warning { color: #ffd58c; background: rgba(247,185,85,.1); border: 1px solid rgba(247,185,85,.24); }
 .sbp-message--error { color: #ffb5bd; background: rgba(255,92,111,.09); border: 1px solid rgba(255,92,111,.24); }
 .sbp-payment { max-width: 680px; margin: 0 auto; display: grid; gap: 12px; }
-.sbp-payment__summary, .sbp-history-card__top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.sbp-payment__summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .sbp-payment__summary > strong { font-size: 24px; }
 .sbp-status { display: inline-flex; align-items: center; gap: 8px; color: #c4cee7; font-size: 12px; font-weight: 800; }
 .sbp-status i { width: 8px; height: 8px; border-radius: 50%; background: #62a9ff; box-shadow: 0 0 0 4px rgba(98,169,255,.1); }
@@ -537,12 +544,19 @@ onBeforeUnmount(() => {
 .sbp-history__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .sbp-scope { display: flex; gap: 6px; }
 .sbp-history__empty { padding: 70px 20px; text-align: center; color: #8090b3; border: 1px dashed rgba(151,168,211,.22); border-radius: 16px; }
-.sbp-history__list { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
-.sbp-history-card { min-width: 0; padding: 16px; border: 1px solid rgba(151,168,211,.17); border-radius: 16px; background: rgba(255,255,255,.035); }
-.sbp-history-card h3 { margin: 14px 0 7px; overflow-wrap: anywhere; font-size: 16px; }
-.sbp-history-card p { margin: 0; color: #9ba9c9; font-size: 13px; overflow-wrap: anywhere; }
-.sbp-history-card footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 15px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.08); color: #7181a3; font-size: 11px; }
-.sbp-history-card__open { width: 100%; margin-top: 12px; min-height: 36px; border: 1px solid rgba(62,232,181,.2); border-radius: 10px; background: rgba(62,232,181,.07); color: #65e9c1; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.sbp-history__list { display: grid; gap: 0; border: 1px solid rgba(151,168,211,.17); border-radius: 13px; overflow: hidden; background: rgba(255,255,255,.02); }
+.sbp-history__columns, .sbp-history-row { display: grid; grid-template-columns: 92px minmax(160px,1fr) 106px 78px 72px; align-items: center; gap: 10px; }
+.sbp-history__columns { min-height: 30px; padding: 0 12px; color: #657493; background: rgba(255,255,255,.025); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.sbp-history-row { min-width: 0; padding: 10px 12px; border-top: 1px solid rgba(151,168,211,.12); }
+.sbp-history-row:hover { background: rgba(255,255,255,.035); }
+.sbp-history-row__main, .sbp-history-row__meta { min-width: 0; display: grid; gap: 3px; }
+.sbp-history-row__main h3 { margin: 0; overflow: hidden; color: #dfe6f8; font-size: 12px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.sbp-history-row__main p { margin: 0; overflow: hidden; color: #8795b5; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.sbp-history-row__meta b { overflow: hidden; color: #aeb9d3; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.sbp-history-row__meta time { color: #6f7d9c; font-size: 9px; white-space: nowrap; }
+.sbp-history-row__amount { color: #e8edfc; font-size: 12px; text-align: right; white-space: nowrap; }
+.sbp-history-row__open { min-height: 30px; padding: 0 8px; border: 1px solid rgba(62,232,181,.2); border-radius: 8px; background: rgba(62,232,181,.07); color: #65e9c1; font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
+.sbp-history-row__open:hover { border-color: rgba(62,232,181,.42); background: rgba(62,232,181,.12); }
 .sbp-toasts { position: fixed; z-index: 1100; right: 22px; bottom: 22px; display: grid; gap: 10px; }
 .sbp-toasts button { width: min(360px, calc(100vw - 32px)); display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid rgba(62,232,181,.38); border-radius: 15px; background: #101a32; color: #eff5ff; box-shadow: 0 18px 50px rgba(0,0,0,.42); text-align: left; cursor: pointer; }
 .sbp-toasts button > span { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: #50e3b9; color: #071427; font-weight: 900; }
@@ -554,7 +568,13 @@ onBeforeUnmount(() => {
   .sbp-modal { width: 100%; max-height: 94svh; border-radius: 24px 24px 0 0; }
   .sbp-modal__head, .sbp-modal__content { padding-left: 16px; padding-right: 16px; }
   .sbp-tabs { padding-left: 16px; padding-right: 16px; }
-  .sbp-payment__details, .sbp-history__list { grid-template-columns: 1fr; }
+  .sbp-payment__details { grid-template-columns: 1fr; }
+  .sbp-history__columns { display: none; }
+  .sbp-history-row { grid-template-columns: 1fr auto; gap: 8px 12px; }
+  .sbp-history-row .sbp-status, .sbp-history-row__main { grid-column: 1; }
+  .sbp-history-row__meta { grid-column: 1; grid-template-columns: auto 1fr; }
+  .sbp-history-row__amount { grid-column: 2; grid-row: 1; }
+  .sbp-history-row__open { grid-column: 2; grid-row: 2 / span 2; align-self: stretch; }
   .sbp-qr img { width: min(210px, 64vw); }
   .sbp-center__trigger span:not(.sbp-center__badge) { display: none; }
   .sbp-center__trigger { padding: 0 10px; }
