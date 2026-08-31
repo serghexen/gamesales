@@ -121,6 +121,8 @@ class TBankSbpPaymentsTests(unittest.TestCase):
         self.assertIn("FOR UPDATE SKIP LOCKED", source)
         self.assertIn("ON CONFLICT (event_fingerprint) DO NOTHING", source)
         self.assertIn("created_by_user_id", source)
+        self.assertIn("NULLIF(BTRIM(creator.name), '')", source)
+        self.assertIn("LEFT JOIN app.users creator", source)
         self.assertIn("WHERE order_id=%s AND terminal_key=%s", source)
 
     def test_custom_ca_bundle_extends_normal_trust_store(self) -> None:

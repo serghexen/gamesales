@@ -328,7 +328,8 @@ def should_apply_provider_state(current_state: str, incoming_state: str) -> bool
 
 
 PAYMENT_SELECT = """
-SELECT p.public_id, p.order_id, p.description, p.buyer, p.created_by_username,
+SELECT p.public_id, p.order_id, p.description, p.buyer,
+       COALESCE(NULLIF(BTRIM(creator.name), ''), p.created_by_username) AS created_by,
        p.amount, p.currency, p.state, p.provider_status, p.qr_data_url, p.last_error,
        p.expires_at, p.confirmed_at, p.created_at,
        EXISTS(
@@ -336,6 +337,7 @@ SELECT p.public_id, p.order_id, p.description, p.buyer, p.created_by_username,
          WHERE r.payment_id=p.payment_id AND r.user_id=%s
        ) AS is_seen
 FROM app.tbank_sbp_payments p
+LEFT JOIN app.users creator ON creator.user_id=p.created_by_user_id
 """
 
 

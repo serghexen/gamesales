@@ -54,6 +54,7 @@ describe('WorkSbpPaymentCenter', () => {
 
     await wrapper.find('[data-test="sbp-open"]').trigger('click')
     expect(wrapper.find('#sbp-title').text()).toBe('Платежи')
+    expect(wrapper.find('[data-test="sbp-description"]').element.value).toBe('Услуга по оформлению цифрового контента')
     await wrapper.find('[data-test="sbp-description"]').setValue('A Way Out для PS5')
     await wrapper.find('[data-test="sbp-buyer"]').setValue('Покупатель из Telegram')
     await wrapper.find('[data-test="sbp-amount"]').setValue('1990')

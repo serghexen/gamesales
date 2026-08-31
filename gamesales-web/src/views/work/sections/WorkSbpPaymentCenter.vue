@@ -207,9 +207,10 @@ const props = defineProps({
   ctx: { type: Object, required: true },
 })
 
+const defaultDescription = 'Услуга по оформлению цифрового контента'
 const open = ref(false)
 const tab = ref('new')
-const description = ref('')
+const description = ref(defaultDescription)
 const buyer = ref('')
 const amount = ref('')
 const busy = ref(false)
@@ -374,7 +375,7 @@ async function createPayment() {
 function startAnother() {
   // Очищаем форму, а предыдущий платёж оставляем в долговечной общей истории.
   activePayment.value = null
-  description.value = ''
+  description.value = defaultDescription
   buyer.value = ''
   amount.value = ''
   error.value = ''
@@ -546,15 +547,17 @@ onBeforeUnmount(() => {
 .sbp-history__empty { padding: 70px 20px; text-align: center; color: #8090b3; border: 1px dashed rgba(151,168,211,.22); border-radius: 16px; }
 .sbp-history__list { display: grid; gap: 0; border: 1px solid rgba(151,168,211,.17); border-radius: 13px; overflow: hidden; background: rgba(255,255,255,.02); }
 .sbp-history__columns, .sbp-history-row { display: grid; grid-template-columns: 92px minmax(160px,1fr) 106px 78px 72px; align-items: center; gap: 10px; }
-.sbp-history__columns { min-height: 30px; padding: 0 12px; color: #657493; background: rgba(255,255,255,.025); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.sbp-history__columns { min-height: 28px; padding: 0 12px; color: #657493; background: rgba(255,255,255,.025); font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .sbp-history-row { min-width: 0; padding: 10px 12px; border-top: 1px solid rgba(151,168,211,.12); }
 .sbp-history-row:hover { background: rgba(255,255,255,.035); }
 .sbp-history-row__main, .sbp-history-row__meta { min-width: 0; display: grid; gap: 3px; }
-.sbp-history-row__main h3 { margin: 0; overflow: hidden; color: #dfe6f8; font-size: 12px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
-.sbp-history-row__main p { margin: 0; overflow: hidden; color: #8795b5; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.sbp-history-row__meta b { overflow: hidden; color: #aeb9d3; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.sbp-history-row__meta time { color: #6f7d9c; font-size: 9px; white-space: nowrap; }
-.sbp-history-row__amount { color: #e8edfc; font-size: 12px; text-align: right; white-space: nowrap; }
+.sbp-history-row .sbp-status { gap: 6px; font-size: 10px; }
+.sbp-history-row .sbp-status i { width: 7px; height: 7px; }
+.sbp-history-row__main h3 { margin: 0; overflow: hidden; color: #dfe6f8; font-size: 10.5px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.sbp-history-row__main p { margin: 0; overflow: hidden; color: #8795b5; font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
+.sbp-history-row__meta b { overflow: hidden; color: #aeb9d3; font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
+.sbp-history-row__meta time { color: #6f7d9c; font-size: 8px; white-space: nowrap; }
+.sbp-history-row__amount { color: #e8edfc; font-size: 10.5px; text-align: right; white-space: nowrap; }
 .sbp-history-row__open { min-height: 30px; padding: 0 8px; border: 1px solid rgba(62,232,181,.2); border-radius: 8px; background: rgba(62,232,181,.07); color: #65e9c1; font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
 .sbp-history-row__open:hover { border-color: rgba(62,232,181,.42); background: rgba(62,232,181,.12); }
 .sbp-toasts { position: fixed; z-index: 1100; right: 22px; bottom: 22px; display: grid; gap: 10px; }
