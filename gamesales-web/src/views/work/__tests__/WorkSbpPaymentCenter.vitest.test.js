@@ -67,6 +67,14 @@ describe('WorkSbpPaymentCenter', () => {
       amount: 199000,
     }, { token: 'token-1' })
     expect(wrapper.find('[data-test="sbp-payment-result"]').text()).toContain('Покупатель из Telegram')
+
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const createObjectUrl = vi.fn(() => 'blob:crm-sbp-qr')
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectUrl })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
+    await wrapper.find('[data-test="sbp-download"]').trigger('click')
+    expect(createObjectUrl).toHaveBeenCalledWith(expect.any(Blob))
+    expect(clickSpy).toHaveBeenCalledOnce()
     wrapper.unmount()
   })
 

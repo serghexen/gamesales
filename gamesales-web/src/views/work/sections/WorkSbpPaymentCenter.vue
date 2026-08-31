@@ -139,7 +139,7 @@
                 </div>
                 <p v-if="activePayment.last_error" class="sbp-message sbp-message--error">{{ activePayment.last_error }}</p>
                 <div class="sbp-payment__actions">
-                  <button v-if="activePayment.qr_data_url" class="sbp-secondary" type="button" @click="downloadQr(activePayment)">Скачать QR</button>
+                  <button v-if="activePayment.qr_data_url" data-test="sbp-download" class="sbp-secondary" type="button" @click="downloadQr(activePayment)">Скачать QR</button>
                   <button data-test="sbp-create-another" class="sbp-primary sbp-primary--compact" type="button" @click="startAnother">Создать ещё</button>
                   <button class="sbp-secondary" type="button" @click="closeCenter">Закрыть</button>
                 </div>
@@ -412,15 +412,34 @@ function showPayment(payment) {
   open.value = true
 }
 
+function qrDataUrlBlob(dataUrl) {
+  // Превращаем банковский data URL в файл, потому что Safari не скачивает такие ссылки напрямую.
+  const separator = dataUrl.indexOf(',')
+  if (separator < 0) throw new Error('Некорректный формат QR-кода')
+  const header = dataUrl.slice(0, separator)
+  const payload = dataUrl.slice(separator + 1)
+  const mimeType = header.match(/^data:([^;,]+)/i)?.[1] || 'image/svg+xml'
+  const bytes = /;base64/i.test(header)
+    ? Uint8Array.from(window.atob(payload), (character) => character.charCodeAt(0))
+    : new TextEncoder().encode(decodeURIComponent(payload))
+  return new Blob([bytes], { type: mimeType })
+}
+
 function downloadQr(payment) {
-  // Скачиваем безопасный data URL как SVG, чтобы оператор мог отправить файл покупателю.
+  // Скачиваем QR через blob URL, а после старта загрузки освобождаем память браузера.
   if (!payment?.qr_data_url) return
-  const link = document.createElement('a')
-  link.href = payment.qr_data_url
-  link.download = `sbp-${payment.order_id || payment.id}.svg`
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
+  try {
+    const objectUrl = URL.createObjectURL(qrDataUrlBlob(payment.qr_data_url))
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = `sbp-${payment.order_id || payment.id}.svg`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000)
+  } catch {
+    error.value = 'Не удалось скачать QR-код. Попробуйте сформировать его повторно.'
+  }
 }
 
 function onKeydown(event) {
@@ -475,7 +494,7 @@ onBeforeUnmount(() => {
 .sbp-tabs button, .sbp-scope button { display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 9px; padding: 8px 12px; background: rgba(255,255,255,.05); color: #9eaccd; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .sbp-tabs button.is-active, .sbp-scope button.is-active { background: rgba(62,232,181,.14); color: #72efca; }
 .sbp-tabs button span { min-width: 18px; height: 18px; display: inline-grid; place-items: center; border-radius: 99px; background: #ff7167; color: #101527; font-size: 10px; }
-.sbp-modal__content { overflow-y: auto; padding: 18px 22px 22px; }
+.sbp-modal__content { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: 18px 22px 22px; }
 .sbp-form { display: grid; gap: 13px; max-width: 620px; margin: 0 auto; }
 .sbp-field { display: grid; gap: 6px; }
 .sbp-field > span:first-child { color: #dfe7fa; font-size: 12px; font-weight: 800; }
@@ -494,25 +513,26 @@ onBeforeUnmount(() => {
 .sbp-message { margin: 0; padding: 10px 12px; border-radius: 11px; font-size: 12px; }
 .sbp-message--warning { color: #ffd58c; background: rgba(247,185,85,.1); border: 1px solid rgba(247,185,85,.24); }
 .sbp-message--error { color: #ffb5bd; background: rgba(255,92,111,.09); border: 1px solid rgba(255,92,111,.24); }
-.sbp-payment { max-width: 680px; margin: 0 auto; display: grid; gap: 18px; }
+.sbp-payment { max-width: 680px; margin: 0 auto; display: grid; gap: 12px; }
 .sbp-payment__summary, .sbp-history-card__top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.sbp-payment__summary > strong { font-size: 28px; }
+.sbp-payment__summary > strong { font-size: 24px; }
 .sbp-status { display: inline-flex; align-items: center; gap: 8px; color: #c4cee7; font-size: 12px; font-weight: 800; }
 .sbp-status i { width: 8px; height: 8px; border-radius: 50%; background: #62a9ff; box-shadow: 0 0 0 4px rgba(98,169,255,.1); }
 .sbp-status--confirmed { color: #72efca; }.sbp-status--confirmed i { background: #49dfb4; }
 .sbp-status--rejected, .sbp-status--expired, .sbp-status--cancelled, .sbp-status--failed { color: #ffb0ba; }
 .sbp-status--rejected i, .sbp-status--expired i, .sbp-status--cancelled i, .sbp-status--failed i { background: #ff6d7e; }
-.sbp-payment__details { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 0; }
-.sbp-payment__details div { padding: 12px; border-radius: 12px; background: rgba(255,255,255,.04); }
-.sbp-payment__details dt { color: #7583a5; font-size: 11px; text-transform: uppercase; }
-.sbp-payment__details dd { margin: 5px 0 0; overflow-wrap: anywhere; font-weight: 700; }
-.sbp-qr { display: grid; justify-items: center; gap: 12px; padding: 20px; border: 1px solid rgba(62,232,181,.24); border-radius: 20px; background: rgba(62,232,181,.05); }
-.sbp-qr img { width: min(300px, 75vw); aspect-ratio: 1; padding: 12px; border-radius: 14px; background: #fff; }
-.sbp-qr p { margin: 0; max-width: 500px; text-align: center; color: #9aa8c8; font-size: 13px; }
+.sbp-payment__details { display: grid; grid-template-columns: 1.45fr 1fr .85fr; gap: 8px; margin: 0; }
+.sbp-payment__details div { min-width: 0; padding: 9px 10px; border-radius: 10px; background: rgba(255,255,255,.04); }
+.sbp-payment__details dt { color: #7583a5; font-size: 10px; text-transform: uppercase; }
+.sbp-payment__details dd { margin: 3px 0 0; overflow-wrap: anywhere; font-size: 13px; line-height: 1.25; font-weight: 700; }
+.sbp-qr { display: grid; justify-items: center; gap: 8px; padding: 12px 14px; border: 1px solid rgba(62,232,181,.24); border-radius: 16px; background: rgba(62,232,181,.05); }
+.sbp-qr img { width: min(220px, 62vw); aspect-ratio: 1; padding: 9px; border-radius: 11px; background: #fff; }
+.sbp-qr p { margin: 0; max-width: 100%; text-align: center; color: #9aa8c8; font-size: 11px; line-height: 1.3; }
 .sbp-result { min-height: 230px; display: grid; place-items: center; align-content: center; gap: 12px; border-radius: 20px; background: rgba(255,255,255,.035); }
 .sbp-result span { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 50%; font-size: 32px; font-weight: 900; }
 .sbp-result--success span { background: #53e3ba; color: #071427; }.sbp-result--failure span { background: #f7b955; color: #071427; }
-.sbp-payment__actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.sbp-payment__actions { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.sbp-payment__actions .sbp-primary, .sbp-payment__actions .sbp-secondary { min-height: 38px; }
 .sbp-history { min-height: 360px; }
 .sbp-history__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .sbp-scope { display: flex; gap: 6px; }
@@ -535,6 +555,7 @@ onBeforeUnmount(() => {
   .sbp-modal__head, .sbp-modal__content { padding-left: 16px; padding-right: 16px; }
   .sbp-tabs { padding-left: 16px; padding-right: 16px; }
   .sbp-payment__details, .sbp-history__list { grid-template-columns: 1fr; }
+  .sbp-qr img { width: min(210px, 64vw); }
   .sbp-center__trigger span:not(.sbp-center__badge) { display: none; }
   .sbp-center__trigger { padding: 0 10px; }
 }
