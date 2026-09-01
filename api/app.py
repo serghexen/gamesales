@@ -1417,6 +1417,7 @@ mount_supplier_hub_routes(
     require_role=require_role,
     UserOut=UserOut,
     supplier_hub_client=supplier_hub_operator_client,
+    interhub_get_services=interhub_get_services,
 )
 
 mount_rbac_routes(
