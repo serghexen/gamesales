@@ -63,7 +63,7 @@ function mountTopBar(ctx) {
 }
 
 describe('WorkTopBar', () => {
-  it('shows InterHub payments tab when the role permits it', () => {
+  it('shows the supplier payments tab when the role permits it', () => {
     const wrapper = mountTopBar(buildCtx({ canViewInterhubSection: true }))
 
     expect(wrapper.text()).toContain('Платежи')

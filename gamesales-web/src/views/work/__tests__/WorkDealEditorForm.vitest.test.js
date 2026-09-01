@@ -267,6 +267,17 @@ describe('WorkDealEditorForm template', () => {
     }
   })
 
+  it('embeds supplier nominals in create and edit service deals', () => {
+    const source = readTemplateSource()
+
+    expect(source.match(/<WorkDealSupplierNominals/g)).toHaveLength(2)
+    expect(source).toContain(':deal="editDeal"')
+    expect(source).toContain(':deal="newDeal"')
+    expect(source).toContain(':editing="dealEditMode === \'edit\'"')
+    expect(source).toContain(':sync-deal="ctx.syncDealAfterSupplierPurchase"')
+    expect(source).toContain('@busy-change="ctx.setDealSupplierBusy"')
+  })
+
   it('renders sharing layout with locked payment and discount fields', () => {
     const source = readTemplateSource()
     const newRentalMain = source.match(/<div class="deal-form__rental-main">[\s\S]*?<div class="deal-form__rental-side">/)?.[0] || ''

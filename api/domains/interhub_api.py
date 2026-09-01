@@ -13,6 +13,7 @@ from domains.interhub_price_cache import build_interhub_prices_xlsx, collect_pri
 
 PENDING_STATUS = 1
 INTERHUB_HISTORY_TIMEZONE = "Europe/Moscow"
+DEAL_INTERHUB_SERVICE_IDS = {"TR": 11125, "PL": 9811}
 
 
 def interhub_status_check_interval(check_attempts: int) -> str:
@@ -45,6 +46,7 @@ def mount_interhub_routes(
     interhub_pay,
     interhub_check_status,
     price_calculate_delay_ms=700,
+    publish_deal_event=None,
 ):
     price_jobs: dict[str, dict] = {}
     price_jobs_lock = threading.Lock()
@@ -57,37 +59,45 @@ def mount_interhub_routes(
             return "paid"
         return "failed"
 
-    def save_checked_transaction(payload: dict, result: dict, username: str) -> None:
+    def write_checked_transaction(conn, payload: dict, result: dict, username: str, *, deal_id: int | None = None) -> None:
+        # Пишем успешный check в переданную транзакцию, чтобы deal-lock охватывал подготовку целиком.
+        if not bool(result.get("success")):
+            return
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO app.interhub_transactions(
+                  agent_transaction_id, service_id, account, amount, request_params,
+                  state, provider_status, provider_message, provider_transaction_id,
+                  provider_response, created_by, deal_id, updated_at
+                ) VALUES (%s, %s, %s, %s, %s::jsonb, 'checked', %s, %s, %s, %s::jsonb, %s, %s, now())
+                ON CONFLICT (agent_transaction_id) DO UPDATE SET
+                  service_id=EXCLUDED.service_id,
+                  account=EXCLUDED.account,
+                  amount=EXCLUDED.amount,
+                  request_params=EXCLUDED.request_params,
+                  provider_status=EXCLUDED.provider_status,
+                  provider_message=EXCLUDED.provider_message,
+                  provider_transaction_id=EXCLUDED.provider_transaction_id,
+                  provider_response=EXCLUDED.provider_response,
+                  deal_id=COALESCE(EXCLUDED.deal_id, app.interhub_transactions.deal_id),
+                  updated_at=now()
+                WHERE app.interhub_transactions.state='checked'
+                """,
+                (
+                    str(payload["agent_transaction_id"]), int(payload["service_id"]), str(payload.get("account") or ""),
+                    float(payload.get("amount") or 0), json.dumps(payload.get("params") or {}), int(result.get("status") or 0),
+                    str(result.get("message") or ""), str(result.get("transaction_id") or ""), json.dumps(result.get("raw") or {}), username,
+                    deal_id,
+                ),
+            )
+
+    def save_checked_transaction(payload: dict, result: dict, username: str, *, deal_id: int | None = None) -> None:
         # Фиксируем успешный check до pay, чтобы повторный клик не стал новой оплатой.
         if not bool(result.get("success")):
             return
         with psycopg.connect(DB_DSN) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO app.interhub_transactions(
-                      agent_transaction_id, service_id, account, amount, request_params,
-                      state, provider_status, provider_message, provider_transaction_id,
-                      provider_response, created_by, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s::jsonb, 'checked', %s, %s, %s, %s::jsonb, %s, now())
-                    ON CONFLICT (agent_transaction_id) DO UPDATE SET
-                      service_id=EXCLUDED.service_id,
-                      account=EXCLUDED.account,
-                      amount=EXCLUDED.amount,
-                      request_params=EXCLUDED.request_params,
-                      provider_status=EXCLUDED.provider_status,
-                      provider_message=EXCLUDED.provider_message,
-                      provider_transaction_id=EXCLUDED.provider_transaction_id,
-                      provider_response=EXCLUDED.provider_response,
-                      updated_at=now()
-                    WHERE app.interhub_transactions.state='checked'
-                    """,
-                    (
-                        str(payload["agent_transaction_id"]), int(payload["service_id"]), str(payload.get("account") or ""),
-                        float(payload.get("amount") or 0), json.dumps(payload.get("params") or {}), int(result.get("status") or 0),
-                        str(result.get("message") or ""), str(result.get("transaction_id") or ""), json.dumps(result.get("raw") or {}), username,
-                    ),
-                )
+            write_checked_transaction(conn, payload, result, username, deal_id=deal_id)
             conn.commit()
 
     def ensure_checked_transaction(agent_transaction_id: str) -> None:
@@ -100,6 +110,15 @@ def mount_interhub_routes(
             raise HTTPException(409, "InterHub payment must be checked before pay")
         if str(row[0]) != "checked":
             raise HTTPException(409, "InterHub payment cannot be paid in its current state")
+
+    def require_standalone_transaction(agent_transaction_id: str) -> None:
+        # Общие платежи не должны обходить проверки черновика, региона и версии покупки в сделке.
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT deal_id FROM app.interhub_transactions WHERE agent_transaction_id=%s", (agent_transaction_id,))
+                row = cur.fetchone()
+        if row and row[0] is not None:
+            raise HTTPException(409, "Покупку, связанную со сделкой, выполняйте только из карточки сделки.")
 
     def start_provider_payment(agent_transaction_id: str) -> None:
         # Помечаем оплату начатой до сетевого вызова, чтобы после обрыва не отправить pay второй раз.
@@ -128,7 +147,7 @@ def mount_interhub_routes(
                     """
                     UPDATE app.interhub_transactions
                     SET state='processing', provider_message=%s, next_status_check_at=now() + interval '1 minute', updated_at=now()
-                    WHERE agent_transaction_id=%s
+                    WHERE agent_transaction_id=%s AND state='processing'
                     """,
                     (message[:2000], agent_transaction_id),
                 )
@@ -139,9 +158,15 @@ def mount_interhub_routes(
         state = response_state(result)
         params = result.get("params") if isinstance(result.get("params"), dict) else {}
         gift_code = str(params.get("gift_code") or "")
+        changed_deal_id = None
         with psycopg.connect(DB_DSN) as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT state, status_check_attempts FROM app.interhub_transactions WHERE agent_transaction_id=%s", (agent_transaction_id,))
+                cur.execute("SELECT state, status_check_attempts, deal_id FROM app.interhub_transactions WHERE agent_transaction_id=%s", (agent_transaction_id,))
+                row = cur.fetchone()
+                if row and row[2] is not None:
+                    # Порядок блокировок совпадает с сохранением/удалением сделки: сначала сделка, затем покупка.
+                    cur.execute("SELECT deal_id FROM app.deals WHERE deal_id=%s FOR UPDATE", (int(row[2]),))
+                cur.execute("SELECT state, status_check_attempts, deal_id FROM app.interhub_transactions WHERE agent_transaction_id=%s FOR UPDATE", (agent_transaction_id,))
                 row = cur.fetchone()
                 # Не даём запоздалой сверке по сети откатить уже подтверждённую оплату в processing или failed.
                 if row and str(row[0] or "") == "paid" and state != "paid":
@@ -167,7 +192,30 @@ def mount_interhub_routes(
                         state, check_attempts, state, interval, agent_transaction_id,
                     ),
                 )
+                if state == "paid" and row and row[2] is not None and str(row[0] or "") != "paid":
+                    # Суммируем все оплаченные ваучеры сделки, чтобы отчёты учитывали повторные покупки.
+                    cur.execute(
+                        """
+                        UPDATE app.deal_items
+                        SET purchase_cost=(
+                              SELECT COALESCE(SUM(amount), 0)
+                              FROM app.interhub_transactions
+                              WHERE deal_id=%s AND state='paid'
+                            ),
+                            purchase_at=COALESCE(purchase_at, now())
+                        WHERE deal_id=%s
+                        """,
+                        (int(row[2]), int(row[2])),
+                    )
+                    changed_deal_id = int(row[2])
+                    cur.execute("UPDATE app.deals SET lock_version=lock_version + 1 WHERE deal_id=%s", (changed_deal_id,))
             conn.commit()
+        if changed_deal_id and publish_deal_event:
+            # Фоновое подтверждение оплаты тоже обновляет таблицу сделок у открытых клиентов.
+            try:
+                publish_deal_event("deal_updated", changed_deal_id, "supplier")
+            except Exception:
+                pass
 
     def voucher_batch_response(batch_id: str) -> dict:
         # Собираем итог из операций, чтобы число ключей всегда совпадало с фактически сохранёнными ответами.
@@ -664,6 +712,346 @@ def mount_interhub_routes(
         keys = ["service_id", "service_title", "service_type", "nominal_id", "nominal_title", "provider_status", "provider_message", "calculated_at", "provider_response"]
         return batch_id, [dict(zip(keys, row)) for row in rows]
 
+    def read_deal_context(conn, deal_id: int, *, lock: bool = False) -> dict:
+        # Читаем тип и регион из самой сделки, чтобы браузер не мог подменить разрешённый сервис поставщика.
+        if int(deal_id or 0) <= 0:
+            raise HTTPException(422, "deal_id must be positive")
+        lock_sql = " FOR UPDATE OF d" if lock else ""
+        with conn.cursor() as cur:
+            if lock:
+                # После ожидания блокировки читаем и сделку, и её позиции из свежего снимка.
+                cur.execute("SELECT deal_id FROM app.deals WHERE deal_id=%s FOR UPDATE", (deal_id,))
+            cur.execute(
+                f"""
+                SELECT d.deal_type_code, COALESCE(rd.code, ra.code), d.status_code,
+                       di.returned_at, d.order_number, COALESCE(c.nickname, ''),
+                       d.flow_status_code, d.lock_version
+                FROM app.deals d
+                JOIN app.deal_items di ON di.deal_id=d.deal_id
+                LEFT JOIN app.regions rd ON rd.region_id=d.region_id
+                LEFT JOIN app.accounts a ON a.account_id=di.account_id
+                LEFT JOIN app.regions ra ON ra.region_id=a.region_id
+                LEFT JOIN app.customers c ON c.customer_id=d.customer_id
+                WHERE d.deal_id=%s
+                ORDER BY di.deal_item_id
+                LIMIT 1{lock_sql}
+                """,
+                (deal_id,),
+            )
+            row = cur.fetchone()
+        if not row or str(row[2] or "") == "cancelled":
+            raise HTTPException(404, "deal not found")
+        if str(row[0] or "").strip().lower() != "sale":
+            raise HTTPException(422, "Supplier nominals are available only for service deals")
+        region_code = str(row[1] or "").strip().upper()
+        if region_code not in DEAL_INTERHUB_SERVICE_IDS:
+            raise HTTPException(422, "Supplier nominals are available only for Turkey and Poland")
+        return {
+            "deal_id": int(deal_id), "region_code": region_code,
+            "order_number": str(row[4] or ""), "customer_nickname": str(row[5] or ""),
+            "flow_status_code": str(row[6] or ""), "lock_version": int(row[7]),
+            "purchase_allowed": str(row[6] or "") != "draft" and row[3] is None,
+        }
+
+    def require_deal_purchase_allowed(deal: dict, payload: dict) -> None:
+        # Проверяем сохранённый статус и версию, а не редактируемые поля браузера.
+        if deal["flow_status_code"] == "draft":
+            raise HTTPException(409, "Покупка в черновике запрещена. Сначала сохраните рабочую сделку.")
+        if not deal["purchase_allowed"]:
+            raise HTTPException(409, "Нельзя покупать ваучеры для возвращённой сделки.")
+        version = payload.get("lock_version")
+        if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+            raise HTTPException(422, "Для покупки требуется lock_version сохранённой сделки.")
+        if version != deal["lock_version"]:
+            raise HTTPException(409, "Сделка изменилась. Обновите карточку и заново получите цену поставщика.")
+
+    def provider_service_for_region(region_code: str) -> dict:
+        # Находим только заранее разрешённый PlayStation-сервис региона и дополнительно проверяем его название.
+        normalized_region = str(region_code or "").strip().upper()
+        service_id = DEAL_INTERHUB_SERVICE_IDS.get(normalized_region)
+        expected_region = {"TR": "turkey", "PL": "poland"}.get(normalized_region, "")
+        services = interhub_get_services()
+        service = next((item for item in services if int(item.get("service_id") or 0) == int(service_id or 0)), None)
+        title = str(service.get("title") or "") if service else ""
+        normalized_title = title.casefold()
+        if not service or "playstation" not in normalized_title or expected_region not in normalized_title:
+            raise HTTPException(503, f"InterHub PlayStation service for {normalized_region} is unavailable")
+        if str(service.get("type") or "").strip().upper() != "VOUCHER":
+            raise HTTPException(503, "Configured InterHub PlayStation service is not a voucher service")
+        return service
+
+    def fallback_provider_service(region_code: str) -> dict:
+        # Восстанавливаем подпись уже купленного кода без обращения к каталогу, если Interhub временно недоступен.
+        normalized_region = str(region_code or "").strip().upper()
+        region_title = {"TR": "Turkey", "PL": "Poland"}.get(normalized_region, normalized_region)
+        return {
+            "service_id": int(DEAL_INTERHUB_SERVICE_IDS.get(normalized_region) or 0),
+            "title": f"PlayStation - {region_title}", "type": "VOUCHER", "fields": [],
+        }
+
+    def supplier_nominals(service: dict) -> list[dict]:
+        # Возвращаем только активные значения поля nominal и сортируем их по числовому номиналу.
+        field = next(
+            (item for item in service.get("fields") or [] if str(item.get("name") or "").strip().casefold() == "nominal"),
+            None,
+        )
+        items: list[dict] = []
+        for option in (field or {}).get("value_list") or []:
+            if not isinstance(option, dict) or option.get("active") is False:
+                continue
+            nominal_id = str(option.get("id") or "").strip()
+            title = str(option.get("title") or nominal_id).strip()
+            if not nominal_id or not title:
+                continue
+            numeric = "".join(char if char.isdigit() or char in ".," else " " for char in title).split()
+            try:
+                sort_amount = float(str(numeric[0]).replace(",", ".")) if numeric else 0.0
+            except (TypeError, ValueError):
+                sort_amount = 0.0
+            items.append({"id": nominal_id, "title": title, "sort_amount": sort_amount})
+        items.sort(key=lambda item: (float(item["sort_amount"]), item["title"].casefold()))
+        return [{"id": item["id"], "title": item["title"]} for item in items]
+
+    def read_deal_transactions(deal_id: int, *, conn=None) -> list[tuple]:
+        # Возвращаем все операции сделки, чтобы каждый номинал и выданный код оставались в её истории.
+        if conn is None:
+            with psycopg.connect(DB_DSN) as connection:
+                return read_deal_transactions(deal_id, conn=connection)
+        else:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT agent_transaction_id, state, provider_status, provider_message, service_id,
+                           COALESCE(request_params->>'nominal', ''), amount, gift_code,
+                           created_by, created_at, updated_at,
+                           COALESCE(request_params->>'nominal_title', '')
+                    FROM app.interhub_transactions
+                    WHERE deal_id=%s AND state<>'cancelled'
+                    ORDER BY created_at DESC, agent_transaction_id DESC
+                    """,
+                    (deal_id,),
+                )
+                return cur.fetchall()
+
+    def read_deal_transaction(deal_id: int) -> tuple | None:
+        # Находим последнюю операцию для совместимости с одиночным статусом текущей покупки.
+        transactions = read_deal_transactions(deal_id)
+        return transactions[0] if transactions else None
+
+    def serialize_deal_transaction(row: tuple | None, *, service: dict | None = None) -> dict | None:
+        # Отдаём статус и код только из строки, уже связанной с нужной сделкой.
+        if not row:
+            return None
+        state = str(row[1] or "")
+        nominal_id = str(row[5] or "")
+        nominal_title = str(row[11] or "") if len(row) > 11 else ""
+        service_title = str((service or {}).get("title") or "")
+        if service:
+            nominal = next((item for item in supplier_nominals(service) if item["id"] == nominal_id), None)
+            nominal_title = str((nominal or {}).get("title") or nominal_title or nominal_id)
+        return {
+            "agent_transaction_id": str(row[0] or ""), "state": state,
+            "success": state in {"checked", "processing", "paid"},
+            "status": 1 if state == "processing" else (0 if state in {"checked", "paid"} else 2),
+            "message": str(row[3] or ""), "provider_status": int(row[2] or 0),
+            "service_id": int(row[4] or 0), "service_title": service_title,
+            "nominal_id": nominal_id, "nominal_title": nominal_title,
+            "amount": float(row[6] or 0), "gift_code": str(row[7] or ""),
+            "created_by": str(row[8] or ""), "created_at": row[9], "updated_at": row[10],
+        }
+
+    def deal_supplier_payload(deal_id: int) -> dict:
+        # Собираем каталог региона и сохранённую операцию одним ответом для восстановления формы после открытия.
+        with psycopg.connect(DB_DSN) as conn:
+            deal = read_deal_context(conn, deal_id, lock=True)
+            transactions = read_deal_transactions(deal_id, conn=conn)
+            conn.commit()
+        transaction = transactions[0] if transactions else None
+        try:
+            service = provider_service_for_region(deal["region_code"]) if deal["purchase_allowed"] else fallback_provider_service(deal["region_code"])
+        except Exception:
+            # Сохранённый код важнее временной ошибки каталога; новую покупку без живой проверки всё равно не начинаем.
+            if not transaction:
+                raise
+            service = fallback_provider_service(deal["region_code"])
+        return {
+            **deal,
+            "service_id": int(service["service_id"]),
+            "service_title": str(service.get("title") or ""),
+            "nominals": supplier_nominals(service),
+            "purchase": serialize_deal_transaction(transaction, service=service),
+            "purchases": [serialize_deal_transaction(row, service=service) for row in transactions],
+        }
+
+    def read_locked_deal_transaction(conn, deal_id: int) -> tuple | None:
+        # Блокируем только активную строку выбранной сделки перед сменой состояния оплаты.
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT agent_transaction_id, state, provider_status, provider_message, service_id,
+                       COALESCE(request_params->>'nominal', ''), amount, gift_code,
+                       created_by, created_at, updated_at,
+                       COALESCE(request_params->>'nominal_title', '')
+                FROM app.interhub_transactions
+                WHERE deal_id=%s AND state IN ('checked', 'processing')
+                ORDER BY created_at DESC, agent_transaction_id DESC
+                LIMIT 1
+                FOR UPDATE
+                """,
+                (deal_id,),
+            )
+            return cur.fetchone()
+
+    def read_locked_deal_transaction_by_id(conn, deal_id: int, agent_transaction_id: str) -> tuple | None:
+        # Блокируем конкретный check, чтобы повтор старой кнопки не смог оплатить более новый ваучер сделки.
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT agent_transaction_id, state, provider_status, provider_message, service_id,
+                       COALESCE(request_params->>'nominal', ''), amount, gift_code,
+                       created_by, created_at, updated_at,
+                       COALESCE(request_params->>'nominal_title', '')
+                FROM app.interhub_transactions
+                WHERE deal_id=%s AND agent_transaction_id=%s
+                  AND state IN ('checked', 'processing', 'paid')
+                FOR UPDATE
+                """,
+                (deal_id, agent_transaction_id),
+            )
+            return cur.fetchone()
+
+    @app.get("/deals/{deal_id}/interhub")
+    def get_deal_supplier_purchase(deal_id: int, user: UserOut = Depends(get_current_user)):
+        # Любая авторизованная роль видит только поставщика, разрешённого регионом конкретной сделки.
+        _ = user
+        return deal_supplier_payload(deal_id)
+
+    @app.post("/deals/{deal_id}/interhub/prepare")
+    def prepare_deal_supplier_purchase(
+        deal_id: int,
+        payload: dict = Body(...),
+        user: UserOut = Depends(get_current_user),
+    ):
+        # Сериализуем подготовку по deal_id, оставляя покупки разных сделок полностью параллельными.
+        requested_nominal_id = str(payload.get("nominal_id") or "").strip()
+        if not requested_nominal_id:
+            raise HTTPException(422, "nominal_id is required")
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_xact_lock(%s)", (deal_id,))
+            deal = read_deal_context(conn, deal_id, lock=True)
+            require_deal_purchase_allowed(deal, payload)
+            service = provider_service_for_region(deal["region_code"])
+            nominal = next((item for item in supplier_nominals(service) if item["id"] == requested_nominal_id), None)
+            if not nominal:
+                raise HTTPException(422, "Selected nominal is not available for the deal region")
+            active = read_locked_deal_transaction(conn, deal_id)
+            if active:
+                active_payload = serialize_deal_transaction(active, service=service)
+                if str(active[1] or "") == "processing":
+                    conn.commit()
+                    return {**active_payload, "lock_version": deal["lock_version"]}
+                if int(active[4] or 0) == int(service["service_id"]) and str(active[5] or "") == requested_nominal_id:
+                    conn.commit()
+                    return {**active_payload, "lock_version": deal["lock_version"]}
+                # Новый выбор отменяет только ещё не оплаченную проверку этой же сделки.
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE app.interhub_transactions SET state='cancelled', updated_at=now() WHERE agent_transaction_id=%s AND state='checked'",
+                        (str(active[0]),),
+                    )
+            base_id = f"gamesales-deal-{deal_id}-{uuid.uuid4().hex[:16]}"
+            request = {
+                "service_id": int(service["service_id"]), "account": "",
+                "agent_transaction_id": f"{base_id}-calculate", "params": {"nominal": requested_nominal_id},
+            }
+            calculation = interhub_calculate(request)
+            amount = float(calculation.get("fixed_amount") or 0)
+            if not bool(calculation.get("success")) or amount <= 0:
+                conn.commit()
+                return {
+                    "success": False, "status": int(calculation.get("status") or 2), "state": "failed",
+                    "message": str(calculation.get("message") or "InterHub не вернул актуальную цену"),
+                    "service_id": int(service["service_id"]), "service_title": str(service.get("title") or ""),
+                    "nominal_id": requested_nominal_id, "nominal_title": nominal["title"], "amount": amount,
+                }
+            check_request = {**request, "agent_transaction_id": base_id, "amount": amount}
+            checked = interhub_check(check_request)
+            # Подпись номинала сохраняем после вызова поставщика, не добавляя лишнее поле в его запрос.
+            stored_request = {
+                **check_request,
+                "params": {**check_request["params"], "nominal_title": nominal["title"]},
+            }
+            write_checked_transaction(conn, stored_request, checked, str(user.username or ""), deal_id=deal_id)
+            conn.commit()
+        if not bool(checked.get("success")):
+            return {
+                "success": False, "status": int(checked.get("status") or 2), "state": "failed",
+                "message": str(checked.get("message") or "InterHub не подтвердил доступность"),
+                "service_id": int(service["service_id"]), "service_title": str(service.get("title") or ""),
+                "nominal_id": requested_nominal_id, "nominal_title": nominal["title"], "amount": amount,
+            }
+        # Возвращаем именно наш check, а не последнюю строку, которую уже мог создать другой запрос.
+        with psycopg.connect(DB_DSN) as conn:
+            transaction = read_locked_deal_transaction_by_id(conn, deal_id, base_id)
+        if not transaction:
+            raise HTTPException(409, "Проверка покупки уже заменена. Получите цену заново.")
+        return {**serialize_deal_transaction(transaction, service=service), "lock_version": deal["lock_version"]}
+
+    @app.post("/deals/{deal_id}/interhub/pay")
+    def pay_deal_supplier_purchase(
+        deal_id: int,
+        payload: dict = Body(...),
+        user: UserOut = Depends(get_current_user),
+    ):
+        # Оплачиваем только переданный check; его ID сохраняет идемпотентность при нескольких ваучерах сделки.
+        agent_transaction_id = str(payload.get("agent_transaction_id") or "").strip()
+        if not agent_transaction_id:
+            raise HTTPException(422, "agent_transaction_id is required")
+        with psycopg.connect(DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_xact_lock(%s)", (deal_id,))
+            deal = read_deal_context(conn, deal_id, lock=True)
+            service = fallback_provider_service(deal["region_code"])
+            active = read_locked_deal_transaction_by_id(conn, deal_id, agent_transaction_id)
+            if not active:
+                raise HTTPException(409, "Supplier purchase must be prepared before pay")
+            if int(active[4] or 0) != int(service["service_id"]):
+                raise HTTPException(409, "Prepared supplier service does not match the deal region")
+            if str(active[1] or "") in {"processing", "paid"}:
+                conn.commit()
+                return serialize_deal_transaction(active, service=service)
+            require_deal_purchase_allowed(deal, payload)
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE app.interhub_transactions
+                    SET state='processing', provider_message='Оплата отправлена в InterHub; ожидается ответ',
+                        next_status_check_at=now() + interval '1 minute', updated_at=now()
+                    WHERE agent_transaction_id=%s AND deal_id=%s AND state='checked'
+                    RETURNING agent_transaction_id
+                    """,
+                    (agent_transaction_id, deal_id),
+                )
+                started = cur.fetchone()
+            if not started:
+                raise HTTPException(409, "Supplier payment cannot be paid in its current state")
+            conn.commit()
+        try:
+            result = interhub_pay({"agent_transaction_id": agent_transaction_id})
+        except Exception as exc:
+            # Потеря ответа оставляет именно эту операцию на check_status без повторного списания.
+            mark_payment_uncertain(agent_transaction_id, str(getattr(exc, "detail", exc)))
+            with psycopg.connect(DB_DSN) as conn:
+                return serialize_deal_transaction(
+                    read_locked_deal_transaction_by_id(conn, deal_id, agent_transaction_id), service=service,
+                )
+        save_provider_result(agent_transaction_id, result)
+        with psycopg.connect(DB_DSN) as conn:
+            return serialize_deal_transaction(
+                read_locked_deal_transaction_by_id(conn, deal_id, agent_transaction_id), service=service,
+            )
+
     @app.get("/integrations/interhub/services", response_model=InterHubServiceListOut)
     def list_interhub_services(user: UserOut = Depends(get_current_user)):
         # Отдаём нормализованный каталог только авторизованным пользователям приложения.
@@ -686,13 +1074,16 @@ def mount_interhub_routes(
         sort_direction: Literal["asc", "desc"] = Query(default="desc"),
         page: int = Query(default=1, ge=1),
         page_size: int = Query(default=25, ge=1, le=100),
-        user: UserOut = Depends(require_role("owner")),
+        user: UserOut = Depends(get_current_user),
     ):
-        # Архив CRM содержит секретные коды, поэтому доступен только владельцу.
-        _ = user
+        # Владелец видит весь архив, а остальные роли — только покупки, связанные со сделками.
+        user_role = str(getattr(user, "role", "") or "").strip().lower().rsplit(".", 1)[-1]
+        is_owner = user_role == "owner"
         if date_from and date_to and date_from > date_to:
             raise HTTPException(422, "Дата «с» не может быть позже даты «по»")
         clauses = ["state='paid'"]
+        if not is_owner:
+            clauses.append("deal_id IS NOT NULL")
         params: list[object] = []
         if date_from:
             # Привязываем начало дня к МСК, чтобы календарный фильтр совпадал с датой в интерфейсе.
@@ -707,11 +1098,28 @@ def mount_interhub_routes(
                    history_transaction.service_id,
                    COALESCE(service_calculation.service_title, '') AS service_title,
                    COALESCE(history_transaction.request_params->>'nominal', '') AS nominal,
-                   COALESCE(nominal_calculation.nominal_title, '') AS nominal_title,
+                   COALESCE(NULLIF(history_transaction.request_params->>'nominal_title', ''), nominal_calculation.nominal_title, '') AS nominal_title,
                    history_transaction.amount,
                    history_transaction.gift_code,
-                   history_transaction.created_at
+                   history_transaction.created_at,
+                   history_transaction.deal_id,
+                   COALESCE(history_deal.order_number, '') AS order_number,
+                   COALESCE(history_customer.nickname, '') AS customer_nickname,
+                   COALESCE(history_deal_region.region_code, '') AS region_code,
+                   COALESCE(history_transaction.created_by, '') AS created_by
             FROM app.interhub_transactions AS history_transaction
+            LEFT JOIN app.deals AS history_deal ON history_deal.deal_id=history_transaction.deal_id
+            LEFT JOIN app.customers AS history_customer ON history_customer.customer_id=history_deal.customer_id
+            LEFT JOIN LATERAL (
+              SELECT COALESCE(direct_region.code, account_region.code) AS region_code
+              FROM app.deal_items AS history_item
+              LEFT JOIN app.accounts AS history_account ON history_account.account_id=history_item.account_id
+              LEFT JOIN app.regions AS direct_region ON direct_region.region_id=history_deal.region_id
+              LEFT JOIN app.regions AS account_region ON account_region.region_id=history_account.region_id
+              WHERE history_item.deal_id=history_deal.deal_id
+              ORDER BY history_item.deal_item_id
+              LIMIT 1
+            ) AS history_deal_region ON true
             LEFT JOIN LATERAL (
               SELECT service_title
               FROM app.interhub_price_calculations
@@ -740,8 +1148,13 @@ def mount_interhub_routes(
                 WHERE service_title ILIKE %s ESCAPE '\\'
                    OR nominal ILIKE %s ESCAPE '\\'
                    OR nominal_title ILIKE %s ESCAPE '\\'
+                   OR deal_id::text ILIKE %s ESCAPE '\\'
+                   OR order_number ILIKE %s ESCAPE '\\'
+                   OR customer_nickname ILIKE %s ESCAPE '\\'
+                   OR region_code ILIKE %s ESCAPE '\\'
+                   OR created_by ILIKE %s ESCAPE '\\'
             """
-            filtered_params.extend([search_pattern, search_pattern, search_pattern])
+            filtered_params.extend([search_pattern] * 8)
         sort_columns = {
             "service": "service_title",
             "nominal": "COALESCE(NULLIF(nominal_title, ''), nominal)",
@@ -768,7 +1181,8 @@ def mount_interhub_routes(
                     f"""
                     WITH filtered_history AS ({base_query})
                     SELECT service_id, service_title, nominal, nominal_title,
-                           amount, gift_code, created_at
+                           amount, gift_code, created_at, deal_id, order_number,
+                           customer_nickname, region_code, created_by
                     FROM filtered_history
                     {search_clause}
                     ORDER BY {sort_column} {sort_order}, agent_transaction_id {sort_order}
@@ -794,6 +1208,11 @@ def mount_interhub_routes(
                     "price": float(row[4] or 0),
                     "gift_code": str(row[5] or ''),
                     "created_at": row[6],
+                    "deal_id": int(row[7]) if row[7] is not None else None,
+                    "order_number": str(row[8] or ''),
+                    "customer_nickname": str(row[9] or ''),
+                    "region_code": str(row[10] or ''),
+                    "created_by": str(row[11] or ''),
                 }
                 for row in rows
             ]
@@ -856,6 +1275,7 @@ def mount_interhub_routes(
     def check_interhub_payment(payload: InterHubPaymentRequestIn = Body(...), user: UserOut = Depends(get_current_user)):
         # Проверяем реквизиты и сохраняем будущую операцию до подтверждения владельцем.
         request_data = payload.model_dump(exclude_none=True)
+        require_standalone_transaction(str(request_data["agent_transaction_id"]))
         result = interhub_check(request_data)
         save_checked_transaction(request_data, result, str(user.username or ""))
         return InterHubPaymentCheckOut(**result)
@@ -865,6 +1285,7 @@ def mount_interhub_routes(
         # Атомарно резервируем одиночную оплату до внешнего pay, чтобы два параллельных запроса не списали деньги дважды.
         _ = user
         agent_transaction_id = str(payload.agent_transaction_id or "").strip()
+        require_standalone_transaction(agent_transaction_id)
         start_provider_payment(agent_transaction_id)
         try:
             result = interhub_pay({"agent_transaction_id": agent_transaction_id})
@@ -888,6 +1309,7 @@ def mount_interhub_routes(
         except (TypeError, ValueError, AttributeError) as exc:
             raise HTTPException(422, "InterHub voucher batch_id must be a UUID") from exc
         first_agent_transaction_id = str(payload.agent_transaction_id or "").strip()
+        require_standalone_transaction(first_agent_transaction_id)
         prepared_batch_id, _ = prepare_voucher_batch(batch_id, first_agent_transaction_id, int(payload.quantity), str(user.username or ""))
         start_voucher_batch_worker(prepared_batch_id, str(user.username or ""))
         return voucher_batch_response(prepared_batch_id)

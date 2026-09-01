@@ -27,6 +27,11 @@ class _ScriptedCursor:
         # Сохраняем SQL в тестах, где нужно проверить дополнительные условия фильтрации.
         if self._sql_collector is not None:
             self._sql_collector.append(str(sql))
+        if " ".join(str(sql).split()) == "SELECT deal_id FROM app.deals WHERE deal_id=%s FOR UPDATE":
+            # Новая блокировка не читает данные, поэтому не расходует сценарную строку выборки.
+            self._current = None
+            self.rowcount = 0
+            return
         if not self._script:
             raise AssertionError(f"Unexpected SQL without scripted response: {sql}")
         self._current = self._script.pop(0)

@@ -69,11 +69,11 @@ class _FakePsycopg:
 
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
 class InterhubApiTests(unittest.TestCase):
-    def create_client(self):
+    def create_client(self, *, role="operator"):
         # Собираем изолированный маршрут с подменённым подключением к PostgreSQL.
         app = FastAPI()
         queries = []
-        user = SimpleNamespace(username="operator", role="operator")
+        user = SimpleNamespace(username=role, role=role)
         mount_interhub_routes(
             app,
             DB_DSN="postgresql://test",
@@ -96,6 +96,16 @@ class InterhubApiTests(unittest.TestCase):
         )
         return TestClient(app), queries
 
+    def test_owner_keeps_the_complete_crm_archive(self):
+        # Ограничение deal_id применяется только к рабочим ролям и не скрывает старый архив от владельца.
+        client, queries = self.create_client(role="owner")
+
+        with client:
+            response = client.get("/integrations/interhub/transactions/paid")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("history_transaction.deal_id IS NOT NULL", queries[0][0])
+
     # Период из интерфейса должен начинаться и заканчиваться в полуночь МСК, а не UTC.
     def test_paid_history_uses_moscow_day_boundaries(self):
         client, queries = self.create_client()
@@ -111,6 +121,7 @@ class InterhubApiTests(unittest.TestCase):
         self.assertIn("created_at >= (%s::date::timestamp AT TIME ZONE 'Europe/Moscow')", totals_sql)
         self.assertIn("created_at < ((%s::date + 1)::timestamp AT TIME ZONE 'Europe/Moscow')", totals_sql)
         self.assertIn("SELECT COUNT(*), COALESCE(SUM(amount), 0)", totals_sql)
+        self.assertIn("history_transaction.deal_id IS NOT NULL", totals_sql)
         self.assertIn("LIMIT %s OFFSET %s", page_sql)
         self.assertEqual(totals_params, [date(2026, 8, 3), date(2026, 8, 3)])
         self.assertEqual(page_params, [date(2026, 8, 3), date(2026, 8, 3), 25, 0])
@@ -130,8 +141,8 @@ class InterhubApiTests(unittest.TestCase):
         page_sql, page_params = queries[1]
         self.assertIn("service_title ILIKE %s", totals_sql)
         self.assertIn("ORDER BY amount ASC, agent_transaction_id ASC", page_sql)
-        self.assertEqual(totals_params, [r"%Steam\%\_%", r"%Steam\%\_%", r"%Steam\%\_%"])
-        self.assertEqual(page_params, [r"%Steam\%\_%", r"%Steam\%\_%", r"%Steam\%\_%", 50, 100])
+        self.assertEqual(totals_params, [r"%Steam\%\_%"] * 8)
+        self.assertEqual(page_params, [*[r"%Steam\%\_%"] * 8, 50, 100])
 
 
 class _ApiModel(BaseModel):

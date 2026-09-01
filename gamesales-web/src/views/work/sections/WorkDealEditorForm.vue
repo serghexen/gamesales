@@ -918,6 +918,13 @@
                             </div>
                           </div>
                         </div>
+                        <WorkDealSupplierNominals
+                          v-if="editDeal.deal_type_code === 'sale'"
+                          :deal="editDeal"
+                          :editing="dealEditMode === 'edit'"
+                          :sync-deal="ctx.syncDealAfterSupplierPurchase"
+                          @busy-change="ctx.setDealSupplierBusy"
+                        />
                       </div>
                       <div class="deal-form__full">
                         <div v-if="dealError" class="field field--inline-actions">
@@ -1637,6 +1644,10 @@
                             </div>
                           </div>
                         </div>
+                        <WorkDealSupplierNominals
+                          v-if="newDeal.deal_type_code === 'sale'"
+                          :deal="newDeal"
+                        />
                       </div>
                       <div class="deal-form__full">
                         <div v-if="dealError" class="field field--inline-actions">
@@ -1658,6 +1669,7 @@
 
 <script setup>
 import { computed, reactive, ref, toRefs, watch } from 'vue'
+import WorkDealSupplierNominals from './WorkDealSupplierNominals.vue'
 
 // Большая форма сделки (режим редактирования и создания) вынесена из WorkView.
 const props = defineProps({

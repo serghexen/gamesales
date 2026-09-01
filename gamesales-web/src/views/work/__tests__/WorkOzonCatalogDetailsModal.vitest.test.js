@@ -214,7 +214,7 @@ describe('WorkOzonCatalogDetailsModal', () => {
     expect(wrapper.get('[aria-label="Сортировка по заказу"]').classes()).toContain('sort-icon--asc')
   })
 
-  it('opens a supplier operation card for an Interhub order', async () => {
+  it('opens a supplier operation card for an external order', async () => {
     const props = buildProps()
     const wrapper = mount(WorkOzonCatalogDetailsModal, {
       props,

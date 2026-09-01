@@ -9,6 +9,7 @@ describe('useWorkSectionContexts', () => {
     const showDealForm = ref(false)
     const dealEditMode = ref('view')
     const dealLoading = ref(false)
+    const dealSupplierBusy = ref(false)
     const dealQuickAccountBusy = ref(false)
     const dealQuickProductBusy = ref(false)
     const responsibleUserOptions = ref(['manager1'])
@@ -23,6 +24,7 @@ describe('useWorkSectionContexts', () => {
       showDealForm,
       dealEditMode,
       dealLoading,
+      dealSupplierBusy,
       dealQuickAccountBusy,
       dealQuickProductBusy,
       canEditCompletedDeal,
@@ -46,6 +48,15 @@ describe('useWorkSectionContexts', () => {
     expect(ctx.dealEditorModalShellCtx.showSaveEdit).toBe(true)
     expect(ctx.dealEditorModalShellCtx.showCreate).toBe(false)
     expect(ctx.dealEditorModalShellCtx.editDisabled).toBe(false)
+
+    // На время покупки и обновления версии шапка не запускает редактирование или сохранение.
+    dealSupplierBusy.value = true
+    expect(ctx.dealEditorModalShellCtx.editDisabled).toBe(true)
+    expect(ctx.dealEditorModalShellCtx.actionsDisabled).toBe(true)
+    ctx.dealEditorModalShellCtx.onSaveEdit()
+    expect(updateDeal).not.toHaveBeenCalled()
+    dealSupplierBusy.value = false
+    expect(ctx.dealEditorModalShellCtx.actionsDisabled).toBe(false)
 
     dealQuickAccountBusy.value = true
     expect(ctx.dealEditorModalBodyCtx.isLocked).toBe(true)

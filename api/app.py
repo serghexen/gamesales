@@ -1410,6 +1410,7 @@ interhub_refresh_pending = mount_interhub_routes(
     interhub_pay=interhub_pay,
     interhub_check_status=interhub_check_status,
     price_calculate_delay_ms=_INTERHUB_PRICE_CALCULATE_DELAY_MS,
+    publish_deal_event=publish_deal_event,
 )
 
 mount_supplier_hub_routes(

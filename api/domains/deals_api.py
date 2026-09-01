@@ -34,6 +34,11 @@ def mount_deals_routes(
     get_current_user,
     publish_deal_event=None,
 ):
+    def lock_deal_for_supplier_consistency(conn, deal_id: int) -> None:
+        # Отдельный запрос блокировки даёт следующему SELECT свежий снимок покупок после ожидания.
+        with conn.cursor() as cur:
+            cur.execute("SELECT deal_id FROM app.deals WHERE deal_id=%s FOR UPDATE", (deal_id,))
+
     # Нормализуем текстовые поля клиента, чтобы в БД не попадали пустые строки.
     def normalize_customer_field(value: Optional[str]) -> Optional[str]:
         normalized = (value or "").strip()
@@ -1095,6 +1100,7 @@ def mount_deals_routes(
 
     @app.put("/deals/{deal_id}")
     def update_deal(deal_id: int, payload: DealUpdate, user=Depends(get_current_user)):
+        # Сохраняем форму под общей блокировкой сделки, чтобы не затереть подтверждение покупки ваучера.
         if payload.purchase_at is not None:
             validate_date_in_range(payload.purchase_at, "purchase_at")
         if payload.created_at is not None:
@@ -1106,6 +1112,7 @@ def mount_deals_routes(
         if payload.end_at is not None:
             validate_date_in_range(payload.end_at, "end_at")
         with psycopg.connect(DB_DSN) as conn:
+            lock_deal_for_supplier_consistency(conn, deal_id)
             with conn.cursor() as cur:
                 cur.execute("SELECT set_config('app.user', %s, true)", (user.username,))
             row = q1(
@@ -1136,12 +1143,16 @@ def mount_deals_routes(
                   di.reserve_key,
                   di.notes,
                   di.game_link,
-                  di.returned_at
+                  di.returned_at,
+                  (SELECT COUNT(*) FROM app.interhub_transactions t WHERE t.deal_id=d.deal_id AND t.state='paid'),
+                  (SELECT COALESCE(SUM(t.amount), 0) FROM app.interhub_transactions t WHERE t.deal_id=d.deal_id AND t.state='paid'),
+                  (SELECT COUNT(*) FROM app.interhub_transactions t WHERE t.deal_id=d.deal_id AND t.state='processing')
                 FROM app.deals d
                 JOIN app.deal_items di ON di.deal_id = d.deal_id
                 WHERE d.deal_id=%s
                 ORDER BY di.deal_item_id ASC
                 LIMIT 1
+                FOR UPDATE OF d
                 """,
                 (deal_id,),
             )
@@ -1150,7 +1161,7 @@ def mount_deals_routes(
     
             if len(row) >= 25:
                 current_type, status_code, flow_status_code, current_lock_version, region_id, customer_id, total_amount, order_number, responsible_username, current_messenger_id, deal_item_id, \
-                    account_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, subscription_term_id, reserve_key, notes, game_link, returned_at = row
+                    account_id, platform_id, price, purchase_cost, purchase_at, start_at, end_at, slots_used, slot_type_code, subscription_term_id, reserve_key, notes, game_link, returned_at = row[:25]
             else:
                 # Поддерживаем старый формат строки (без lock_version) в тестовых моках.
                 current_type, status_code, flow_status_code, region_id, customer_id, total_amount, order_number, responsible_username, deal_item_id, \
@@ -1159,6 +1170,11 @@ def mount_deals_routes(
                 subscription_term_id = None
                 reserve_key = None
                 current_messenger_id = None
+            # Старые тестовые строки не содержат агрегаты поставщика; реальная выборка возвращает все три.
+            supplier_paid_count, supplier_paid_total, supplier_processing_count = row[25:28] if len(row) >= 28 else (0, 0, 0)
+            if supplier_processing_count:
+                raise HTTPException(409, "Дождитесь завершения покупки ваучера перед сохранением сделки.")
+            saved_region_id = region_id
             # Проверяем версию записи, чтобы не перезаписать чужие правки при одновременном редактировании.
             expected_lock_version = payload.lock_version
             # Для обратной совместимости допускаем старые клиенты без lock_version.
@@ -1219,6 +1235,8 @@ def mount_deals_routes(
                 )
             if payload.region_code is not None:
                 region_id = get_region_id(conn, payload.region_code)
+            if supplier_paid_count and (deal_type != current_type or region_id != saved_region_id):
+                raise HTTPException(409, "Нельзя менять тип или регион сделки с оплаченными ваучерами.")
     
             new_slot_type_code = payload.slot_type_code if payload.slot_type_code is not None else slot_type_code
             new_subscription_term_id = payload.subscription_term_id if payload.subscription_term_id is not None else subscription_term_id
@@ -1261,6 +1279,9 @@ def mount_deals_routes(
     
             new_price = payload.price if payload.price is not None else price
             new_purchase_cost = payload.purchase_cost if payload.purchase_cost is not None else purchase_cost
+            if supplier_paid_count:
+                # Фактическая сумма ваучеров важнее старой/ручной закупочной цены в payload формы.
+                new_purchase_cost = supplier_paid_total
             new_purchase_at = payload.purchase_at if payload.purchase_at is not None else purchase_at
             new_start_at = payload.start_at if payload.start_at is not None else start_at
             new_end_at = payload.end_at if payload.end_at is not None else end_at
@@ -1684,14 +1705,18 @@ def mount_deals_routes(
 
     @app.post("/deals/{deal_id}/return")
     def return_completed_deal_to_pending(deal_id: int, user=Depends(get_current_user)):
+        # Возврат тоже меняет сохранённую карточку и не должен обгонять незавершённую оплату.
         with psycopg.connect(DB_DSN) as conn:
+            lock_deal_for_supplier_consistency(conn, deal_id)
             with conn.cursor() as cur:
                 cur.execute("SELECT set_config('app.user', %s, true)", (user.username,))
             # Берем текущее состояние сделки, чтобы безопасно выполнить возврат только для нужного кейса.
             row = q1(
                 conn,
                 """
-                SELECT d.deal_type_code, d.flow_status_code, di.returned_at
+                SELECT d.deal_type_code, d.flow_status_code, di.returned_at,
+                       EXISTS (SELECT 1 FROM app.interhub_transactions t
+                               WHERE t.deal_id=d.deal_id AND t.state='processing')
                 FROM app.deals d
                 JOIN app.deal_items di ON di.deal_id = d.deal_id
                 WHERE d.deal_id=%s
@@ -1702,7 +1727,9 @@ def mount_deals_routes(
             )
             if not row:
                 raise HTTPException(404, "Deal not found")
-            deal_type_code, flow_status_code, returned_at = row
+            deal_type_code, flow_status_code, returned_at = row[:3]
+            if len(row) > 3 and row[3]:
+                raise HTTPException(409, "Дождитесь завершения покупки ваучера перед возвратом сделки.")
             normalized_deal_type = str(deal_type_code or "").strip().lower()
             if normalized_deal_type not in {"sale", "rental"}:
                 raise HTTPException(400, "return is allowed only for sale or rental deals")
@@ -1720,7 +1747,8 @@ def mount_deals_routes(
                 UPDATE app.deals
                 SET flow_status_code='pending',
                     responsible_username=%s,
-                    completed_at=NULL
+                    completed_at=NULL,
+                    lock_version=lock_version + 1
                 WHERE deal_id=%s
                 """,
                 (owner_responsible, deal_id),
@@ -1755,14 +1783,22 @@ def mount_deals_routes(
 
     @app.delete("/deals/{deal_id}")
     def delete_deal(deal_id: int, user=Depends(get_current_user)):
-        # Мягкое удаление: оставляем запись в БД, меняем только статус.
+        # Блокируем сделку до проверки покупок: удаление не должно обогнать отправку оплаты.
         with psycopg.connect(DB_DSN) as conn:
-            row = q1(conn, "SELECT flow_status_code FROM app.deals WHERE deal_id=%s", (deal_id,))
+            lock_deal_for_supplier_consistency(conn, deal_id)
+            row = q1(conn, """
+                SELECT flow_status_code,
+                       EXISTS (SELECT 1 FROM app.interhub_transactions t
+                               WHERE t.deal_id=d.deal_id AND t.state IN ('paid', 'processing'))
+                FROM app.deals d WHERE deal_id=%s FOR UPDATE OF d
+                """, (deal_id,))
             if not row:
                 raise HTTPException(404, "Deal not found")
             if row[0] != "draft":
                 raise HTTPException(400, "delete is allowed only for draft deals")
-            exec1(conn, "UPDATE app.deals SET status_code='cancelled' WHERE deal_id=%s", (deal_id,))
+            if len(row) > 1 and row[1]:
+                raise HTTPException(409, "Нельзя удалить черновик с оплаченными ваучерами или незавершённой оплатой.")
+            exec1(conn, "UPDATE app.deals SET status_code='cancelled', lock_version=lock_version + 1 WHERE deal_id=%s", (deal_id,))
             conn.commit()
             if publish_deal_event:
                 try:

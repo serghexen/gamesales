@@ -156,6 +156,9 @@ export function useWorkSectionContexts({
   updateDealDraft,
   deleteDeal,
   dealLoading,
+  dealSupplierBusy,
+  syncDealAfterSupplierPurchase,
+  setDealSupplierBusy,
   createDeal,
   createDealDraft,
   dealQuickAccountBusy,
@@ -300,6 +303,7 @@ export function useWorkSectionContexts({
   async function saveEditDeal() {
     // Кнопка сохранения в режиме редактирования всегда выполняет обычное сохранение,
     // чтобы черновик можно было перевести в рабочую сделку.
+    if (dealSupplierBusy?.value) return
     await updateDeal()
   }
 
@@ -477,14 +481,14 @@ export function useWorkSectionContexts({
     // Для завершенных сделок даем режим редактирования только admin/owner.
     showEdit: computed(() => editDeal.open && (editDeal.flow_status_code !== 'completed' || allowCompletedDealEdit.value)),
     // Кнопка редактирования теперь работает как переключатель режимов view/edit.
-    editDisabled: computed(() => dealLoading.value || (editDeal.flow_status_code === 'completed' && !allowCompletedDealEdit.value)),
+    editDisabled: computed(() => dealLoading.value || Boolean(dealSupplierBusy?.value) || (editDeal.flow_status_code === 'completed' && !allowCompletedDealEdit.value)),
     onSaveEdit: saveEditDeal,
     onSaveDraft: updateDealDraft,
     onCreate: createDeal,
     onCreateDraft: createDealDraft,
     onDelete: deleteDeal,
     onEdit: toggleDealEditMode,
-    actionsDisabled: dealLoading,
+    actionsDisabled: computed(() => dealLoading.value || Boolean(dealSupplierBusy?.value)),
   })
 
   // Контекст тела модалки сделки.
@@ -497,6 +501,8 @@ export function useWorkSectionContexts({
 
   // Контекст большой формы сделки.
   const dealEditorFormCtx = proxyRefs({
+    syncDealAfterSupplierPurchase,
+    setDealSupplierBusy,
     editDeal,
     dealEditMode,
     allowCompletedDealEdit,

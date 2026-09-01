@@ -350,7 +350,7 @@ export function useYandexMarketCatalog({ auth, apiGet, apiPost, apiPut, mapApiEr
     if (!orderId || !itemId) return { ok: false, message: 'Не удалось определить заказ для выдачи' }
     const confirmed = typeof requestDealConfirm === 'function' && await requestDealConfirm({
       title: 'Запустить выдачу?',
-      message: `Заказ №${orderId} будет обработан с сохраненным источником. При включенном Interhub начнется покупка, а ключ после успеха будет отправлен в Яндекс Маркет.`,
+      message: `Заказ №${orderId} будет обработан с сохраненным источником. При включенном поставщике начнется покупка, а ключ после успеха будет отправлен в Яндекс Маркет.`,
       confirmText: 'Запустить',
       cancelText: 'Отмена',
     })

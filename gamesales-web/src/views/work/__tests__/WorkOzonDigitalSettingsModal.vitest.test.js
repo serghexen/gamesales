@@ -85,7 +85,7 @@ describe('WorkOzonDigitalSettingsModal', () => {
     expect(wrapper.get('[title="Закрыть"]').classes()).toContain('deal-create-action-btn--close')
   })
 
-  it('shows the Interhub service and nominal without a technical ID field', async () => {
+  it('shows the supplier service and nominal without a technical ID field', async () => {
     const props = buildProps()
     props.ozonDigitalSettings.interhub_service_id = 91
     const wrapper = mount(WorkOzonDigitalSettingsModal, {
@@ -93,14 +93,14 @@ describe('WorkOzonDigitalSettingsModal', () => {
       global: { stubs: { teleport: true } },
     })
 
-    expect(wrapper.get('[aria-label="Автовыдача через Interhub"]').exists()).toBe(true)
+    expect(wrapper.get('[aria-label="Автовыдача через поставщика"]').exists()).toBe(true)
     await wrapper.get('.ozon-key-settings__block .ozon-catalog-details-modal__work-block-toggle').trigger('click')
     expect(wrapper.find('.ozon-digital-modal__service-search input').element.value).toContain('PlayStation Wallet')
     expect(wrapper.find('.ozon-digital-modal__supplier').text()).toContain('Номинал')
     expect(wrapper.find('.ozon-digital-modal__supplier').text()).toContain('500 RUB')
   })
 
-  it('finds an Interhub service before changing the saved supplier binding', async () => {
+  it('finds a supplier service before changing the saved supplier binding', async () => {
     const props = buildProps()
     props.ozonDigitalSettings.interhub_service_id = 91
     props.ozonDigitalSettings.interhub_nominal_id = '500'
@@ -128,7 +128,7 @@ describe('WorkOzonDigitalSettingsModal', () => {
     expect(wrapper.find('.ozon-digital-modal__service-search input').element.value).toContain('Roblox - Global')
   })
 
-  it('keeps the Interhub and pool switches independent', async () => {
+  it('keeps the supplier and pool switches independent', async () => {
     const props = buildProps()
     props.ozonDigitalSettings.interhub_service_id = 91
     props.ozonDigitalSettings.interhub_enabled = false

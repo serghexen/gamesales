@@ -56,8 +56,8 @@
                 </button>
                 <div class="ozon-key-settings__block-actions">
                   <div class="ozon-digital-modal__auto-switch">
-                  <label class="switch" title="Автовыдача через Interhub">
-                    <input v-model="autoIssueEnabled" type="checkbox" aria-label="Автовыдача через Interhub" :disabled="!ozonDigitalSettings.interhub_service_id" />
+                  <label class="switch" title="Автовыдача через поставщика">
+                    <input v-model="autoIssueEnabled" type="checkbox" aria-label="Автовыдача через поставщика" :disabled="!ozonDigitalSettings.interhub_service_id" />
                     <span class="slider">
                       <span class="circle">
                         <svg class="cross" viewBox="0 0 365.696 365.696" aria-hidden="true"><path fill="currentColor" d="M243.188 182.86 356.32 69.726c12.5-12.5 12.5-32.766 0-45.247L341.238 9.398c-12.504-12.503-32.77-12.503-45.25 0L182.86 122.528 69.727 9.374c-12.5-12.5-32.766-12.5-45.247 0L9.375 24.457c-12.5 12.504-12.5 32.77 0 45.25l113.152 113.152L9.398 295.99c-12.503 12.503-12.503 32.769 0 45.25L24.48 356.32c12.5 12.5 32.766 12.5 45.247 0l113.132-113.132L295.99 356.32c12.503 12.5 32.769 12.5 45.25 0l15.081-15.082c12.5-12.504 12.5-32.77 0-45.25zm0 0" /></svg>
@@ -126,8 +126,8 @@
                           @mousedown.prevent
                           @click="selectInterhubService(service)"
                         >
-                          <strong>{{ service.title }}</strong>
-                          <small v-if="service.category">{{ service.category }}</small>
+                          <strong>{{ anonymizeSupplierText(service.title) }}</strong>
+                          <small v-if="service.category">{{ anonymizeSupplierText(service.category) }}</small>
                         </button>
                         <p v-if="!filteredInterhubServices.length" class="ozon-digital-modal__service-empty">Ничего не найдено</p>
                       </div>
@@ -166,7 +166,7 @@
             >
               <template #header-actions>
                 <div class="ozon-digital-modal__auto-switch marketplace-key-pool-panel__issue-switch">
-                  <label class="switch" title="Использует ручной пул этой карточки: после сбоя Interhub или как основной источник">
+                  <label class="switch" title="Использует ручной пул этой карточки: после сбоя поставщика или как основной источник">
                     <input v-model="poolIssueEnabled" type="checkbox" aria-label="Выдача из ручного пула" />
                     <span class="slider">
                       <span class="circle">
@@ -308,9 +308,16 @@ function toggleSupplier() {
 function interhubServiceLabel(service) {
   // Собирает понятное имя услуги для поля поиска и компактного списка.
   if (!service) return ''
-  const title = String(service?.title || '').trim()
-  const category = String(service?.category || '').trim()
+  const title = anonymizeSupplierText(service?.title).trim()
+  const category = anonymizeSupplierText(service?.category).trim()
   return category ? `${title} · ${category}` : title
+}
+
+function anonymizeSupplierText(value) {
+  // Не показываем техническое имя интеграции в данных каталога поставщика.
+  return String(value || '')
+    .replace(/supplier\s+hub/gi, 'поставщик')
+    .replace(/interhub/gi, 'поставщик')
 }
 
 const selectedInterhubService = computed(() => props.interhubServices.find((item) => (

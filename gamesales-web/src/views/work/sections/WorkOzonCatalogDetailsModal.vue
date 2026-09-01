@@ -311,7 +311,7 @@
               <dt>Статус</dt>
               <dd>{{ supplierOperationStateLabel(supplierOperation.state) }}</dd>
               <dt>Ответ поставщика</dt>
-              <dd>{{ supplierOperation.provider_message || '—' }}</dd>
+              <dd>{{ anonymizeSupplierText(supplierOperation.provider_message) || '—' }}</dd>
               <dt>Обновлено</dt>
               <dd>{{ formatOzonDate(supplierOperation.updated_at || supplierOperation.created_at) || '—' }}</dd>
               </template>
@@ -445,9 +445,16 @@ async function toggleOrderHistory() {
 function deliverySourceLabel(source) {
   // Показывает оператору понятный способ выдачи вместо внутреннего кода поставщика.
   const normalized = String(source || '').trim().toLowerCase()
-  if (normalized === 'interhub') return 'Interhub'
+  if (normalized === 'interhub') return 'Поставщик'
   if (normalized === 'manual') return 'Ручной ввод'
-  return source || '—'
+  return anonymizeSupplierText(source) || '—'
+}
+
+function anonymizeSupplierText(value) {
+  // Не показываем оператору техническое имя внешней интеграции в ответах и названиях.
+  return String(value || '')
+    .replace(/supplier\s+hub/gi, 'поставщик')
+    .replace(/interhub/gi, 'поставщик')
 }
 
 function canOpenSupplierOperation(order) {
@@ -472,14 +479,14 @@ async function openSupplierOperation(order) {
   if (codesResult?.ok && Array.isArray(codesResult.codes) && codesResult.codes.length) {
     supplierOperationCodes.value = codesResult.codes
   } else {
-    supplierOperationError.value = codesResult?.message || 'Ключ для этого заказа не найден'
+    supplierOperationError.value = anonymizeSupplierText(codesResult?.message) || 'Ключ для этого заказа не найден'
   }
   if (String(order?.delivery_source || '').trim().toLowerCase() === 'interhub') {
     const result = await props.loadOzonDigitalSupplierOperation(order)
     if (result?.ok && result.operation) {
       supplierOperation.value = result.operation
     } else if (!supplierOperationError.value) {
-      supplierOperationError.value = result?.message || 'Операция поставщика не найдена'
+      supplierOperationError.value = anonymizeSupplierText(result?.message) || 'Операция поставщика не найдена'
     }
   }
   supplierOperationLoading.value = false
@@ -528,7 +535,7 @@ const supplierOperationProviderName = computed(() => deliverySourceLabel(supplie
 const supplierOperationServiceTitle = computed(() => {
   // Показывает название услуги из calculate, сохраняя технический ID для старой истории.
   const operation = supplierOperation.value || {}
-  return String(operation.service_title || '').trim() || `Услуга #${operation.service_id || '—'}`
+  return anonymizeSupplierText(operation.service_title).trim() || `Услуга #${operation.service_id || '—'}`
 })
 
 const supplierOperationNominalTitle = computed(() => {

@@ -111,6 +111,43 @@ function createDeps() {
 }
 
 describe('useDealModalFlow', () => {
+  it('synchronizes supplier cost, version and baseline before the next edit and cancel', async () => {
+    // После покупки отмена следующей правки возвращает новую сумму, а не старый снимок до оплаты.
+    const deps = createDeps()
+    const api = useDealModalFlow(deps)
+    const deal = { deal_id: 42, deal_type_code: 'sale', region_code: 'TR', flow_status_code: 'pending', lock_version: 1, purchase_cost: 0 }
+    await api.startEditDeal(deal)
+    expect(api.syncSavedDealFromSupplier({ ...deal, lock_version: 2, purchase_cost: 475.04, notes: 'Сохранено' })).toBe(true)
+    expect(deps.editDeal.lock_version).toBe(2)
+    expect(deps.editDeal.purchase_cost).toBe(475.04)
+    api.toggleDealEditMode()
+    deps.editDeal.purchase_cost = 0
+    deps.editDeal.notes = 'Правка'
+    api.toggleDealEditMode()
+    expect(deps.editDeal.deal_id).toBe(42)
+    expect(deps.editDeal.lock_version).toBe(2)
+    expect(deps.editDeal.purchase_cost).toBe(475.04)
+    expect(deps.editDeal.notes).toBe('Сохранено')
+    api.toggleDealEditMode()
+    expect(await api.closeDealModal()).toBe(true)
+    expect(deps.requestUnsavedConfirm).not.toHaveBeenCalled()
+  })
+
+  it('does not overwrite an editing form, another deal or a newer version', async () => {
+    // Запоздалое чтение не меняет другую карточку и не подменяет локальные правки свежей версией.
+    const deps = createDeps()
+    const api = useDealModalFlow(deps)
+    const deal = { deal_id: 42, deal_type_code: 'sale', lock_version: 3, purchase_cost: 950.08 }
+    await api.startEditDeal(deal)
+    expect(api.syncSavedDealFromSupplier({ ...deal, deal_id: 44, lock_version: 4 })).toBe(false)
+    expect(api.syncSavedDealFromSupplier({ ...deal, lock_version: 2 })).toBe(false)
+    api.toggleDealEditMode()
+    deps.editDeal.notes = 'Не сохранено'
+    expect(api.syncSavedDealFromSupplier({ ...deal, lock_version: 4, notes: 'Чужая правка' })).toBe(false)
+    expect(deps.editDeal.notes).toBe('Не сохранено')
+    expect(deps.editDeal.lock_version).toBe(3)
+  })
+
   it('switches to edit mode from view mode', () => {
     const deps = createDeps()
     const api = useDealModalFlow(deps)

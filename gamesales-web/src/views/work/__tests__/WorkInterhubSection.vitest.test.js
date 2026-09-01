@@ -43,6 +43,7 @@ function buildCtx(overrides = {}) {
     checkLoading: false,
     payment: null,
     paymentLoading: false,
+    canViewHistory: true,
     canPay: false,
     canManagePrices: false,
     cachedPrices: [],
@@ -62,6 +63,7 @@ function buildCtx(overrides = {}) {
     exportPrices: vi.fn(),
     loadSalesHistory: vi.fn(),
     revealSalesHistoryResult: vi.fn(),
+    openDealById: vi.fn(),
     resetPaymentFlow: vi.fn(),
     setSearchFromEvent: vi.fn(),
     ...overrides,
@@ -87,10 +89,12 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).toContain('10 000 ₽')
   })
 
-  it('shows the signed overdraft balance and available amount next to the InterHub deposit', () => {
-    const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx({ balance: 0, overBalance: -2328.76, overLimit: 100000 }) } })
+  it('shows the signed overdraft balance and available amount next to the supplier deposit', () => {
+    const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx({ balance: 0, overBalance: -2328.76, overLimit: 100000, error: 'Interhub временно недоступен' }) } })
 
-    expect(wrapper.text()).toContain('Депозит InterHub')
+    expect(wrapper.text()).toContain('Депозит поставщика')
+    expect(wrapper.text()).toContain('поставщик временно недоступен')
+    expect(wrapper.text()).not.toMatch(/interhub|supplier hub/i)
     expect(wrapper.text()).toContain('Овердрафт: -2 328,76 ₽ из 100 000 ₽')
     expect(wrapper.text()).toContain('Доступно для оплат: 97 671,24 ₽')
   })
@@ -106,7 +110,7 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).not.toContain('Mobile top up')
     expect(wrapper.text()).toContain('Gift PIN')
 
-    await wrapper.find('[aria-label="Обновить каталог InterHub"]').trigger('click')
+    await wrapper.find('[aria-label="Обновить каталог поставщика"]').trigger('click')
     expect(ctx.reload).toHaveBeenCalledTimes(1)
   })
 
@@ -145,7 +149,7 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.findAll('tbody tr')[0].text()).toContain('Mobile top up')
   })
 
-  it('opens Supplier Hub history, reveals a result explicitly and keeps CRM as an archive', async () => {
+  it('opens supplier history, reveals a result explicitly and keeps CRM as an archive', async () => {
     const ctx = buildCtx({
       canPay: true,
       salesHistory: [{ purchase_id: 'purchase-1', service_id: 7, nominal: '15', price: 12.5, state: 'succeeded', result_available: true, created_at: '2026-07-27T10:30:00Z' }],
@@ -183,9 +187,42 @@ describe('WorkInterhubSection', () => {
     await document.body.querySelector('.interhub-history__filters').dispatchEvent(new Event('submit', { cancelable: true }))
     expect(ctx.loadSalesHistory).toHaveBeenLastCalledWith({ source: 'hub', dateFrom: '2026-07-01', dateTo: '2026-07-27', search: '', state: '', sortBy: 'createdAt', sortDirection: 'desc', page: 1, pageSize: 25 })
 
-    const archiveTab = [...document.body.querySelectorAll('.interhub-history__sources button')].find((item) => item.textContent.includes('Архив CRM'))
+    const archiveTab = [...document.body.querySelectorAll('.interhub-history__sources button')].find((item) => item.textContent.includes('CRM и сделки'))
     await archiveTab.dispatchEvent(new Event('click'))
     expect(ctx.loadSalesHistory).toHaveBeenLastCalledWith({ source: 'crm', dateFrom: '2026-07-01', dateTo: '2026-07-27', search: '', state: '', sortBy: 'createdAt', sortDirection: 'desc', page: 1, pageSize: 25 })
+    wrapper.unmount()
+  })
+
+  it('opens deal-linked CRM history for an operator and navigates to the deal', async () => {
+    const ctx = buildCtx({
+      canPay: false,
+      salesHistory: [{
+        service_id: 11125,
+        service_title: 'PlayStation - Turkey',
+        nominal: '28632',
+        nominal_title: 'TRY 250',
+        price: 475.04,
+        gift_code: 'TR-CODE',
+        created_at: '2026-09-01T10:30:00Z',
+        deal_id: 42,
+        order_number: 'ORDER-42',
+        customer_nickname: 'buyer-tr',
+        region_code: 'TR',
+        created_by: 'operator',
+      }],
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx }, attachTo: document.body })
+
+    await wrapper.get('.interhub-catalog__history-action').trigger('click')
+    expect(ctx.loadSalesHistory).toHaveBeenCalledWith({ source: 'crm', dateFrom: '', dateTo: '', search: '', state: '', sortBy: 'createdAt', sortDirection: 'desc', page: 1, pageSize: 25 })
+    expect(document.body.querySelector('.interhub-history__sources')).toBeNull()
+    expect(document.body.textContent).toContain('ORDER-42')
+    expect(document.body.textContent).toContain('buyer-tr · TR')
+    expect(document.body.textContent).toContain('operator')
+
+    await document.body.querySelector('.interhub-history__deal-link').dispatchEvent(new Event('click'))
+    expect(ctx.openDealById).toHaveBeenCalledWith(42)
+    expect(document.body.querySelector('.interhub-history-backdrop')).toBeNull()
     wrapper.unmount()
   })
 

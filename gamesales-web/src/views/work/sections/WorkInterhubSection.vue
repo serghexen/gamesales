@@ -2,26 +2,26 @@
   <section class="panel panel--wide interhub-catalog">
     <div class="panel__head interhub-catalog__head">
       <div>
-        <p class="interhub-catalog__eyebrow">InterHub · агентский каталог</p>
+        <p class="interhub-catalog__eyebrow">Поставщик · агентский каталог</p>
         <h2 class="interhub-catalog__title">Платежи</h2>
       </div>
       <div class="interhub-catalog__head-actions">
-        <button v-if="ctx.canPay" class="ghost interhub-catalog__history-action" type="button" @click="openSalesHistory">История покупок</button>
+        <button v-if="ctx.canViewHistory" class="ghost interhub-catalog__history-action" type="button" @click="openSalesHistory">История покупок</button>
         <button v-if="ctx.canManagePrices" class="ghost interhub-catalog__price-action" type="button" :disabled="ctx.priceRefreshLoading" @click="ctx.refreshPrices">
           {{ ctx.priceRefreshLoading ? 'Обновляем цены…' : 'Обновить закупочные цены' }}
         </button>
         <button v-if="ctx.canManagePrices" class="ghost interhub-catalog__price-action" type="button" :disabled="ctx.priceRefreshLoading" @click="ctx.exportPrices">Выгрузить Excel</button>
-        <button class="deal-refresh-btn" type="button" :disabled="ctx.loading" aria-label="Обновить каталог InterHub" @click="ctx.reload">
+        <button class="deal-refresh-btn" type="button" :disabled="ctx.loading" aria-label="Обновить каталог поставщика" @click="ctx.reload">
           <span class="deal-refresh-btn__content">↻</span>
         </button>
       </div>
     </div>
 
       <div class="panel__body">
-      <div class="interhub-catalog__balance"><span>Депозит InterHub</span><strong>{{ formatBalance(ctx.balance, ctx.currency) }}</strong><small v-if="hasOverdraft">Овердрафт: {{ formatBalance(overdraftBalance, ctx.currency) }} из {{ formatBalance(overdraftLimit, ctx.currency) }}</small><small v-if="hasOverdraft">Доступно для оплат: {{ formatBalance(availableForPayments, ctx.currency) }}</small><small v-else>Агентский счёт</small></div>
-      <p v-if="ctx.error" class="error">{{ ctx.error }}</p>
-      <p v-if="ctx.priceError" class="error">{{ ctx.priceError }}</p>
-      <p v-if="ctx.priceRefresh" class="muted interhub-catalog__price-progress">Обновление цен: {{ ctx.priceRefresh.processed }} из {{ ctx.priceRefresh.total }} · успешно {{ ctx.priceRefresh.successes }} · ошибок {{ ctx.priceRefresh.errors }}<span v-if="ctx.priceRefresh.message"> · {{ ctx.priceRefresh.message }}</span></p>
+      <div class="interhub-catalog__balance"><span>Депозит поставщика</span><strong>{{ formatBalance(ctx.balance, ctx.currency) }}</strong><small v-if="hasOverdraft">Овердрафт: {{ formatBalance(overdraftBalance, ctx.currency) }} из {{ formatBalance(overdraftLimit, ctx.currency) }}</small><small v-if="hasOverdraft">Доступно для оплат: {{ formatBalance(availableForPayments, ctx.currency) }}</small><small v-else>Агентский счёт</small></div>
+      <p v-if="ctx.error" class="error">{{ anonymizeSupplierText(ctx.error) }}</p>
+      <p v-if="ctx.priceError" class="error">{{ anonymizeSupplierText(ctx.priceError) }}</p>
+      <p v-if="ctx.priceRefresh" class="muted interhub-catalog__price-progress">Обновление цен: {{ ctx.priceRefresh.processed }} из {{ ctx.priceRefresh.total }} · успешно {{ ctx.priceRefresh.successes }} · ошибок {{ ctx.priceRefresh.errors }}<span v-if="ctx.priceRefresh.message"> · {{ anonymizeSupplierText(ctx.priceRefresh.message) }}</span></p>
 
       <div class="interhub-catalog__toolbar">
         <label class="interhub-catalog__search">
@@ -46,7 +46,7 @@
           </thead>
           <tbody>
             <tr v-if="ctx.loading">
-              <td colspan="3" class="muted">Загружаем каталог InterHub…</td>
+              <td colspan="3" class="muted">Загружаем каталог поставщика…</td>
             </tr>
             <tr v-else-if="!filteredServices.length">
               <td colspan="3" class="muted">Услуги по этому запросу не найдены.</td>
@@ -56,13 +56,13 @@
                 <strong>{{ formatServiceTitle(service.title) }}</strong>
                 <span class="interhub-catalog__id">#{{ service.service_id }}</span>
               </td>
-              <td>{{ service.category || '—' }}</td>
+              <td>{{ anonymizeSupplierText(service.category) || '—' }}</td>
               <td><span class="interhub-catalog__type">{{ formatType(service.type) }}</span></td>
             </tr>
           </tbody>
         </table>
       </div>
-      <nav v-if="totalPages > 1" class="interhub-catalog__pagination" aria-label="Страницы каталога InterHub">
+      <nav v-if="totalPages > 1" class="interhub-catalog__pagination" aria-label="Страницы каталога поставщика">
         <button class="ghost" type="button" :disabled="currentPage === 1" aria-label="Предыдущая страница" @click="changePage(-1)">Назад</button>
         <span>Страница {{ currentPage }} из {{ totalPages }}</span>
         <button class="ghost" type="button" :disabled="currentPage === totalPages" aria-label="Следующая страница" @click="changePage(1)">Далее</button>
@@ -96,7 +96,7 @@
       <section class="modal interhub-history" role="dialog" aria-modal="true" aria-labelledby="interhub-history-title">
         <div class="modal__head panel__head panel__head--tight interhub-history__head">
           <div>
-            <p class="interhub-catalog__eyebrow">Поставщики · операции владельца</p>
+            <p class="interhub-catalog__eyebrow">Поставщики · {{ ctx.canPay ? 'операции владельца' : 'покупки по сделкам' }}</p>
             <h3 id="interhub-history-title">История покупок</h3>
           </div>
           <button class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close" type="button" aria-label="Закрыть" title="Закрыть" @click="closeSalesHistory">
@@ -106,24 +106,24 @@
           </button>
         </div>
         <div class="modal__body interhub-history__body">
-          <div class="interhub-history__sources" role="tablist" aria-label="Источник истории">
+          <div v-if="ctx.canPay" class="interhub-history__sources" role="tablist" aria-label="Источник истории">
             <button class="ghost" :class="{ 'is-active': salesHistorySource === 'hub' }" type="button" role="tab" :aria-selected="salesHistorySource === 'hub'" @click="changeSalesHistorySource('hub')">
-              Supplier Hub
+              Поставщик
               <small>Новые операции</small>
             </button>
             <button class="ghost" :class="{ 'is-active': salesHistorySource === 'crm' }" type="button" role="tab" :aria-selected="salesHistorySource === 'crm'" @click="changeSalesHistorySource('crm')">
-              Архив CRM
-              <small>Покупки до перехода</small>
+              CRM и сделки
+              <small>Локальные покупки</small>
             </button>
           </div>
           <form class="interhub-history__filters" @submit.prevent="applySalesHistoryFilter">
             <label class="field"><span class="label">Дата с</span><input v-model="salesHistoryDateFrom" class="input" type="date" /></label>
             <label class="field"><span class="label">Дата по</span><input v-model="salesHistoryDateTo" class="input" type="date" /></label>
             <label v-if="salesHistorySource === 'hub'" class="field"><span class="label">Статус</span><select v-model="salesHistoryState" class="input"><option value="">Все статусы</option><option value="succeeded">Выполнено</option><option value="processing">В обработке</option><option value="requires_attention">Нужна проверка</option><option value="failed">Не выполнено</option></select></label>
-            <label class="field interhub-history__search"><span class="label">Поиск</span><input v-model.trim="salesHistorySearch" class="input" type="search" :placeholder="salesHistorySource === 'hub' ? 'Название или ID операции, услуги, номинала' : 'Название сервиса или номинал'" /></label>
+            <label class="field interhub-history__search"><span class="label">Поиск</span><input v-model.trim="salesHistorySearch" class="input" type="search" :placeholder="salesHistorySource === 'hub' ? 'Название или ID операции, услуги, номинала' : 'Сделка, заказ, покупатель, номинал или оператор'" /></label>
             <button class="btn" type="submit" :disabled="ctx.salesHistoryLoading">{{ ctx.salesHistoryLoading ? 'Загружаем…' : 'Показать' }}</button>
           </form>
-          <p v-if="ctx.salesHistoryError" class="error">{{ ctx.salesHistoryError }}</p>
+          <p v-if="ctx.salesHistoryError" class="error">{{ anonymizeSupplierText(ctx.salesHistoryError) }}</p>
           <p v-if="salesHistoryResultError" class="error">{{ salesHistoryResultError }}</p>
           <div class="interhub-history__cards" aria-label="Итоги выборки">
             <div class="mini"><div class="mini__label">Операций</div><div class="mini__value">{{ salesHistoryTotal }}</div></div>
@@ -133,11 +133,13 @@
             <table class="table table--compact">
               <thead>
                 <tr>
+                  <th v-if="salesHistorySource === 'crm'">Сделка</th>
                   <th><button class="interhub-history__sort" type="button" @click="sortSalesHistory('service')">Название сервиса <span>{{ sortMark('service') }}</span></button></th>
                   <th><button class="interhub-history__sort" type="button" @click="sortSalesHistory('nominal')">Номинал <span>{{ sortMark('nominal') }}</span></button></th>
                   <th><button class="interhub-history__sort" type="button" @click="sortSalesHistory('price')">Цена <span>{{ sortMark('price') }}</span></button></th>
                   <th v-if="salesHistorySource === 'hub'">Статус</th>
                   <th v-else><button class="interhub-history__sort" type="button" @click="sortSalesHistory('giftCode')">Гифт-код <span>{{ sortMark('giftCode') }}</span></button></th>
+                  <th v-if="salesHistorySource === 'crm'">Оператор</th>
                   <th v-if="salesHistorySource === 'hub'">Результат</th>
                   <th><button class="interhub-history__sort" type="button" @click="sortSalesHistory('createdAt')">Дата <span>{{ sortMark('createdAt') }}</span></button></th>
                 </tr>
@@ -146,11 +148,18 @@
                 <tr v-if="ctx.salesHistoryLoading" class="interhub-history__message-row"><td :colspan="historyColumnCount" class="muted">Загружаем историю покупок…</td></tr>
                 <tr v-else-if="!salesHistoryRows.length" class="interhub-history__message-row"><td :colspan="historyColumnCount" class="muted">За выбранный период операций нет.</td></tr>
                 <tr v-for="item in pagedSalesHistory" :key="item.purchaseId || `${item.serviceId}-${item.createdAt}-${item.giftCode}`">
+                  <td v-if="salesHistorySource === 'crm'" data-label="Сделка">
+                    <button v-if="item.dealId" class="interhub-history__deal-link" type="button" @click="openSalesHistoryDeal(item.dealId)">#{{ item.dealId }}</button>
+                    <span v-else>—</span>
+                    <small v-if="item.orderNumber">{{ item.orderNumber }}</small>
+                    <small v-if="item.customerNickname">{{ item.customerNickname }}<template v-if="item.regionCode"> · {{ item.regionCode }}</template></small>
+                  </td>
                   <td data-label="Сервис">{{ item.service }}</td>
                   <td data-label="Номинал">{{ item.nominal || '—' }}</td>
                   <td data-label="Цена">{{ formatMoney(item.price) }} ₽</td>
                   <td v-if="salesHistorySource === 'hub'" data-label="Статус"><span class="interhub-history__state" :class="`is-${item.state}`">{{ item.stateLabel }}</span></td>
                   <td v-else data-label="Гифт-код"><code v-if="item.giftCode" class="interhub-history__gift-code">{{ item.giftCode }}</code><span v-else>—</span></td>
+                  <td v-if="salesHistorySource === 'crm'" data-label="Оператор">{{ item.createdBy || '—' }}</td>
                   <td v-if="salesHistorySource === 'hub'" class="interhub-history__result-cell" data-label="Результат">
                     <code v-if="revealedSalesHistoryResults[item.purchaseId]" class="interhub-history__gift-code">{{ revealedSalesHistoryResults[item.purchaseId] }}</code>
                     <button v-else-if="item.resultAvailable" class="ghost interhub-history__reveal" type="button" :disabled="salesHistoryResultLoadingId === item.purchaseId" @click="revealSalesHistoryResult(item)">{{ salesHistoryResultLoadingId === item.purchaseId ? 'Открываем…' : 'Показать код' }}</button>
@@ -167,11 +176,13 @@
             <template v-else>
               <article v-for="item in pagedSalesHistory" :key="`mobile-${item.purchaseId || `${item.serviceId}-${item.createdAt}-${item.giftCode}`}`" class="interhub-history__mobile-card">
                 <dl>
+                  <div v-if="salesHistorySource === 'crm'"><dt>Сделка</dt><dd><button v-if="item.dealId" class="interhub-history__deal-link" type="button" @click="openSalesHistoryDeal(item.dealId)">#{{ item.dealId }}</button><span v-else>—</span><small v-if="item.orderNumber">{{ item.orderNumber }}</small><small v-if="item.customerNickname">{{ item.customerNickname }}<template v-if="item.regionCode"> · {{ item.regionCode }}</template></small></dd></div>
                   <div><dt>Сервис</dt><dd>{{ item.service }}</dd></div>
                   <div><dt>Номинал</dt><dd>{{ item.nominal || '—' }}</dd></div>
                   <div><dt>Цена</dt><dd>{{ formatMoney(item.price) }} ₽</dd></div>
                   <div v-if="salesHistorySource === 'hub'"><dt>Статус</dt><dd><span class="interhub-history__state" :class="`is-${item.state}`">{{ item.stateLabel }}</span></dd></div>
                   <div v-else><dt>Гифт-код</dt><dd><code v-if="item.giftCode" class="interhub-history__gift-code">{{ item.giftCode }}</code><span v-else>—</span></dd></div>
+                  <div v-if="salesHistorySource === 'crm'"><dt>Оператор</dt><dd>{{ item.createdBy || '—' }}</dd></div>
                   <div v-if="salesHistorySource === 'hub'"><dt>Результат</dt><dd>
                     <code v-if="revealedSalesHistoryResults[item.purchaseId]" class="interhub-history__gift-code">{{ revealedSalesHistoryResults[item.purchaseId] }}</code>
                     <button v-else-if="item.resultAvailable" class="ghost interhub-history__reveal" type="button" :disabled="salesHistoryResultLoadingId === item.purchaseId" @click="revealSalesHistoryResult(item)">{{ salesHistoryResultLoadingId === item.purchaseId ? 'Открываем…' : 'Показать код' }}</button>
@@ -189,7 +200,7 @@
               <button class="ghost" type="button" aria-label="Следующая страница истории продаж" :disabled="activeSalesHistoryPage >= salesHistoryPageCount" @click="changeSalesHistoryPage(1)">Вперёд</button>
             </div>
           </div>
-          <p v-if="salesHistorySource === 'hub'" class="interhub-history__audit-note">Коды не загружаются вместе с таблицей. Каждое нажатие «Показать код» отдельно фиксируется в аудите Supplier Hub.</p>
+          <p v-if="salesHistorySource === 'hub'" class="interhub-history__audit-note">Коды не загружаются вместе с таблицей. Каждое нажатие «Показать код» отдельно фиксируется в аудите поставщика.</p>
         </div>
       </section>
     </div>
@@ -200,7 +211,7 @@
       <section class="modal modal--auto interhub-confirm" role="dialog" aria-modal="true" aria-labelledby="interhub-confirm-title">
         <div class="modal__head panel__head panel__head--tight interhub-confirm__head">
           <div>
-            <p class="interhub-catalog__eyebrow">InterHub · подтверждение покупки</p>
+            <p class="interhub-catalog__eyebrow">Поставщик · подтверждение покупки</p>
             <h3 id="interhub-confirm-title">Проверьте покупку</h3>
           </div>
           <button class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close" type="button" aria-label="Закрыть подтверждение покупки" title="Закрыть" @click="closePurchaseConfirmation">
@@ -247,7 +258,14 @@ const filteredServices = computed(() => {
 
 function formatServiceTitle(value) {
   // Скрываем служебный префикс каталога только в интерфейсе, не меняя исходное имя для API.
-  return String(value || '').replace(/^po_/i, '').trim()
+  return anonymizeSupplierText(String(value || '').replace(/^po_/i, '').trim())
+}
+
+function anonymizeSupplierText(value) {
+  // Заменяем техническое имя интеграции в ответах API на единое название для оператора.
+  return String(value || '')
+    .replace(/supplier\s+hub/gi, 'поставщик')
+    .replace(/interhub/gi, 'поставщик')
 }
 
 function normalizeServiceSearch(value) {
@@ -340,8 +358,8 @@ const purchaseIsAvailable = computed(() => {
 const purchaseAvailability = computed(() => {
   // Отдаём текст поставщика при ошибке, а успешную проверку переводим в короткий статус.
   if (purchaseIsAvailable.value) return 'Готов к покупке'
-  if (!props.ctx.calculation?.success && supportsCalculate.value) return props.ctx.calculation?.message || 'Поставщик не вернул актуальную цену'
-  return props.ctx.check?.message || 'Поставщик не подтвердил доступность'
+  if (!props.ctx.calculation?.success && supportsCalculate.value) return anonymizeSupplierText(props.ctx.calculation?.message) || 'Поставщик не вернул актуальную цену'
+  return anonymizeSupplierText(props.ctx.check?.message) || 'Поставщик не подтвердил доступность'
 })
 const canConfirmPurchase = computed(() => {
   // Кнопка оплаты активна только для владельца и только пока проверенная операция не изменилась.
@@ -365,11 +383,11 @@ const paymentMessage = computed(() => {
     if (props.ctx.payment?.state === 'completed') return `Получено ключей: ${received} из ${requested}.`
     if (props.ctx.payment?.state === 'awaiting_status') return `Получено ключей: ${received} из ${requested}. Оплата следующего ключа уже отправлена и проверяется без повторного списания.`
     if (['ready', 'running'].includes(String(props.ctx.payment?.state || ''))) return `Получаем ключи: ${received} из ${requested}.`
-    return `Получено ключей: ${received} из ${requested}. ${props.ctx.payment?.message || 'Покупка остановлена.'}`
+    return `Получено ключей: ${received} из ${requested}. ${anonymizeSupplierText(props.ctx.payment?.message) || 'Покупка остановлена.'}`
   }
-  if (isProcessing.value) return 'Платёж обрабатывается. Первая проверка статуса — через 1 минуту, затем по графику InterHub.'
+  if (isProcessing.value) return 'Платёж обрабатывается. Первая проверка статуса — через 1 минуту, затем по графику поставщика.'
   if (props.ctx.payment?.success) return giftCode.value ? 'Оплата успешна. Код ваучера:' : 'Оплата успешно подтверждена.'
-  return `Оплата не прошла · ${props.ctx.payment?.message || 'Ответ InterHub не получен'}`
+  return `Оплата не прошла · ${anonymizeSupplierText(props.ctx.payment?.message) || 'Ответ поставщика не получен'}`
 })
 const salesHistoryRows = computed(() => {
   // Обогащаем безопасные ID Hub названиями из уже загруженного каталога и кэша цен CRM.
@@ -382,7 +400,7 @@ const salesHistoryRows = computed(() => {
     return {
       purchaseId: String(item?.purchase_id || ''),
       serviceId,
-      service: String(item?.service_title || '').trim() || serviceNames.get(serviceId) || `Услуга #${serviceId || '—'}`,
+      service: formatServiceTitle(String(item?.service_title || '').trim() || serviceNames.get(serviceId) || `Услуга #${serviceId || '—'}`),
       nominal: String(item?.nominal_title || '').trim() || nominalNames.get(`${serviceId}:${nominalId}`) || nominalId,
       price: Number(item?.price || 0),
       giftCode: String(item?.gift_code || ''),
@@ -390,6 +408,11 @@ const salesHistoryRows = computed(() => {
       stateLabel: salesHistoryStateLabel(state),
       resultAvailable: Boolean(item?.result_available),
       createdAt: String(item?.created_at || ''),
+      dealId: Number(item?.deal_id || 0),
+      orderNumber: String(item?.order_number || ''),
+      customerNickname: String(item?.customer_nickname || ''),
+      regionCode: String(item?.region_code || ''),
+      createdBy: String(item?.created_by || ''),
     }
   })
 })
@@ -404,7 +427,7 @@ const sortedSalesHistory = computed(() => {
 const salesHistoryTotal = computed(() => Math.max(0, Number(props.ctx.salesHistoryTotal || 0)))
 const salesHistoryTotalAmount = computed(() => Number(props.ctx.salesHistoryTotalAmount || 0))
 const salesHistoryPageSize = computed(() => Math.max(1, Number(props.ctx.salesHistoryPageSize || 25)))
-const historyColumnCount = computed(() => salesHistorySource.value === 'hub' ? 6 : 5)
+const historyColumnCount = computed(() => salesHistorySource.value === 'hub' ? 6 : 7)
 const salesHistoryPageCount = computed(() => Math.max(1, Math.ceil(salesHistoryTotal.value / salesHistoryPageSize.value)))
 const activeSalesHistoryPage = computed(() => Math.min(Math.max(salesHistoryPage.value, 1), salesHistoryPageCount.value))
 const pagedSalesHistory = computed(() => {
@@ -451,7 +474,8 @@ function toggleServicesSort() {
 }
 
 function openSalesHistory() {
-  // Открываем общую историю Hub; архив CRM доступен соседней вкладкой без смешивания данных.
+  // Владелец начинает с Hub, а остальные роли сразу видят разрешённые покупки по сделкам из CRM.
+  if (!props.ctx.canPay) salesHistorySource.value = 'crm'
   salesHistoryOpen.value = true
   applySalesHistoryFilter()
 }
@@ -459,6 +483,13 @@ function openSalesHistory() {
 function closeSalesHistory() {
   // Закрываем окно без сброса фильтра, чтобы оператор мог быстро вернуться к тому же периоду.
   salesHistoryOpen.value = false
+}
+
+async function openSalesHistoryDeal(dealId) {
+  // Закрываем журнал и открываем связанную сделку через штатный сценарий рабочего экрана.
+  if (!dealId || typeof props.ctx.openDealById !== 'function') return
+  closeSalesHistory()
+  await props.ctx.openDealById(Number(dealId))
 }
 
 function applySalesHistoryFilter() {
@@ -520,10 +551,10 @@ async function revealSalesHistoryResult(item) {
   try {
     const payload = await props.ctx.revealSalesHistoryResult(item.purchaseId)
     const value = String(payload?.value || '')
-    if (!value) throw new Error('Supplier Hub не вернул код')
+    if (!value) throw new Error('Поставщик не вернул код')
     revealedSalesHistoryResults[item.purchaseId] = value
   } catch (error) {
-    salesHistoryResultError.value = String(error?.message || 'Не удалось открыть результат покупки')
+    salesHistoryResultError.value = anonymizeSupplierText(error?.message || 'Не удалось открыть результат покупки')
   } finally {
     salesHistoryResultLoadingId.value = ''
   }
@@ -609,7 +640,7 @@ async function preparePurchase() {
     purchaseConfirmationOpen.value = true
   } catch (error) {
     // Не скрываем непредвиденную ошибку подготовки, если запрос не смог вернуть свой статус.
-    obtainError.value = String(error?.message || 'Не удалось подготовить покупку')
+    obtainError.value = anonymizeSupplierText(error?.message || 'Не удалось подготовить покупку')
   } finally {
     obtainStage.value = ''
     obtainLoading.value = false
@@ -625,11 +656,11 @@ async function confirmPurchase() {
   try {
     await props.ctx.pay()
     if (!props.ctx.payment?.success && !isProcessing.value) {
-      obtainError.value = `Не удалось получить ключ: ${props.ctx.payment?.message || 'Interhub не подтвердил оплату'}`
+      obtainError.value = `Не удалось получить ключ: ${anonymizeSupplierText(props.ctx.payment?.message) || 'Поставщик не подтвердил оплату'}`
     }
   } catch (error) {
     // Оставляем ошибку оплаты рядом с формой, чтобы оператор видел итог после закрытия окна.
-    obtainError.value = String(error?.message || 'Не удалось подтвердить покупку')
+    obtainError.value = anonymizeSupplierText(error?.message || 'Не удалось подтвердить покупку')
   } finally {
     closePurchaseConfirmation()
     obtainStage.value = ''
@@ -689,11 +720,11 @@ function formatHistoryDate(value) {
 }
 
 function formatProviderResponse(value) {
-  // Показываем сохранённый JSON как есть, чтобы оператор видел все поля ответа calculate.
+  // Показываем сохранённый JSON без технического названия поставщика.
   try {
-    return JSON.stringify(value || {}, null, 2)
+    return anonymizeSupplierText(JSON.stringify(value || {}, null, 2))
   } catch {
-    return String(value || '')
+    return anonymizeSupplierText(value)
   }
 }
 
@@ -750,6 +781,7 @@ function nominalSortValue(title) {
 .work-page.work-modal-root.modal-backdrop.interhub-history-backdrop .interhub-history { width: min(1180px, calc(100vw - 32px)); max-height: min(780px, calc(100vh - 32px)); }
 .interhub-history__head { position: sticky; top: 0; z-index: 1; padding-bottom: 12px; border-bottom: 1px solid rgba(181, 194, 219, .16); background: #101626; }.interhub-history__head h3 { margin: 0; color: #f4f7ff; font-size: 22px; letter-spacing: -.02em; }
 .interhub-history__body { display: grid; min-width: 0; align-content: start; gap: 16px; }.interhub-history__filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; padding: 14px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); }.interhub-history__filters .field { min-width: 170px; }.interhub-history__filters .interhub-history__search { min-width: 260px; flex: 1 1 260px; }.interhub-history__filters .btn { min-height: 40px; }.interhub-history__cards { display: grid; grid-template-columns: repeat(2, minmax(180px, 240px)); gap: 10px; }.interhub-history__cards .mini { min-width: 0; background: #1b2435; border-color: rgba(181, 194, 219, .2); }.interhub-history__cards .mini__value { color: #f4f7ff; }.interhub-history__table-wrap { width: 100%; max-height: min(460px, 44vh); min-width: 0; min-height: 180px; overflow: auto; overscroll-behavior: contain; }.interhub-history__table-wrap thead { position: sticky; top: 0; z-index: 1; background: #202838; }.interhub-history__table-wrap .table { min-width: 760px; color: #eef2ff; }.interhub-history__table-wrap .table th { background: #2a3447; color: #f7f9ff; }.interhub-history__table-wrap .table td { color: #e5eaf5; }.interhub-history__pagination { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; color: #b5bfd3; font-size: 13px; }.interhub-history__pagination > div { display: flex; gap: 8px; }.interhub-history__sort { display: inline-flex; width: 100%; gap: 5px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }.interhub-history__sort span { color: #e88613; }.interhub-history__gift-code { color: #f4f7ff; font: 12px/1.35 ui-monospace, monospace; white-space: nowrap; }
+.interhub-history__deal-link { display: block; padding: 0; border: 0; background: transparent; color: #f0a447; font: inherit; font-weight: 850; cursor: pointer; }.interhub-history__deal-link:hover { color: #ffc978; text-decoration: underline; text-underline-offset: 3px; }.interhub-history__table-wrap td small, .interhub-history__mobile-card dd small { display: block; margin-top: 2px; color: #8491ac; font-size: 10px; }
 .interhub-history__sources { display: flex; flex-wrap: wrap; gap: 8px; }.interhub-history__sources .ghost { display: grid; gap: 2px; min-width: 190px; justify-items: start; padding: 10px 14px; }.interhub-history__sources .ghost small { color: #9da9bf; font-size: 11px; font-weight: 500; }.interhub-history__sources .ghost.is-active { border-color: rgba(232, 134, 19, .7); background: rgba(232, 134, 19, .14); box-shadow: inset 3px 0 0 #e88613; }.interhub-history__state { display: inline-flex; padding: 4px 8px; border: 1px solid rgba(181, 194, 219, .28); border-radius: 999px; color: #c8d1e4; font-size: 11px; font-weight: 750; white-space: nowrap; }.interhub-history__state.is-succeeded { border-color: rgba(70, 224, 185, .46); color: #62e4c0; }.interhub-history__state.is-processing, .interhub-history__state.is-payment_started { border-color: rgba(246, 187, 76, .52); color: #f6c66e; }.interhub-history__state.is-failed, .interhub-history__state.is-requires_attention { border-color: rgba(255, 121, 121, .5); color: #ff9b9b; }.interhub-history__result-cell { min-width: 130px; }.interhub-history__reveal { min-height: 32px; padding: 5px 9px; white-space: nowrap; }.interhub-history__mobile-list { display: none; }.interhub-history__audit-note { margin: 0; padding: 10px 12px; border-left: 3px solid rgba(181, 194, 219, .3); background: rgba(181, 194, 219, .06); color: #9da9bf; font-size: 12px; line-height: 1.45; }
 @media (max-width: 1120px) { .interhub-catalog__form { grid-template-columns: minmax(220px, .8fr) minmax(0, 1fr); }.interhub-catalog__fields { grid-column: 2; }.interhub-catalog__actions { grid-column: 2; margin-top: 0; }.interhub-catalog__payment-result { grid-template-columns: 1fr auto; } }
 @media (max-width: 680px) {

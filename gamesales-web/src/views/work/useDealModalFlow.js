@@ -327,6 +327,8 @@ export function useDealModalFlow({
     }
     const editCurrent = {
       lock_version: editDeal.lock_version,
+      created_at: editDeal.created_at,
+      completed_at: editDeal.completed_at,
       deal_type_code: editDeal.deal_type_code,
       account_id: editDeal.account_id,
       product_id: editDeal.product_id,
@@ -438,6 +440,55 @@ export function useDealModalFlow({
     return true
   }
 
+  function savedDealSnapshot(deal) {
+    // Один формат снимка используется при открытии карточки и обновлении после оплаты.
+    return {
+      lock_version: Number(deal.lock_version || 1),
+      created_at: toDateTimeLocalValue(deal.created_at),
+      completed_at: toDateTimeLocalValue(deal.completed_at),
+      deal_type_code: deal.deal_type_code || (deal.deal_type === 'Шеринг' ? 'rental' : 'sale'),
+      account_id: deal.account_id,
+      product_id: deal.product_id || deal.game_id || '',
+      customer_nickname: deal.customer_nickname || '',
+      order_number: deal.order_number || '',
+      source_id: deal.source_id || '',
+      messenger_id: deal.messenger_id || '',
+      region_code: deal.region_code || '',
+      slot_type_code: deal.slot_type_code || '',
+      subscription_term_id: deal.subscription_term_id || '',
+      reserve_key: deal.reserve_key || '',
+      reserve_claim_token: '',
+      duplicate_assignment_id: deal.duplicate_assignment_id || '',
+      price: Number(deal.price || 0),
+      purchase_cost: Number(deal.purchase_cost || 0),
+      login: deal.login || '',
+      password: deal.password || '',
+      product_link: deal.product_link || '',
+      purchase_at: deal.purchase_at ? String(deal.purchase_at).slice(0, 10) : '',
+      slots_used: deal.slots_used || (deal.deal_type_code === 'rental' ? 1 : 0),
+      notes: deal.notes || '',
+      flow_status_code: deal.flow_status_code || '',
+      is_duplicate_flow: Boolean(deal.is_duplicate_flow),
+      // Для снимка фиксируем и признак возврата, чтобы корректно откатывать изменения формы.
+      is_refund: Boolean(deal.is_refund),
+      // Снимок редактирования должен хранить фактическое значение сделки, чтобы не было ложной подстановки.
+      responsible_username: deal.responsible_username || '',
+    }
+  }
+
+  function syncSavedDealFromSupplier(deal) {
+    // Обновляем только ту же карточку в просмотре, не затирая правки и не маскируя конфликт версий.
+    if (!editDeal.open || Number(editDeal.deal_id) !== Number(deal?.deal_id) || dealEditMode.value !== 'view') return false
+    if (Number(deal.lock_version || 1) < Number(editDeal.lock_version || 1)) return false
+    const previousInitLock = dealInitLock.value
+    dealInitLock.value = true
+    initialEditDealSnapshot = savedDealSnapshot(deal)
+    applyDealToEditState(deal)
+    // Не запускаем сбросы зависимых полей при применении уже сохранённой серверной карточки.
+    nextTick(() => { dealInitLock.value = previousInitLock })
+    return true
+  }
+
   async function startEditDeal(deal, options = {}) {
     dealLoading.value = true
     // Модалка сделки живет во вкладке "Сделки", поэтому при открытии из других разделов сначала переключаем вкладку.
@@ -476,37 +527,7 @@ export function useDealModalFlow({
       safeQuickEditSubscriptionTermError.value = ''
       dealAccountsForProductEdit.value = []
       // Сохраняем исходные данные в том же формате, что и форма, чтобы корректно сравнивать "грязные" изменения.
-      initialEditDealSnapshot = {
-        lock_version: Number(deal.lock_version || 1),
-        created_at: toDateTimeLocalValue(deal.created_at),
-        completed_at: toDateTimeLocalValue(deal.completed_at),
-        deal_type_code: deal.deal_type_code || (deal.deal_type === 'Шеринг' ? 'rental' : 'sale'),
-        account_id: deal.account_id,
-        product_id: deal.product_id || deal.game_id || '',
-        customer_nickname: deal.customer_nickname || '',
-        order_number: deal.order_number || '',
-        source_id: deal.source_id || '',
-        messenger_id: deal.messenger_id || '',
-        region_code: deal.region_code || '',
-        slot_type_code: deal.slot_type_code || '',
-        subscription_term_id: deal.subscription_term_id || '',
-        reserve_key: deal.reserve_key || '',
-        duplicate_assignment_id: deal.duplicate_assignment_id || '',
-        price: Number(deal.price || 0),
-        purchase_cost: Number(deal.purchase_cost || 0),
-        login: deal.login || '',
-        password: deal.password || '',
-        product_link: deal.product_link || '',
-        purchase_at: deal.purchase_at ? String(deal.purchase_at).slice(0, 10) : '',
-        slots_used: deal.slots_used || (deal.deal_type_code === 'rental' ? 1 : 0),
-        notes: deal.notes || '',
-        flow_status_code: deal.flow_status_code || '',
-        is_duplicate_flow: Boolean(deal.is_duplicate_flow),
-        // Для снимка фиксируем и признак возврата, чтобы корректно откатывать изменения формы.
-        is_refund: Boolean(deal.is_refund),
-        // Снимок редактирования должен хранить фактическое значение сделки, чтобы не было ложной подстановки.
-        responsible_username: deal.responsible_username || '',
-      }
+      initialEditDealSnapshot = savedDealSnapshot(deal)
       applyDealToEditState(deal)
       await new Promise((resolve) => nextTick(resolve))
       // Дожидаемся загрузки связанных полей формы, чтобы не показывать "полупустую" карточку.
@@ -558,7 +579,8 @@ export function useDealModalFlow({
     // Второй клик по кнопке "редактировать" возвращает в просмотр и сбрасывает несохраненные правки.
     if (dealEditMode.value === 'edit') {
       dealInitLock.value = true
-      applyDealToEditState(initialEditDealSnapshot)
+      // Снимок сравнения не содержит ID: при отмене правок сохраняем привязку к той же сделке.
+      applyDealToEditState({ ...initialEditDealSnapshot, deal_id: editDeal.deal_id })
       dealEditMode.value = 'view'
       nextTick(() => {
         setTimeout(() => {
@@ -579,5 +601,6 @@ export function useDealModalFlow({
     startEditDeal,
     cancelEditDeal,
     toggleDealEditMode,
+    syncSavedDealFromSupplier,
   }
 }

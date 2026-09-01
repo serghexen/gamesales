@@ -37,6 +37,8 @@ class InterHubEndpointsTests(unittest.TestCase):
         self.assertIn("/integrations/interhub/vouchers/batches/{batch_id}", response.json()["paths"])
         self.assertIn("/integrations/interhub/prices/refresh", response.json()["paths"])
         self.assertIn("/integrations/interhub/prices/export", response.json()["paths"])
+        self.assertIn("/deals/{deal_id}/interhub/prepare", response.json()["paths"])
+        self.assertIn("/deals/{deal_id}/interhub/pay", response.json()["paths"])
 
     def test_services_returns_normalized_catalog(self):
         # Endpoint должен передать в UI тип услуги и динамические поля формы.

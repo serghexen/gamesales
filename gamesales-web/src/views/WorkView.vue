@@ -2244,7 +2244,7 @@ async function loadInterhubServices() {
     interhubServices.value = normalizeInterhubServices(data?.items)
   } catch (err) {
     interhubServices.value = []
-    interhubError.value = mapApiError(err?.message || 'Не удалось загрузить каталог InterHub')
+    interhubError.value = mapApiError(err?.message || 'Не удалось загрузить каталог поставщика')
   } finally {
     interhubLoading.value = false
   }
@@ -2259,7 +2259,7 @@ async function loadInterhubBalance() {
     interhubOverBalance.value = Number(data?.over_balance || 0)
     interhubOverLimit.value = Number(data?.over_limit || 0)
   } catch (err) {
-    interhubError.value = mapApiError(err?.message || 'Не удалось загрузить баланс InterHub')
+    interhubError.value = mapApiError(err?.message || 'Не удалось загрузить баланс поставщика')
   }
 }
 
@@ -2367,7 +2367,7 @@ async function exportInterhubPrices() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = 'interhub-prices.xlsx'
+    link.download = 'supplier-prices.xlsx'
     link.click()
     URL.revokeObjectURL(url)
   } catch (err) {
@@ -2758,6 +2758,7 @@ const {
   closeDealModal: closeDealModalFromFlow,
   startEditDeal,
   toggleDealEditMode,
+  syncSavedDealFromSupplier,
 } = useDealModalFlow({
   closeAllModals,
   resetModalPos,
@@ -2814,6 +2815,38 @@ const {
 })
 
 closeDealModalDeferred.set(closeDealModalFromFlow)
+
+const dealSupplierBusy = ref(false)
+watch(() => editDeal.deal_id, () => {
+  // Запрос закрытой карточки не должен блокировать действия следующей сделки.
+  dealSupplierBusy.value = false
+}, { flush: 'sync' })
+
+function setDealSupplierBusy({ dealId, busy }) {
+  // Связываем загрузку/оплату поставщика с кнопками только текущей карточки.
+  if (Number(editDeal.deal_id) === Number(dealId)) dealSupplierBusy.value = Boolean(busy)
+}
+
+async function syncDealAfterSupplierPurchase(dealId) {
+  // Перечитываем серверную карточку целиком вместе с версией; локальные правки не перетираем.
+  const savedDeal = await apiGet(`/deals/${Number(dealId)}`, { token: auth.state.token })
+  if (Number(editDeal.deal_id) !== Number(dealId) || !editDeal.open) return
+  if (!syncSavedDealFromSupplier(savedDeal)) throw new Error('Не удалось синхронизировать сохранённую сделку')
+  // Список обновляем отдельно, чтобы следующее открытие не вернуло старую закупочную цену.
+  void loadDeals(dealPage.value)
+}
+
+// Загружает карточку по ID из истории поставщика и открывает её штатным сценарием сделок.
+async function openDealById(dealId) {
+  const normalizedId = Number(dealId || 0)
+  if (!normalizedId) return
+  try {
+    const deal = await apiGet(`/deals/${normalizedId}`, { token: auth.state.token })
+    await startEditDeal(deal)
+  } catch (error) {
+    showDealWarning(mapApiError(error?.message) || `Сделка #${normalizedId} не найдена`)
+  }
+}
 
 // Загружает сделку из расшифровки финансов и возвращает пользователя в исходную подвкладку.
 async function openFinanceDetailDeal(dealId, returnFinanceMode = 'report') {
@@ -3683,6 +3716,9 @@ const {
   updateDealDraft,
   deleteDeal,
   dealLoading,
+  dealSupplierBusy,
+  syncDealAfterSupplierPurchase,
+  setDealSupplierBusy,
   dealBackgroundSync,
   createDeal,
   createDealDraft,
@@ -4045,6 +4081,7 @@ const interhubSectionCtx = asCtx({
   salesHistoryTotalAmount: interhubSalesHistoryTotalAmount,
   salesHistoryPage: interhubSalesHistoryPage,
   salesHistoryPageSize: interhubSalesHistoryPageSize,
+  canViewHistory: true,
   canPay: canPayInterhub,
   canManagePrices: canPayInterhub,
   pay: payInterhub,
@@ -4053,6 +4090,7 @@ const interhubSectionCtx = asCtx({
   exportPrices: exportInterhubPrices,
   loadSalesHistory: loadInterhubSalesHistory,
   revealSalesHistoryResult: revealSupplierHubResult,
+  openDealById,
   reload: reloadInterhubData,
   calculate: calculateInterhub,
   checkPayment: checkInterhub,
