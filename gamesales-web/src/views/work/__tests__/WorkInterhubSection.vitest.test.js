@@ -165,6 +165,8 @@ describe('WorkInterhubSection', () => {
     expect(document.body.textContent).toContain('Выполнено')
     expect(document.body.querySelector('.interhub-history__table-wrap tbody td')?.getAttribute('data-label')).toBe('Сервис')
     expect([...document.body.querySelectorAll('.interhub-history__table-wrap tbody td')].map((cell) => cell.getAttribute('data-label'))).toEqual(['Сервис', 'Номинал', 'Цена', 'Статус', 'Результат', 'Дата'])
+    expect([...document.body.querySelectorAll('.interhub-history__mobile-card dt')].map((item) => item.textContent)).toEqual(['Сервис', 'Номинал', 'Цена', 'Статус', 'Результат', 'Дата'])
+    expect(document.body.querySelector('.interhub-history__mobile-card')?.textContent).toContain('Mobile top up')
     expect(document.body.textContent).not.toContain('GIFT-15')
     await document.body.querySelector('.interhub-history__reveal').dispatchEvent(new Event('click'))
     await Promise.resolve()

@@ -161,6 +161,27 @@
               </tbody>
             </table>
           </div>
+          <div class="interhub-history__mobile-list" aria-label="Операции истории покупок">
+            <p v-if="ctx.salesHistoryLoading" class="muted interhub-history__mobile-message">Загружаем историю покупок…</p>
+            <p v-else-if="!salesHistoryRows.length" class="muted interhub-history__mobile-message">За выбранный период операций нет.</p>
+            <template v-else>
+              <article v-for="item in pagedSalesHistory" :key="`mobile-${item.purchaseId || `${item.serviceId}-${item.createdAt}-${item.giftCode}`}`" class="interhub-history__mobile-card">
+                <dl>
+                  <div><dt>Сервис</dt><dd>{{ item.service }}</dd></div>
+                  <div><dt>Номинал</dt><dd>{{ item.nominal || '—' }}</dd></div>
+                  <div><dt>Цена</dt><dd>{{ formatMoney(item.price) }} ₽</dd></div>
+                  <div v-if="salesHistorySource === 'hub'"><dt>Статус</dt><dd><span class="interhub-history__state" :class="`is-${item.state}`">{{ item.stateLabel }}</span></dd></div>
+                  <div v-else><dt>Гифт-код</dt><dd><code v-if="item.giftCode" class="interhub-history__gift-code">{{ item.giftCode }}</code><span v-else>—</span></dd></div>
+                  <div v-if="salesHistorySource === 'hub'"><dt>Результат</dt><dd>
+                    <code v-if="revealedSalesHistoryResults[item.purchaseId]" class="interhub-history__gift-code">{{ revealedSalesHistoryResults[item.purchaseId] }}</code>
+                    <button v-else-if="item.resultAvailable" class="ghost interhub-history__reveal" type="button" :disabled="salesHistoryResultLoadingId === item.purchaseId" @click="revealSalesHistoryResult(item)">{{ salesHistoryResultLoadingId === item.purchaseId ? 'Открываем…' : 'Показать код' }}</button>
+                    <span v-else class="muted">—</span>
+                  </dd></div>
+                  <div><dt>Дата</dt><dd>{{ formatHistoryDate(item.createdAt) }}</dd></div>
+                </dl>
+              </article>
+            </template>
+          </div>
           <div v-if="salesHistoryTotal" class="interhub-history__pagination">
             <span>{{ salesHistoryRange }}</span>
             <div>
@@ -729,7 +750,7 @@ function nominalSortValue(title) {
 .work-page.work-modal-root.modal-backdrop.interhub-history-backdrop .interhub-history { width: min(1180px, calc(100vw - 32px)); max-height: min(780px, calc(100vh - 32px)); }
 .interhub-history__head { position: sticky; top: 0; z-index: 1; padding-bottom: 12px; border-bottom: 1px solid rgba(181, 194, 219, .16); background: #101626; }.interhub-history__head h3 { margin: 0; color: #f4f7ff; font-size: 22px; letter-spacing: -.02em; }
 .interhub-history__body { display: grid; min-width: 0; align-content: start; gap: 16px; }.interhub-history__filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; padding: 14px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); }.interhub-history__filters .field { min-width: 170px; }.interhub-history__filters .interhub-history__search { min-width: 260px; flex: 1 1 260px; }.interhub-history__filters .btn { min-height: 40px; }.interhub-history__cards { display: grid; grid-template-columns: repeat(2, minmax(180px, 240px)); gap: 10px; }.interhub-history__cards .mini { min-width: 0; background: #1b2435; border-color: rgba(181, 194, 219, .2); }.interhub-history__cards .mini__value { color: #f4f7ff; }.interhub-history__table-wrap { width: 100%; max-height: min(460px, 44vh); min-width: 0; min-height: 180px; overflow: auto; overscroll-behavior: contain; }.interhub-history__table-wrap thead { position: sticky; top: 0; z-index: 1; background: #202838; }.interhub-history__table-wrap .table { min-width: 760px; color: #eef2ff; }.interhub-history__table-wrap .table th { background: #2a3447; color: #f7f9ff; }.interhub-history__table-wrap .table td { color: #e5eaf5; }.interhub-history__pagination { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; color: #b5bfd3; font-size: 13px; }.interhub-history__pagination > div { display: flex; gap: 8px; }.interhub-history__sort { display: inline-flex; width: 100%; gap: 5px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }.interhub-history__sort span { color: #e88613; }.interhub-history__gift-code { color: #f4f7ff; font: 12px/1.35 ui-monospace, monospace; white-space: nowrap; }
-.interhub-history__sources { display: flex; flex-wrap: wrap; gap: 8px; }.interhub-history__sources .ghost { display: grid; gap: 2px; min-width: 190px; justify-items: start; padding: 10px 14px; }.interhub-history__sources .ghost small { color: #9da9bf; font-size: 11px; font-weight: 500; }.interhub-history__sources .ghost.is-active { border-color: rgba(232, 134, 19, .7); background: rgba(232, 134, 19, .14); box-shadow: inset 3px 0 0 #e88613; }.interhub-history__state { display: inline-flex; padding: 4px 8px; border: 1px solid rgba(181, 194, 219, .28); border-radius: 999px; color: #c8d1e4; font-size: 11px; font-weight: 750; white-space: nowrap; }.interhub-history__state.is-succeeded { border-color: rgba(70, 224, 185, .46); color: #62e4c0; }.interhub-history__state.is-processing, .interhub-history__state.is-payment_started { border-color: rgba(246, 187, 76, .52); color: #f6c66e; }.interhub-history__state.is-failed, .interhub-history__state.is-requires_attention { border-color: rgba(255, 121, 121, .5); color: #ff9b9b; }.interhub-history__result-cell { min-width: 130px; }.interhub-history__reveal { min-height: 32px; padding: 5px 9px; white-space: nowrap; }.interhub-history__audit-note { margin: 0; padding: 10px 12px; border-left: 3px solid rgba(181, 194, 219, .3); background: rgba(181, 194, 219, .06); color: #9da9bf; font-size: 12px; line-height: 1.45; }
+.interhub-history__sources { display: flex; flex-wrap: wrap; gap: 8px; }.interhub-history__sources .ghost { display: grid; gap: 2px; min-width: 190px; justify-items: start; padding: 10px 14px; }.interhub-history__sources .ghost small { color: #9da9bf; font-size: 11px; font-weight: 500; }.interhub-history__sources .ghost.is-active { border-color: rgba(232, 134, 19, .7); background: rgba(232, 134, 19, .14); box-shadow: inset 3px 0 0 #e88613; }.interhub-history__state { display: inline-flex; padding: 4px 8px; border: 1px solid rgba(181, 194, 219, .28); border-radius: 999px; color: #c8d1e4; font-size: 11px; font-weight: 750; white-space: nowrap; }.interhub-history__state.is-succeeded { border-color: rgba(70, 224, 185, .46); color: #62e4c0; }.interhub-history__state.is-processing, .interhub-history__state.is-payment_started { border-color: rgba(246, 187, 76, .52); color: #f6c66e; }.interhub-history__state.is-failed, .interhub-history__state.is-requires_attention { border-color: rgba(255, 121, 121, .5); color: #ff9b9b; }.interhub-history__result-cell { min-width: 130px; }.interhub-history__reveal { min-height: 32px; padding: 5px 9px; white-space: nowrap; }.interhub-history__mobile-list { display: none; }.interhub-history__audit-note { margin: 0; padding: 10px 12px; border-left: 3px solid rgba(181, 194, 219, .3); background: rgba(181, 194, 219, .06); color: #9da9bf; font-size: 12px; line-height: 1.45; }
 @media (max-width: 1120px) { .interhub-catalog__form { grid-template-columns: minmax(220px, .8fr) minmax(0, 1fr); }.interhub-catalog__fields { grid-column: 2; }.interhub-catalog__actions { grid-column: 2; margin-top: 0; }.interhub-catalog__payment-result { grid-template-columns: 1fr auto; } }
 @media (max-width: 680px) {
   .interhub-catalog__head { align-items: start; flex-direction: column; }
@@ -749,17 +770,15 @@ function nominalSortValue(title) {
   .interhub-history__filters { align-items: stretch; }
   .interhub-history__filters .field, .interhub-history__filters .btn { width: 100%; }
   .interhub-history__cards { grid-template-columns: 1fr; }
-  .interhub-history__table-wrap { max-height: none; min-height: 0; overflow: visible; }
-  .interhub-history__table-wrap .table { display: block; min-width: 0; background: transparent; }
-  .interhub-history__table-wrap thead { display: none; }
-  .interhub-history__table-wrap tbody { display: grid; gap: 10px; }
-  .interhub-history__table-wrap tbody tr { display: grid; gap: 0; padding: 8px 12px; border: 1px solid rgba(181, 194, 219, .22); border-radius: 14px; background: #1b2435; }
-  .interhub-history__table-wrap tbody td { display: grid; grid-template-columns: minmax(92px, .72fr) minmax(0, 1.28fr); gap: 12px; align-items: center; padding: 8px 0; border: 0; border-bottom: 1px solid rgba(181, 194, 219, .12); overflow-wrap: anywhere; }
-  .interhub-history__table-wrap tbody td::before { content: attr(data-label); color: #9da9bf; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-  .interhub-history__table-wrap tbody td:last-child { border-bottom: 0; }
-  .interhub-history__table-wrap .interhub-history__message-row { display: block; }
-  .interhub-history__table-wrap .interhub-history__message-row td { display: block; padding: 14px 0; border: 0; }
-  .interhub-history__table-wrap .interhub-history__message-row td::before { content: none; }
+  .interhub-history__table-wrap { display: none; }
+  .interhub-history__mobile-list { display: grid; min-width: 0; gap: 12px; }
+  .interhub-history__mobile-card { min-width: 0; padding: 8px 14px; border: 1px solid rgba(181, 194, 219, .22); border-radius: 14px; background: #1b2435; }
+  .interhub-history__mobile-card dl { display: grid; margin: 0; }
+  .interhub-history__mobile-card dl > div { display: grid; grid-template-columns: minmax(92px, .72fr) minmax(0, 1.28fr); gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(181, 194, 219, .12); }
+  .interhub-history__mobile-card dl > div:last-child { border-bottom: 0; }
+  .interhub-history__mobile-card dt { color: #9da9bf; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .interhub-history__mobile-card dd { min-width: 0; margin: 0; color: #e5eaf5; overflow-wrap: anywhere; }
+  .interhub-history__mobile-message { margin: 0; padding: 16px 2px; }
   .interhub-history__gift-code { white-space: normal; overflow-wrap: anywhere; }
   .interhub-history__pagination { align-items: stretch; flex-direction: column; }
   .interhub-history__pagination > div { justify-content: stretch; }
