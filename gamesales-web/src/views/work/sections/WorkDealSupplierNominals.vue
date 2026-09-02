@@ -58,7 +58,6 @@
         <div>
           <span>{{ purchaseStateLabel }}</span>
           <strong>{{ purchase.nominal_title || selectedNominalTitle }}</strong>
-          <small v-if="purchase.amount">Закупочная цена: {{ formatMoney(purchase.amount) }} ₽</small>
           <small v-if="purchase.created_by">Оператор: {{ purchase.created_by }}</small>
         </div>
         <p v-if="purchase.state === 'processing'">Код будет показан здесь после подтверждения поставщиком. Повторная оплата не отправляется.</p>
@@ -71,17 +70,13 @@
             <span>Ваучеры в сделке</span>
             <h5 id="deal-supplier-vouchers-title">Получено: {{ paidPurchases.length }}</h5>
           </div>
-          <div class="deal-supplier__vouchers-summary">
-            <span>Сумма закупки</span>
-            <strong>{{ formatMoney(paidPurchasesAmount) }} ₽</strong>
-          </div>
         </div>
         <ol class="deal-supplier__voucher-list">
           <li v-for="(item, index) in paidPurchases" :key="item.agent_transaction_id" class="deal-supplier__voucher">
             <span class="deal-supplier__voucher-index">{{ paidPurchases.length - index }}</span>
             <div class="deal-supplier__voucher-info">
               <strong>{{ item.nominal_title || item.nominal_id }}</strong>
-              <small>{{ formatMoney(item.amount) }} ₽ · {{ item.created_by || 'оператор не указан' }} · {{ formatDate(item.updated_at || item.created_at) }}</small>
+              <small>{{ item.created_by || 'оператор не указан' }} · {{ formatDate(item.updated_at || item.created_at) }}</small>
             </div>
             <code>{{ item.gift_code }}</code>
             <button class="ghost ghost--small" type="button" @click="copyGiftCode(item)">
@@ -111,9 +106,9 @@
             <span>{{ cleanServiceTitle(prepared?.service_title || supplier?.service_title) }}</span>
             <span class="deal-supplier-confirm__nominal">{{ prepared?.nominal_title || selectedNominalTitle }}</span>
           </p>
+          <!-- Закупочная цена остаётся в учёте, но не выводится в блоке ваучеров и подтверждении. -->
           <dl class="deal-supplier-confirm__details">
             <div><dt>Сделка</dt><dd>#{{ dealId }}</dd></div>
-            <div><dt>Актуальная цена</dt><dd>{{ formatMoney(prepared?.amount) }} ₽</dd></div>
             <div><dt>К покупке, шт.</dt><dd>1</dd></div>
             <div :class="{ 'is-error': !prepared?.success }"><dt>Доступность</dt><dd>{{ preparedAvailability }}</dd></div>
           </dl>
@@ -175,7 +170,6 @@ const blockedReason = computed(() => {
 })
 const purchaseBlocked = computed(() => !dealId.value || loading.value || synchronizing.value || Boolean(blockedReason.value))
 const paidPurchases = computed(() => purchases.value.filter((item) => item?.state === 'paid' && item?.gift_code))
-const paidPurchasesAmount = computed(() => paidPurchases.value.reduce((sum, item) => sum + Number(item.amount || 0), 0))
 const preparedAvailability = computed(() => prepared.value?.success ? 'Готов к покупке' : (anonymizeSupplierText(prepared.value?.message) || 'Поставщик не подтвердил доступность'))
 const purchaseStateLabel = computed(() => stateLabel(purchase.value?.state))
 
@@ -199,11 +193,6 @@ function cleanServiceTitle(value) {
 function stateLabel(state) {
   // Переводим внутреннее состояние покупки в короткую подпись оператора.
   return ({ checked: 'Готово к покупке', processing: 'В обработке', paid: 'Код получен', failed: 'Ошибка' })[String(state || '')] || 'Подготовлено'
-}
-
-function formatMoney(value) {
-  // Форматируем фактическую закупочную цену с копейками для проверки перед оплатой.
-  return new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0)).replace(/\u00a0/g, ' ')
 }
 
 function formatDate(value) {
@@ -421,8 +410,8 @@ onBeforeUnmount(() => {
 .deal-supplier__head { justify-content: space-between; gap: 16px; }
 .deal-supplier__identity { gap: 11px; }.deal-supplier__mark { display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid rgba(232, 134, 19, .52); border-radius: 10px; background: #e88613; color: #111827; font-weight: 900; letter-spacing: -.06em; transform: rotate(-3deg); }
 .deal-supplier__eyebrow { margin: 0 0 3px; color: #e9a64d; font-size: 10px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }.deal-supplier h4 { margin: 0; color: var(--ink, #f4f7ff); font-size: 17px; }.deal-supplier__body { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(190px, .85fr) auto; gap: 12px; align-items: end; }.deal-supplier__service { display: grid; gap: 5px; min-height: 42px; padding: 9px 12px; border-left: 3px solid #e88613; background: rgba(255, 255, 255, .045); }.deal-supplier__service span { color: var(--muted, #9ca3af); font-size: 11px; }.deal-supplier__service strong { color: var(--ink, #f4f7ff); font-size: 13px; }.deal-supplier__field { margin: 0; }.deal-supplier__obtain { min-width: 132px; min-height: 42px; }.deal-supplier__spinner { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: deal-supplier-spin .7s linear infinite; }.deal-supplier__save-note { display: grid; gap: 4px; padding: 12px 14px; border: 1px dashed rgba(232, 134, 19, .36); border-radius: 10px; color: var(--muted, #b5bfd3); }.deal-supplier__save-note strong { color: var(--ink, #f4f7ff); }.deal-supplier__muted, .deal-supplier__error { margin: 0; }.deal-supplier__error { color: #ffabab; }.deal-supplier__result { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border-left: 3px solid #d69a4a; background: rgba(214, 154, 74, .09); }.deal-supplier__result.is-paid { border-left-color: #59e3b1; background: rgba(89, 227, 177, .09); }.deal-supplier__result.is-processing { border-left-color: #7aa7ff; background: rgba(122, 167, 255, .08); }.deal-supplier__result > div:first-child { display: grid; gap: 3px; }.deal-supplier__result span, .deal-supplier__result small { color: var(--muted, #b5bfd3); }.deal-supplier__result strong { color: var(--ink, #f4f7ff); }.deal-supplier__result p { grid-column: 1 / -1; margin: 0; color: var(--muted, #b5bfd3); }
-.deal-supplier__vouchers { display: grid; gap: 10px; padding-top: 2px; }.deal-supplier__vouchers-head { display: flex; justify-content: space-between; gap: 16px; align-items: end; }.deal-supplier__vouchers-head span, .deal-supplier__vouchers-summary span { color: var(--muted, #9ca3af); font-size: 11px; }.deal-supplier__vouchers-head h5 { margin: 3px 0 0; color: var(--ink, #f4f7ff); font-size: 15px; }.deal-supplier__vouchers-summary { display: grid; gap: 3px; text-align: right; }.deal-supplier__vouchers-summary strong { color: #8cf0ca; }.deal-supplier__voucher-list { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }.deal-supplier__voucher { display: grid; grid-template-columns: 28px minmax(150px, 1fr) minmax(160px, auto) auto; gap: 10px; align-items: center; padding: 10px 11px; border: 1px solid rgba(89, 227, 177, .16); border-left: 3px solid #59e3b1; border-radius: 8px; background: rgba(89, 227, 177, .055); }.deal-supplier__voucher-index { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: rgba(89, 227, 177, .14); color: #8cf0ca; font-size: 11px; font-weight: 800; }.deal-supplier__voucher-info { display: grid; gap: 2px; }.deal-supplier__voucher-info strong { color: var(--ink, #f4f7ff); }.deal-supplier__voucher-info small { color: var(--muted, #9ca3af); }.deal-supplier__voucher code { overflow-wrap: anywhere; color: #8cf0ca; font-size: 13px; font-weight: 800; letter-spacing: .04em; }.deal-supplier__buy-more { justify-self: start; border-color: rgba(232, 134, 19, .42); color: #f0b86e; }
+.deal-supplier__vouchers { display: grid; gap: 10px; padding-top: 2px; }.deal-supplier__vouchers-head { display: flex; justify-content: space-between; gap: 16px; align-items: end; }.deal-supplier__vouchers-head span { color: var(--muted, #9ca3af); font-size: 11px; }.deal-supplier__vouchers-head h5 { margin: 3px 0 0; color: var(--ink, #f4f7ff); font-size: 15px; }.deal-supplier__voucher-list { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }.deal-supplier__voucher { display: grid; grid-template-columns: 28px minmax(150px, 1fr) minmax(160px, auto) auto; gap: 10px; align-items: center; padding: 10px 11px; border: 1px solid rgba(89, 227, 177, .16); border-left: 3px solid #59e3b1; border-radius: 8px; background: rgba(89, 227, 177, .055); }.deal-supplier__voucher-index { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: rgba(89, 227, 177, .14); color: #8cf0ca; font-size: 11px; font-weight: 800; }.deal-supplier__voucher-info { display: grid; gap: 2px; }.deal-supplier__voucher-info strong { color: var(--ink, #f4f7ff); }.deal-supplier__voucher-info small { color: var(--muted, #9ca3af); }.deal-supplier__voucher code { overflow-wrap: anywhere; color: #8cf0ca; font-size: 13px; font-weight: 800; letter-spacing: .04em; }.deal-supplier__buy-more { justify-self: start; border-color: rgba(232, 134, 19, .42); color: #f0b86e; }
 .deal-supplier-modal-backdrop { --modal-bg: #101626; --modal-text: #f4f7ff; --ink: #f4f7ff; --muted: #b5bfd3; --ghost-bg: rgba(255,255,255,.08); --ghost-text: #f4f7ff; --ghost-border: rgba(255,255,255,.18); z-index: 90; align-items: center; padding: 16px; }.deal-supplier-confirm { width: min(540px, calc(100vw - 32px)); min-height: 0; max-height: 90vh; padding: 16px; overflow: auto; }.deal-supplier-confirm__head { margin: 0; padding: 0 0 13px; border-bottom: 1px solid rgba(181,194,219,.16); background: transparent; }.deal-supplier-confirm__head h3 { margin: 0; color: #f4f7ff; font-size: 23px; }.deal-supplier-confirm__body { display: grid; gap: 14px; padding: 18px 0 0; }.deal-supplier-confirm__service { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0; color: #f4f7ff; font-weight: 800; }.deal-supplier-confirm__nominal { padding: 4px 9px; border: 1px solid rgba(232,134,19,.55); background: rgba(232,134,19,.1); color: #f4c57f; font-size: 12px; }.deal-supplier-confirm__details { display: grid; gap: 8px; margin: 0; }.deal-supplier-confirm__details > div { display: grid; grid-template-columns: minmax(145px,.8fr) minmax(0,1.2fr); gap: 14px; padding: 12px 14px; border-left: 3px solid #e88613; background: rgba(232,134,19,.08); }.deal-supplier-confirm__details > div.is-error { border-left-color: #d45f5f; background: rgba(212,95,95,.1); }.deal-supplier-confirm__details dt { color: #b5bfd3; }.deal-supplier-confirm__details dd { margin: 0; color: #f4f7ff; font-weight: 800; text-align: right; }.deal-supplier-confirm__actions { display: flex; justify-content: flex-end; gap: 10px; }
 @keyframes deal-supplier-spin { to { transform: rotate(360deg); } }
-@media (max-width: 760px) { .deal-supplier__body { grid-template-columns: 1fr; }.deal-supplier__obtain { width: 100%; }.deal-supplier__result { grid-template-columns: 1fr; }.deal-supplier__vouchers-head { align-items: start; flex-direction: column; }.deal-supplier__vouchers-summary { text-align: left; }.deal-supplier__voucher { grid-template-columns: 28px minmax(0, 1fr); }.deal-supplier__voucher code, .deal-supplier__voucher .ghost { grid-column: 2; }.deal-supplier-confirm__details > div { grid-template-columns: 1fr; gap: 4px; }.deal-supplier-confirm__details dd { text-align: left; } }
+@media (max-width: 760px) { .deal-supplier__body { grid-template-columns: 1fr; }.deal-supplier__obtain { width: 100%; }.deal-supplier__result { grid-template-columns: 1fr; }.deal-supplier__vouchers-head { align-items: start; flex-direction: column; }.deal-supplier__voucher { grid-template-columns: 28px minmax(0, 1fr); }.deal-supplier__voucher code, .deal-supplier__voucher .ghost { grid-column: 2; }.deal-supplier-confirm__details > div { grid-template-columns: 1fr; gap: 4px; }.deal-supplier-confirm__details dd { text-align: left; } }
 </style>

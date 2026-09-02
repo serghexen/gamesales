@@ -105,12 +105,20 @@ describe('WorkTopBar', () => {
     expect(wrapper.findAll('.tab-workload__dot')).toHaveLength(2)
   })
 
-  it('shows TR card balance before workload for all users', () => {
-    const wrapper = mountTopBar(buildCtx({ canManageRolePermissions: false }))
-
-    expect(wrapper.find('[data-test="finance-tr-card-balance"]').text()).toContain('19000 TRY')
+  it.each(['operator', 'manager', 'admin', 'owner'])('temporarily hides TR card balance and controls for %s', (role) => {
+    // Скрываем весь виджет, включая обновление и редактор, не затрагивая соседние элементы шапки.
+    const privileged = ['admin', 'owner'].includes(role)
+    const ctx = buildCtx({ userRoleName: role, isAdmin: privileged, canManageRolePermissions: privileged, financeTrCardBalance: { current_balance: -477.13 } })
+    const wrapper = mountTopBar(ctx)
+    expect(wrapper.find('[data-test="finance-tr-card-balance"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="finance-refresh-tr-card-balance"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="finance-edit-tr-card-balance"]').exists()).toBe(false)
-    expect(wrapper.html().indexOf('data-test="finance-tr-card-balance"')).toBeLessThan(wrapper.html().indexOf('tab-workload'))
+    expect(wrapper.text()).not.toContain('TRY')
+    expect(wrapper.find('.tab-workload').exists()).toBe(true)
+    expect(wrapper.find('[data-test="sbp-open"]').exists()).toBe(true)
+    expect(ctx.loadFinanceTrCardBalance).not.toHaveBeenCalled()
+    expect(ctx.saveFinanceTrCardBalance).not.toHaveBeenCalled()
+    wrapper.unmount()
   })
 
   it('shows the SBP payment center to an ordinary authenticated user', async () => {
@@ -123,23 +131,4 @@ describe('WorkTopBar', () => {
     expect(wrapper.text()).not.toContain('Быстрый выбор суммы')
   })
 
-  it('allows privileged users to refresh and edit TR card balance', async () => {
-    const ctx = buildCtx({ financeTrCardBalance: { current_balance: -500 } })
-    const wrapper = mountTopBar(ctx)
-
-    expect(wrapper.find('.tr-card-balance__value').classes()).toContain('tr-card-balance__value--negative')
-    await wrapper.find('[data-test="finance-refresh-tr-card-balance"]').trigger('click')
-    expect(ctx.loadFinanceTrCardBalance).toHaveBeenCalledTimes(1)
-
-    await wrapper.find('[data-test="finance-edit-tr-card-balance"]').trigger('click')
-    expect(wrapper.find('[aria-label="Фактический баланс TR-карты"]').exists()).toBe(true)
-    await wrapper.find('[data-test="finance-save-tr-card-balance"]').trigger('click')
-    expect(ctx.saveFinanceTrCardBalance).toHaveBeenCalledTimes(1)
-  })
-
-  it('shows loader while TR balance is refreshing', () => {
-    const wrapper = mountTopBar(buildCtx({ financeTrCardBalanceLoading: true }))
-
-    expect(wrapper.find('[data-test="finance-refresh-tr-card-balance"] .wheel-and-hamster').exists()).toBe(true)
-  })
 })

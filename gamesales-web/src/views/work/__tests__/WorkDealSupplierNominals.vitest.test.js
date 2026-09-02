@@ -224,6 +224,7 @@ describe('WorkDealSupplierNominals', () => {
   })
 
   it('prepares, confirms and returns the code linked to the current deal', async () => {
+    // Скрытие закупа не меняет подготовку, оплату и копирование полученного кода.
     apiGet.mockResolvedValue(supplierPayload())
     apiPost
       .mockResolvedValueOnce({
@@ -258,7 +259,10 @@ describe('WorkDealSupplierNominals', () => {
     await flushPromises()
     expect(apiPost).toHaveBeenNthCalledWith(1, '/deals/42/interhub/prepare', { nominal_id: '28632', lock_version: 1 }, { token: 'operator-token' })
     expect(document.body.textContent).toContain('Проверьте покупку')
-    expect(document.body.textContent).toContain('475,04 ₽')
+    expect(document.body.textContent).not.toContain('Актуальная цена')
+    expect(document.body.textContent).not.toContain('475,04')
+    expect(document.body.textContent).not.toContain('₽')
+    expect(document.body.textContent).toContain('TRY 250')
 
     const buyButton = [...document.body.querySelectorAll('.deal-supplier-confirm__actions .btn')]
       .find((button) => button.textContent.includes('Купить'))
@@ -266,7 +270,9 @@ describe('WorkDealSupplierNominals', () => {
     await flushPromises()
     expect(apiPost).toHaveBeenNthCalledWith(2, '/deals/42/interhub/pay', { agent_transaction_id: 'gamesales-deal-42-first', lock_version: 1 }, { token: 'operator-token' })
     expect(wrapper.text()).toContain('TR-DEAL-42-CODE')
-    expect(wrapper.text()).toContain('475,04 ₽ · operator')
+    expect(wrapper.find('.deal-supplier__voucher-info small').text()).toBe('operator · —')
+    expect(wrapper.text()).not.toContain('475,04')
+    expect(wrapper.text()).not.toContain('Сумма закупки')
 
     await wrapper.find('.deal-supplier__voucher .ghost').trigger('click')
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('TR-DEAL-42-CODE')
@@ -274,6 +280,7 @@ describe('WorkDealSupplierNominals', () => {
   })
 
   it('keeps several voucher nominals in one deal and offers to buy another', async () => {
+    // Несколько кодов и их номиналы остаются видны, но цены и общий закуп не выводятся.
     apiGet.mockResolvedValue(supplierPayload())
     apiPost
       .mockResolvedValueOnce({
@@ -319,8 +326,30 @@ describe('WorkDealSupplierNominals', () => {
     expect(wrapper.text()).toContain('TRY 500')
     expect(wrapper.text()).toContain('FIRST-CODE')
     expect(wrapper.text()).toContain('SECOND-CODE')
-    expect(wrapper.text()).toContain('1 375,04 ₽')
+    expect(wrapper.text()).not.toContain('1 375,04')
+    expect(wrapper.text()).not.toContain('₽')
+    expect(wrapper.find('.deal-supplier__vouchers-summary').exists()).toBe(false)
     expect(apiPost).toHaveBeenNthCalledWith(4, '/deals/42/interhub/pay', { agent_transaction_id: 'gamesales-deal-42-second', lock_version: 1 }, { token: 'operator-token' })
+    wrapper.unmount()
+  })
+
+  it.each([
+    ['TR', 'TRY 250', 'checked'],
+    ['TR', 'TRY 250', 'processing'],
+    ['TR', 'TRY 250', 'paid'],
+    ['PL', 'PLN 100', 'checked'],
+    ['PL', 'PLN 100', 'processing'],
+    ['PL', 'PLN 100', 'paid'],
+  ])('hides purchase costs when reopening %s vouchers in state %s %s', async (region, nominal, state) => {
+    // Ответ сервера по-прежнему содержит закуп, но при повторном открытии он не появляется в интерфейсе.
+    const purchase = checkedPurchase({ state, nominal_title: nominal, amount: 477.13, gift_code: state === 'paid' ? 'SAVED-CODE' : '', created_by: 'operator' })
+    apiGet.mockResolvedValue(supplierPayload({ region_code: region, purchases: [purchase] }))
+    const wrapper = mount(WorkDealSupplierNominals, { props: { deal: { deal_id: 42, region_code: region, flow_status_code: 'pending', lock_version: 1 } } })
+    await flushPromises()
+    expect(wrapper.text()).toContain(nominal)
+    expect(wrapper.text()).not.toMatch(/477[,.]13|₽|Закупочная цена|Сумма закупки|Актуальная цена/)
+    if (state === 'paid') expect(wrapper.text()).toContain('SAVED-CODE')
+    if (state === 'processing') expect(wrapper.find('.deal-supplier__obtain').element.disabled).toBe(true)
     wrapper.unmount()
   })
 })

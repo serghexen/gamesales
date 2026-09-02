@@ -50,7 +50,7 @@
             Пользователи
           </router-link>
         </nav>
-        <WorkTrCardBalanceWidget :ctx="ctx" />
+        <!-- Баланс TR-карты временно скрыт; сам виджет сохранён для последующего возврата. -->
         <WorkSbpPaymentCenter :ctx="ctx" />
         <div class="tab-workload">
           <span class="tab-workload__title">Сделок в работе:</span>
@@ -108,7 +108,6 @@
 import { computed, unref } from 'vue'
 import defaultLogoSrc from '../../../assets/logo.jpg'
 import stagingLogoSrc from '../../../assets/logo-staging.jpg'
-import WorkTrCardBalanceWidget from './WorkTrCardBalanceWidget.vue'
 import WorkSbpPaymentCenter from './WorkSbpPaymentCenter.vue'
 
 // Контекст верхней панели (табы, пользователь, выход).
