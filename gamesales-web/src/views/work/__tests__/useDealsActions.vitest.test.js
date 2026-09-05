@@ -82,8 +82,8 @@ function createDeps(overrides = {}) {
 }
 
 describe('useDealsActions', () => {
-  it.each(['TR', 'PL'])('does not submit hidden manual cost for %s on create, edit or draft save', async (region) => {
-    // Старое значение в модели не возвращается на сервер; оплаченный закуп сервер берёт из истории.
+  it.each(['TR', 'PL'])('starts new %s deals at zero but preserves historical cost on edit and draft save', async (region) => {
+    // Создание исключает ручной закуп, а правка других полей старой сделки не обнуляет историю.
     for (const action of ['createDeal', 'createDealDraft', 'updateDeal', 'updateDealDraft']) {
       const deps = createDeps()
       deps.newDeal.region_code = region
@@ -91,7 +91,7 @@ describe('useDealsActions', () => {
       await useDealsActions(deps)[action]()
       const request = action.startsWith('create') ? deps.apiPost : deps.apiPut
       expect(request).toHaveBeenCalledTimes(1)
-      expect(request.mock.calls[0][1].purchase_cost).toBe(0)
+      expect(request.mock.calls[0][1].purchase_cost).toBe(action.startsWith('create') ? 0 : 50)
     }
   })
 

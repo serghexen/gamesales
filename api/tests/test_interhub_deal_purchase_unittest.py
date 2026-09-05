@@ -366,6 +366,22 @@ class DealInterhubPurchaseTests(unittest.TestCase):
             "agent_transaction_id": prepared["agent_transaction_id"], "lock_version": prepared["lock_version"],
         })
 
+    def test_saving_historical_deal_preserves_purchase_cost_without_vouchers(self):
+        # Старая сделка хранит ручной закуп без истории ваучеров; правка комментария не теряет сумму.
+        self.role = "owner"
+        for deal_id in (42, 44):
+            for flow in ("pending", "completed", "draft"):
+                with self.subTest(deal_id=deal_id, flow=flow):
+                    self.db.update_deal(deal_id, flow=flow)
+                    self.db.purchase_costs[deal_id] = 123.45
+                    response = self.client.put(f"/deals/{deal_id}", json={
+                        "lock_version": self.db.deals[deal_id][7],
+                        "purchase_cost": 123.45, "notes": "уточнение старой сделки",
+                    })
+                    self.assertEqual(response.status_code, 200, response.text)
+                    self.assertEqual(self.db.purchase_costs[deal_id], 123.45)
+        self.pay.assert_not_called()
+
     def test_draft_to_purchase_save_and_delete_preserves_codes_and_cost(self):
         # Черновик не покупает; рабочая сделка покупает, затем сохраняется без потери суммы и истории.
         self.db.update_deal(42, flow="draft")

@@ -4,13 +4,13 @@ import { mount } from '@vue/test-utils'
 import WorkDealPurchaseCostInput from '../sections/WorkDealPurchaseCostInput.vue'
 
 describe('WorkDealPurchaseCostInput', () => {
-  it.each(['TR', 'PL'])('shows an empty disabled field for %s without erasing voucher accounting', async (region) => {
-    // Загруженная сумма остаётся в модели и отчётах, но ручной ввод недоступен даже через событие.
-    const deal = reactive({ deal_type_code: 'sale', region_code: region, purchase_cost: 475.04 })
+  it.each(['TR', 'PL'])('shows saved %s cost without allowing edits in either form mode', async (region) => {
+    // Старый закуп виден и в просмотре, и в редактировании, но событие ввода не меняет сумму.
+    const deal = reactive({ deal_id: 42, deal_type_code: 'sale', region_code: region, purchase_cost: 475.04 })
     const clampPrice = vi.fn(Number)
     const wrapper = mount(WorkDealPurchaseCostInput, { props: { deal, max: 100000, clampPrice } })
     const input = wrapper.get('input')
-    expect(input.element.value).toBe('')
+    expect(input.element.value).toBe('475.04')
     expect(input.element.disabled).toBe(true)
     input.element.value = '123'
     input.element.dispatchEvent(new Event('input'))
@@ -18,6 +18,18 @@ describe('WorkDealPurchaseCostInput', () => {
     expect(deal.purchase_cost).toBe(475.04)
     await wrapper.setProps({ readonly: true })
     expect(input.element.disabled).toBe(true)
+    wrapper.unmount()
+  })
+
+  it.each(['TR', 'PL'])('keeps new %s cost empty and disabled until the deal is saved', async (region) => {
+    // Новая карточка не предлагает ручной ввод; после сохранения показывает учётную сумму.
+    const deal = reactive({ deal_type_code: 'sale', region_code: region, purchase_cost: 0 })
+    const wrapper = mount(WorkDealPurchaseCostInput, { props: { deal, max: 100000, clampPrice: Number } })
+    expect(wrapper.get('input').element.value).toBe('')
+    expect(wrapper.get('input').element.disabled).toBe(true)
+    await wrapper.setProps({ deal: { ...deal, deal_id: 42, purchase_cost: 950.08 } })
+    expect(wrapper.get('input').element.value).toBe('950.08')
+    expect(wrapper.get('input').element.disabled).toBe(true)
     wrapper.unmount()
   })
 

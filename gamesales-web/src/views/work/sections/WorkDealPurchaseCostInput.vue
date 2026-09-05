@@ -5,10 +5,10 @@
     min="0"
     step="0.01"
     :max="max"
-    :value="voucherDeal ? '' : deal.purchase_cost"
+    :value="voucherDeal && !deal.deal_id ? '' : deal.purchase_cost"
     :disabled="voucherDeal"
     :readonly="readonly"
-    :title="voucherDeal ? 'Закуп учитывается автоматически по купленным ваучерам' : undefined"
+    :title="voucherDeal ? 'Сохранённый закуп доступен только для просмотра. Новые покупки учитываются по ваучерам' : undefined"
     @input="updateManualCost"
   />
 </template>
@@ -24,7 +24,7 @@ const props = defineProps({
   clampPrice: { type: Function, required: true },
 })
 
-// Показываем пустое ручное поле, не затирая загруженную сумму ваучеров в данных сделки.
+// В сохранённых сделках показываем закуп, включая исторический; ручной ввод остаётся закрытым.
 const voucherDeal = computed(() => isSupplierVoucherDeal(props.deal))
 
 function updateManualCost(event) {

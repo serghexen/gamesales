@@ -141,8 +141,8 @@ export function useDealsActions({
       // Для принудительного дубля передаем id выбранного назначения, которое нужно снять при сохранении.
       duplicate_assignment_id: dealTypeCode === 'rental' ? normalizeOptionalInt(deal.duplicate_assignment_id) : null,
       price: deal.price || 0,
-      // Не отправляем скрытый ручной закуп; сервер сам сохраняет сумму оплаченных ваучеров.
-      purchase_cost: isSupplierVoucherDeal(deal) ? 0 : (deal.purchase_cost || 0),
+      // Только новая ваучерная сделка начинает с нуля; исторический закуп сохраняем без обнуления.
+      purchase_cost: isSupplierVoucherDeal(deal) && !deal.deal_id ? 0 : (deal.purchase_cost || 0),
       login: deal.login || null,
       password: deal.password || null,
       product_link: deal.product_link || null,
