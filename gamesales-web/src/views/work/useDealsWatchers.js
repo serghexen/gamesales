@@ -1,4 +1,5 @@
 import { watch } from 'vue'
+import { isSupplierVoucherDeal } from './dealsUtils.js'
 
 export function useDealsWatchers({
   newDeal,
@@ -22,6 +23,22 @@ export function useDealsWatchers({
   loadSubscriptionTerms,
   ensureAccountSecretsLoaded,
 }) {
+  watch(
+    () => [newDeal.deal_type_code, newDeal.region_code],
+    () => {
+      // При переходе на ваучеры убираем ранее введённый ручной закуп.
+      if (isSupplierVoucherDeal(newDeal)) newDeal.purchase_cost = 0
+    }
+  )
+  watch(
+    () => [editDeal.deal_type_code, editDeal.region_code],
+    () => {
+      // Загрузка карточки и синхронизация после оплаты должны сохранить учётную сумму.
+      if (!editDeal.open || dealInitLock.value) return
+      if (isSupplierVoucherDeal(editDeal)) editDeal.purchase_cost = 0
+    }
+  )
+
   const safeLoadSubscriptionTerms = typeof loadSubscriptionTerms === 'function'
     ? loadSubscriptionTerms
     : () => {}

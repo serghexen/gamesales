@@ -65,6 +65,50 @@ describe('WorkDealSupplierNominals', () => {
     document.body.innerHTML = ''
   })
 
+  it.each(['TR', 'PL'])('hides purchase controls in completed %s deals but keeps copying existing codes', async (region) => {
+    // Завершённая карточка остаётся архивом ваучеров, а не местом для новых оплат.
+    const paid = checkedPurchase({ state: 'paid', gift_code: 'SAVED-CODE' })
+    apiGet.mockResolvedValue(supplierPayload({ flow_status_code: 'completed', purchase_allowed: false, purchases: [paid] }))
+    const wrapper = mount(WorkDealSupplierNominals, { props: { deal: { deal_id: 42, region_code: region, flow_status_code: 'completed' } } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Покупка в завершённой сделке недоступна')
+    expect(wrapper.find('select').exists()).toBe(false)
+    expect(wrapper.find('.deal-supplier__obtain').exists()).toBe(false)
+    expect(wrapper.find('.deal-supplier__buy-more').exists()).toBe(false)
+    expect(wrapper.text()).toContain('SAVED-CODE')
+    await wrapper.get('.deal-supplier__voucher button').trigger('click')
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('SAVED-CODE')
+    expect(apiPost).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('honors completed status from the server when the local card is stale', async () => {
+    // Серверное завершение важнее устаревшего pending в форме.
+    apiGet.mockResolvedValue(supplierPayload({ flow_status_code: 'completed', purchase_allowed: false }))
+    const wrapper = mount(WorkDealSupplierNominals, { props: { deal: { deal_id: 42, region_code: 'TR', flow_status_code: 'pending' } } })
+    await flushPromises()
+    expect(wrapper.find('.deal-supplier__obtain').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Покупка в завершённой сделке недоступна')
+    wrapper.unmount()
+  })
+
+  it('closes an open purchase confirmation when the deal becomes completed', async () => {
+    // Смена статуса до нажатия «Купить» уничтожает старое подтверждение без оплаты.
+    apiGet.mockResolvedValue(supplierPayload())
+    apiPost.mockResolvedValue(checkedPurchase())
+    const wrapper = mount(WorkDealSupplierNominals, { props: { deal: { deal_id: 42, region_code: 'TR', flow_status_code: 'pending', lock_version: 1 } } })
+    await flushPromises()
+    await openConfirmation(wrapper)
+    expect(document.body.querySelector('.deal-supplier-confirm')).not.toBeNull()
+    apiGet.mockResolvedValue(supplierPayload({ flow_status_code: 'completed', purchase_allowed: false }))
+    await wrapper.setProps({ deal: { deal_id: 42, region_code: 'TR', flow_status_code: 'completed', lock_version: 2 } })
+    await flushPromises()
+    expect(document.body.querySelector('.deal-supplier-confirm')).toBeNull()
+    expect(wrapper.find('.deal-supplier__obtain').exists()).toBe(false)
+    expect(apiPost).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
   it('shows the embedded supplier block only for Turkey and Poland', async () => {
     apiGet.mockResolvedValue(supplierPayload())
     const tr = mount(WorkDealSupplierNominals, { props: { deal: { deal_id: 42, region_code: 'TR', flow_status_code: 'pending', lock_version: 1 } } })

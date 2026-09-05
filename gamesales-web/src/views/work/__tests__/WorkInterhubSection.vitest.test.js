@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 import WorkInterhubSection from '../sections/WorkInterhubSection.vue'
 
@@ -62,6 +62,7 @@ function buildCtx(overrides = {}) {
     refreshPrices: vi.fn(),
     exportPrices: vi.fn(),
     loadSalesHistory: vi.fn(),
+    downloadPurchaseHistory: vi.fn(),
     revealSalesHistoryResult: vi.fn(),
     openDealById: vi.fn(),
     resetPaymentFlow: vi.fn(),
@@ -77,6 +78,83 @@ async function selectServiceByTitle(wrapper, title) {
 }
 
 describe('WorkInterhubSection', () => {
+  it('exports both sources using current dates regardless of the selected tab and search', async () => {
+    // Проверяем даты до нажатия «Показать», блокировку повторного клика и скачивание XLSX.
+    let finishDownload
+    const ctx = buildCtx({ canPay: true, downloadPurchaseHistory: vi.fn(() => new Promise((resolve) => { finishDownload = resolve })) })
+    const createObjectURL = vi.fn(() => 'blob:purchases')
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const wrapper = mount(WorkInterhubSection, { props: { ctx }, attachTo: document.body })
+    try {
+      await wrapper.get('.interhub-catalog__history-action').trigger('click')
+      document.body.querySelectorAll('.interhub-history__sources button')[1].click()
+      await flushPromises()
+      const dates = document.body.querySelectorAll('.interhub-history input[type="date"]')
+      for (const [index, value] of ['2026-09-01', '2026-09-05'].entries()) {
+        dates[index].value = value
+        dates[index].dispatchEvent(new Event('input'))
+      }
+      const search = document.body.querySelector('.interhub-history input[type="search"]')
+      search.value = 'Steam'
+      search.dispatchEvent(new Event('input'))
+      const button = document.body.querySelector('.interhub-history__export')
+      button.click()
+      button.click()
+      await flushPromises()
+      expect(ctx.downloadPurchaseHistory).toHaveBeenCalledExactlyOnceWith({ dateFrom: '2026-09-01', dateTo: '2026-09-05' })
+      expect(button.disabled).toBe(true)
+      expect(button.textContent).toBe('Выгружаем…')
+      const blob = new Blob(['xlsx'])
+      finishDownload(blob)
+      await flushPromises()
+      expect(createObjectURL).toHaveBeenCalledWith(blob)
+      expect(click.mock.instances[0].download).toBe('purchases-2026-09-01-2026-09-05.xlsx')
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:purchases')
+      expect(button.disabled).toBe(false)
+    } finally {
+      wrapper.unmount()
+      click.mockRestore()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('validates export dates and allows retry after a download error', async () => {
+    // Некорректный период не запрашиваем, а ошибку сервера показываем рядом с кнопкой.
+    const ctx = buildCtx({ canPay: true, downloadPurchaseHistory: vi.fn().mockRejectedValue(new Error('Селлер недоступен')) })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx }, attachTo: document.body })
+    try {
+      await wrapper.get('.interhub-catalog__history-action').trigger('click')
+      const dates = document.body.querySelectorAll('.interhub-history input[type="date"]')
+      dates[0].value = '2026-09-06'
+      dates[1].value = '2026-09-05'
+      dates.forEach((input) => input.dispatchEvent(new Event('input')))
+      const button = document.body.querySelector('.interhub-history__export')
+      button.click()
+      await flushPromises()
+      expect(ctx.downloadPurchaseHistory).not.toHaveBeenCalled()
+      expect(document.body.textContent).toContain('Дата «с» не может быть позже даты «по»')
+      dates[0].value = ''
+      dates[0].dispatchEvent(new Event('input'))
+      button.click()
+      await flushPromises()
+      expect(ctx.downloadPurchaseHistory).toHaveBeenCalledWith({ dateFrom: '', dateTo: '2026-09-05' })
+      expect(document.body.textContent).toContain('Селлер недоступен')
+      expect(button.disabled).toBe(false)
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('does not offer the combined export to an operator', async () => {
+    // Общая история селлера доступна только владельцу, включая выгрузку.
+    const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx() }, attachTo: document.body })
+    await wrapper.get('.interhub-catalog__history-action').trigger('click')
+    expect(document.body.querySelector('.interhub-history__export')).toBeNull()
+    wrapper.unmount()
+  })
+
   it('renders normalized services and payment types', () => {
     const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx() } })
 

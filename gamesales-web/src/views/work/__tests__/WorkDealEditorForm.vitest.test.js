@@ -257,13 +257,15 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('function getSaleLinkCopyLabel(target, index = 0)')
   })
 
-  it('allows decimal purchase cost in sale create and edit forms', () => {
+  it('uses the same protected purchase cost input in sale create and edit forms', () => {
+    // Обе формы используют проверенный компонент, чтобы блокировка не разошлась между режимами.
     const source = readTemplateSource()
-    const purchaseInputs = source.match(/v-model\.number="(?:editDeal|newDeal)\.purchase_cost"[\s\S]*?@input="(?:editDeal|newDeal)\.purchase_cost = clampPrice\((?:editDeal|newDeal)\.purchase_cost\)"/g) || []
+    const purchaseInputs = source.match(/<WorkDealPurchaseCostInput[\s\S]*?\/>/g) || []
 
     expect(purchaseInputs).toHaveLength(2)
     for (const input of purchaseInputs) {
-      expect(input).toContain('step="0.01"')
+      expect(input).toContain(':clamp-price="clampPrice"')
+      expect(input).toContain(':max="maxPrice"')
     }
   })
 

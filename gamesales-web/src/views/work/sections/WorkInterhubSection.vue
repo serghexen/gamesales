@@ -122,7 +122,9 @@
             <label v-if="salesHistorySource === 'hub'" class="field"><span class="label">Статус</span><select v-model="salesHistoryState" class="input"><option value="">Все статусы</option><option value="succeeded">Выполнено</option><option value="processing">В обработке</option><option value="requires_attention">Нужна проверка</option><option value="failed">Не выполнено</option></select></label>
             <label class="field interhub-history__search"><span class="label">Поиск</span><input v-model.trim="salesHistorySearch" class="input" type="search" :placeholder="salesHistorySource === 'hub' ? 'Название или ID операции, услуги, номинала' : 'Сделка, заказ, покупатель, номинал или оператор'" /></label>
             <button class="btn" type="submit" :disabled="ctx.salesHistoryLoading">{{ ctx.salesHistoryLoading ? 'Загружаем…' : 'Показать' }}</button>
+            <button v-if="ctx.canPay" class="btn interhub-history__export" type="button" :disabled="salesHistoryExportLoading" title="Покупки CRM и селлера за выбранные даты, все страницы" @click="exportSalesHistory">{{ salesHistoryExportLoading ? 'Выгружаем…' : 'Выгрузить Excel' }}</button>
           </form>
+          <p v-if="salesHistoryExportError" class="error">{{ salesHistoryExportError }}</p>
           <p v-if="ctx.salesHistoryError" class="error">{{ anonymizeSupplierText(ctx.salesHistoryError) }}</p>
           <p v-if="salesHistoryResultError" class="error">{{ salesHistoryResultError }}</p>
           <div class="interhub-history__cards" aria-label="Итоги выборки">
@@ -298,6 +300,8 @@ const salesHistorySort = reactive({ field: 'createdAt', direction: 'desc' })
 const salesHistoryPage = ref(1)
 const salesHistoryResultLoadingId = ref('')
 const salesHistoryResultError = ref('')
+const salesHistoryExportLoading = ref(false)
+const salesHistoryExportError = ref('')
 const revealedSalesHistoryResults = reactive({})
 const overdraftBalance = computed(() => Number(props.ctx.overBalance || 0))
 const overdraftLimit = computed(() => Math.max(0, Number(props.ctx.overLimit || 0)))
@@ -496,6 +500,33 @@ function applySalesHistoryFilter() {
   // Применяем даты и поиск ко всей истории на сервере, начиная с первой страницы.
   salesHistoryPage.value = 1
   loadCurrentSalesHistory()
+}
+
+async function exportSalesHistory() {
+  // Скачиваем обе истории по датам в полях, даже если пользователь ещё не нажал «Показать».
+  if (!props.ctx.canPay || salesHistoryExportLoading.value) return
+  salesHistoryExportError.value = ''
+  const dateFrom = salesHistoryDateFrom.value
+  const dateTo = salesHistoryDateTo.value
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    salesHistoryExportError.value = 'Дата «с» не может быть позже даты «по»'
+    return
+  }
+  salesHistoryExportLoading.value = true
+  let url = ''
+  try {
+    const blob = await props.ctx.downloadPurchaseHistory({ dateFrom, dateTo })
+    url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `purchases-${dateFrom || 'all'}-${dateTo || 'all'}.xlsx`
+    link.click()
+  } catch (error) {
+    salesHistoryExportError.value = anonymizeSupplierText(error?.message || 'Не удалось выгрузить покупки в Excel')
+  } finally {
+    if (url) URL.revokeObjectURL(url)
+    salesHistoryExportLoading.value = false
+  }
 }
 
 function changeSalesHistorySource(source) {

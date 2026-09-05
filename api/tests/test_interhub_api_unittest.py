@@ -1,8 +1,11 @@
 import unittest
 from datetime import date
 from types import SimpleNamespace
+from io import BytesIO
+from unittest.mock import Mock
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from openpyxl import load_workbook
 from pydantic import BaseModel
 
 try:
@@ -69,17 +72,27 @@ class _FakePsycopg:
 
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
 class InterhubApiTests(unittest.TestCase):
-    def create_client(self, *, role="operator"):
+    def create_client(self, *, role="operator", hub=None):
         # Собираем изолированный маршрут с подменённым подключением к PostgreSQL.
         app = FastAPI()
         queries = []
         user = SimpleNamespace(username=role, role=role)
+
+        def require_role(*roles):
+            # Запрещаем чужие роли, чтобы тест выгрузки проверял доступ на сервере.
+            def check_role():
+                # Возвращаем пользователя только для разрешённой роли.
+                if role not in roles:
+                    raise HTTPException(403, "Forbidden")
+                return user
+            return check_role
+
         mount_interhub_routes(
             app,
             DB_DSN="postgresql://test",
             psycopg=_FakePsycopg(queries),
             get_current_user=lambda: user,
-            require_role=lambda *_roles: lambda: user,
+            require_role=require_role,
             UserOut=_ApiModel,
             InterHubServiceListOut=_ApiModel,
             InterHubBalanceOut=_ApiModel,
@@ -93,8 +106,31 @@ class InterhubApiTests(unittest.TestCase):
             interhub_check=lambda _payload: {},
             interhub_pay=lambda _payload: {},
             interhub_check_status=lambda _transaction_id: {},
+            supplier_hub_client=hub,
         )
         return TestClient(app), queries
+
+    def test_export_uses_selected_dates_for_both_sources(self):
+        # Маршрут выдаёт Excel и передаёт те же календарные даты обеим базам.
+        hub = SimpleNamespace(list_transactions=Mock(return_value={"total": 0, "items": []}))
+        client, queries = self.create_client(role="owner", hub=hub)
+        response = client.get("/integrations/interhub/transactions/export?date_from=2026-09-05&date_to=2026-09-05")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("spreadsheetml.sheet", response.headers["content-type"])
+        self.assertIn("purchases-2026-09-05-2026-09-05.xlsx", response.headers["content-disposition"])
+        self.assertEqual(load_workbook(BytesIO(response.content)).sheetnames, ["CRM", "Селлер"])
+        self.assertEqual(queries[1][1], [date(2026, 9, 5), date(2026, 9, 5), 100, 0])
+        self.assertEqual(hub.list_transactions.call_args.args[0]["created_to"], "2026-09-06T00:00:00+03:00")
+
+    def test_export_rejects_wrong_dates_and_non_owner_before_reading_databases(self):
+        # Ошибки дат и прав не должны запускать чтение истории.
+        for role, query, expected in [("operator", "", 403), ("owner", "?date_from=2026-09-06&date_to=2026-09-05", 422)]:
+            hub = SimpleNamespace(list_transactions=Mock())
+            client, queries = self.create_client(role=role, hub=hub)
+            response = client.get(f"/integrations/interhub/transactions/export{query}")
+            self.assertEqual(response.status_code, expected)
+            self.assertEqual(queries, [])
+            hub.list_transactions.assert_not_called()
 
     def test_owner_keeps_the_complete_crm_archive(self):
         # Ограничение deal_id применяется только к рабочим ролям и не скрывает старый архив от владельца.

@@ -82,6 +82,26 @@ function createDeps(overrides = {}) {
 }
 
 describe('useDealsActions', () => {
+  it.each(['TR', 'PL'])('does not submit hidden manual cost for %s on create, edit or draft save', async (region) => {
+    // Старое значение в модели не возвращается на сервер; оплаченный закуп сервер берёт из истории.
+    for (const action of ['createDeal', 'createDealDraft', 'updateDeal', 'updateDealDraft']) {
+      const deps = createDeps()
+      deps.newDeal.region_code = region
+      deps.editDeal.region_code = region
+      await useDealsActions(deps)[action]()
+      const request = action.startsWith('create') ? deps.apiPost : deps.apiPut
+      expect(request).toHaveBeenCalledTimes(1)
+      expect(request.mock.calls[0][1].purchase_cost).toBe(0)
+    }
+  })
+
+  it('retains manual cost for other service regions', async () => {
+    // Обычный регион продолжает сохранять закуп без изменения значения.
+    const deps = createDeps()
+    await useDealsActions(deps).updateDeal()
+    expect(deps.apiPut.mock.calls[0][1].purchase_cost).toBe(50)
+  })
+
   it('createDeal closes modal and unlocks UI even when background reload fails', async () => {
     const deps = createDeps({
       loadAccountsAll: vi.fn().mockRejectedValue(new Error('network')),

@@ -241,6 +241,7 @@ class FakeCursor:
             self.rowcount = 1
             return
         if normalized.startswith("WITH filtered_history AS"):
+            # Повторяем состав истории, включая ID покупки для связи строк в Excel со сделками.
             paid_items = [item for item in self.db.transactions.values() if item["state"] == "paid" and item.get("deal_id")]
             if "SELECT COUNT(*), COALESCE(SUM(amount), 0)" in normalized:
                 self._one = (len(paid_items), sum(item["amount"] for item in paid_items))
@@ -253,6 +254,7 @@ class FakeCursor:
                         item["service_id"], service_titles[item["service_id"]], item["nominal_id"],
                         item.get("nominal_title", ""), item["amount"], item.get("gift_code", ""),
                         "2026-09-01T10:00:00Z", item["deal_id"], deal[4], deal[5], deal[1], item["created_by"],
+                        item["agent_transaction_id"],
                     ))
                 self._all = rows
             return
@@ -516,7 +518,6 @@ class DealInterhubPurchaseTests(unittest.TestCase):
 
     def test_return_waits_for_payment_and_then_preserves_vouchers_and_version(self):
         # Возврат не пересекается с оплатой, а после оплаты оставляет код в истории без права купить ещё.
-        self.db.update_deal(42, flow="completed")
         prepared = self.prepare().json()
         normal_pay = self.pay.side_effect
 
@@ -527,13 +528,48 @@ class DealInterhubPurchaseTests(unittest.TestCase):
 
         self.pay.side_effect = during_pay
         paid = self.buy(prepared).json()
+        completed = self.client.put("/deals/42", json={"flow_status_code": "completed", "lock_version": 2, "purchase_cost": 0})
+        self.assertEqual(completed.status_code, 200, completed.text)
         returned = self.client.post("/deals/42/return")
         self.assertEqual(returned.status_code, 200, returned.text)
-        self.assertEqual(self.db.deals[42][7], 3)
+        self.assertEqual(self.db.deals[42][7], 4)
         self.assertEqual(self.prepare().status_code, 409)
         history = self.client.get("/deals/42/interhub").json()
         self.assertFalse(history["purchase_allowed"])
         self.assertEqual(history["purchases"][0]["gift_code"], paid["gift_code"])
+
+    def test_completed_deals_reject_new_preparation_and_payment_for_all_roles_and_regions(self):
+        # Завершение между проверкой и оплатой закрывает старое подтверждение, даже с актуальной версией.
+        for deal_id, nominal in [(42, "28632"), (44, "16793")]:
+            prepared = self.prepare(deal_id, nominal).json()
+            completed = self.client.put(f"/deals/{deal_id}", json={"flow_status_code": "completed", "lock_version": 1})
+            self.assertEqual(completed.status_code, 200, completed.text)
+            for role in ["operator", "manager", "admin", "owner"]:
+                self.role = role
+                with self.subTest(deal_id=deal_id, role=role):
+                    self.assertEqual(self.prepare(deal_id, nominal).status_code, 409)
+                    for version in [1, self.db.deals[deal_id][7]]:
+                        response = self.buy({**prepared, "lock_version": version}, deal_id)
+                        self.assertEqual(response.status_code, 409, response.text)
+                        self.assertIn("завершённой", response.json()["detail"])
+                    history = self.client.get(f"/deals/{deal_id}/interhub").json()
+                    self.assertFalse(history["purchase_allowed"])
+                    self.assertEqual(history["nominals"], [])
+        self.pay.assert_not_called()
+
+    def test_completed_deal_keeps_paid_code_cost_and_idempotent_retry(self):
+        # Скрытое поле отправляет ноль, но завершение сохраняет сумму ваучеров и повторно не платит.
+        prepared = self.prepare().json()
+        paid = self.buy(prepared).json()
+        completed = self.client.put("/deals/42", json={"flow_status_code": "completed", "lock_version": 2, "purchase_cost": 0})
+        self.assertEqual(completed.status_code, 200, completed.text)
+        self.assertEqual(self.db.purchase_costs[42], 475.04)
+        history = self.client.get("/deals/42/interhub").json()
+        self.assertFalse(history["purchase_allowed"])
+        self.assertEqual(history["purchases"][0]["gift_code"], paid["gift_code"])
+        self.assertEqual(self.buy(prepared).json()["gift_code"], paid["gift_code"])
+        self.assertEqual(self.pay.call_count, 1)
+        self.assertEqual(self.prepare().status_code, 409)
 
     def test_operator_gets_only_the_service_selected_by_deal_region(self):
         response = self.client.get("/deals/42/interhub")
@@ -566,6 +602,7 @@ class DealInterhubPurchaseTests(unittest.TestCase):
         self.assertEqual(self.db.purchase_costs[42], 475.04)
 
     def test_different_deals_keep_separate_transactions_codes_and_history_links(self):
+        # Разные сделки сохраняют свои коды и идентификаторы в общей истории и выгрузке.
         tr_prepared = self.client.post("/deals/42/interhub/prepare", json={"nominal_id": "28632", "lock_version": self.db.deals[42][7]}).json()
         tr_paid = self.client.post("/deals/42/interhub/pay", json={"agent_transaction_id": tr_prepared["agent_transaction_id"], "lock_version": self.db.deals[42][7]}).json()
         self.role = "manager"
@@ -578,6 +615,8 @@ class DealInterhubPurchaseTests(unittest.TestCase):
         self.assertEqual(history["total"], 2)
         self.assertEqual({item["deal_id"] for item in history["items"]}, {42, 44})
         self.assertEqual({item["created_by"] for item in history["items"]}, {"operator", "manager"})
+        self.assertEqual({item["agent_transaction_id"] for item in history["items"]},
+                         {tr_paid["agent_transaction_id"], pl_paid["agent_transaction_id"]})
         self.assertEqual(history["total_amount"], 950.08)
 
     def test_one_deal_keeps_every_paid_nominal_and_sums_purchase_cost(self):

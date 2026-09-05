@@ -34,6 +34,48 @@ function createHarness() {
 }
 
 describe('useDealsWatchers', () => {
+  it.each(['TR', 'PL'])('clears manual cost on switching new and edited services to %s', async (region) => {
+    // Возврат к обычному региону не должен воскресить ранее введённый закуп.
+    const h = createHarness()
+    for (const deal of [h.newDeal, h.editDeal]) {
+      Object.assign(deal, { deal_type_code: 'sale', region_code: 'US', purchase_cost: 500 })
+    }
+    await nextTick()
+    for (const deal of [h.newDeal, h.editDeal]) deal.region_code = region
+    await nextTick()
+    for (const deal of [h.newDeal, h.editDeal]) {
+      expect(deal.purchase_cost).toBe(0)
+      deal.region_code = 'US'
+    }
+    await nextTick()
+    expect(h.newDeal.purchase_cost).toBe(0)
+    expect(h.editDeal.purchase_cost).toBe(0)
+  })
+
+  it('preserves loaded voucher totals during initialization and payment synchronization', async () => {
+    // Применение сохранённой карточки под блокировкой не является ручной сменой региона.
+    const h = createHarness()
+    h.dealInitLock.value = true
+    Object.assign(h.editDeal, { deal_type_code: 'sale', region_code: 'TR', purchase_cost: 475.04 })
+    await nextTick()
+    h.dealInitLock.value = false
+    expect(h.editDeal.purchase_cost).toBe(475.04)
+    h.editDeal.purchase_cost = 950.08
+    await nextTick()
+    expect(h.editDeal.purchase_cost).toBe(950.08)
+  })
+
+  it('leaves rental cost alone but clears it when switching to a voucher service', async () => {
+    // Ограничение касается услуг, а не всех сделок региона.
+    const h = createHarness()
+    Object.assign(h.newDeal, { deal_type_code: 'rental', region_code: 'TR', purchase_cost: 500 })
+    await nextTick()
+    expect(h.newDeal.purchase_cost).toBe(500)
+    h.newDeal.deal_type_code = 'sale'
+    await nextTick()
+    expect(h.newDeal.purchase_cost).toBe(0)
+  })
+
   it('keeps slot for new subscription when product changes', async () => {
     const h = createHarness()
 

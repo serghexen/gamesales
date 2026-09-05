@@ -9,6 +9,7 @@ from fastapi import Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from domains.interhub_price_cache import build_interhub_prices_xlsx, collect_price_targets
+from domains.purchase_history_export import build_purchase_history_xlsx
 
 
 PENDING_STATUS = 1
@@ -47,6 +48,7 @@ def mount_interhub_routes(
     interhub_check_status,
     price_calculate_delay_ms=700,
     publish_deal_event=None,
+    supplier_hub_client=None,
 ):
     price_jobs: dict[str, dict] = {}
     price_jobs_lock = threading.Lock()
@@ -750,13 +752,16 @@ def mount_interhub_routes(
             "deal_id": int(deal_id), "region_code": region_code,
             "order_number": str(row[4] or ""), "customer_nickname": str(row[5] or ""),
             "flow_status_code": str(row[6] or ""), "lock_version": int(row[7]),
-            "purchase_allowed": str(row[6] or "") != "draft" and row[3] is None,
+            # Завершённые сделки сохраняют историю кодов, но не допускают новых списаний.
+            "purchase_allowed": str(row[6] or "") not in {"draft", "completed"} and row[3] is None,
         }
 
     def require_deal_purchase_allowed(deal: dict, payload: dict) -> None:
         # Проверяем сохранённый статус и версию, а не редактируемые поля браузера.
         if deal["flow_status_code"] == "draft":
             raise HTTPException(409, "Покупка в черновике запрещена. Сначала сохраните рабочую сделку.")
+        if deal["flow_status_code"] == "completed":
+            raise HTTPException(409, "Покупка ваучеров в завершённой сделке запрещена.")
         if not deal["purchase_allowed"]:
             raise HTTPException(409, "Нельзя покупать ваучеры для возвращённой сделки.")
         version = payload.get("lock_version")
@@ -1182,7 +1187,7 @@ def mount_interhub_routes(
                     WITH filtered_history AS ({base_query})
                     SELECT service_id, service_title, nominal, nominal_title,
                            amount, gift_code, created_at, deal_id, order_number,
-                           customer_nickname, region_code, created_by
+                           customer_nickname, region_code, created_by, agent_transaction_id
                     FROM filtered_history
                     {search_clause}
                     ORDER BY {sort_column} {sort_order}, agent_transaction_id {sort_order}
@@ -1213,10 +1218,46 @@ def mount_interhub_routes(
                     "customer_nickname": str(row[9] or ''),
                     "region_code": str(row[10] or ''),
                     "created_by": str(row[11] or ''),
+                    "agent_transaction_id": str(row[12] or ''),
                 }
                 for row in rows
             ]
         }
+
+    @app.get("/integrations/interhub/transactions/export")
+    def export_purchase_history(
+        date_from: date | None = Query(default=None),
+        date_to: date | None = Query(default=None),
+        user: UserOut = Depends(require_role("owner")),
+    ):
+        # Владелец получает обе истории за календарные даты окна, независимо от поиска и текущей страницы.
+        if date_from and date_to and date_from > date_to:
+            raise HTTPException(422, "Дата «с» не может быть позже даты «по»")
+        if supplier_hub_client is None:
+            raise HTTPException(503, "История селлера недоступна")
+
+        def load_crm_page(page):
+            # Используем те же границы дат и состав CRM-архива, что и в окне истории.
+            return list_paid_interhub_transactions(
+                date_from=date_from, date_to=date_to, search="", sort_by="createdAt",
+                sort_direction="asc", page=page, page_size=100, user=user,
+            )
+
+        try:
+            services = interhub_get_services()
+        except Exception:
+            # Если каталог недоступен, оставляем в файле идентификаторы услуг и сохранённые подписи CRM.
+            services = []
+        content = build_purchase_history_xlsx(
+            load_crm_page=load_crm_page, supplier_hub_client=supplier_hub_client,
+            services=services, date_from=date_from, date_to=date_to,
+        )
+        filename = f"purchases-{date_from or 'all'}-{date_to or 'all'}.xlsx"
+        return StreamingResponse(
+            iter([content]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     @app.post("/integrations/interhub/prices/refresh")
     def refresh_interhub_prices(user: UserOut = Depends(require_role("owner"))):

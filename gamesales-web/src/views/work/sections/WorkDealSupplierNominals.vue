@@ -24,7 +24,7 @@
       </div>
       <button v-if="syncPending" class="ghost" type="button" :disabled="loading || paying" @click="retrySynchronization">Обновить данные сделки</button>
 
-      <div v-if="!loading && supplier" class="deal-supplier__body">
+      <div v-if="!loading && supplier && !isCompleted" class="deal-supplier__body">
         <div class="deal-supplier__service">
           <span>Сервис поставщика</span>
           <strong>{{ cleanServiceTitle(supplier.service_title) }}</strong>
@@ -84,7 +84,7 @@
             </button>
           </li>
         </ol>
-        <button class="ghost deal-supplier__buy-more" type="button" :disabled="purchaseBlocked || purchaseLocked || preparing || paying" @click="startAnotherPurchase">
+        <button v-if="!isCompleted" class="ghost deal-supplier__buy-more" type="button" :disabled="purchaseBlocked || purchaseLocked || preparing || paying" @click="startAnotherPurchase">
           + Купить ещё
         </button>
       </section>
@@ -160,8 +160,11 @@ const isSupportedRegion = computed(() => ['TR', 'PL'].includes(regionCode.value)
 const regionLabel = computed(() => regionCode.value === 'TR' ? 'Турция' : 'Польша')
 const selectedNominalTitle = computed(() => supplier.value?.nominals?.find((item) => String(item.id) === nominalId.value)?.title || '')
 const purchaseLocked = computed(() => String(purchase.value?.state || '') === 'processing')
+// Сохранённое завершение на сервере блокирует покупку даже при устаревшей локальной карточке.
+const isCompleted = computed(() => props.deal?.flow_status_code === 'completed' || supplier.value?.flow_status_code === 'completed')
 const blockedReason = computed(() => {
   // Покупаем только по сохранённой карточке, а не по локально изменённым региону и статусу.
+  if (isCompleted.value) return 'Покупка в завершённой сделке недоступна'
   if (props.editing) return 'Сначала сохраните изменения сделки'
   if (String(props.deal?.flow_status_code || supplier.value?.flow_status_code || '') === 'draft') return 'Покупка в черновике недоступна'
   if (supplier.value?.purchase_allowed === false) return 'Покупка для этой сделки недоступна'

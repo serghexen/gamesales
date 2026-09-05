@@ -1,3 +1,9 @@
+export function isSupplierVoucherDeal(deal) {
+  // В этих услугах закуп формируется из купленных ваучеров, а не вводится вручную.
+  return deal?.deal_type_code === 'sale'
+    && ['TR', 'PL'].includes(String(deal?.region_code || '').trim().toUpperCase())
+}
+
 export function createNewDealState() {
   // Базовое состояние для новой сделки в модалке.
   return {

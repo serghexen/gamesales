@@ -878,14 +878,10 @@
                             <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--price">
                               <label class="field">
                                 <span class="label">Закупочная цена</span>
-                                <input
-                                  v-model.number="editDeal.purchase_cost"
-                                  class="input"
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
+                                <WorkDealPurchaseCostInput
+                                  :deal="editDeal"
                                   :max="maxPrice"
-                                  @input="editDeal.purchase_cost = clampPrice(editDeal.purchase_cost)"
+                                  :clamp-price="clampPrice"
                                   :readonly="dealEditMode === 'view'"
                                 />
                               </label>
@@ -1606,14 +1602,10 @@
                             <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--price">
                               <label class="field">
                                 <span class="label">Закупочная цена</span>
-                                <input
-                                  v-model.number="newDeal.purchase_cost"
-                                  class="input"
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
+                                <WorkDealPurchaseCostInput
+                                  :deal="newDeal"
                                   :max="maxPrice"
-                                  @input="newDeal.purchase_cost = clampPrice(newDeal.purchase_cost)"
+                                  :clamp-price="clampPrice"
                                 />
                               </label>
                               <label class="field">
@@ -1670,6 +1662,7 @@
 <script setup>
 import { computed, reactive, ref, toRefs, watch } from 'vue'
 import WorkDealSupplierNominals from './WorkDealSupplierNominals.vue'
+import WorkDealPurchaseCostInput from './WorkDealPurchaseCostInput.vue'
 
 // Большая форма сделки (режим редактирования и создания) вынесена из WorkView.
 const props = defineProps({

@@ -2315,6 +2315,14 @@ async function revealSupplierHubResult(purchaseId) {
   )
 }
 
+async function downloadPurchaseHistory({ dateFrom = '', dateTo = '' } = {}) {
+  // Запрашиваем обе базы за выбранные даты; состояние таблицы не ограничивает выгрузку.
+  const query = new URLSearchParams()
+  if (dateFrom) query.set('date_from', dateFrom)
+  if (dateTo) query.set('date_to', dateTo)
+  return apiGetFile(`/integrations/interhub/transactions/export?${query.toString()}`, { token: auth.state.token })
+}
+
 async function reloadInterhubData() {
   // Обновляем каталог и локальный кэш цен одновременно, не запрашивая прайс у поставщика.
   await Promise.all([loadInterhubServices(), loadInterhubBalance(), loadInterhubPrices()])
@@ -4089,6 +4097,7 @@ const interhubSectionCtx = asCtx({
   refreshPrices: refreshInterhubPrices,
   exportPrices: exportInterhubPrices,
   loadSalesHistory: loadInterhubSalesHistory,
+  downloadPurchaseHistory,
   revealSalesHistoryResult: revealSupplierHubResult,
   openDealById,
   reload: reloadInterhubData,
