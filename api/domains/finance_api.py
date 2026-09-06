@@ -12,6 +12,7 @@ from fastapi import Depends, HTTPException, Query
 from .yandex_market_service import fetch_yandex_market_order_economics, normalize_yandex_market_store_code
 from .wildberries_service import aggregate_wildberries_report_rows, fetch_wildberries_sales_report, normalize_wildberries_store_code
 from .ozon_service import aggregate_ozon_finance_transactions, fetch_ozon_finance_transactions, normalize_ozon_store_code
+from .purchase_cost_sql import PAID_VOUCHER_COST_SQL, purchase_cost_rate_sql
 from .finance_models import (
     FinanceBootstrapOut,
     FinanceCardBalanceOut,
@@ -81,6 +82,8 @@ def mount_finance_routes(
     get_current_user,
     require_role,
 ):
+    # Один пересчёт закупа используется в сводках и детализации, чтобы суммы совпадали.
+    service_purchase_rate_sql = purchase_cost_rate_sql()
     yandex_sync_jobs: dict[str, dict[str, Any]] = {}
     wildberries_sync_jobs: dict[str, dict[str, Any]] = {}
     ozon_sync_jobs: dict[str, dict[str, Any]] = {}
@@ -2941,7 +2944,7 @@ def mount_finance_routes(
                       (di.price * di.qty) AS revenue,
                       CASE
                         WHEN d.deal_type_code = 'sale'
-                        THEN di.purchase_cost * di.qty * COALESCE(rd.purchase_cost_rate, 1.0)
+                        THEN di.purchase_cost * di.qty * {service_purchase_rate_sql}
                         WHEN d.deal_type_code = 'rental'
                         THEN di.purchase_cost * di.qty
                         ELSE 0
@@ -3147,11 +3150,11 @@ def mount_finance_routes(
                     COALESCE(SUM(di.qty), 0) AS qty,
                     COALESCE(SUM(di.price * di.qty), 0) AS revenue,
                     COALESCE(SUM(di.purchase_cost * di.qty), 0) AS purchase_cost,
-                    CASE WHEN d.deal_type_code = 'sale' THEN COALESCE(MAX(rd.purchase_cost_rate), 1.0) ELSE NULL END AS purchase_cost_rate,
+                    CASE WHEN d.deal_type_code = 'sale' THEN MAX({service_purchase_rate_sql}) ELSE NULL END AS purchase_cost_rate,
                     COALESCE(SUM(
                       CASE
                         WHEN d.deal_type_code = 'sale'
-                        THEN di.purchase_cost * di.qty * COALESCE(rd.purchase_cost_rate, 1.0)
+                        THEN di.purchase_cost * di.qty * {service_purchase_rate_sql}
                         WHEN d.deal_type_code = 'rental'
                         THEN di.purchase_cost * di.qty
                         ELSE 0
@@ -3472,7 +3475,7 @@ def mount_finance_routes(
         if date_to_value < date_from_value:
             raise HTTPException(400, "date_to must be greater than or equal to date_from")
 
-        cash_flow_rows_sql = """
+        cash_flow_rows_sql = f"""
             SELECT
               d.completed_at::date AS activity_date,
               fds.source_id,
@@ -3533,7 +3536,7 @@ def mount_finance_routes(
               'expense' AS line_type,
               CONCAT('Закуп ', COALESCE(fdr.code, rd.code, 'Без региона')) AS line_name,
               'direct'::text AS expense_kind,
-              (di.purchase_cost * di.qty * COALESCE(rd.purchase_cost_rate, 1.0)) AS amount
+              (di.purchase_cost * di.qty * {service_purchase_rate_sql}) AS amount
             FROM app.deal_items di
             JOIN app.deals d ON d.deal_id = di.deal_id
             LEFT JOIN app.regions rd ON rd.region_id = d.region_id
@@ -3875,7 +3878,7 @@ def mount_finance_routes(
                     COALESCE(fds.code, src.code) AS source_code,
                     COALESCE(fds.name, src.name, 'Без источника') AS source_name,
                     COALESCE(SUM(di.qty), 0) AS qty,
-                    COALESCE(SUM(di.purchase_cost * di.qty * COALESCE(rd.purchase_cost_rate, 1.0)), 0) AS amount,
+                    COALESCE(SUM(di.purchase_cost * di.qty * {service_purchase_rate_sql}), 0) AS amount,
                     NULL::text AS comment,
                     NULL::text AS external_key,
                     '[]'::jsonb AS order_ids,
@@ -3883,7 +3886,10 @@ def mount_finance_routes(
                     0::integer AS orders_count,
                     0::integer AS rows_count,
                     closer.created_by,
-                    'Закупка по завершенной продаже с коэффициентом региона' AS reason
+                    CASE WHEN BOOL_OR({PAID_VOUCHER_COST_SQL})
+                      THEN 'Оплаченные ваучеры: закуп в RUB без коэффициента'
+                      ELSE 'Закупка по завершенной продаже с коэффициентом региона'
+                    END AS reason
                   FROM app.deal_items di
                   JOIN app.deals d ON d.deal_id = di.deal_id
                   LEFT JOIN app.regions rd ON rd.region_id = d.region_id

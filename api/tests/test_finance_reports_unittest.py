@@ -10,6 +10,7 @@ except Exception:  # pragma: no cover
 
 import app as app_module
 from domains import finance_api as finance_api_module
+from domains.purchase_cost_sql import PAID_VOUCHER_COST_SQL, purchase_cost_rate_sql
 
 
 class _ScriptedCursor:
@@ -63,6 +64,70 @@ class _ScriptedConnCtx:
 
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
 class FinanceReportsTests(unittest.TestCase):
+    def setUp(self):
+        # Запрещаем lifespan открывать реальный пул: запросы отчётов используют сценарные ответы.
+        pool_patch = patch.object(app_module, "ConnectionPool")
+        pool_patch.start()
+        self.addCleanup(pool_patch.stop)
+
+    def test_voucher_rate_is_used_in_reports_details_and_opening_balance(self):
+        # Каждый SQL-путь, включая накопленный остаток и PL, должен использовать общее правило.
+        cases = [
+            ("/finance/reports/sources", [{"all": []}], 1),
+            ("/finance/reports/sources/details", [{"all": []}], 1),
+            ("/finance/reports/cash-flow/details", [{"all": []}], 1),
+            ("/finance/reports/cash-flow", [{"all": []}, {"one": (date(2026, 8, 1), 0)}, {"one": (0,)}], 2),
+            ("/finance/reports/cash-flow?report_type=pl", [{"all": []}, {"one": (date(2026, 8, 1), 0)}, {"one": (0,)}], 2),
+        ]
+        rate_sql = purchase_cost_rate_sql()
+        for path, script, expected_queries in cases:
+            with self.subTest(path=path):
+                sql_collector = []
+                with (
+                    patch.object(app_module, "ensure_analytics_schema", return_value=None),
+                    patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector)),
+                    patch.object(app_module, "JWT_SECRET", "test-secret"),
+                    patch.object(app_module, "JWT_ALG", "HS256"),
+                    self._client() as client,
+                ):
+                    separator = "&" if "?" in path else "?"
+                    response = client.get(
+                        f"{path}{separator}date_from=2026-09-05&date_to=2026-09-05",
+                        headers=self._auth_headers(role="manager"),
+                    )
+                self.assertEqual(response.status_code, 200, response.text)
+                cost_queries = [sql for sql in sql_collector if "di.purchase_cost * di.qty" in sql]
+                self.assertEqual(len(cost_queries), expected_queries)
+                for sql in cost_queries:
+                    self.assertIn(f"di.purchase_cost * di.qty * {rate_sql}", sql)
+                    self.assertNotIn("di.purchase_cost * di.qty * COALESCE(rd.purchase_cost_rate", sql)
+                if "sources/details" in path:
+                    self.assertIn(f"MAX({rate_sql})", cost_queries[0])
+                if "cash-flow/details" in path:
+                    self.assertIn(f"BOOL_OR({PAID_VOUCHER_COST_SQL})", cost_queries[0])
+                    self.assertIn("Оплаченные ваучеры", cost_queries[0])
+
+    def test_source_details_show_voucher_rate_one_and_ruble_profit(self):
+        # Детализация отдаёт фактический коэффициент 1 и прибыль от рублёвого закупа.
+        row = (
+            "deal", 23680, None, date(2026, 9, 5), None, "Клиент", None, None,
+            "Без источника", 10, "TR", "Turkey", "Услуга", "item-23680", "1",
+            "17750.00", "10512.48", "1.0", "10512.48", None, None, [], [], 0, 0, "",
+        )
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx([{"all": [row]}])),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+            self._client() as client,
+        ):
+            response = client.get("/finance/reports/sources/details", headers=self._auth_headers(role="manager"))
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["items"][0]["purchase_cost_rate"], "1.0")
+        self.assertEqual(body["totals"]["direct_expense"], "10512.48")
+        self.assertEqual(body["totals"]["operating_profit"], "7237.52")
+
     def _client(self):
         return TestClient(app_module.app)
 

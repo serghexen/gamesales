@@ -3,6 +3,7 @@ from typing import Any, Optional
 
 from fastapi import Depends, HTTPException
 
+from .purchase_cost_sql import purchase_cost_rate_sql
 from .analytics_models import (
     AuditAnalyticsOut,
     AuditItemOut,
@@ -17,6 +18,9 @@ from .analytics_models import (
 
 
 def mount_analytics_routes(app, *, DB_DSN, get_current_user, q1, qall, psycopg):
+    # Сохраняем прежний выбор региона для старого закупа, а оплаченные ваучеры считаем в рублях.
+    sales_purchase_rate_sql = purchase_cost_rate_sql("COALESCE(rd.purchase_cost_rate, ra.purchase_cost_rate, 1.0)")
+
     @app.get("/analytics/sales", response_model=SalesAnalyticsOut)
     def analytics_sales(
         date_from: Optional[date] = None,
@@ -26,6 +30,7 @@ def mount_analytics_routes(app, *, DB_DSN, get_current_user, q1, qall, psycopg):
         source_id: Optional[int] = None,
         user=Depends(get_current_user),
     ):
+        # Считаем все разрезы с единым правилом закупа, чтобы ваучеры не пересчитывались дважды.
         params: list[Any] = []
         filters = ["activity_at IS NOT NULL", "status_code = 'confirmed'"]
 
@@ -54,7 +59,7 @@ def mount_analytics_routes(app, *, DB_DSN, get_current_user, q1, qall, psycopg):
                       d.deal_type_code,
                       d.status_code,
                       COALESCE(rd.code, ra.code) AS region_code,
-                      COALESCE(rd.purchase_cost_rate, ra.purchase_cost_rate, 1.0) AS rate,
+                      {sales_purchase_rate_sql} AS rate,
                       c.source_id,
                       di.price,
                       di.purchase_cost,
@@ -90,7 +95,7 @@ def mount_analytics_routes(app, *, DB_DSN, get_current_user, q1, qall, psycopg):
                       d.deal_type_code,
                       d.status_code,
                       COALESCE(rd.code, ra.code) AS region_code,
-                      COALESCE(rd.purchase_cost_rate, ra.purchase_cost_rate, 1.0) AS rate,
+                      {sales_purchase_rate_sql} AS rate,
                       c.source_id,
                       di.price,
                       di.purchase_cost,
@@ -123,7 +128,7 @@ def mount_analytics_routes(app, *, DB_DSN, get_current_user, q1, qall, psycopg):
                       d.deal_type_code,
                       d.status_code,
                       COALESCE(rd.code, ra.code) AS region_code,
-                      COALESCE(rd.purchase_cost_rate, ra.purchase_cost_rate, 1.0) AS rate,
+                      {sales_purchase_rate_sql} AS rate,
                       c.source_id,
                       di.price,
                       di.purchase_cost,

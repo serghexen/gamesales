@@ -8,6 +8,7 @@ except Exception:  # pragma: no cover
     TestClient = None
 
 import app as app_module
+from domains.purchase_cost_sql import purchase_cost_rate_sql
 
 
 class _ScriptedCursor:
@@ -58,6 +59,40 @@ class _ScriptedConnCtx:
 
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
 class AnalyticsEndpointsTests(unittest.TestCase):
+    def setUp(self):
+        # Запрещаем lifespan открывать реальный пул: аналитика проверяется на сценарных ответах.
+        pool_patch = patch.object(app_module, "ConnectionPool")
+        pool_patch.start()
+        self.addCleanup(pool_patch.stop)
+
+    def test_voucher_rate_is_used_in_all_sales_breakdowns(self):
+        # Проверяем SQL итогов, дней и типов: все разрезы сохраняют старый fallback и правило ваучеров.
+        queries = []
+        original_execute = _ScriptedCursor.execute
+
+        def capture_query(cursor, sql, params=None):
+            # Сохраняем реальные запросы обработчика, не подменяя построение SQL.
+            queries.append(str(sql))
+            return original_execute(cursor, sql, params)
+
+        script = [{"one": (1000, 350, 2)}, {"all": []}, {"all": []}]
+        with (
+            patch.object(app_module, "ensure_analytics_schema", return_value=None),
+            patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
+            patch.object(_ScriptedCursor, "execute", new=capture_query),
+            patch.object(app_module, "JWT_SECRET", "test-secret"),
+            patch.object(app_module, "JWT_ALG", "HS256"),
+            self._client() as client,
+        ):
+            response = client.get("/analytics/sales", headers=self._auth_headers(role="manager"))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["totals"]["margin"], 650)
+        self.assertEqual(len(queries), 3)
+        rate_sql = purchase_cost_rate_sql("COALESCE(rd.purchase_cost_rate, ra.purchase_cost_rate, 1.0)")
+        for sql in queries:
+            self.assertIn(f"{rate_sql} AS rate", sql)
+            self.assertIn("SUM(purchase_cost * qty * rate)", sql)
+
     def _client(self):
         return TestClient(app_module.app)
 
