@@ -37,6 +37,10 @@ class _FakeCursor:
         # История пуста: тест проверяет только границы запроса, а не данные БД.
         return []
 
+    def fetchmany(self, _size):
+        # Выгрузка читает результат одного запроса пачками без повторной SQL-пагинации.
+        return []
+
     def fetchone(self):
         # Возвращаем пустые итоги для агрегатного запроса истории.
         return (0, 0)
@@ -111,15 +115,19 @@ class InterhubApiTests(unittest.TestCase):
         return TestClient(app), queries
 
     def test_export_uses_selected_dates_for_both_sources(self):
-        # Маршрут выдаёт Excel и передаёт те же календарные даты обеим базам.
+        # Маршрут выдаёт Excel за те же даты, читая CRM одним запросом без COUNT и OFFSET.
         hub = SimpleNamespace(list_transactions=Mock(return_value={"total": 0, "items": []}))
         client, queries = self.create_client(role="owner", hub=hub)
         response = client.get("/integrations/interhub/transactions/export?date_from=2026-09-05&date_to=2026-09-05")
         self.assertEqual(response.status_code, 200)
         self.assertIn("spreadsheetml.sheet", response.headers["content-type"])
         self.assertIn("purchases-2026-09-05-2026-09-05.xlsx", response.headers["content-disposition"])
-        self.assertEqual(load_workbook(BytesIO(response.content)).sheetnames, ["CRM", "Селлер"])
-        self.assertEqual(queries[1][1], [date(2026, 9, 5), date(2026, 9, 5), 100, 0])
+        self.assertEqual(load_workbook(BytesIO(response.content)).sheetnames, ["CRM", "Селлер", "Все покупки"])
+        self.assertEqual(len(queries), 1)
+        self.assertEqual(queries[0][1], [date(2026, 9, 5), date(2026, 9, 5)])
+        self.assertNotIn("COUNT(*)", queries[0][0])
+        self.assertNotIn("OFFSET", queries[0][0])
+        self.assertIn("t.state='paid'", queries[0][0])
         self.assertEqual(hub.list_transactions.call_args.args[0]["created_to"], "2026-09-06T00:00:00+03:00")
 
     def test_export_rejects_wrong_dates_and_non_owner_before_reading_databases(self):

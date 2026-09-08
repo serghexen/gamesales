@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from domains.interhub_price_cache import build_interhub_prices_xlsx, collect_price_targets
 from domains.purchase_history_export import build_purchase_history_xlsx
+from domains.crm_purchase_export import iter_crm_purchase_export
 
 
 PENDING_STATUS = 1
@@ -1236,11 +1237,10 @@ def mount_interhub_routes(
         if supplier_hub_client is None:
             raise HTTPException(503, "История селлера недоступна")
 
-        def load_crm_page(page):
-            # Используем те же границы дат и состав CRM-архива, что и в окне истории.
-            return list_paid_interhub_transactions(
-                date_from=date_from, date_to=date_to, search="", sort_by="createdAt",
-                sort_direction="asc", page=page, page_size=100, user=user,
+        def load_crm_rows():
+            # Для выгрузки читаем архив одним запросом с теми же датами и статусом paid.
+            return iter_crm_purchase_export(
+                psycopg=psycopg, dsn=DB_DSN, date_from=date_from, date_to=date_to,
             )
 
         try:
@@ -1249,7 +1249,7 @@ def mount_interhub_routes(
             # Если каталог недоступен, оставляем в файле идентификаторы услуг и сохранённые подписи CRM.
             services = []
         content = build_purchase_history_xlsx(
-            load_crm_page=load_crm_page, supplier_hub_client=supplier_hub_client,
+            load_crm_rows=load_crm_rows, supplier_hub_client=supplier_hub_client,
             services=services, date_from=date_from, date_to=date_to,
         )
         filename = f"purchases-{date_from or 'all'}-{date_to or 'all'}.xlsx"
