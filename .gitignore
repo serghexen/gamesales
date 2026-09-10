@@ -16,4 +16,13 @@ dist
 gamesales-web/dist
 # Готовые выгрузки содержат рабочие данные и не входят в код приложения.
 outputs/
+# Серверные дампы и копии конфигурации сохраняем на диске, но не отправляем в Git.
+/backup_*.dump
+/backups/
+/docker-compose*.yml.before-*
+/docker-compose*.yml.*-backup-*
+/docker-compose*.yml.rollback-*
+/docker-compose*.yml.stage-next
+/deploy/caddy/Caddyfile.before-*
+/deploy/caddy/Caddyfile.rollback-*
 AGENTS.md
