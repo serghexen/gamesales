@@ -414,6 +414,35 @@ describe('WorkInterhubSection', () => {
     wrapper.unmount()
   })
 
+  it.each([
+    [{ stock_count: 12, match_status: 'matched' }, '12'],
+    [{ stock_count: 0, match_status: 'matched' }, '0'],
+    [{ stock_count: null, match_status: 'missing', message: 'Номинал не найден' }, 'Не получен: Номинал не найден'],
+    [{ stock_count: null, match_status: 'error', message: 'Ошибка получения' }, 'Не получен: Ошибка получения'],
+    [{ stock_count: 8, match_status: 'matched', nominal_id: 999 }, 'Не получен'],
+    [{ stock_count: 8, match_status: 'matched', service_id: 999 }, 'Не получен'],
+  ])('shows only the freshly checked nominal stock in confirmation: %j', async (stock, expected) => {
+    // Проверяем живые данные, включая ноль и ошибки, без подстановки старого кэша или смены условий pay.
+    const ctx = buildCtx({ canPay: true, cachedStocks: [{ service_id: 7, nominal_id: 15, stock_count: 999, match_status: 'matched' }] })
+    ctx.calculate = vi.fn(async () => { ctx.calculation = { success: true, fixed_amount: 117.47 } })
+    ctx.checkPayment = vi.fn(async () => {
+      ctx.check = { success: true, stock: { service_id: 7, nominal_id: 15, checked_at: '2026-09-10T10:00:00Z', ...stock } }
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+    await selectServiceByTitle(wrapper, 'Mobile top up')
+    await wrapper.find('.interhub-catalog__form select').setValue('15')
+    await wrapper.find('.interhub-catalog__form').trigger('submit')
+    await flushPromises()
+    const modal = document.body.querySelector('.interhub-confirm')
+    const row = [...modal.querySelectorAll('.interhub-confirm__details > div')].find((item) => item.querySelector('dt').textContent === 'Актуальный остаток, шт.')
+    expect(row.querySelector('dd').textContent).toBe(expected)
+    expect(modal.textContent).not.toContain('999')
+    if (expected !== 'Не получен') expect(modal.textContent).toContain('Остаток проверен')
+    expect(modal.querySelector('.interhub-confirm__actions .btn').disabled).toBe(false)
+    expect(ctx.pay).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('shows the provider availability error and disables purchase confirmation', async () => {
     const ctx = buildCtx({ canPay: true })
     ctx.calculate = vi.fn(async () => { ctx.calculation = { success: true, fixed_amount: 117.47 } })

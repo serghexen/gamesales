@@ -654,6 +654,8 @@ class InterHubPaymentCheckOut(BaseModel):
     fixed_amount: float = 0.0
     params: dict[str, Any] = Field(default_factory=dict)
     raw: dict[str, Any] = Field(default_factory=dict)
+    # Остаток относится только к этой проверке и не заменяет подтверждение доступности check.
+    stock: Optional[dict[str, Any]] = None
 
 class InterHubPayRequestIn(BaseModel):
     agent_transaction_id: str

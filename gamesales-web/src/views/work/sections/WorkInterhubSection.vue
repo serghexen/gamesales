@@ -244,6 +244,8 @@
           <dl class="interhub-confirm__details">
             <div><dt>Актуальная цена</dt><dd>{{ purchasePrice }}</dd></div>
             <div v-if="purchaseQuantity"><dt>К покупке, шт.</dt><dd>{{ purchaseQuantity }}</dd></div>
+            <div v-if="purchaseNominal"><dt>Актуальный остаток, шт.</dt><dd>{{ purchaseStockText }}</dd></div>
+            <div v-if="purchaseStock?.checked_at"><dt>Остаток проверен</dt><dd>{{ formatHistoryDate(purchaseStock.checked_at) }}</dd></div>
             <div :class="{ 'is-error': !purchaseIsAvailable }"><dt>Доступность</dt><dd>{{ purchaseAvailability }}</dd></div>
           </dl>
           <p v-if="!purchaseIsAvailable" class="interhub-confirm__hint">Покупка недоступна, пока поставщик не подтвердит выдачу.</p>
@@ -388,6 +390,18 @@ const purchaseNominal = computed(() => {
 const purchaseIsAvailable = computed(() => {
   // Купить можно только после успешного check, который сохранил операцию для последующего pay.
   return Boolean(props.ctx.check?.success)
+})
+const purchaseStock = computed(() => {
+  // Не показываем остаток другого номинала и никогда не подставляем сюда сохранённый кэш.
+  const stock = props.ctx.check?.stock
+  return stock && Number(stock.service_id) === Number(preparedPayload.value?.service_id)
+    && String(stock.nominal_id) === String(preparedPayload.value?.params?.nominal) ? stock : null
+})
+const purchaseStockText = computed(() => {
+  // Ноль показываем как число; ошибку получения или сопоставления объясняем отдельно от check.
+  const stock = purchaseStock.value
+  if (['matched', 'normalized'].includes(stock?.match_status) && stock?.stock_count != null) return String(stock.stock_count)
+  return stock?.message ? `Не получен: ${anonymizeSupplierText(stock.message)}` : 'Не получен'
 })
 const purchaseAvailability = computed(() => {
   // Отдаём текст поставщика при ошибке, а успешную проверку переводим в короткий статус.

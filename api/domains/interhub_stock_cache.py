@@ -86,6 +86,47 @@ def match_stock_targets(targets, payload, *, checked_at=None, error=''):
     return rows
 
 
+def fetch_nominal_stock(service_id, nominal_id, *, get_services, get_detail):
+    # Для подтверждения читаем живой остаток; сбой не подменяем кэшем и не отменяем успешный check.
+    if nominal_id is None or nominal_id == '':
+        return None
+    response = None
+    stock = {'service_id': service_id, 'nominal_id': nominal_id, 'stock_count': None,
+             'match_status': 'error', 'message': '', 'provider_response': None}
+    try:
+        if isinstance(nominal_id, bool) or int(nominal_id) <= 0 or str(int(nominal_id)) != str(nominal_id):
+            raise ValueError('Некорректный ID номинала')
+        nominal_id = int(nominal_id)
+        stock['nominal_id'] = nominal_id
+        if get_detail is None:
+            raise RuntimeError('Метод получения остатков не настроен')
+        response = get_detail(service_id)
+        service = next((item for item in get_services() if item.get('service_id') == service_id), None)
+        if service is None:
+            raise ValueError('Услуга не найдена в актуальном каталоге')
+        field = next((item for item in service.get('fields') or [] if item.get('name') == 'nominal'), {})
+        targets = {}
+        for item in field.get('value_list') or []:
+            if not isinstance(item, dict):
+                continue
+            try:
+                item_id = int(item.get('id'))
+            except (TypeError, ValueError):
+                continue
+            if item_id > 0:
+                targets[item_id] = {'service_id': service_id, 'service_title': service.get('title', ''),
+                                    'nominal_id': item_id, 'nominal_title': str(item.get('title') or '')}
+        if nominal_id not in targets or not targets[nominal_id]['nominal_title']:
+            raise ValueError('Имя номинала не найдено в актуальном каталоге')
+        # Сопоставляем все названия услуги, чтобы дубли не превратились в уверенный остаток.
+        rows = match_stock_targets(list(targets.values()), response)
+        return next(row for row in rows if row['nominal_id'] == nominal_id)
+    except Exception as exc:
+        stock.update(message=str(getattr(exc, 'detail', exc)), provider_response=response,
+                     checked_at=datetime.now(timezone.utc))
+        return stock
+
+
 def save_stock_rows(psycopg, dsn, rows, batch_id, username):
     # Сохраняем всю услугу одной транзакцией; конфликт обновляет и успех, и последнюю ошибку.
     with psycopg.connect(dsn) as conn:

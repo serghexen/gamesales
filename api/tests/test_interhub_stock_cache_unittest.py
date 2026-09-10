@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from domains.interhub_api import mount_interhub_routes
 from domains.interhub_price_cache import build_interhub_prices_xlsx, collect_price_targets
 from domains.interhub_service import build_interhub_service
-from domains.interhub_stock_cache import match_stock_targets, parse_stock_count, save_stock_rows
+from domains.interhub_stock_cache import fetch_nominal_stock, match_stock_targets, parse_stock_count, save_stock_rows
 
 
 def catalog():
@@ -27,10 +27,33 @@ def catalog():
 
 
 class ApiModel(BaseModel):
-    pass
+    model_config = {'extra': 'allow'}
 
 
 class StockCacheTests(unittest.TestCase):
+    def test_live_stock_matches_only_inside_service_and_keeps_ambiguous_names_unknown(self):
+        # Одинаковые имена разных услуг не смешиваем, а дубли в одной услуге не угадываем.
+        services = catalog()
+        detail = Mock(return_value=[{'name': 'USD 10.00', 'count': 4}])
+        stock = fetch_nominal_stock(7, '11', get_services=lambda: services, get_detail=detail)
+        self.assertEqual(stock['stock_count'], 4)
+        self.assertEqual(stock['match_status'], 'normalized')
+        detail.assert_called_once_with(7)
+        services[0]['fields'][0]['value_list'].append({'id': 99, 'title': 'USD 10.00'})
+        stock = fetch_nominal_stock(7, 11, get_services=lambda: services, get_detail=detail)
+        self.assertIsNone(stock['stock_count'])
+        self.assertEqual(stock['match_status'], 'ambiguous')
+
+    def test_live_stock_catalog_failure_keeps_raw_reply_and_never_guesses_nominal(self):
+        # Без актуального имени не используем прежний кэш, даже если detail вернул число.
+        payload = [{'name': 'USD 10', 'count': 7}]
+        for services in ([], catalog()):
+            stock = fetch_nominal_stock(7, 999, get_services=lambda: services, get_detail=lambda _: payload)
+            self.assertIsNone(stock['stock_count'])
+            self.assertEqual(stock['match_status'], 'error')
+            self.assertEqual(stock['provider_response'], payload)
+            self.assertIsNotNone(stock['checked_at'].tzinfo)
+
     def test_zero_missing_errors_and_bad_counts_have_different_meanings(self):
         # Ошибка внутри HTTP 200 и неизвестный номинал не маскируются под нулевой запас.
         targets = collect_price_targets(catalog())[:2]
@@ -125,6 +148,57 @@ class StockCacheTests(unittest.TestCase):
 
 
 class StockRefreshApiTests(unittest.TestCase):
+    def test_payment_check_fetches_fresh_stock_each_time_without_paying(self):
+        # Повторная проверка получает новый остаток по услуге и сохраняет обычный check для pay.
+        detail = Mock(side_effect=[[{'name': 'USD 10', 'count': 5}], [{'name': 'USD 10', 'count': 0}]])
+        client, db = self.make_client(detail=detail)
+        self.check.return_value = {'success': True, 'message': 'Ready'}
+        for count in (5, 0):
+            response = client.post('/integrations/interhub/check', json={
+                'service_id': 7, 'account': '', 'agent_transaction_id': f'check-{count}', 'params': {'nominal': 11},
+            })
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.json()['success'])
+            self.assertEqual(response.json()['stock']['stock_count'], count)
+            self.assertEqual(response.json()['stock']['nominal_id'], 11)
+            self.assertTrue(response.json()['stock']['checked_at'])
+        self.assertEqual([call.args for call in detail.call_args_list], [(7,), (7,)])
+        self.assertEqual(self.check.call_count, 2)
+        self.pay.assert_not_called()
+        sql = ' '.join(call.args[0] for call in db.connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value.execute.call_args_list)
+        self.assertIn('INSERT INTO app.interhub_transactions', sql)
+        self.assertNotIn('interhub_stock_cache', sql)
+
+    def test_payment_check_stock_errors_do_not_change_provider_availability(self):
+        # Сетевой сбой, пустой ответ и success=false не превращаются в ноль и не меняют ответ check.
+        cases = [Mock(side_effect=HTTPException(504, 'Timeout')),
+                 Mock(return_value=[]), Mock(return_value={'success': False, 'message': 'No stock data'})]
+        for detail in cases:
+            for success in (True, False):
+                client, _ = self.make_client(detail=detail)
+                self.check.return_value = {'success': success, 'message': 'Check result'}
+                response = client.post('/integrations/interhub/check', json={
+                    'service_id': 7, 'account': '', 'agent_transaction_id': 'test-check', 'params': {'nominal': 11},
+                })
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()['success'], success)
+                self.assertEqual(response.json()['message'], 'Check result')
+                self.assertIsNone(response.json()['stock']['stock_count'])
+                self.assertTrue(response.json()['stock']['message'])
+                self.pay.assert_not_called()
+
+    def test_payment_check_without_nominal_does_not_request_stock(self):
+        # Обычное пополнение без номинала не запускает неподходящий метод остатков.
+        client, _ = self.make_client()
+        self.check.return_value = {'success': True}
+        response = client.post('/integrations/interhub/check', json={
+            'service_id': 7, 'account': 'test', 'agent_transaction_id': 'top-up', 'params': {},
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()['stock'])
+        self.detail.assert_not_called()
+        self.get_services.assert_not_called()
+
     def make_client(self, role='owner', detail=None, calculate=None):
         # Собираем реальный обработчик с изолированными внешними вызовами и пустой базой цен.
         app = FastAPI()

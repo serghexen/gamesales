@@ -9,7 +9,7 @@ from fastapi import Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from domains.interhub_price_cache import build_interhub_prices_xlsx, collect_price_targets
-from domains.interhub_stock_cache import match_stock_targets, read_stock_rows, save_stock_rows
+from domains.interhub_stock_cache import fetch_nominal_stock, match_stock_targets, read_stock_rows, save_stock_rows
 from domains.purchase_history_export import build_purchase_history_xlsx
 from domains.crm_purchase_export import iter_crm_purchase_export
 
@@ -1343,12 +1343,16 @@ def mount_interhub_routes(
 
     @app.post("/integrations/interhub/check", response_model=InterHubPaymentCheckOut)
     def check_interhub_payment(payload: InterHubPaymentRequestIn = Body(...), user: UserOut = Depends(get_current_user)):
-        # Проверяем реквизиты и сохраняем будущую операцию до подтверждения владельцем.
+        # Сохраняем check и дополняем его живым остатком выбранного номинала без изменения условий оплаты.
         request_data = payload.model_dump(exclude_none=True)
         require_standalone_transaction(str(request_data["agent_transaction_id"]))
         result = interhub_check(request_data)
         save_checked_transaction(request_data, result, str(user.username or ""))
-        return InterHubPaymentCheckOut(**result)
+        stock = fetch_nominal_stock(
+            request_data['service_id'], (request_data.get('params') or {}).get('nominal'),
+            get_services=interhub_get_services, get_detail=interhub_get_service_detail,
+        )
+        return InterHubPaymentCheckOut(**{**result, 'stock': stock})
 
     @app.post("/integrations/interhub/pay", response_model=InterHubPaymentCheckOut)
     def pay_interhub_payment(payload: InterHubPayRequestIn = Body(...), user: UserOut = Depends(require_role("owner"))):
