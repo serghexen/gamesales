@@ -58,22 +58,6 @@ services:
       postgres:
         condition: service_healthy
 
-  ozon-notifier:
-    build: ./ozon-notifier
-    container_name: gamesales-ozon-notifier
-    restart: unless-stopped
-    env_file: .env.prod
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      OZON_NOTIFIER_BOT_TOKEN: ${OZON_NOTIFIER_BOT_TOKEN}
-      OZON_NOTIFIER_POLL_INTERVAL_SEC: ${OZON_NOTIFIER_POLL_INTERVAL_SEC:-15}
-      OZON_NOTIFIER_OPERATOR_WAIT_SEC: ${OZON_NOTIFIER_OPERATOR_WAIT_SEC:-120}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    mem_limit: 90m
-    cpus: "0.15"
-
   web:
     build:
       context: ./gamesales-web
