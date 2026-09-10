@@ -1172,6 +1172,7 @@ const interhubPaymentLoading = ref(false)
 const interhubPaymentFlowVersion = ref(0)
 let interhubVoucherStatusPollTimer = null
 const interhubPrices = ref([])
+const interhubStocks = ref([])
 const interhubPriceRefresh = ref(null)
 const interhubPriceRefreshLoading = ref(false)
 const interhubPriceError = ref('')
@@ -2264,12 +2265,13 @@ async function loadInterhubBalance() {
 }
 
 async function loadInterhubPrices() {
-  // Подгружаем сохранённые цены из нашей базы, не выполняя calculate при открытии вкладки.
+  // Загружаем оба кэша одним запросом, чтобы показать цену и остаток с их собственными датами.
   try {
     const data = await apiGet('/integrations/interhub/prices/latest', { token: auth.state.token })
     interhubPrices.value = Array.isArray(data?.items) ? data.items : []
+    interhubStocks.value = Array.isArray(data?.stocks) ? data.stocks : []
   } catch (err) {
-    interhubPriceError.value = mapApiError(err?.message || 'Не удалось загрузить сохранённые цены')
+    interhubPriceError.value = mapApiError(err?.message || 'Не удалось загрузить сохранённые цены и остатки')
   }
 }
 
@@ -4079,6 +4081,7 @@ const interhubSectionCtx = asCtx({
   payment: interhubPayment,
   paymentLoading: interhubPaymentLoading,
   cachedPrices: interhubPrices,
+  cachedStocks: interhubStocks,
   priceRefresh: interhubPriceRefresh,
   priceRefreshLoading: interhubPriceRefreshLoading,
   priceError: interhubPriceError,

@@ -47,6 +47,7 @@ function buildCtx(overrides = {}) {
     canPay: false,
     canManagePrices: false,
     cachedPrices: [],
+    cachedStocks: [],
     priceRefresh: null,
     priceRefreshLoading: false,
     priceError: '',
@@ -684,6 +685,55 @@ describe('WorkInterhubSection', () => {
     await wrapper.find('.interhub-catalog__form select').setValue('15')
     expect(wrapper.text()).toContain('Полный ответ calculate')
     expect(wrapper.text()).toContain('"fixed_amount": 117.47')
+  })
+
+  it.each([0, 12])('shows cached stock %s with its own date even without a cached price', async (count) => {
+    // Ноль не должен исчезать, а отсутствие успешного calculate не скрывает остаток.
+    const ctx = buildCtx({ cachedStocks: [
+      { service_id: 99, nominal_id: 15, stock_count: 777, match_status: 'matched', checked_at: '2026-09-09T10:00:00Z' },
+      { service_id: 7, nominal_id: 15, stock_count: count, match_status: 'matched', checked_at: '2026-09-10T10:00:00Z', provider_response: [{ name: '15', count }] },
+    ] })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+    await selectServiceByTitle(wrapper, 'Mobile top up')
+    await wrapper.find('.interhub-catalog__form select').setValue('15')
+    expect(wrapper.get('.interhub-catalog__cached-stock').text()).toContain(`Остаток из кэша: ${count} шт.`)
+    expect(wrapper.get('.interhub-catalog__cached-stock').text()).toContain('10.09.2026')
+    expect(wrapper.get('.interhub-catalog__cached-stock').text()).not.toContain('777')
+    expect(wrapper.text()).toContain('Полный ответ по остаткам')
+    ctx.calculate.mockClear()
+    await wrapper.find('.interhub-catalog__form select').setValue('')
+    expect(wrapper.find('.interhub-catalog__cached-stock').exists()).toBe(false)
+    expect(ctx.calculate).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('shows a failed stock check instead of zero and removes it when the service changes', async () => {
+    // Показываем ошибку последней попытки и не переносим её на другую услугу.
+    const ctx = buildCtx({ cachedStocks: [{ service_id: 7, nominal_id: 15, stock_count: null, match_status: 'error',
+      checked_at: '2026-09-10T10:00:00Z', message: 'Ошибка получения остатков', provider_response: { success: false } }] })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+    await selectServiceByTitle(wrapper, 'Mobile top up')
+    await wrapper.find('.interhub-catalog__form select').setValue('15')
+    expect(wrapper.get('.interhub-catalog__cached-stock').text()).toContain('Остаток не получен')
+    expect(wrapper.get('.interhub-catalog__cached-stock').text()).not.toContain('0 шт.')
+    await selectServiceByTitle(wrapper, 'Gift PIN')
+    expect(wrapper.find('.interhub-catalog__cached-stock').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('explains that stock was never requested and shows separate refresh progress', async () => {
+    // Старый кэш цен не выдаёт несуществующий остаток; прогресс считает сервисы отдельно от номиналов.
+    const ctx = buildCtx({ priceRefresh: { processed: 3, total: 10, successes: 3, errors: 0,
+      stock_processed: 1, stock_total: 5, stock_successes: 2, stock_errors: 1 }, priceRefreshLoading: true, canManagePrices: true })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+    await selectServiceByTitle(wrapper, 'Mobile top up')
+    await wrapper.find('.interhub-catalog__form select').setValue('15')
+    expect(wrapper.get('.interhub-catalog__cached-stock').text()).toContain('ещё не запрашивался')
+    expect(wrapper.text()).toContain('Остатки: 1 из 5 услуг')
+    expect(wrapper.text()).toContain('без остатка 1')
+    const exportButton = wrapper.findAll('button').find((button) => button.text() === 'Выгрузить Excel')
+    expect(exportButton.element.disabled).toBe(true)
+    wrapper.unmount()
   })
 
   it('sorts nominal options by their numeric value', async () => {

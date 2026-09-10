@@ -2,11 +2,13 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import BytesIO
 from typing import Any
+from zoneinfo import ZoneInfo
 import json
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from domains.interhub_stock_cache import STOCK_STATUS_LABELS
 
 
 PRICE_TYPES = {"VOUCHER", "TOP_UP_FIXED"}
@@ -15,7 +17,12 @@ PRICE_TYPES = {"VOUCHER", "TOP_UP_FIXED"}
 def collect_price_targets(services: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Собирает активные номиналы, для которых InterHub поддерживает calculate."""
     targets: list[dict[str, Any]] = []
+    seen = set()
     for service in services:
+        # Не опрашиваем выключенные услуги и не повторяем запросы для дублей каталога.
+        raw = service.get('raw') or {}
+        if str(raw.get('active', service.get('active', True))).lower() in {'false', '0', 'no', 'off'}:
+            continue
         service_type = str(service.get("type") or "").upper()
         if service_type not in PRICE_TYPES:
             continue
@@ -26,7 +33,7 @@ def collect_price_targets(services: list[dict[str, Any]]) -> list[dict[str, Any]
         if not nominal_field:
             continue
         for nominal in nominal_field.get("value_list") or []:
-            if not isinstance(nominal, dict) or nominal.get("active") is False:
+            if not isinstance(nominal, dict) or str(nominal.get('active', True)).lower() in {'false', '0', 'no', 'off'}:
                 continue
             try:
                 nominal_id = int(nominal.get("id"))
@@ -35,6 +42,9 @@ def collect_price_targets(services: list[dict[str, Any]]) -> list[dict[str, Any]
                 continue
             if service_id <= 0 or nominal_id <= 0:
                 continue
+            if (service_id, nominal_id) in seen:
+                continue
+            seen.add((service_id, nominal_id))
             targets.append(
                 {
                     "service_id": service_id,
@@ -48,8 +58,8 @@ def collect_price_targets(services: list[dict[str, Any]]) -> list[dict[str, Any]
     return targets
 
 
-def build_interhub_prices_xlsx(prices: list[dict[str, Any]], errors: list[dict[str, Any]]) -> bytes:
-    """Создаёт один файл с закупочными ценами и ошибками последнего запуска."""
+def build_interhub_prices_xlsx(prices: list[dict[str, Any]], errors: list[dict[str, Any]], stocks=None) -> bytes:
+    """Создаёт отчёт из кэша цен и остатков; неизвестный остаток оставляет пустым, а не нулём."""
     workbook = Workbook()
     prices_sheet = workbook.active
     prices_sheet.title = "Закупочные цены"
@@ -77,6 +87,28 @@ def build_interhub_prices_xlsx(prices: list[dict[str, Any]], errors: list[dict[s
     prices_sheet.column_dimensions["I"].width = 22
     prices_sheet.column_dimensions["K"].width = 52
     errors_sheet.column_dimensions["I"].width = 52
+    if stocks is not None:
+        # Отдельный лист включает даже номиналы без успешной цены и ошибки ответа HTTP 200.
+        stock_sheet = workbook.create_sheet('Остатки')
+        stock_sheet.append(['ID услуги', 'Услуга', 'ID номинала', 'Номинал', 'Остаток, шт.',
+                            'Проверено', 'Сопоставление', 'Название у поставщика', 'Сообщение',
+                            'Полный ответ service/detail (JSON)'])
+        for row in stocks:
+            stock_sheet.append([row.get('service_id'), row.get('service_title'), row.get('nominal_id'),
+                                row.get('nominal_title'), row.get('stock_count'), format_stock_datetime(row.get('checked_at')),
+                                STOCK_STATUS_LABELS.get(row.get('match_status'), row.get('match_status')),
+                                row.get('provider_name'), row.get('message'),
+                                format_provider_response(row.get('provider_response'))])
+        style_sheet(stock_sheet)
+        stock_sheet.column_dimensions['F'].width = 24
+        stock_sheet.column_dimensions['J'].width = 60
+        stock_sheet.row_dimensions[1].height = 32
+        for cells in stock_sheet.iter_rows(min_row=2):
+            cells[4].number_format = '#,##0'
+            # Текст поставщика не должен становиться исполняемой формулой в Excel.
+            for cell in cells:
+                if cell.data_type == 'f':
+                    cell.data_type = 's'
     buffer = BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
@@ -89,12 +121,19 @@ def format_datetime(value: Any) -> str:
     return str(value or "")
 
 
+def format_stock_datetime(value: Any) -> str:
+    # Время проверки в выгрузке показываем по Москве независимо от часового пояса контейнера API.
+    if isinstance(value, datetime) and value.tzinfo is not None:
+        return value.astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m.%Y %H:%M:%S')
+    return format_datetime(value)
+
+
 def format_provider_response(value: Any) -> str:
     """Сохраняет ответ поставщика в читаемом JSON без удаления неизвестных полей."""
     if isinstance(value, str):
         return value
     try:
-        return json.dumps(value or {}, ensure_ascii=False, sort_keys=True)
+        return json.dumps(value if value is not None else {}, ensure_ascii=False, sort_keys=True)
     except (TypeError, ValueError):
         return str(value or "")
 

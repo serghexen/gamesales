@@ -9,6 +9,7 @@ from fastapi import Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from domains.interhub_price_cache import build_interhub_prices_xlsx, collect_price_targets
+from domains.interhub_stock_cache import match_stock_targets, read_stock_rows, save_stock_rows
 from domains.purchase_history_export import build_purchase_history_xlsx
 from domains.crm_purchase_export import iter_crm_purchase_export
 
@@ -50,6 +51,7 @@ def mount_interhub_routes(
     price_calculate_delay_ms=700,
     publish_deal_event=None,
     supplier_hub_client=None,
+    interhub_get_service_detail=None,
 ):
     price_jobs: dict[str, dict] = {}
     price_jobs_lock = threading.Lock()
@@ -612,6 +614,8 @@ def mount_interhub_routes(
             "job_id": job["job_id"], "batch_id": job["batch_id"], "state": job["state"],
             "total": job["total"], "processed": job["processed"], "successes": job["successes"],
             "errors": job["errors"], "message": job["message"],
+            "stock_total": job["stock_total"], "stock_processed": job["stock_processed"],
+            "stock_successes": job["stock_successes"], "stock_errors": job["stock_errors"],
         }
 
     def save_price_calculation(batch_id: str, target: dict, result: dict, username: str) -> None:
@@ -635,18 +639,41 @@ def mount_interhub_routes(
             conn.commit()
 
     def run_price_refresh(job_id: str, username: str) -> None:
-        # Запускаем calculate последовательно с паузой, чтобы не создавать всплеск нагрузки у поставщика.
+        # Для каждого сервиса запрашиваем detail один раз, затем цены номиналов с общей паузой между вызовами.
         try:
             targets = collect_price_targets(interhub_get_services())
+            service_targets = {}
+            for target in targets:
+                service_targets.setdefault(target['service_id'], []).append(target)
             with price_jobs_lock:
                 job = price_jobs[job_id]
                 job["total"] = len(targets)
+                job["stock_total"] = len(service_targets)
                 if not targets:
                     job["state"] = "completed"
                     job["message"] = "В каталоге нет активных номиналов Voucher и Top-up-fixed"
                     return
+            checked_services = set()
             for index, target in enumerate(targets):
                 if index:
+                    time.sleep(max(0, int(price_calculate_delay_ms)) / 1000)
+                if target['service_id'] not in checked_services:
+                    # Ошибка detail не мешает calculate и сохраняется отдельно от цены.
+                    checked_services.add(target['service_id'])
+                    error = ''
+                    try:
+                        if interhub_get_service_detail is None:
+                            raise RuntimeError('Метод получения остатков не настроен')
+                        stock_payload = interhub_get_service_detail(target['service_id'])
+                    except Exception as exc:
+                        error = str(getattr(exc, 'detail', exc))
+                        stock_payload = {'error': error}
+                    stock_rows = match_stock_targets(service_targets[target['service_id']], stock_payload, error=error)
+                    save_stock_rows(psycopg, DB_DSN, stock_rows, job['batch_id'], username)
+                    with price_jobs_lock:
+                        job['stock_processed'] += 1
+                        job['stock_successes'] += sum(row['stock_count'] is not None for row in stock_rows)
+                        job['stock_errors'] += sum(row['stock_count'] is None for row in stock_rows)
                     time.sleep(max(0, int(price_calculate_delay_ms)) / 1000)
                 try:
                     result = interhub_calculate({
@@ -667,7 +694,7 @@ def mount_interhub_routes(
                         job["errors"] += 1
             with price_jobs_lock:
                 job["state"] = "completed"
-                job["message"] = "Расчёт цен завершён"
+                job["message"] = "Обновление цен и остатков завершено"
         except Exception as exc:
             with price_jobs_lock:
                 job = price_jobs[job_id]
@@ -1269,6 +1296,7 @@ def mount_interhub_routes(
             job = {
                 "job_id": job_id, "batch_id": uuid.uuid4().hex, "state": "running", "total": 0,
                 "processed": 0, "successes": 0, "errors": 0, "message": "Загружаем каталог InterHub",
+                "stock_total": 0, "stock_processed": 0, "stock_successes": 0, "stock_errors": 0,
             }
             price_jobs[job_id] = job
         threading.Thread(target=run_price_refresh, args=(job_id, str(user.username or "")), daemon=True).start()
@@ -1286,9 +1314,9 @@ def mount_interhub_routes(
 
     @app.get("/integrations/interhub/prices/latest")
     def get_latest_interhub_prices(user: UserOut = Depends(get_current_user)):
-        # Показываем оператору ранее сохранённые закупочные цены рядом с номиналом.
+        # Отдаём цену и последнюю проверку остатка с независимыми датами из локального кэша.
         _ = user
-        return {"items": read_latest_prices()}
+        return {"items": read_latest_prices(), "stocks": read_stock_rows(psycopg, DB_DSN)}
 
     @app.get("/integrations/interhub/prices/export")
     def export_interhub_prices(user: UserOut = Depends(require_role("owner"))):
@@ -1296,9 +1324,10 @@ def mount_interhub_routes(
         _ = user
         batch_id, errors = read_latest_batch_errors()
         prices = read_latest_prices()
-        if not prices and not errors:
+        stocks = read_stock_rows(psycopg, DB_DSN)
+        if not prices and not errors and not stocks:
             raise HTTPException(404, "InterHub prices have not been calculated yet")
-        content = build_interhub_prices_xlsx(prices, errors)
+        content = build_interhub_prices_xlsx(prices, errors, stocks)
         filename = f"interhub-prices-{batch_id[:8] or 'cache'}.xlsx"
         return StreamingResponse(
             iter([content]),

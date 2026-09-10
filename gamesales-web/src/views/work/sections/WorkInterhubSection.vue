@@ -8,7 +8,7 @@
       <div class="interhub-catalog__head-actions">
         <button v-if="ctx.canViewHistory" class="ghost interhub-catalog__history-action" type="button" @click="openSalesHistory">История покупок</button>
         <button v-if="ctx.canManagePrices" class="ghost interhub-catalog__price-action" type="button" :disabled="ctx.priceRefreshLoading" @click="ctx.refreshPrices">
-          {{ ctx.priceRefreshLoading ? 'Обновляем цены…' : 'Обновить закупочные цены' }}
+          {{ ctx.priceRefreshLoading ? 'Обновляем цены и остатки…' : 'Обновить закупочные цены' }}
         </button>
         <button v-if="ctx.canManagePrices" class="ghost interhub-catalog__price-action" type="button" :disabled="ctx.priceRefreshLoading" @click="ctx.exportPrices">Выгрузить Excel</button>
         <button class="deal-refresh-btn" type="button" :disabled="ctx.loading" aria-label="Обновить каталог поставщика" @click="ctx.reload">
@@ -22,6 +22,7 @@
       <p v-if="ctx.error" class="error">{{ anonymizeSupplierText(ctx.error) }}</p>
       <p v-if="ctx.priceError" class="error">{{ anonymizeSupplierText(ctx.priceError) }}</p>
       <p v-if="ctx.priceRefresh" class="muted interhub-catalog__price-progress">Обновление цен: {{ ctx.priceRefresh.processed }} из {{ ctx.priceRefresh.total }} · успешно {{ ctx.priceRefresh.successes }} · ошибок {{ ctx.priceRefresh.errors }}<span v-if="ctx.priceRefresh.message"> · {{ anonymizeSupplierText(ctx.priceRefresh.message) }}</span></p>
+      <p v-if="ctx.priceRefresh?.stock_total" class="muted">Остатки: {{ ctx.priceRefresh.stock_processed }} из {{ ctx.priceRefresh.stock_total }} услуг · получено для {{ ctx.priceRefresh.stock_successes }} номиналов · без остатка {{ ctx.priceRefresh.stock_errors }}</p>
 
       <div class="interhub-catalog__toolbar">
         <label class="interhub-catalog__search">
@@ -75,7 +76,25 @@
           <div v-if="amountFromNominal" class="interhub-catalog__auto-amount"><span>Сумма пополнения</span><strong>{{ selectedNominalTitle || 'Выберите номинал' }}</strong><small>Подставляется автоматически из номинала</small></div>
           <label v-else-if="needsAmount" class="field"><span class="label">Сумма пополнения</span><input v-model="amount" class="input" type="number" :min="selectedService.min_amount || 0.01" step="0.01" required @input="resetPaymentAfterInputChange" /><small class="muted">{{ formatAmountLimit(selectedService) }}</small></label>
           <label v-if="paymentType === 'VOUCHER'" class="field"><span class="label">Количество ключей</span><input v-model.number="voucherQuantity" class="input interhub-catalog__quantity-input" type="number" min="1" max="20" step="1" required @input="resetPaymentAfterInputChange" /><small class="muted">Не более 20 за один запуск. Каждый ключ покупается и сохраняется отдельно.</small></label>
-          <label v-for="field in selectedService.fields" :key="field.name" class="field"><span class="label">{{ field.name }}<i v-if="field.required"> *</i></span><select v-if="field.type === 'LIST'" v-model="params[field.name]" class="input" :required="field.required" @change="resetPaymentAfterInputChange"><option value="">Выберите значение</option><option v-for="option in sortedNominals(field.value_list)" :key="option.id" :value="option.id">{{ option.title }}</option></select><input v-else v-model.trim="params[field.name]" class="input" :required="field.required" @input="resetPaymentAfterInputChange" /><small v-if="field.name === 'nominal' && selectedCachedPrice" class="muted">Закупочная цена из кэша: {{ formatMoney(selectedCachedPrice.fixed_amount) }} ₽ · {{ formatCachedDate(selectedCachedPrice.calculated_at) }}</small><details v-if="field.name === 'nominal' && selectedCachedPrice" class="interhub-catalog__calculate-response"><summary>Полный ответ calculate</summary><pre>{{ formatProviderResponse(selectedCachedPrice.provider_response) }}</pre></details></label>
+          <label v-for="field in selectedService.fields" :key="field.name" class="field">
+            <span class="label">{{ field.name }}<i v-if="field.required"> *</i></span>
+            <select v-if="field.type === 'LIST'" v-model="params[field.name]" class="input" :required="field.required" @change="resetPaymentAfterInputChange">
+              <option value="">Выберите значение</option>
+              <option v-for="option in sortedNominals(field.value_list)" :key="option.id" :value="option.id">{{ option.title }}</option>
+            </select>
+            <input v-else v-model.trim="params[field.name]" class="input" :required="field.required" @input="resetPaymentAfterInputChange" />
+            <small v-if="field.name === 'nominal' && selectedCachedPrice" class="muted">Закупочная цена из кэша: {{ formatMoney(selectedCachedPrice.fixed_amount) }} ₽ · {{ formatCachedDate(selectedCachedPrice.calculated_at) }}</small>
+            <small v-if="field.name === 'nominal' && params.nominal" class="muted interhub-catalog__cached-stock">
+              <template v-if="selectedCachedStock">
+                <template v-if="hasCachedStockCount">Остаток из кэша: {{ selectedCachedStock.stock_count }} шт.</template>
+                <template v-else>Остаток не получен: {{ anonymizeSupplierText(selectedCachedStock.message || 'Нет данных') }}</template>
+                · {{ formatCachedDate(selectedCachedStock.checked_at) }}
+              </template>
+              <template v-else>Остаток из кэша: ещё не запрашивался</template>
+            </small>
+            <details v-if="field.name === 'nominal' && selectedCachedPrice" class="interhub-catalog__calculate-response"><summary>Полный ответ calculate</summary><pre>{{ formatProviderResponse(selectedCachedPrice.provider_response) }}</pre></details>
+            <details v-if="field.name === 'nominal' && selectedCachedStock" class="interhub-catalog__calculate-response"><summary>Полный ответ по остаткам</summary><pre>{{ formatProviderResponse(selectedCachedStock.provider_response) }}</pre></details>
+          </label>
         </div>
         <div class="interhub-catalog__actions is-single">
           <button class="btn interhub-catalog__action-btn" type="submit" :disabled="showHamster || !ctx.canPay"><span><strong>Получить</strong><small>Цена и проверка доступности</small></span></button>
@@ -328,6 +347,17 @@ const selectedCachedPrice = computed(() => {
   const serviceId = Number(selectedService.value?.service_id || 0)
   const nominalId = Number(params.nominal || 0)
   return (props.ctx.cachedPrices || []).find((item) => Number(item?.service_id) === serviceId && Number(item?.nominal_id) === nominalId) || null
+})
+const selectedCachedStock = computed(() => {
+  // Выбираем проверку по обоим ID: одинаковый номинал другой услуги не должен подменить остаток.
+  const serviceId = Number(selectedService.value?.service_id || 0)
+  const nominalId = Number(params.nominal || 0)
+  return (props.ctx.cachedStocks || []).find((item) => Number(item?.service_id) === serviceId && Number(item?.nominal_id) === nominalId) || null
+})
+const hasCachedStockCount = computed(() => {
+  // Нулевой остаток является успешным результатом, а null и ошибка — отсутствием данных.
+  const stock = selectedCachedStock.value
+  return ['matched', 'normalized'].includes(stock?.match_status) && stock?.stock_count != null
 })
 const giftCode = computed(() => String(props.ctx.payment?.params?.gift_code || ''))
 const isVoucherBatch = computed(() => Boolean(props.ctx.payment?.batch_id))

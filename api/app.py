@@ -1000,6 +1000,11 @@ def interhub_get_services():
     # Проксируем каталог через сервис, чтобы endpoint и тесты не зависели от внешней сети.
     return interhub_service.get_services()
 
+
+def interhub_get_service_detail(service_id: int):
+    # Используем серверный токен и маршрут поставщика для единого обновления цен и остатков.
+    return interhub_service.get_service_detail(service_id)
+
 def interhub_get_balance():
     # Проксируем баланс, чтобы браузер никогда не обращался к InterHub напрямую.
     return interhub_service.get_balance()
@@ -1404,6 +1409,7 @@ interhub_refresh_pending = mount_interhub_routes(
     InterHubPayRequestIn=InterHubPayRequestIn,
     InterHubVoucherBatchPayRequestIn=InterHubVoucherBatchPayRequestIn,
     interhub_get_services=interhub_get_services,
+    interhub_get_service_detail=interhub_get_service_detail,
     interhub_get_balance=interhub_get_balance,
     interhub_calculate=interhub_calculate,
     interhub_check=interhub_check,

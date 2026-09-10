@@ -15,6 +15,7 @@ class InterHubService:
     check: Callable[[dict[str, Any]], dict[str, Any]]
     pay: Callable[[dict[str, Any]], dict[str, Any]]
     check_status: Callable[[dict[str, Any]], dict[str, Any]]
+    get_service_detail: Callable[[int], Any]
 
 
 def build_interhub_service(
@@ -160,6 +161,12 @@ def build_interhub_service(
         # Загружаем каталог услуг из единственного подтверждённого метода InterHub.
         return normalize_services(send_request("/api/agent/service/list"))
 
+    def get_service_detail(service_id: int) -> Any:
+        # Один GET возвращает остатки всех номиналов услуги; сырой ответ нужен для разбора ошибок в кэше.
+        if isinstance(service_id, bool) or not isinstance(service_id, int) or service_id <= 0:
+            raise HTTPException(422, "InterHub service ID must be a positive integer")
+        return send_request(f"/api/agent/service/detail?id={service_id}")
+
     def get_balance() -> dict[str, Any]:
         # Возвращаем баланс и лимит овердрафта в формате, безопасном для виджета UI.
         payload = send_request(deposit_path)
@@ -198,4 +205,5 @@ def build_interhub_service(
         # Получаем финальный результат операции, которую провайдер ещё обрабатывает.
         return normalize_payment_response(send_request(check_status_path, payload))
 
-    return InterHubService(get_services=get_services, get_balance=get_balance, calculate=calculate, check=check, pay=pay, check_status=check_status)
+    return InterHubService(get_services=get_services, get_balance=get_balance, calculate=calculate, check=check,
+                           pay=pay, check_status=check_status, get_service_detail=get_service_detail)
