@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from domains.tbank_sbp_payments import (
     SbpPaymentCreateIn,
     TBankClient,
+    TBankError,
     TBankSettings,
     _ssl_context,
     make_token,
@@ -55,13 +56,14 @@ class TBankSbpPaymentsTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             qr_data_url('<svg xmlns="http://www.w3.org/2000/svg"><foreignObject /></svg>')
 
-    def test_receipt_uses_operator_description_as_ffd_12_service(self) -> None:
+    def test_receipt_uses_operator_description_as_ffd_12_advance(self) -> None:
+        # Проверяет признаки аванса и сохранение названия, введённого оператором.
         with patch.dict(
             "os.environ",
             {
                 "TBANK_RECEIPT_EMAIL": "Asat@Asatmail.com",
                 "TBANK_RECEIPT_TAXATION": "usn_income_outcome",
-                "TBANK_RECEIPT_TAX": "none",
+                "TBANK_RECEIPT_TAX": "vat105",
             },
         ):
             receipt = payment_receipt(amount=199_000, description="A Way Out для PS5")
@@ -70,9 +72,53 @@ class TBankSbpPaymentsTests(unittest.TestCase):
         self.assertEqual(receipt["Email"], "asat@asatmail.com")
         self.assertEqual(receipt["Taxation"], "usn_income_outcome")
         self.assertEqual(receipt["Items"][0]["Name"], "A Way Out для PS5")
-        self.assertEqual(receipt["Items"][0]["PaymentObject"], "service")
-        self.assertEqual(receipt["Items"][0]["PaymentMethod"], "full_payment")
-        self.assertEqual(receipt["Items"][0]["Tax"], "none")
+        self.assertEqual(receipt["Items"][0]["PaymentObject"], "payment")
+        self.assertEqual(receipt["Items"][0]["PaymentMethod"], "advance")
+        self.assertEqual(receipt["Items"][0]["Tax"], "vat105")
+
+    def test_advance_init_preserves_description_and_gross_amount(self) -> None:
+        # НДС не меняет сумму, а шаблон и произвольное описание одинаково доходят до банка и чека.
+        captured = []
+        client = TBankClient(TBankSettings("https://example.test/v2", "Terminal", "secret", "n", "s", "f", 3))
+        client.call = lambda method, payload: captured.append((method, payload)) or {"Success": True}
+        with patch.dict("os.environ", {
+            "TBANK_RECEIPT_EMAIL": "receipt@example.com",
+            "TBANK_RECEIPT_TAXATION": "usn_income_outcome",
+            "TBANK_RECEIPT_TAX": "vat105",
+        }):
+            for description in ("Услуга по оформлению цифрового контента", "A Way Out для PS5"):
+                for amount in (1_000, 105_000, 100_001, 10_000_000):
+                    with self.subTest(description=description, amount=amount):
+                        client.init(
+                            order_id=f"crm_test_{amount}", amount=amount, description=description,
+                            expires_at=datetime(2026, 9, 20, 12, 0, tzinfo=timezone.utc),
+                            receipt=payment_receipt(amount=amount, description=description),
+                        )
+                        method, payload = captured[-1]
+                        self.assertEqual(method, "Init")
+                        self.assertEqual(payload["Description"], description)
+                        self.assertEqual(payload["Amount"], amount)
+                        self.assertEqual(payload["Receipt"]["Taxation"], "usn_income_outcome")
+                        items = payload["Receipt"]["Items"]
+                        self.assertEqual(sum(item["Amount"] for item in items), amount)
+                        self.assertEqual(items[0]["Name"], description)
+                        self.assertEqual(items[0]["Price"] * items[0]["Quantity"], amount)
+                        self.assertEqual(items[0]["Tax"], "vat105")
+                        self.assertEqual(items[0]["PaymentMethod"], "advance")
+                        self.assertEqual(items[0]["PaymentObject"], "payment")
+
+    def test_receipt_rejects_missing_or_invalid_tax_configuration(self) -> None:
+        # При ошибке налоговых настроек запрещаем формирование некорректного чека.
+        settings = {
+            "TBANK_RECEIPT_EMAIL": "receipt@example.com",
+            "TBANK_RECEIPT_TAXATION": "usn_income_outcome",
+            "TBANK_RECEIPT_TAX": "vat105",
+        }
+        for key in ("TBANK_RECEIPT_TAXATION", "TBANK_RECEIPT_TAX"):
+            for value in ("", "invalid"):
+                with self.subTest(key=key, value=value), patch.dict("os.environ", {**settings, key: value}):
+                    with self.assertRaisesRegex(TBankError, key):
+                        payment_receipt(amount=1_000, description="Описание оператора")
 
     def test_init_sends_description_but_never_internal_buyer(self) -> None:
         captured = []
