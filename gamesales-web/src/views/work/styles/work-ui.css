@@ -3127,7 +3127,9 @@
   border-radius: 999px;
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn {
+/* Каталог использует эффекты кнопок сделок, включая текстовый вариант для подвала формы. */
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action {
   position: relative;
   width: 40px;
   height: 40px;
@@ -3143,7 +3145,8 @@
     opacity 0.2s ease;
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn::before {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn::before,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action::before {
   content: '';
   position: absolute;
   top: 0;
@@ -3154,28 +3157,34 @@
   transition: left 0.5s ease;
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn:hover::before {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn:hover::before,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action:not(:disabled):hover::before {
   left: 100%;
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn:hover {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn:hover,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action:not(:disabled):hover {
   transform: translateY(-2px);
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn:active {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn:active,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action:not(:disabled):active {
   transform: translateY(-1px);
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn:disabled {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn:disabled,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn:disabled::before {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn:disabled::before,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action:disabled::before {
   display: none;
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn svg {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn svg,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action svg {
   position: relative;
   z-index: 1;
   width: 15px;
@@ -3183,16 +3192,19 @@
   transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn:hover svg {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn:hover svg,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action:not(:disabled):hover svg {
   transform: rotate(-15deg) scale(1.08);
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn--save {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn--save,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action--save {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   box-shadow: 0 6px 18px rgba(16, 185, 129, 0.38);
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn--save:hover {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn--save:hover,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action--save:not(:disabled):hover {
   box-shadow: 0 9px 24px rgba(16, 185, 129, 0.52);
   border-color: rgba(16, 185, 129, 0.38);
 }
@@ -3207,12 +3219,14 @@
   border-color: rgba(139, 92, 246, 0.38);
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn--close {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn--close,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action--close {
   background: linear-gradient(135deg, #64748b 0%, #475569 100%);
   box-shadow: 0 6px 18px rgba(100, 116, 139, 0.38);
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn--close:hover {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn--close:hover,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action--close:not(:disabled):hover {
   box-shadow: 0 9px 24px rgba(100, 116, 139, 0.52);
   border-color: rgba(100, 116, 139, 0.38);
 }
@@ -3227,12 +3241,14 @@
   border-color: rgba(59, 130, 246, 0.38);
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn--delete {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn--delete,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action--delete {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   box-shadow: 0 6px 18px rgba(239, 68, 68, 0.38);
 }
 
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn--delete:hover {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn--delete:hover,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action--delete:not(:disabled):hover {
   box-shadow: 0 9px 24px rgba(239, 68, 68, 0.52);
   border-color: rgba(239, 68, 68, 0.38);
 }
@@ -3248,7 +3264,8 @@
 }
 
 /* Текстовые action-кнопки в шапке модалки: используем тот же стиль, но без круглого ограничения по ширине. */
-.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn--text {
+.work-modal-root.modal-backdrop .modal__head .deal-create-action-btn--text,
+.work-modal-root.modal-backdrop .voucher-catalog-editor .catalog-modal-action--text {
   width: auto;
   min-width: 118px;
   height: 36px;
@@ -3774,7 +3791,8 @@
   padding: 16px;
 }
 
-.work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__modal {
+.work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__modal,
+.work-modal-root.modal-backdrop .voucher-catalog-editor__confirm--unsaved .unsaved-confirm__modal {
   width: min(350px, calc(100vw - 24px));
   max-width: 350px;
   min-height: 0;
@@ -3785,7 +3803,8 @@
   box-shadow: 0 20px 50px rgba(3, 8, 20, 0.42);
 }
 
-.work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__head {
+.work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__head,
+.work-modal-root.modal-backdrop .voucher-catalog-editor__confirm--unsaved .unsaved-confirm__head {
   margin-bottom: 0;
   min-height: 34px;
   justify-content: center;
@@ -3799,7 +3818,8 @@
   letter-spacing: 0.02em;
 }
 
-.work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__modal .modal__body {
+.work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__modal .modal__body,
+.work-modal-root.modal-backdrop .voucher-catalog-editor__confirm--unsaved .unsaved-confirm__modal .modal__body {
   flex: initial;
   overflow: visible;
   padding: 10px 10px 12px;
@@ -3951,7 +3971,8 @@
 }
 
 @media (max-width: 480px) {
-  .work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__modal {
+  .work-page.work-modal-root.modal-backdrop.unsaved-confirm .unsaved-confirm__modal,
+.work-modal-root.modal-backdrop .voucher-catalog-editor__confirm--unsaved .unsaved-confirm__modal {
     width: min(360px, calc(100vw - 20px));
     max-width: 360px;
   }

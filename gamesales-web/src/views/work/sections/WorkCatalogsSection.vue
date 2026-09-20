@@ -29,6 +29,13 @@
         <router-link v-if="canViewFinanceSection" class="tab" :class="{ active: activeTab === 'finance' }" :to="{ name: 'work', query: { ...routeQuery, tab: 'finance', admin_panel: undefined } }">
           Финансы
         </router-link>
+        <router-link
+          v-if="ctx.canViewVoucherCatalogSection"
+          class="tab"
+          :to="{ name: 'work', query: { ...routeQuery, tab: 'voucher-catalog', admin_panel: undefined } }"
+        >
+          Каталог
+        </router-link>
       </div>
     </div>
 
@@ -704,5 +711,6 @@ const showAdminTabs = computed(() => (
   || Boolean(canViewAnalyticsSection.value)
   || Boolean(canViewCatalogsSection.value)
   || Boolean(canViewFinanceSection.value)
+  || Boolean(ctx.canViewVoucherCatalogSection)
 ))
 </script>

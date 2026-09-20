@@ -41,6 +41,13 @@
         >
           Финансы
         </router-link>
+        <router-link
+          v-if="ctx.canViewVoucherCatalogSection"
+          class="tab"
+          :to="{ name: 'work', query: { ...routeQuery, tab: 'voucher-catalog', admin_panel: undefined } }"
+        >
+          Каталог
+        </router-link>
       </div>
     </div>
 
@@ -1410,6 +1417,7 @@ const showAdminTabs = computed(() => (
   || canViewAnalyticsSection.value
   || canViewCatalogsSection.value
   || canViewFinanceSection.value
+  || Boolean(unref(props.ctx.canViewVoucherCatalogSection))
 ))
 
 const fallbackFinanceMode = ref('entry')

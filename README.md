@@ -8,7 +8,7 @@ while **PostgreSQL lives on the VDS**.
 ## Prereqs
 - Python 3.12+ (for API)
 - Node 20.19+ or 22.12+ (for Vite)
-- Access to the VDS Postgres (port 5432 + pg_hba.conf)
+- SSH access to the staging DB tunnel and the InterHub proxy
 
 ## Local API (FastAPI)
 Create a venv and install deps:
@@ -19,12 +19,47 @@ source .venv/bin/activate
 pip install -r api/requirements.txt
 ```
 
-Run API (from repo root):
+For local UI checks, use VS Code → **Tasks: Run Task** → **Local UI + InterHub (no workers)**.
+Stop any existing local API on port 8000 first. This task starts the staging DB tunnel,
+the InterHub HTTPS tunnel, the API without background polling, and Vite against the local API.
+It does not start Docker services, queues, or server workers.
+
+Manual startup (four separate terminals, from the repository root):
 
 ```bash
-export DATABASE_URL='postgresql://gamesales_app:<PASSWORD>@45.144.29.26:5432/gamesales'
-uvicorn app:app --reload --host 0.0.0.0 --port 8000 --app-dir api
+# 1. Staging DB tunnel; keep this terminal open.
+ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L 127.0.0.1:5433:127.0.0.1:5433 adminops@138.16.162.73
+
+# 2. Direct HTTPS tunnel to InterHub through the server configured in .env.dev.
+.venv/bin/python api/scripts/run_interhub_tunnel.py
+
+# 3. API with all lifespan background polling disabled.
+GAMESALES_LOCAL_UI=1 .venv/bin/uvicorn app:app --reload --host 127.0.0.1 --port 8000 --app-dir api
+
+# 4. Frontend pointing explicitly at the local API.
+cd gamesales-web
+VITE_API_BASE=http://127.0.0.1:8000 npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
+
+The API reads `.env.dev`. Local UI mode requires the DB endpoint
+`127.0.0.1:5433/gamesales_staging` and forces InterHub through
+the SSH forward at `127.0.0.1:3128` (or `INTERHUB_TUNNEL_LOCAL_PORT`). SSH connects
+to the hostname from `INTERHUB_API_URL` on port 443 using the server’s allowed IP.
+No HTTP proxy service is needed on the server; TLS still verifies the InterHub hostname.
+It never falls back to a direct
+InterHub connection if the tunnel is unavailable. It keeps the DB pool running;
+do not use `--lifespan off`.
+
+This is not a read-only mode: explicit saves still change staging data and buttons can
+call integrations. The automatic payment reconciliation, marketplace polling and voucher
+catalog schedule stay disabled on the local API. Server workers are unaffected.
+New catalog UI requires the runtime migrations through `20260920_03_voucher_catalog_routing.sql`
+to have been applied to staging before the API starts; apply migrations as a separate deployment step.
+The nominal card stores supplier priority and eligibility for future automatic fulfillment;
+it does not change seller delivery yet. See [catalog routing](docs/voucher-catalog-routing.md).
+
+When finished, stop the API and frontend, then stop both tunnel tasks (or Ctrl+C in their
+terminals). Check that the tunnels you started no longer listen on 5433 and 3128.
 
 Health check:
 

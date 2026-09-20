@@ -51,6 +51,7 @@ describe('WorkProfileSection', () => {
           canViewAnalyticsSection: true,
           canViewCatalogsSection: true,
           canViewFinanceSection: true,
+          canViewVoucherCatalogSection: true,
           canViewUsersSection: true,
           usersSectionCtx: { sortedUsers: [{ username: 'admin' }] },
         }),
@@ -70,11 +71,12 @@ describe('WorkProfileSection', () => {
     })
 
     expect(wrapper.find('.users-stub').exists()).toBe(true)
-    expect(wrapper.findAll('.analytics-link')).toHaveLength(4)
+    expect(wrapper.findAll('.analytics-link')).toHaveLength(5)
     expect(wrapper.text()).toContain('Пользователи')
     expect(wrapper.text()).toContain('Аналитика')
     expect(wrapper.text()).toContain('Справочники')
     expect(wrapper.text()).toContain('Финансы')
+    expect(wrapper.text()).toContain('Каталог')
   })
 
   it('hides users section for non-admin', () => {

@@ -1,9 +1,10 @@
-"""Запускает локальный SSH-туннель к proxy поставщика из .env.dev."""
+"""Прокладывает SSH-туннель непосредственно к HTTPS поставщика с IP сервера."""
 
 import os
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
@@ -23,25 +24,32 @@ def read_port(name: str, fallback: int) -> int:
     return port
 
 
-def main() -> int:
-    # Собирает туннель только по явным локальным настройкам, не сохраняя серверные реквизиты в Git.
+def build_tunnel_command():
+    # SSH сам подключается к поставщику; на сервере не нужен слушающий порт proxy.
     tunnel_host = str(os.getenv("INTERHUB_TUNNEL_HOST", "")).strip()
     if not tunnel_host:
-        print("Укажите INTERHUB_TUNNEL_HOST в .env.dev", file=sys.stderr)
-        return 2
+        raise ValueError('Укажите INTERHUB_TUNNEL_HOST в .env.dev')
+    local_port = read_port('INTERHUB_TUNNEL_LOCAL_PORT', 3128)
+    endpoint = urlsplit(os.getenv('INTERHUB_API_URL', ''))
+    if endpoint.scheme != 'https' or not endpoint.hostname or endpoint.username or endpoint.password:
+        raise ValueError('INTERHUB_API_URL должен быть HTTPS-адресом поставщика без реквизитов')
+    remote_port = endpoint.port or 443
+    return [
+        "ssh", "-N", "-o", "ExitOnForwardFailure=yes",
+        "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
+        "-L", f"127.0.0.1:{local_port}:{endpoint.hostname}:{remote_port}",
+        tunnel_host,
+    ]
+
+
+def main() -> int:
+    # Ошибки настройки показываем до запуска, чтобы SSH не оставил бесполезный локальный порт.
     try:
-        local_port = read_port("INTERHUB_TUNNEL_LOCAL_PORT", 3128)
-        remote_port = read_port("INTERHUB_TUNNEL_REMOTE_PORT", 3128)
+        command = build_tunnel_command()
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    command = [
-        "ssh", "-N", "-o", "ExitOnForwardFailure=yes",
-        "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
-        "-L", f"127.0.0.1:{local_port}:127.0.0.1:{remote_port}",
-        tunnel_host,
-    ]
-    print(f"InterHub tunnel: 127.0.0.1:{local_port} -> {tunnel_host}:127.0.0.1:{remote_port}")
+    print(f'InterHub HTTPS tunnel: {command[-2]} via {command[-1]}', flush=True)
     return subprocess.run(command, check=False).returncode
 
 

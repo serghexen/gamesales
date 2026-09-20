@@ -17,8 +17,11 @@ import urllib.error
 import ssl
 import uuid
 import logging
+from local_ui_runtime import local_interhub_tunnel_port, require_staging_tunnel
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+# Режим выбирается явно командой запуска и не может включиться из общего файла окружения.
+_LOCAL_UI_MODE = os.getenv('GAMESALES_LOCAL_UI', '').strip().lower() in {'1', 'true', 'yes', 'on'}
 load_dotenv(ROOT_DIR / ".env.dev", override=True)
 logger = logging.getLogger(__name__)
 # Границы защищают БД и внешний API от слишком частого цикла при ошибочном значении настройки.
@@ -35,6 +38,17 @@ def ensure_analytics_schema():
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global _pool
+    # Локальная проверка использует только staging и не участвует ни в одном фоновом обходе API.
+    if _LOCAL_UI_MODE:
+        require_staging_tunnel(DB_DSN)
+        _pool = ConnectionPool(DB_DSN, min_size=2, max_size=10, open=True)
+        logger.info('Local UI: background tasks disabled; staging DB and InterHub SSH proxy enabled')
+        try:
+            yield
+        finally:
+            _pool.close()
+            _pool = None
+        return
     # Создаём и открываем пул соединений при каждом старте (поддерживает повторные запуски в тестах).
     _pool = ConnectionPool(DB_DSN, min_size=2, max_size=10, open=True)
     stop_interhub_polling = asyncio.Event()
@@ -150,6 +164,22 @@ async def lifespan(_: FastAPI):
     yandex_market_daily_limit_polling_task = (
         asyncio.create_task(poll_yandex_market_daily_limits()) if _YANDEX_MARKET_CATALOG_LIVE_ENABLED else None
     )
+    stop_voucher_catalog_polling = asyncio.Event()
+
+    async def poll_voucher_catalog():
+        # Расписание хранится в БД; короткая пауза при старте позволяет API сначала принять запросы.
+        while not stop_voucher_catalog_polling.is_set():
+            try:
+                await asyncio.wait_for(stop_voucher_catalog_polling.wait(), timeout=30)
+                continue
+            except asyncio.TimeoutError:
+                pass
+            try:
+                await asyncio.to_thread(voucher_catalog_service.run_due)
+            except Exception:
+                logger.exception('Voucher catalog synchronization failed')
+
+    voucher_catalog_polling_task = asyncio.create_task(poll_voucher_catalog())
     try:
         yield
     finally:
@@ -160,6 +190,8 @@ async def lifespan(_: FastAPI):
         stop_yandex_market_supplier_polling.set()
         stop_yandex_market_webhook_polling.set()
         stop_yandex_market_daily_limit_polling.set()
+        stop_voucher_catalog_polling.set()
+        await voucher_catalog_polling_task
         await interhub_polling_task
         await tbank_payment_polling_task
         if ozon_supplier_polling_task:
@@ -385,6 +417,8 @@ from domains.catalogs_api import mount_catalogs_routes
 from domains.auth_api import mount_auth_routes
 from domains.slots_import_api import mount_slots_import_routes
 from domains.interhub_api import mount_interhub_routes
+from domains.voucher_catalog_api import mount_voucher_catalog_routes
+from domains.voucher_catalog_service import InterhubVoucherProvider, VoucherCatalogService
 from domains.supplier_hub_api import mount_supplier_hub_routes
 from domains.ns_gift_api import mount_ns_gift_routes
 from domains.rbac_api import mount_rbac_routes
@@ -802,6 +836,8 @@ _INTERHUB_TIMEOUT_SEC = int(os.getenv("INTERHUB_TIMEOUT_SEC", "20") or "20")
 _INTERHUB_SSL_VERIFY = str(os.getenv("INTERHUB_SSL_VERIFY", "true") or "true").strip().lower() in ("1", "true", "yes", "on")
 _INTERHUB_CA_CERT_PATH = os.getenv("INTERHUB_CA_CERT_PATH", "")
 _INTERHUB_PROXY_URL = os.getenv("INTERHUB_PROXY_URL", "")
+# Локально SSH открывает HTTPS-соединение с IP сервера без отдельного серверного proxy.
+_INTERHUB_SSH_TUNNEL_PORT = local_interhub_tunnel_port(os.environ) if _LOCAL_UI_MODE else None
 _INTERHUB_CALCULATE_PATH = os.getenv("INTERHUB_CALCULATE_PATH", "/api/agent/payment/check/calculate")
 _INTERHUB_CHECK_PATH = os.getenv("INTERHUB_CHECK_PATH", "/api/agent/payment/check")
 _INTERHUB_PAY_PATH = os.getenv("INTERHUB_PAY_PATH", "/api/agent/payment/pay")
@@ -959,6 +995,7 @@ interhub_service = build_interhub_service(
     ssl_verify=_INTERHUB_SSL_VERIFY,
     ca_cert_path=_INTERHUB_CA_CERT_PATH,
     proxy_url=_INTERHUB_PROXY_URL,
+    ssh_tunnel_port=_INTERHUB_SSH_TUNNEL_PORT,
     calculate_path=_INTERHUB_CALCULATE_PATH,
     check_path=_INTERHUB_CHECK_PATH,
     pay_path=_INTERHUB_PAY_PATH,
@@ -1042,9 +1079,8 @@ def b64_encode(value: str | bytes | memoryview) -> str:
 # ----------------------------
 @app.get("/health")
 def health():
+    # Проверка доступности только читает БД: схема готовится мигратором, пользователи здесь не создаются.
     with _pool.connection() as conn:
-        init_auth_schema(conn)
-        ensure_admin_user(conn)
         q1(conn, "SELECT 1")
     return {"ok": True}
 
@@ -1421,6 +1457,12 @@ interhub_refresh_pending = mount_interhub_routes(
     publish_deal_event=publish_deal_event,
     supplier_hub_client=supplier_hub_operator_client,
 )
+
+voucher_catalog_service = VoucherCatalogService(pooled_psycopg, DB_DSN, {
+    'interhub': InterhubVoucherProvider(interhub_get_services, interhub_get_service_detail,
+                                      interhub_calculate, _INTERHUB_PRICE_CALCULATE_DELAY_MS),
+})
+mount_voucher_catalog_routes(app, service=voucher_catalog_service, get_current_user=get_current_user)
 
 mount_supplier_hub_routes(
     app,

@@ -85,6 +85,49 @@
       ],
       "dependsOrder": "parallel",
       "problemMatcher": []
+    },
+    {
+      "label": "Backend UI (no workers)",
+      "type": "shell",
+      "command": "GAMESALES_LOCAL_UI=1 ${workspaceFolder}/.venv/bin/uvicorn app:app --reload --host 127.0.0.1 --port 8000",
+      "options": {
+        "cwd": "${workspaceFolder}/api",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": [
+            "-lc"
+          ]
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Frontend UI (local API)",
+      "type": "shell",
+      "command": "set -a && source ${workspaceFolder}/.env.dev && set +a && VITE_API_BASE=http://127.0.0.1:8000 npm run dev -- --host 127.0.0.1 --port 5173 --strictPort",
+      "options": {
+        "cwd": "${workspaceFolder}/gamesales-web",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": [
+            "-lc"
+          ]
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Local UI + InterHub (no workers)",
+      "dependsOn": [
+        "Staging DB SSH Tunnel",
+        "InterHub Tunnel",
+        "Backend UI (no workers)",
+        "Frontend UI (local API)"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
     }
   ]
 }

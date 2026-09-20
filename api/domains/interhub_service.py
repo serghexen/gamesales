@@ -5,6 +5,7 @@ import socket
 import ssl
 import urllib.error
 import urllib.request
+from domains.interhub_ssh_transport import NoTunnelRedirects, TunnelHTTPSHandler
 
 
 @dataclass
@@ -27,6 +28,7 @@ def build_interhub_service(
     ssl_verify: bool,
     ca_cert_path: str,
     proxy_url: str = "",
+    ssh_tunnel_port: int | None = None,
     calculate_path: str,
     check_path: str,
     deposit_path: str,
@@ -41,6 +43,11 @@ def build_interhub_service(
             raise HTTPException(500, "InterHub API URL is not configured")
         if not str(interhub_token or "").strip():
             raise HTTPException(500, "InterHub token is not configured")
+        # SSH-forward работает только с HTTPS и никогда не подменяется прямым HTTP-запросом.
+        if ssh_tunnel_port is not None and (
+            not str(interhub_api_url).startswith('https://') or not 1 <= ssh_tunnel_port <= 65535
+        ):
+            raise HTTPException(500, 'Invalid InterHub SSH tunnel configuration')
 
     def parse_json_bytes(raw: bytes) -> Any:
         # Декодируем JSON-ответ и явно сообщаем о некорректном ответе провайдера.
@@ -64,7 +71,15 @@ def build_interhub_service(
         request = urllib.request.Request(url, data=body, headers=headers, method="GET" if payload is None else "POST")
         context = ssl.create_default_context(cafile=ca_cert_path or None) if ssl_verify else ssl._create_unverified_context()
         try:
-            if proxy_url:
+            if ssh_tunnel_port is not None:
+                # TCP идёт через SSH с IP сервера; HTTP CONNECT-proxy на сервере не требуется.
+                opener = urllib.request.build_opener(
+                    urllib.request.ProxyHandler({}),
+                    TunnelHTTPSHandler(context=context, tunnel_port=ssh_tunnel_port),
+                    NoTunnelRedirects(),
+                )
+                response_context = opener.open(request, timeout=max(5, int(timeout_sec or 20)))
+            elif proxy_url:
                 # Направляем только InterHub через CONNECT-proxy, не меняя маршруты остальных интеграций.
                 proxy_handler = urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url})
                 https_handler = urllib.request.HTTPSHandler(context=context)
