@@ -7,7 +7,7 @@
       </div>
       <div class="interhub-catalog__head-actions">
         <button v-if="ctx.canViewHistory" class="ghost interhub-catalog__history-action" type="button" @click="openSalesHistory">История покупок</button>
-        <button v-if="ctx.canManagePrices" class="ghost interhub-catalog__price-action" type="button" :disabled="ctx.priceRefreshLoading" @click="ctx.refreshPrices">
+        <button v-if="ctx.canManagePrices" class="ghost interhub-catalog__price-action" type="button" title="Обновить закупочные цены и остатки только для ваучеров" :disabled="ctx.priceRefreshLoading" @click="ctx.refreshPrices">
           {{ ctx.priceRefreshLoading ? 'Обновляем цены и остатки…' : 'Обновить закупочные цены' }}
         </button>
         <button v-if="ctx.canManagePrices" class="ghost interhub-catalog__price-action" type="button" :disabled="ctx.priceRefreshLoading" @click="ctx.exportPrices">Выгрузить Excel</button>

@@ -783,6 +783,7 @@ describe('WorkInterhubSection', () => {
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
     const buttons = wrapper.findAll('button')
+    expect(buttons.find((button) => button.text().includes('Обновить закупочные цены')).attributes('title')).toBe('Обновить закупочные цены и остатки только для ваучеров')
     await buttons.find((button) => button.text().includes('Обновить закупочные цены')).trigger('click')
     await buttons.find((button) => button.text() === 'Выгрузить Excel').trigger('click')
 

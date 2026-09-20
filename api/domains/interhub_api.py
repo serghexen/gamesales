@@ -639,9 +639,10 @@ def mount_interhub_routes(
             conn.commit()
 
     def run_price_refresh(job_id: str, username: str) -> None:
-        # Для каждого сервиса запрашиваем detail один раз, затем цены номиналов с общей паузой между вызовами.
+        # Оба этапа массового опроса работают только с ваучерами: detail по услуге, calculate по номиналу.
         try:
-            targets = collect_price_targets(interhub_get_services())
+            targets = [target for target in collect_price_targets(interhub_get_services())
+                       if target['service_type'] == 'VOUCHER']
             service_targets = {}
             for target in targets:
                 service_targets.setdefault(target['service_id'], []).append(target)
@@ -651,7 +652,7 @@ def mount_interhub_routes(
                 job["stock_total"] = len(service_targets)
                 if not targets:
                     job["state"] = "completed"
-                    job["message"] = "В каталоге нет активных номиналов Voucher и Top-up-fixed"
+                    job["message"] = "В каталоге нет активных номиналов ваучеров"
                     return
             checked_services = set()
             for index, target in enumerate(targets):

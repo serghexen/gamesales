@@ -243,8 +243,9 @@ class StockRefreshApiTests(unittest.TestCase):
         return client.get(f"/integrations/interhub/prices/refresh/{job['job_id']}").json()
 
     def test_refresh_one_detail_per_service_even_when_calculate_fails(self):
-        # Ошибка одной цены не отменяет остатки и расчёт остальных номиналов.
+        # Пополнение пропускается в обоих этапах, ошибка цены не отменяет опрос двух ваучерных услуг.
         client, db = self.make_client(calculate=Mock(side_effect=[RuntimeError('calculate failed'), {'success': True}, {'success': True}]))
+        self.get_services.return_value = catalog() + [{**catalog()[1], 'service_id': 9, 'type': 'VOUCHER'}]
         with patch('domains.interhub_api.save_stock_rows') as save:
             job = self.run_job(client)
         self.assertEqual(job['state'], 'completed')
@@ -254,9 +255,11 @@ class StockRefreshApiTests(unittest.TestCase):
         self.assertEqual(job['stock_total'], 2)
         self.assertEqual(job['stock_successes'], 2)
         self.assertEqual(job['stock_errors'], 1)
-        self.assertEqual([call.args[0] for call in self.detail.call_args_list], [7, 8])
+        self.assertEqual([call.args[0] for call in self.detail.call_args_list], [7, 9])
+        self.assertEqual([call.args[0]['service_id'] for call in self.calculate.call_args_list], [7, 7, 9])
         self.assertEqual(self.calculate.call_count, 3)
         self.assertEqual(save.call_count, 2)
+        self.assertEqual([call.args[2][0]['service_id'] for call in save.call_args_list], [7, 9])
         self.assertEqual(save.call_args_list[0].args[2][0]['stock_count'], 0)
         self.check.assert_not_called()
         self.pay.assert_not_called()
@@ -264,12 +267,38 @@ class StockRefreshApiTests(unittest.TestCase):
     def test_http_200_provider_error_and_network_error_do_not_break_prices(self):
         # Оба вида ошибок сохраняются как неизвестный остаток, но все три calculate завершаются.
         client, _ = self.make_client(detail=Mock(side_effect=[{'success': False, 'message': 'Error'}, TimeoutError('timeout')]))
+        self.get_services.return_value = catalog() + [{**catalog()[1], 'service_id': 9, 'type': 'VOUCHER'}]
         with patch('domains.interhub_api.save_stock_rows') as save:
             job = self.run_job(client)
         self.assertEqual(job['successes'], 3)
         self.assertEqual(job['stock_errors'], 3)
         for call in save.call_args_list:
             self.assertTrue(all(row['match_status'] == 'error' for row in call.args[2]))
+
+    def test_refresh_without_active_vouchers_skips_prices_and_stocks(self):
+        # Пополнения и выключенные ваучеры не вызывают внешних запросов или записей в кэш.
+        client, db = self.make_client()
+        self.get_services.return_value = [
+            catalog()[1], {**catalog()[0], 'active': False},
+            {**catalog()[1], 'service_id': 9, 'type': 'TOP_UP'},
+            {**catalog()[1], 'service_id': 10, 'type': ''},
+            {**catalog()[1], 'service_id': 11, 'type': 'VOUCHER', 'fields': [
+                {'name': 'nominal', 'value_list': [{'id': 1, 'title': 'Disabled', 'active': False}]}]},
+        ]
+        with patch('domains.interhub_api.save_stock_rows') as save:
+            job = self.run_job(client)
+        self.assertEqual(job['state'], 'completed')
+        self.assertEqual(job['total'], 0)
+        self.assertEqual(job['processed'], 0)
+        self.assertEqual(job['stock_total'], 0)
+        self.assertEqual(job['stock_processed'], 0)
+        self.assertEqual(job['message'], 'В каталоге нет активных номиналов ваучеров')
+        self.detail.assert_not_called()
+        self.calculate.assert_not_called()
+        self.pay.assert_not_called()
+        self.check.assert_not_called()
+        save.assert_not_called()
+        db.connect.assert_not_called()
 
     def test_cached_json_and_export_do_not_contact_provider(self):
         # Повторное открытие вкладки и Excel читают один и тот же сохранённый ноль и дату.
