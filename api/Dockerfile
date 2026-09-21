@@ -4,7 +4,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py .
+# API импортирует настройки локального режима и в обычном серверном запуске.
+COPY app.py local_ui_runtime.py ./
 COPY domains ./domains
 COPY scripts ./scripts
 COPY certs ./certs
