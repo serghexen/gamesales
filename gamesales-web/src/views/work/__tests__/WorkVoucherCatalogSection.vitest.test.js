@@ -15,7 +15,7 @@ let wrappers = []
 
 function snapshot(overrides = {}) {
   // Услуга содержит собственный номинал, а снимок цены и остатка принадлежит его предложению.
-  return { item_id: 1, name: 'PlayStation — Turkey', nominals: [{ catalog_nominal_id: 11, name: '500 TRY', offers: [{
+  return { item_id: 1, name: 'PlayStation — Turkey', nominals: [{ catalog_nominal_id: 11, name: '500 TRY', sku: 'HT0000001', offers: [{
     offer_id: 2, supplier_code: 'interhub', supplier_name: 'Интерхаб', service_id: '10', nominal_id: '1',
     service_title: 'PlayStation Turkey', nominal_title: '500 TRY', price: 0, currency: 'RUB', stock_count: null,
     price_updated_at: '2026-09-20T06:00:00Z', stock_updated_at: null,
@@ -38,6 +38,14 @@ async function setup({ items = [snapshot()], canEdit = true, teleport = true, ex
     for (const title of wrapper.findAll('.voucher-catalog__group-title')) await title.trigger('click')
   }
   return wrapper
+}
+
+async function chooseService(wrapper, id) {
+  // Выбираем услугу через пользовательское меню, проверяя передачу значения в форму.
+  await wrapper.get('[data-test="catalog-service"]').trigger('click')
+  const title = id === '10' ? 'PlayStation Turkey' : 'Steam'
+  const option = wrapper.findAll('[role="option"]').find((row) => row.text() === title)
+  await option.trigger('click')
 }
 
 function button(wrapper, label) {
@@ -156,13 +164,33 @@ describe('WorkVoucherCatalogSection', () => {
     expect(apiGet).toHaveBeenCalledTimes(1)
   })
 
+  it('finds a nominal by SKU and keeps its code readonly when renaming', async () => {
+    const wrapper = await setup({ items: [snapshot(), { item_id: 2, name: 'Steam', nominals: [] }], expand: false })
+    await wrapper.find('input[type="search"]').setValue('ht0000001')
+    expect(wrapper.findAll('.voucher-catalog__group')).toHaveLength(1)
+    expect(wrapper.find('.catalog-nominal__sku').text()).toBe('HT0000001')
+    expect(wrapper.find('.catalog-nominal__details').exists()).toBe(true)
+    await wrapper.find('.voucher-catalog__nominal').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.voucher-catalog-editor__sku').text()).toBe('SKU HT0000001')
+    expect(wrapper.find('.voucher-catalog-editor__sku input').exists()).toBe(false)
+    await wrapper.find('[data-test="catalog-own-nominal"]').setValue('Другое название')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    const saved = apiPost.mock.calls[0][1].nominals[0]
+    expect(saved.name).toBe('Другое название')
+    expect(saved).not.toHaveProperty('sku')
+    expect(saved).not.toHaveProperty('sku_number')
+    expect(wrapper.find('.catalog-nominal__sku').text()).toBe('HT0000001')
+  })
+
   it('creates a service with several editable nominal names inside a modal', async () => {
     const wrapper = await setup({ items: [] })
     await flushPromises()
     await wrapper.find('[data-test="catalog-create-service"]').trigger('click')
     await flushPromises()
     expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
-    await wrapper.find('[data-test="catalog-service"]').setValue('10')
+    await chooseService(wrapper, '10')
     expect(wrapper.find('[data-test="catalog-name"]').element.value).toBe('PlayStation Turkey')
     await wrapper.find('[data-test="catalog-name"]').setValue('PlayStation — Turkey')
     await button(wrapper, 'Выбрать все').trigger('click')
@@ -181,9 +209,9 @@ describe('WorkVoucherCatalogSection', () => {
     await flushPromises()
     await wrapper.find('[data-test="catalog-create-service"]').trigger('click')
     await flushPromises()
-    await wrapper.find('[data-test="catalog-service"]').setValue('10')
+    await chooseService(wrapper, '10')
     await wrapper.find('[data-test="catalog-select-1"]').setValue(true)
-    await wrapper.find('[data-test="catalog-service"]').setValue('20')
+    await chooseService(wrapper, '20')
     await wrapper.find('form').trigger('submit')
     expect(wrapper.text()).toContain('Отметьте хотя бы один номинал')
     expect(apiPost).not.toHaveBeenCalled()
@@ -194,7 +222,7 @@ describe('WorkVoucherCatalogSection', () => {
     await flushPromises()
     await button(wrapper, '+ Номиналы').trigger('click')
     await flushPromises()
-    await wrapper.find('[data-test="catalog-service"]').setValue('10')
+    await chooseService(wrapper, '10')
     expect(wrapper.find('[data-test="catalog-select-1"]').element.disabled).toBe(true)
     await button(wrapper, 'Выбрать все').trigger('click')
     await wrapper.find('form').trigger('submit')
@@ -270,7 +298,7 @@ describe('WorkVoucherCatalogSection', () => {
     for (const action of ['close', 'escape', 'backdrop']) {
       await button(wrapper, '+ Номиналы').trigger('click')
       await flushPromises()
-      await wrapper.find('[data-test="catalog-service"]').setValue('10')
+      await chooseService(wrapper, '10')
       await button(wrapper, 'Добавить вручную').trigger('click')
       await button(wrapper, 'Выбрать у поставщика').trigger('click')
       if (action === 'close') await wrapper.find('button[aria-label="Закрыть"]').trigger('click')
@@ -291,7 +319,7 @@ describe('WorkVoucherCatalogSection', () => {
     })))
     await button(wrapper, '+ Номиналы').trigger('click')
     await flushPromises()
-    await wrapper.find('[data-test="catalog-service"]').setValue('10')
+    await chooseService(wrapper, '10')
     await wrapper.find('[data-test="catalog-select-20"]').setValue(true)
     const close = wrapper.find('button[aria-label="Закрыть"]')
     close.element.focus()
@@ -325,7 +353,7 @@ describe('WorkVoucherCatalogSection', () => {
     })))
     await button(wrapper, '+ Номиналы').trigger('click')
     await flushPromises()
-    await wrapper.find('[data-test="catalog-service"]').setValue('10')
+    await chooseService(wrapper, '10')
     expect(wrapper.findAll('.voucher-catalog-editor__check').map((row) => row.text())).toEqual(['TRY 25', 'TRY 50', 'TRY 100'])
     await button(wrapper, 'Выбрать все').trigger('click')
     expect(button(wrapper, 'Добавить · 3').element.closest('form')).toBeNull()

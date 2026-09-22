@@ -13,7 +13,7 @@
         </button>
         <span class="catalog-routing__rank">{{ index + 1 }}</span>
         <div class="catalog-routing__supplier"><strong>{{ offer.supplier_name }}</strong><span class="muted">{{ offer.service_title }} · {{ offer.nominal_title }}</span></div>
-        <div class="catalog-routing__snapshot"><strong>{{ price(offer) }}</strong><span class="muted">Остаток: {{ offer.stock_count ?? '—' }}</span></div>
+        <div class="catalog-routing__snapshot"><strong>{{ price(offer) }}</strong><span class="muted">Остаток: {{ offer.stock_count ?? '—' }}<template v-if="offer.stock_count === 0"> · Нет в наличии</template></span></div>
         <div class="catalog-routing__controls">
           <button type="button" :disabled="disabled || index === 0" :aria-label="`Выше: ${offer.supplier_name}`" title="Выше" @click="$emit('move', index, index - 1)">↑</button>
           <button type="button" :disabled="disabled || index === offers.length - 1" :aria-label="`Ниже: ${offer.supplier_name}`" title="Ниже" @click="$emit('move', index, index + 1)">↓</button>

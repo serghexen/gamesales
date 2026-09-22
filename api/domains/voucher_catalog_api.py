@@ -64,6 +64,11 @@ def mount_voucher_catalog_routes(app, *, service, get_current_user):
         # Живой список нужен только в форме создания соответствия.
         return service.options(supplier_code)
 
+    @app.get('/voucher-catalog/nominals/{catalog_nominal_id}/warehouse')
+    def warehouse_snapshot(catalog_nominal_id: int, user=Depends(editor)):
+        # Предпросмотр склада доступен редакторам каталога без доступа к полным кодам.
+        return service.warehouse_snapshot(catalog_nominal_id)
+
     @app.post('/voucher-catalog/items')
     def create_item(payload: VoucherItemIn, user=Depends(editor)):
         # Позицию можно завести без связки и дополнить её позднее.

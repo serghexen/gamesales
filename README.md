@@ -53,7 +53,7 @@ do not use `--lifespan off`.
 This is not a read-only mode: explicit saves still change staging data and buttons can
 call integrations. The automatic payment reconciliation, marketplace polling and voucher
 catalog schedule stay disabled on the local API. Server workers are unaffected.
-New catalog UI requires the runtime migrations through `20260920_03_voucher_catalog_routing.sql`
+New catalog UI requires the runtime migrations through `20260922_04_voucher_warehouse_index.sql`
 to have been applied to staging before the API starts; apply migrations as a separate deployment step.
 The nominal card stores supplier priority and eligibility for future automatic fulfillment;
 it does not change seller delivery yet. See [catalog routing](docs/voucher-catalog-routing.md).

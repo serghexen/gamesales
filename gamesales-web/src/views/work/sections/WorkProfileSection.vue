@@ -51,6 +51,13 @@
         >
           Каталог
         </router-link>
+        <router-link
+          v-if="ctx.canViewVoucherWarehouseSection"
+          class="tab"
+          :to="{ name: 'work', query: { ...routeQuery, tab: 'voucher-warehouse', admin_panel: undefined } }"
+        >
+          Склад
+        </router-link>
       </div>
       <section v-if="ctx.canManageRolePermissions && rolePermissionsFormOpen" class="panel admin-content-shell profile-role-permissions">
         <div class="panel__body">
@@ -133,7 +140,8 @@ const showAdminTabs = computed(() => Boolean(
   || props.ctx.canViewAnalyticsSection
   || props.ctx.canViewCatalogsSection
   || props.ctx.canViewFinanceSection
-  || props.ctx.canViewVoucherCatalogSection,
+  || props.ctx.canViewVoucherCatalogSection
+  || props.ctx.canViewVoucherWarehouseSection,
 ))
 
 // Сохраняем текущие query-параметры при переходе в аналитику из профиля.

@@ -69,6 +69,11 @@
           :ctx="{ ...profileSectionCtx, token: auth.state.token }"
         />
 
+        <WorkVoucherWarehouseSection
+          v-if="canViewVoucherWarehouseSection && activeTab === 'voucher-warehouse'"
+          :ctx="{ ...profileSectionCtx, token: auth.state.token, requestDealConfirm }"
+        />
+
         <WorkUsersSection
           v-if="canViewUsersSection && activeTab === 'users'"
           :ctx="usersSectionCtx"
@@ -217,6 +222,7 @@ import WorkDashboardPanel from './work/sections/WorkDashboardPanel.vue'
 import WorkAnalyticsSection from './work/sections/WorkAnalyticsSection.vue'
 import WorkFinanceSection from './work/sections/WorkFinanceSection.vue'
 import WorkVoucherCatalogSection from './work/sections/WorkVoucherCatalogSection.vue'
+import WorkVoucherWarehouseSection from './work/sections/WorkVoucherWarehouseSection.vue'
 import WorkProfileSection from './work/sections/WorkProfileSection.vue'
 import WorkUsersSection from './work/sections/WorkUsersSection.vue'
 import WorkAccountsSection from './work/sections/WorkAccountsSection.vue'
@@ -748,7 +754,7 @@ const showDashboard = true
 const showRolePermissionsPanel = computed(() => canManageRolePermissions.value)
 
 const roleSectionDefaults = {
-  privileged_only: new Set(['analytics', 'catalogs', 'finance', 'voucher-catalog', 'users', 'dashboard']),
+  privileged_only: new Set(['analytics', 'catalogs', 'finance', 'voucher-catalog', 'voucher-warehouse', 'users', 'dashboard']),
 }
 
 const mySectionPermissionsMap = ref({})
@@ -788,6 +794,7 @@ const canViewAnalyticsSection = computed(() => canViewSection('analytics'))
 const canViewCatalogsSection = computed(() => canViewSection('catalogs'))
 const canViewFinanceSection = computed(() => canViewSection('finance'))
 const canViewVoucherCatalogSection = computed(() => canViewSection('voucher-catalog'))
+const canViewVoucherWarehouseSection = computed(() => canViewSection('voucher-warehouse'))
 const canViewUsersSection = computed(() => canViewSection('users'))
 const canViewUsersTab = computed(() => showUsersTab && canViewUsersSection.value)
 const canViewProfileSection = computed(() => canViewSection('profile'))
@@ -811,6 +818,7 @@ function getAllowedTabs() {
   if (canViewCatalogsSection.value) tabs.push('catalogs')
   if (canViewFinanceSection.value) tabs.push('finance')
   if (canViewVoucherCatalogSection.value) tabs.push('voucher-catalog')
+  if (canViewVoucherWarehouseSection.value) tabs.push('voucher-warehouse')
   if (canViewUsersTab.value) tabs.push('users')
   if (canViewProfileSection.value) tabs.push('profile')
   if (canViewDashboardSection.value) tabs.push('dashboard')
@@ -3681,6 +3689,7 @@ const {
   canViewCatalogsSection,
   canViewFinanceSection,
   canViewVoucherCatalogSection,
+  canViewVoucherWarehouseSection,
   canManageRolePermissions,
   dealsRealtimeStatus,
   dealEditingByDealId,
@@ -4137,6 +4146,7 @@ const analyticsSectionCtx = asCtx({
   canViewCatalogsSection,
   canViewFinanceSection,
   canViewVoucherCatalogSection,
+  canViewVoucherWarehouseSection,
   canManageRolePermissions,
   analyticsLoading,
   analyticsError,
@@ -4170,6 +4180,7 @@ const financeSectionCtx = asCtx({
   canViewCatalogsSection,
   canViewFinanceSection,
   canViewVoucherCatalogSection,
+  canViewVoucherWarehouseSection,
   canManageRolePermissions,
   financeMode,
   financeNewEntry,
@@ -4329,6 +4340,7 @@ const profileSectionCtx = asCtx({
   canViewCatalogsSection,
   canViewFinanceSection,
   canViewVoucherCatalogSection,
+  canViewVoucherWarehouseSection,
   canViewUsersSection,
   routeQuery: computed(() => route.query || {}),
   openPwdModal,

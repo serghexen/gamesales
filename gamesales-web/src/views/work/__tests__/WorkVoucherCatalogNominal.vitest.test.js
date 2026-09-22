@@ -14,7 +14,7 @@ function offer(id, priority, enabled = true, overrides = {}) {
 function setup(overrides = {}) {
   // Приоритеты намеренно перемешаны во входных данных, чтобы проверить обе видимые последовательности.
   return mount(WorkVoucherCatalogNominal, { props: { canEdit: true, now,
-    nominal: { catalog_nominal_id: 11, name: 'EUR 20', offers: [offer(3, 3, true, { price: 100 }), offer(1, 1, false), offer(2, 2, true, { stock_count: 0 })] }, ...overrides } })
+    nominal: { catalog_nominal_id: 11, name: 'EUR 20', sku: 'HT0000001', offers: [offer(3, 3, true, { price: 100 }), offer(1, 1, false), offer(2, 2, true, { stock_count: 0 })] }, ...overrides } })
 }
 
 describe('WorkVoucherCatalogNominal', () => {
@@ -24,7 +24,9 @@ describe('WorkVoucherCatalogNominal', () => {
     expect(wrapper.find('.catalog-nominal__details').exists()).toBe(false)
     expect(wrapper.find('.catalog-nominal__first').text()).toContain('Поставщик 2')
     expect(wrapper.find('.catalog-nominal__count').text()).toBe('3 поставщика')
+    expect(wrapper.find('.catalog-nominal__sku').text()).toBe('HT0000001')
     expect(wrapper.findAll('.voucher-catalog__number').map((node) => node.text())).toEqual(['2 002,00 ₽', '0'])
+    expect(wrapper.find('.catalog-nominal__summary').text()).toContain('Нет в наличии')
     await wrapper.find('.catalog-nominal__expand').trigger('click')
     expect(wrapper.emitted('edit')).toBeUndefined()
     expect(wrapper.findAll('.catalog-nominal__offer').map((row) => row.attributes('data-offer-id'))).toEqual(['1', '2', '3'])
@@ -51,6 +53,7 @@ describe('WorkVoucherCatalogNominal', () => {
     expect(wrapper.find('.catalog-nominal__details').exists()).toBe(true)
     expect(wrapper.find('.catalog-nominal__summary').text()).toContain('0,00 ₽')
     expect(wrapper.find('.catalog-nominal__summary').text()).toContain('Нет ответа')
+    expect(wrapper.find('.catalog-nominal__summary').text()).not.toContain('Нет в наличии')
     expect(wrapper.find('.catalog-snapshot__problem').attributes('title')).toContain('10:00')
     await wrapper.find('.catalog-nominal__expand').trigger('click')
     expect(wrapper.find('.catalog-nominal__details').exists()).toBe(false)

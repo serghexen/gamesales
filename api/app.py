@@ -417,6 +417,8 @@ from domains.catalogs_api import mount_catalogs_routes
 from domains.auth_api import mount_auth_routes
 from domains.slots_import_api import mount_slots_import_routes
 from domains.interhub_api import mount_interhub_routes
+from domains.voucher_warehouse_api import mount_voucher_warehouse_routes
+from domains.voucher_warehouse_service import VoucherWarehouseService
 from domains.voucher_catalog_api import mount_voucher_catalog_routes
 from domains.voucher_catalog_service import InterhubVoucherProvider, VoucherCatalogService
 from domains.supplier_hub_api import mount_supplier_hub_routes
@@ -1463,6 +1465,7 @@ voucher_catalog_service = VoucherCatalogService(pooled_psycopg, DB_DSN, {
                                       interhub_calculate, _INTERHUB_PRICE_CALCULATE_DELAY_MS),
 })
 mount_voucher_catalog_routes(app, service=voucher_catalog_service, get_current_user=get_current_user)
+mount_voucher_warehouse_routes(app, service=VoucherWarehouseService(pooled_psycopg, DB_DSN), get_current_user=get_current_user)
 
 mount_supplier_hub_routes(
     app,

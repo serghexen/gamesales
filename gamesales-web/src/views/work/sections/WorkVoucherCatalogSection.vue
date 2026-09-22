@@ -25,7 +25,7 @@
         <div class="voucher-catalog__toolbar">
           <div class="voucher-catalog__search">
             <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg>
-            <input v-model="search" class="input" type="search" placeholder="Найти услугу или номинал" aria-label="Поиск по каталогу">
+            <input v-model="search" class="input" type="search" placeholder="Найти услугу, номинал или SKU" aria-label="Поиск по каталогу">
           </div>
           <span class="muted voucher-catalog__total" aria-live="polite">{{ search.trim() ? `Найдено: ${filteredItems.length} из ${items.length}` : `Услуг: ${items.length}` }}</span>
           <button class="account-refresh-btn voucher-catalog__refresh" aria-label="Обновить список" title="Обновить список" type="button" :disabled="loading || saving" :aria-busy="refreshing" @click="refreshList">
@@ -112,6 +112,7 @@ const adminTabs = computed(() => {
     ['profile', 'Пользователи', 'canViewUsersSection'], ['access', 'Доступы', 'canManageRolePermissions'],
     ['analytics', 'Аналитика', 'canViewAnalyticsSection'], ['catalogs', 'Справочники', 'canViewCatalogsSection'],
     ['finance', 'Финансы', 'canViewFinanceSection'], ['voucher-catalog', 'Каталог', 'canViewVoucherCatalogSection'],
+    ['voucher-warehouse', 'Склад', 'canViewVoucherWarehouseSection'],
   ].filter(([, , permission]) => props.ctx[permission]).map(([key, label]) => ({ key, label }))
 })
 

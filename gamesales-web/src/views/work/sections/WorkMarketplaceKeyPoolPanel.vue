@@ -1,6 +1,6 @@
 <template>
-  <section class="ozon-catalog-details-modal__work-block marketplace-key-pool-panel" :class="{ 'is-open': isOpen }">
-    <div class="ozon-key-settings__block-head">
+  <section class="marketplace-key-pool-panel" :class="{ 'ozon-catalog-details-modal__work-block': !compact, 'is-open': !compact && isOpen, 'marketplace-key-pool-panel--compact': compact }">
+    <div v-if="!compact" class="ozon-key-settings__block-head">
       <button class="ozon-catalog-details-modal__work-block-toggle" type="button" :aria-expanded="isOpen" aria-controls="marketplace-key-pool-content" @click="toggleOpen">
         <span class="ozon-catalog-details-modal__work-block-number">02</span>
         <span class="ozon-catalog-details-modal__work-block-copy"><strong>Список ключей</strong></span>
@@ -10,21 +10,22 @@
         <slot name="header-actions" />
       </div>
     </div>
-    <div v-if="isOpen" id="marketplace-key-pool-content" class="ozon-catalog-details-modal__work-block-body marketplace-key-pool-panel__body">
+    <div v-if="compact || isOpen" id="marketplace-key-pool-content" class="marketplace-key-pool-panel__body" :class="{ 'ozon-catalog-details-modal__work-block-body': !compact }">
       <div v-if="marketplaceKeyPoolSaving" class="marketplace-key-pool-panel__saving-overlay"><WorkHamsterLoader label="Обновляем список ключей…" /></div>
       <p v-if="marketplaceKeyPoolError" class="bad">{{ marketplaceKeyPoolError }}</p>
-      <div class="marketplace-key-pool-modal__stats marketplace-key-pool-panel__stats" aria-label="Статистика ручного пула ключей">
+      <div v-if="!compact" class="marketplace-key-pool-modal__stats marketplace-key-pool-panel__stats" aria-label="Статистика ручного пула ключей">
         <div><small>Свободно</small><strong>{{ marketplaceKeyPool.free_count }}</strong></div>
         <div><small>Выдано</small><strong>{{ marketplaceKeyPool.delivered_count }}</strong></div>
         <div><small>Всего</small><strong>{{ marketplaceKeyPool.total }}</strong></div>
       </div>
       <div class="marketplace-key-pool-modal__list-head marketplace-key-pool-panel__list-head">
-        <div><h4>Ключи товара</h4><p class="muted">Удаляются только свободные ключи.</p></div>
+        <div v-if="!compact"><h4>Ключи товара</h4><p class="muted">Удаляются только свободные ключи.</p></div>
+        <div v-else class="marketplace-key-pool-panel__compact-summary"><strong>Ключи номинала</strong><span class="muted">Резерв: {{ marketplaceKeyPool.reserved_count }} · Выдано: {{ marketplaceKeyPool.delivered_count }} · Истекло: {{ marketplaceKeyPool.expired_count }}</span></div>
         <div class="marketplace-key-pool-panel__list-actions">
-          <button class="ghost marketplace-key-pool-entry__open" type="button" :disabled="!productKey || !storeCode" @click="openAddDialog">
+          <button class="ghost marketplace-key-pool-entry__open" type="button" :disabled="!productKey || !storeCode || marketplaceKeyPoolLoading || marketplaceKeyPoolSaving" @click="openAddDialog">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>Добавить ключи
           </button>
-          <button class="ghost marketplace-key-pool-modal__delete-free" type="button" :disabled="!marketplaceKeyPool.free_count || marketplaceKeyPoolSaving" @click="deleteAllFreeMarketplaceKeyPoolKeys">
+          <button class="ghost marketplace-key-pool-modal__delete-free" type="button" :disabled="!(marketplaceKeyPool.free_count || (allowExpiredDeletion && marketplaceKeyPool.expired_count)) || marketplaceKeyPoolSaving" @click="deleteAllFreeMarketplaceKeyPoolKeys">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></svg>Удалить свободные
           </button>
         </div>
@@ -33,18 +34,18 @@
       <p v-else-if="!marketplaceKeyPool.items.length" class="marketplace-key-pool-modal__empty muted">В этом пуле пока нет ключей.</p>
       <div v-else class="table-wrap marketplace-key-pool-panel__table-wrap">
         <table class="table table--compact marketplace-key-pool-modal__table">
-          <thead><tr><th>Ключ</th><th>Статус</th><th>Активировать до</th><th>Заказ</th><th>Действия</th></tr></thead>
+          <thead><tr><th>Ключ</th><th>Статус</th><th>Активировать до</th><th v-if="!compact">Заказ</th><th>Действия</th></tr></thead>
           <tbody>
             <tr v-for="key in marketplaceKeyPool.items" :key="key.id">
               <td><code v-if="marketplaceKeyPoolRevealedCode(key)" class="marketplace-key-pool-modal__code">{{ marketplaceKeyPoolRevealedCode(key) }}</code><span v-else>{{ key.masked_code }}</span></td>
               <td><span class="marketplace-key-pool-modal__status" :class="`marketplace-key-pool-modal__status--${key.status}`">{{ statusLabel(key.status) }}</span></td>
               <td>{{ formatDate(key.expires_at) }}</td>
-              <td>{{ key.issued_order_ref || '—' }}</td>
+              <td v-if="!compact">{{ key.issued_order_ref || '—' }}</td>
               <td class="marketplace-key-pool-modal__actions">
                 <button class="btn btn--icon-plain btn--edit marketplace-key-pool-modal__reveal" type="button" :disabled="marketplaceKeyPoolSaving || marketplaceKeyPoolRevealingId === key.id" :aria-label="`Показать ключ ${key.masked_code}`" :title="marketplaceKeyPoolRevealedCode(key) ? 'Ключ показан для проверки' : 'Показать ключ для проверки'" @click="revealMarketplaceKeyPoolKey(key)">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /></svg>
                 </button>
-                <button v-if="key.status === 'free'" class="btn btn--icon-plain btn--danger marketplace-key-pool-modal__remove" type="button" :disabled="marketplaceKeyPoolSaving" :aria-label="`Удалить ${key.masked_code}`" title="Удалить свободный ключ" @click="deleteMarketplaceKeyPoolKey(key)">
+                <button v-if="key.status === 'free' || (allowExpiredDeletion && key.status === 'expired')" class="btn btn--icon-plain btn--danger marketplace-key-pool-modal__remove" type="button" :disabled="marketplaceKeyPoolSaving" :aria-label="`Удалить ${key.masked_code}`" title="Удалить свободный ключ" @click="deleteMarketplaceKeyPoolKey(key)">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></svg>
                 </button>
               </td>
@@ -66,10 +67,14 @@ import { computed, ref } from 'vue'
 import WorkHamsterLoader from './WorkHamsterLoader.vue'
 
 const props = defineProps({
+  // Компактный режим встраивает список в номинал без второго уровня раскрытия.
+  compact: { type: Boolean, default: false },
+  initiallyOpen: { type: Boolean, default: false },
+  allowExpiredDeletion: { type: Boolean, default: false },
   marketplace: { type: String, required: true }, storeCode: { type: String, default: '' }, productKey: { type: String, default: '' }, productTitle: { type: String, default: '' }, marketplaceKeyPool: { type: Object, default: () => ({ free_count: 0, reserved_count: 0, delivered_count: 0, expired_count: 0, total: 0, page: 1, page_size: 20, items: [] }) }, marketplaceKeyPoolLoading: { type: Boolean, default: false }, marketplaceKeyPoolSaving: { type: Boolean, default: false }, marketplaceKeyPoolError: { type: String, default: '' }, marketplaceKeyPoolTotalPages: { type: Number, default: 1 }, marketplaceKeyPoolRevealingId: { type: Number, default: 0 }, marketplaceKeyPoolRevealedCode: { type: Function, default: () => '' }, openMarketplaceKeyPool: { type: Function, default: () => {} }, loadMarketplaceKeyPool: { type: Function, default: () => {} }, revealMarketplaceKeyPoolKey: { type: Function, default: () => {} }, deleteMarketplaceKeyPoolKey: { type: Function, default: () => {} }, deleteAllFreeMarketplaceKeyPoolKeys: { type: Function, default: () => {} },
 })
 
-const isOpen = ref(false)
+const isOpen = ref(props.initiallyOpen)
 
 const pageRange = computed(() => { const from = (Number(props.marketplaceKeyPool.page || 1) - 1) * Number(props.marketplaceKeyPool.page_size || 20) + 1; const to = Math.min(Number(props.marketplaceKeyPool.total || 0), from + Number(props.marketplaceKeyPool.items?.length || 0) - 1); return `${from}–${to} из ${props.marketplaceKeyPool.total}` })
 
@@ -96,3 +101,28 @@ function toggleOpen() {
   isOpen.value = !isOpen.value
 }
 </script>
+
+<style scoped>
+/* Встроенный склад не наследует крупную карточку настроек маркетплейса. */
+.marketplace-key-pool-panel.marketplace-key-pool-panel--compact { display: block; min-width: 0; border: 0; border-radius: 0; background: transparent; }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-panel__body { display: grid; min-width: 0; gap: 12px; padding: 0; border: 0; }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-panel__list-head { margin: 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-panel__compact-summary { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.marketplace-key-pool-panel__compact-summary strong { font-size: 13px; font-weight: 600; line-height: 1.4; }
+.marketplace-key-pool-panel__compact-summary span { font-size: 11px; line-height: 1.5; }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-panel__list-actions { gap: 8px; }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-panel__list-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 6px 10px; border-radius: 8px; font-size: 12px; line-height: 1.4; font-weight: 600; box-shadow: none; }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-entry__open { color: #54d5ad; border-color: rgba(84,213,173,.25); background: rgba(84,213,173,.08); }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-entry__open:hover:not(:disabled) { background: rgba(84,213,173,.16); }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-panel__list-actions svg { width: 15px; height: 15px; }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-modal__empty { margin: 0; padding: 18px 12px; border: 1px dashed var(--stroke); border-radius: 8px; font-size: 12px; text-align: center; }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-panel__saving-overlay { min-height: 0; border-radius: 8px; }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-panel__table-wrap { max-height: 340px; border: 1px solid var(--stroke); border-radius: 8px; }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-modal__table { min-width: 560px; margin: 0; background: transparent; border-radius: 0; box-shadow: none; }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-modal__table th,
+.marketplace-key-pool-panel--compact .marketplace-key-pool-modal__table td { padding: 8px 10px; border-right: 0; border-radius: 0; font-size: 12px; }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-modal__table th { background: rgba(128,148,180,.04); color: var(--muted); font-size: 11px; font-weight: 500; }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-modal__table tbody tr:hover td { background: rgba(128,148,180,.04); }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-modal__status { font-size: 11px; font-weight: 500; padding: 3px 7px; }
+.marketplace-key-pool-panel--compact .marketplace-key-pool-modal__pager { margin-top: 0; font-size: 12px; }
+</style>

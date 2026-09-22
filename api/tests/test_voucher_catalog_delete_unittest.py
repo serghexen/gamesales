@@ -13,8 +13,8 @@ class VoucherNominalDeleteTests(TestCase):
     def test_list_tolerates_a_nominal_recreated_between_reads(self):
         # Новый ID, появившийся между чтением номиналов и связок, не должен ломать весь каталог.
         db, _, cur = fixtures.database()
-        cur.description = [SimpleNamespace(name=name) for name in ['offer_id', 'item_id', 'catalog_nominal_id']]
-        cur.fetchall.side_effect = [[(1, 'Service')], [(11, 1, '1000 TRY', 0)], [(20, 1, 11), (21, 1, 12)], [], []]
+        cur.description = [SimpleNamespace(name=name) for name in ['offer_id', 'item_id', 'catalog_nominal_id', 'supplier_code']]
+        cur.fetchall.side_effect = [[(1, 'Service')], [(11, 1, '1000 TRY', 0, 'HT0000001')], [(20, 1, 11, 'interhub'), (21, 1, 12, 'interhub')], [], []]
         result = VoucherCatalogService(db, 'unused', {}).list_items()
         self.assertEqual([offer['offer_id'] for offer in result['items'][0]['offers']], [20])
 

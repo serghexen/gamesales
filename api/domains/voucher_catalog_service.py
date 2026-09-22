@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import time
 import uuid
 from types import SimpleNamespace
-from psycopg.errors import ForeignKeyViolation, UniqueViolation
+from psycopg.errors import ForeignKeyViolation, RestrictViolation, UniqueViolation
 
 from fastapi import HTTPException
 
@@ -108,26 +108,37 @@ class VoucherCatalogService:
         return bool(row[0]) if row else role in {'admin', 'owner'}
 
     def list_items(self):
-        # Открытие страницы читает только БД: поставщик не замедляет таблицу каталога.
+        # Возвращаем сохранённые SKU и снимки из БД, не обращаясь к поставщику при открытии.
         with self.db.connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute('SELECT item_id, name FROM app.voucher_catalog_items ORDER BY lower(name), item_id')
             items = {row[0]: {'item_id': row[0], 'name': row[1], 'offers': [], 'nominals': []} for row in cur.fetchall()}
-            cur.execute('SELECT catalog_nominal_id, item_id, name, fulfillment_revision FROM app.voucher_catalog_nominals ORDER BY catalog_nominal_id')
+            cur.execute('SELECT catalog_nominal_id, item_id, name, fulfillment_revision, sku FROM app.voucher_catalog_nominals ORDER BY catalog_nominal_id')
             nominals = {}
-            for nominal_id, item_id, name, revision in cur.fetchall():
-                nominal = {'catalog_nominal_id': nominal_id, 'name': name, 'offers': [], 'fulfillment_revision': revision}
+            for nominal_id, item_id, name, revision, sku in cur.fetchall():
+                nominal = {'catalog_nominal_id': nominal_id, 'name': name, 'sku': sku, 'offers': [], 'fulfillment_revision': revision}
                 nominals[nominal_id] = nominal
                 if item_id in items:
                     items[item_id]['nominals'].append(nominal)
             cur.execute('''SELECT o.offer_id, o.item_id, o.catalog_nominal_id, o.supplier_code, s.name AS supplier_name,
                 o.service_id, o.nominal_id, o.service_title, o.nominal_title, o.price, o.currency,
                 o.price_updated_at, o.price_checked_at, o.price_error, o.stock_count,
-                o.stock_updated_at, o.stock_checked_at, o.stock_error, o.fulfillment_priority, o.fulfillment_enabled
+                o.stock_updated_at, o.stock_checked_at, o.stock_error, o.fulfillment_priority, o.fulfillment_enabled,
+                w.price AS warehouse_price, w.free_count AS warehouse_stock,
+                w.price_updated_at AS warehouse_price_at, w.service_name AS warehouse_service, w.name AS warehouse_nominal
                 FROM app.voucher_catalog_offers o JOIN app.voucher_catalog_suppliers s ON s.code=o.supplier_code
+                LEFT JOIN app.voucher_warehouse_stock w ON o.supplier_code='warehouse' AND w.catalog_nominal_id=o.catalog_nominal_id
                 WHERE o.active ORDER BY o.catalog_nominal_id, o.fulfillment_priority, o.offer_id''')
             keys = [column.name for column in cur.description]
             for row in cur.fetchall():
                 offer = dict(zip(keys, row))
+                # Цена склада ручная, а доступный запас всегда считается из текущих ключей этого SKU.
+                if offer['supplier_code'] == 'warehouse':
+                    offer.update(price=offer['warehouse_price'], stock_count=offer['warehouse_stock'],
+                                 price_updated_at=offer['warehouse_price_at'], price_checked_at=offer['warehouse_price_at'],
+                                 stock_updated_at=datetime.now(timezone.utc), stock_checked_at=datetime.now(timezone.utc),
+                                 service_title=offer['warehouse_service'], nominal_title=offer['warehouse_nominal'],
+                                 price_error='', stock_error='')
+                offer = {key: value for key, value in offer.items() if not key.startswith('warehouse_')}
                 # При параллельном удалении и пересоздании новый номинал попадёт в следующий снимок списка.
                 if offer['item_id'] in items and offer['catalog_nominal_id'] in nominals:
                     items[offer['item_id']]['offers'].append(offer)
@@ -135,8 +146,18 @@ class VoucherCatalogService:
             cur.execute('SELECT job, slot, finished_at, errors FROM app.voucher_catalog_sync_runs ORDER BY job')
             runs = [dict(zip(['job', 'slot', 'finished_at', 'errors'], row)) for row in cur.fetchall()]
             cur.execute('SELECT code, name FROM app.voucher_catalog_suppliers ORDER BY name')
-            suppliers = [{'code': row[0], 'name': row[1]} for row in cur.fetchall() if row[0] in self.providers]
+            suppliers = [{'code': row[0], 'name': row[1]} for row in cur.fetchall() if row[0] in self.providers or row[0] == 'warehouse']
         return {'items': list(items.values()), 'runs': runs, 'suppliers': suppliers}
+
+    def warehouse_snapshot(self, catalog_nominal_id):
+        # Для новой связки читаем цену и свободный остаток SKU, не раскрывая сами ключи.
+        with self.db.connect(self.dsn) as conn, conn.cursor() as cur:
+            cur.execute('''SELECT catalog_nominal_id, sku, name, price, free_count
+                FROM app.voucher_warehouse_stock WHERE catalog_nominal_id=%s''', (catalog_nominal_id,))
+            row = cur.fetchone()
+        if row is None:
+            raise HTTPException(404, 'Номинал не найден на складе')
+        return dict(zip(['catalog_nominal_id', 'sku', 'name', 'price', 'free_count'], row))
 
     def options(self, supplier_code):
         # Не допускаем произвольный код поставщика из браузера.
@@ -161,6 +182,11 @@ class VoucherCatalogService:
             link = nominal.binding
             target = None
             if link:
+                if link.supplier_code == 'warehouse':
+                    if nominal.catalog_nominal_id is None or link.nominal_id != str(nominal.catalog_nominal_id):
+                        raise HTTPException(422, 'Склад можно связать только с этим же сохранённым номиналом')
+                    catalogs['warehouse'] = [{'service_id': link.service_id, 'nominal_id': link.nominal_id,
+                                              'service_title': 'Склад', 'nominal_title': nominal.name}]
                 if link.supplier_code not in catalogs:
                     catalogs[link.supplier_code] = self.options(link.supplier_code)
                 target = next((item for item in catalogs[link.supplier_code]
@@ -191,7 +217,7 @@ class VoucherCatalogService:
         stocks = {}
         for row in prepared:
             link, target = row['binding'], row['target']
-            if not link:
+            if not link or link.supplier_code == 'warehouse':
                 continue
             provider = self.providers[link.supplier_code]
             key = (link.supplier_code, link.service_id)
@@ -230,6 +256,7 @@ class VoucherCatalogService:
                         cur.execute('UPDATE app.voucher_catalog_items SET name=%s WHERE item_id=%s', (name, item_id))
                 for row in prepared:
                     if row['id'] is None:
+                        # Новый SKU выдаёт БД при вставке; переименование ниже его не меняет.
                         cur.execute('''INSERT INTO app.voucher_catalog_nominals(item_id, name, created_by)
                             VALUES (%s, %s, %s) RETURNING catalog_nominal_id''', (item_id, row['name'], username))
                     else:
@@ -245,6 +272,8 @@ class VoucherCatalogService:
                     link, target = row['binding'], row['target']
                     if not link:
                         continue
+                    if link.supplier_code == 'warehouse' and link.service_id != str(item_id):
+                        raise HTTPException(422, 'Склад должен относиться к этой услуге')
                     cur.execute('''INSERT INTO app.voucher_catalog_offers
                         (item_id, catalog_nominal_id, supplier_code, service_id, nominal_id, service_title, nominal_title, created_by,
                          fulfillment_priority)
@@ -264,8 +293,9 @@ class VoucherCatalogService:
                     offer = cur.fetchone()
                     if offer is None:
                         raise HTTPException(409, 'Этот номинал поставщика уже связан с другим номиналом услуги')
-                    self.write_snapshot(cur, [offer[0]], 'prices', row['price'])
-                    self.write_snapshot(cur, [offer[0]], 'stocks', row['stock'])
+                    if link.supplier_code != 'warehouse':
+                        self.write_snapshot(cur, [offer[0]], 'prices', row['price'])
+                        self.write_snapshot(cur, [offer[0]], 'stocks', row['stock'])
                     cur.execute('''UPDATE app.voucher_catalog_nominals
                         SET fulfillment_revision=fulfillment_revision+1 WHERE catalog_nominal_id=%s''', (catalog_nominal_id,))
                 conn.commit()
@@ -322,9 +352,9 @@ class VoucherCatalogService:
                 cur.execute('DELETE FROM app.voucher_catalog_nominals WHERE item_id=%s', (item_id,))
                 cur.execute('DELETE FROM app.voucher_catalog_items WHERE item_id=%s', (item_id,))
                 conn.commit()
-        except ForeignKeyViolation:
+        except (ForeignKeyViolation, RestrictViolation):
             # Если услуга или её содержимое используются, вся транзакция откатывается.
-            raise HTTPException(409, 'Услуга или её номиналы уже используются. Сначала уберите их из связанных товаров или выдач.') from None
+            raise HTTPException(409, 'Услуга или её номиналы уже используются. Проверьте ключи на складе и связанные товары или выдачи.') from None
 
     def delete_nominal(self, item_id, catalog_nominal_id):
         # Удаляем номинал и все его связки атомарно; общая блокировка исключает одновременную привязку.
@@ -342,9 +372,9 @@ class VoucherCatalogService:
                 cur.execute('''DELETE FROM app.voucher_catalog_nominals
                     WHERE item_id=%s AND catalog_nominal_id=%s''', (item_id, catalog_nominal_id))
                 conn.commit()
-        except ForeignKeyViolation:
+        except (ForeignKeyViolation, RestrictViolation):
             # Будущие ссылки из товаров или выдач должны запрещать удаление, а не обрывать историю.
-            raise HTTPException(409, 'Номинал уже используется. Сначала уберите его из связанных товаров или выдач.') from None
+            raise HTTPException(409, 'Номинал уже используется. Проверьте ключи на складе и связанные товары или выдачи.') from None
 
     @staticmethod
     def write_snapshot(cur, offer_ids, job, snapshot):
@@ -363,7 +393,7 @@ class VoucherCatalogService:
         # Обходим только связанные предложения; повторяющиеся номиналы рассчитываем один раз.
         with self.db.connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute('''SELECT offer_id, supplier_code, service_id, nominal_id
-                FROM app.voucher_catalog_offers WHERE active ORDER BY supplier_code, service_id, nominal_id''')
+                FROM app.voucher_catalog_offers WHERE active AND supplier_code<>'warehouse' ORDER BY supplier_code, service_id, nominal_id''')
             offers = cur.fetchall()
         errors = 0
         for code, provider in self.providers.items():

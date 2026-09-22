@@ -46,6 +46,7 @@ describe('voucher catalog supplier routing', () => {
     expect(wrapper.findAll('.catalog-routing__supplier strong').map((row) => row.text())).toEqual(['Поставщик 2', 'Интерхаб'])
     expect(offers[1].fulfillment_enabled).toBe(true)
     expect(wrapper.text()).toContain('Остаток: 0')
+    expect(wrapper.text()).toContain('Нет в наличии')
     expect(wrapper.text()).toContain('Остаток: —')
     await wrapper.find('form').trigger('submit')
     await flushPromises()

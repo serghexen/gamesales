@@ -33,6 +33,13 @@
         >
           Каталог
         </router-link>
+        <router-link
+          v-if="ctx.canViewVoucherWarehouseSection"
+          class="tab"
+          :to="{ name: 'work', query: { ...routeQuery, tab: 'voucher-warehouse', admin_panel: undefined } }"
+        >
+          Склад
+        </router-link>
       </div>
     </div>
     <section class="panel admin-content-shell">
@@ -369,5 +376,6 @@ const showAdminTabs = computed(() => (
   || canViewCatalogsSection.value
   || canViewFinanceSection.value
   || Boolean(unref(props.ctx.canViewVoucherCatalogSection))
+  || Boolean(unref(props.ctx.canViewVoucherWarehouseSection))
 ))
 </script>

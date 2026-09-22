@@ -7,6 +7,7 @@
             <div class="voucher-catalog-editor__heading">
               <h3 id="voucher-catalog-editor-title">{{ ctx.title }}</h3>
               <p v-if="ctx.mode !== 'service' && ctx.draft.name" class="voucher-catalog-editor__parent">{{ ctx.draft.name }}</p>
+              <p v-if="ctx.mode === 'nominal' && ctx.draft.sku" class="voucher-catalog-editor__sku">SKU {{ ctx.draft.sku }}</p>
             </div>
             <div class="toolbar-actions voucher-catalog-editor__actions">
               <button class="btn btn--icon-plain deal-create-action-btn deal-create-action-btn--save voucher-catalog-editor__save" type="submit" form="voucher-catalog-editor-form" :disabled="ctx.saving || ctx.optionsLoading" :aria-label="saveLabel" :title="saveLabel">
@@ -43,18 +44,22 @@
                 <p class="muted voucher-catalog-editor__hint">{{ ctx.mode === 'nominal' ? 'Можно добавить соответствие у поставщика.' : 'Отметьте нужные номиналы. Свои названия можно изменить справа.' }}</p>
                 <div class="voucher-catalog-editor__supplier">
                   <label class="field"><span class="label">Поставщик</span>
-                    <select v-model="ctx.draft.supplier_code" class="input input--select" @change="ctx.loadOptions">
-                      <option v-for="supplier in ctx.suppliers" :key="supplier.code" :value="supplier.code">{{ supplier.name }}</option>
-                    </select>
+                    <WorkVoucherSelect v-model="ctx.draft.supplier_code" :options="ctx.availableSuppliers" :disabled="ctx.saving" @change="ctx.loadOptions" />
                   </label>
-                  <label class="field"><span class="label">Услуга поставщика</span>
-                    <select v-model="ctx.draft.service_id" class="input input--select" :disabled="ctx.optionsLoading" data-test="catalog-service" @change="ctx.selectService">
-                      <option value="">{{ ctx.optionsLoading ? 'Загрузка услуг…' : 'Выберите услугу' }}</option>
-                      <option v-for="service in ctx.services" :key="service.id" :value="service.id">{{ service.title }}</option>
-                    </select>
+                  <label v-if="ctx.draft.supplier_code !== 'warehouse'" class="field"><span class="label">Услуга поставщика</span>
+                    <WorkVoucherSelect v-model="ctx.draft.service_id" label="Услуга поставщика" placeholder="Выберите услугу" :options="serviceOptions"
+                      :disabled="ctx.optionsLoading || ctx.saving" data-test="catalog-service" @change="ctx.selectService" />
                   </label>
                 </div>
-                <label v-if="ctx.mode === 'nominal' && ctx.draft.service_id" class="field"><span class="label">Номинал поставщика</span>
+                <div v-if="ctx.draft.supplier_code === 'warehouse'" class="voucher-catalog-editor__warehouse" aria-live="polite">
+                  <div><strong>Собственные ключи</strong><small class="muted">{{ ctx.draft.sku }} · {{ ctx.draft.nominal_name }}</small></div>
+                  <span v-if="ctx.optionsLoading" class="muted">Загружаем остаток…</span>
+                  <template v-else-if="ctx.warehousePreview">
+                    <div><small class="muted">Цена пула</small><strong>{{ warehousePrice }}</strong></div>
+                    <div><small class="muted">Свободно</small><strong>{{ ctx.warehousePreview.free_count }} шт.</strong></div>
+                  </template>
+                </div>
+                <label v-else-if="ctx.mode === 'nominal' && ctx.draft.service_id" class="field"><span class="label">Номинал поставщика</span>
                   <select v-model="ctx.draft.link_nominal_id" class="input input--select" data-test="catalog-link-nominal">
                     <option value="">Выберите номинал</option>
                     <option v-for="nominal in ctx.nominals" :key="nominal.nominal_id" :value="String(nominal.nominal_id)" :disabled="nominal.linked">{{ nominal.nominal_title }}{{ nominal.linked ? ' · уже связан' : '' }}</option>
@@ -84,7 +89,7 @@
             <p v-if="ctx.formError" class="bad voucher-catalog-editor__error" role="alert">{{ ctx.formError }} <button v-if="!ctx.optionsLoading && !ctx.services.length && (!ctx.draft.item_id || ctx.mode === 'nominals' || ctx.bindingOpen)" class="ghost" type="button" :disabled="ctx.saving" @click="ctx.loadOptions">Повторить загрузку</button></p>
           </form>
           <div v-if="ctx.saving || ctx.draft.selected.length || ctx.draft.link_nominal_id" class="voucher-catalog-editor__footer">
-            <p class="muted voucher-catalog-editor__hint" :role="ctx.saving ? 'status' : undefined">{{ ctx.saving ? 'Сохраняем, получаем цены и остатки…' : 'При сохранении загрузим цены и остатки.' }}</p>
+            <p class="muted voucher-catalog-editor__hint" :role="ctx.saving ? 'status' : undefined">{{ ctx.draft.supplier_code === 'warehouse' ? 'Склад добавится в приоритет поставщиков после сохранения карточки.' : ctx.saving ? 'Сохраняем, получаем цены и остатки…' : 'При сохранении загрузим цены и остатки.' }}</p>
           </div>
         </div>
         <div v-if="confirmOpen" ref="confirmRef" class="voucher-catalog-editor__confirm" :class="{ 'voucher-catalog-editor__confirm--unsaved': !ctx.deleteConfirm }">
@@ -119,8 +124,19 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useModalDrag } from '../useModalDrag'
 import WorkVoucherCatalogRouting from './WorkVoucherCatalogRouting.vue'
+import WorkVoucherSelect from './WorkVoucherSelect.vue'
 const props = defineProps({ ctx: { type: Object, required: true } })
 const { modalRef, modalStyle, startModalDrag, stopModalDrag, resetModalPos } = useModalDrag()
+const serviceOptions = computed(() => {
+  // Общее меню сохраняет возможность сбросить услугу и связанные номиналы.
+  return [{ code: '', name: props.ctx.optionsLoading ? 'Загрузка услуг…' : 'Выберите услугу' },
+    ...props.ctx.services.map((service) => ({ code: String(service.id), name: service.title }))]
+})
+const warehousePrice = computed(() => {
+  // Не подменяем отсутствующую цену нулём в предпросмотре склада.
+  const value = props.ctx.warehousePreview?.price
+  return value == null ? 'Не задана' : new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(Number(value))
+})
 const confirmRef = ref(null)
 const confirmOpen = computed(() => props.ctx.closeConfirm || props.ctx.deleteConfirm)
 const saveLabel = computed(() => {
@@ -234,12 +250,17 @@ onBeforeUnmount(releaseModal)
 .voucher-catalog-editor__heading { min-width: 0; }
 .work-modal-root .voucher-catalog-editor h3:not(.unsaved-confirm__title) { margin: 0; font-size: 15px; font-weight: 650; line-height: 1.4; text-transform: none; letter-spacing: 0; }
 .voucher-catalog-editor__parent { margin: 3px 0 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.voucher-catalog-editor__sku { margin: 4px 0 0; color: var(--muted); font-size: 11px; font-family: ui-monospace, monospace; user-select: all; }
 .work-modal-root.modal-backdrop .voucher-catalog-editor.modal--auto > .voucher-catalog-editor__content > .modal__body { padding: 16px 20px; overflow-y: auto; min-height: 0; max-height: none; }
 .voucher-catalog-editor__fields { display: grid; gap: 12px; border: 0; padding: 0; margin: 0; min-width: 0; }
 .voucher-catalog-editor__binding-action { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .work-modal-root .voucher-catalog-editor .field { margin: 0; gap: 5px; }
 .work-modal-root .voucher-catalog-editor .input { height: 36px; min-width: 0; padding: 0 10px; border-radius: 8px; font-size: 13px; }
 .work-modal-root .voucher-catalog-editor .input:focus-visible { outline: 2px solid #52cea7; outline-offset: 1px; }
+.voucher-catalog-editor__warehouse { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid var(--stroke); border-radius: 10px; background: rgba(128,148,180,.035); font-size: 13px; }
+.voucher-catalog-editor__warehouse > div { display: grid; gap: 4px; }
+.voucher-catalog-editor__warehouse > div:not(:first-child) { text-align: right; }
+.voucher-catalog-editor__warehouse small { font-size: 11px; }
 .voucher-catalog-editor__supplier { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 12px; }
 .voucher-catalog-editor__tabs { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--stroke); border-radius: 10px; width: fit-content; background: rgba(0,0,0,.12); }
 .voucher-catalog-editor__tabs button { padding: 7px 12px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; }

@@ -2,6 +2,7 @@
   <div class="catalog-snapshot" :class="{ 'is-compact': compact }">
     <span class="catalog-snapshot__label muted">{{ kind === 'price' ? 'Закупочная цена' : 'Остаток, шт.' }}</span>
     <strong class="voucher-catalog__number">{{ value }}</strong>
+    <span v-if="kind === 'stock' && offer?.stock_count === 0" class="catalog-snapshot__availability muted">Нет в наличии</span>
     <template v-if="offer">
       <span v-if="!compact" class="catalog-snapshot__date muted">{{ updated }}</span>
       <span v-if="problem" class="catalog-snapshot__problem bad" :title="problemDetail">{{ problem }}</span>
@@ -25,6 +26,8 @@ const problem = computed(() => {
   if (!props.offer) return ''
   const error = props.offer[`${props.kind}_error`]
   if (error) return error
+  // Ручная цена склада не стареет по расписанию внешних поставщиков.
+  if (props.offer.supplier_code === 'warehouse') return ''
   const timestamp = props.offer[`${props.kind}_updated_at`]
   const hours = props.kind === 'price' ? 26 : 2
   return timestamp && props.now - new Date(timestamp).getTime() > hours * 3600000
@@ -45,7 +48,7 @@ function date(value) {
 <style scoped>
 .catalog-snapshot { display: grid; align-content: start; justify-items: end; gap: 4px; min-width: 0; text-align: right; }
 .voucher-catalog__number { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.catalog-snapshot__label, .catalog-snapshot__date, .catalog-snapshot__problem { font-size: 11px; line-height: 1.4; }
+.catalog-snapshot__label, .catalog-snapshot__date, .catalog-snapshot__problem, .catalog-snapshot__availability { font-size: 11px; line-height: 1.4; }
 .catalog-snapshot:not(.is-compact) .catalog-snapshot__label { display: none; }
 .catalog-snapshot__date { font-variant-numeric: tabular-nums; }
 .catalog-snapshot__problem { max-width: 100%; overflow-wrap: anywhere; }

@@ -8,6 +8,7 @@
         <div class="catalog-nominal__name">
           <button v-if="canEdit" type="button" class="voucher-catalog__nominal" :disabled="saving" title="Открыть карточку номинала" @click="$emit('edit')">{{ nominal.name }}</button>
           <strong v-else>{{ nominal.name }}</strong>
+          <span v-if="nominal.sku" class="catalog-nominal__sku" :aria-label="`SKU ${nominal.sku}`">{{ nominal.sku }}</span>
           <span class="catalog-nominal__count muted">{{ supplierCount }}</span>
         </div>
       </div>
@@ -62,9 +63,9 @@ const supplierCount = computed(() => {
   return `${count} ${word}`
 })
 watch(() => props.search, (search) => {
-  // Найденную связку раскрываем, сохраняя возможность свернуть её вручную прямо во время поиска.
+  // Поиск по SKU или названию раскрывает нужный номинал, не запрещая ручное сворачивание.
   const query = search.trim().toLocaleLowerCase('ru')
-  if (query && [props.nominal.name, ...offers.value.flatMap((offer) => [offer.service_title, offer.nominal_title, offer.supplier_name])]
+  if (query && [props.nominal.name, props.nominal.sku || '', ...offers.value.flatMap((offer) => [offer.service_title, offer.nominal_title, offer.supplier_name])]
     .some((value) => String(value).toLocaleLowerCase('ru').includes(query))) expanded.value = true
 }, { immediate: true })
 
@@ -84,6 +85,7 @@ function confirmUnlink(offerId) {
 .voucher-catalog__nominal { border: 0; padding: 0; background: none; color: var(--ink); font: inherit; font-weight: 650; text-align: left; text-underline-offset: 4px; cursor: pointer; overflow-wrap: anywhere; }
 .voucher-catalog__nominal:hover { color: var(--catalog-accent); text-decoration: underline; }
 .catalog-nominal__count { font-size: 11px; }
+.catalog-nominal__sku { color: var(--muted); font-size: 11px; font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; user-select: all; }
 .catalog-nominal__expand, .voucher-catalog__delete-nominal { flex: 0 0 auto; display: grid; place-items: center; width: 28px; height: 28px; padding: 5px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .catalog-nominal svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .catalog-nominal__expand svg { transition: transform .15s; }

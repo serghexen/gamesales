@@ -40,11 +40,12 @@ import { computed, ref } from 'vue'
 import WorkHamsterLoader from './WorkHamsterLoader.vue'
 
 const props = defineProps({
+  label: { type: String, default: '' },
   showMarketplaceKeyPool: { type: Boolean, required: true }, closeMarketplaceKeyPool: { type: Function, required: true }, marketplaceKeyPool: { type: Object, required: true }, marketplaceKeyPoolLoading: { type: Boolean, required: true }, marketplaceKeyPoolSaving: { type: Boolean, required: true }, marketplaceKeyPoolError: { type: String, default: '' }, marketplaceKeyPoolOk: { type: String, default: '' }, addMarketplaceKeyPoolKeys: { type: Function, required: true },
 })
 const draftCodes = ref('')
 const draftExpiresAt = ref('')
-const marketplaceLabel = computed(() => String(props.marketplaceKeyPool.marketplace) === 'ozon' ? 'Ozon' : 'Яндекс Маркет')
+const marketplaceLabel = computed(() => props.label || (String(props.marketplaceKeyPool.marketplace) === 'ozon' ? 'Ozon' : 'Яндекс Маркет'))
 
 async function submitKeys() {
   // Очищает форму после сохранения, а таблица за окном обновляется из общего состояния пула.

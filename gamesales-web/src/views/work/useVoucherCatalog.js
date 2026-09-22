@@ -5,6 +5,10 @@ export function useVoucherCatalog(getToken) {
   // Услуги, собственные номиналы и форма живут отдельно от WorkView для свободного переноса раздела.
   const items = ref([])
   const suppliers = ref([])
+  const warehouseLinked = computed(() => draft.routing_offers.some((offer) => offer.supplier_code === 'warehouse'))
+  const availableSuppliers = computed(() => suppliers.value.filter((supplier) => supplier.code !== 'warehouse' || mode.value === 'nominal')
+    .map((supplier) => supplier.code === 'warehouse' && warehouseLinked.value
+      ? { ...supplier, name: `${supplier.name} · уже связан`, disabled: true } : supplier))
   const canEdit = ref(false)
   const loading = ref(false)
   const saving = ref(false)
@@ -17,12 +21,13 @@ export function useVoucherCatalog(getToken) {
   const bindingOpen = ref(false)
   const mode = ref('service')
   const options = ref([])
+  const warehousePreview = ref(null)
   const search = ref('')
   const sourceItem = ref(null)
   const deleteServiceName = computed(() => sourceItem.value?.name || '')
   const deleteServiceNominalCount = computed(() => sourceItem.value?.nominals?.length || 0)
   const baseline = ref('')
-  const draft = reactive({ item_id: null, name: '', catalog_nominal_id: null, nominal_name: '',
+  const draft = reactive({ item_id: null, name: '', catalog_nominal_id: null, nominal_name: '', sku: '',
     supplier_code: 'interhub', service_id: '', selected: [], link_nominal_id: '', source: 'supplier',
     routing_offers: [], fulfillment_revision: 0 })
   let optionsRequest = 0
@@ -31,9 +36,9 @@ export function useVoucherCatalog(getToken) {
   const title = computed(() => mode.value === 'nominals' ? 'Добавить номиналы'
     : mode.value === 'nominal' ? 'Карточка номинала' : draft.item_id ? 'Изменить услугу' : 'Новая услуга')
   const filteredItems = computed(() => {
-    // Поиск находит всю услугу по её имени, собственному номиналу или подписи поставщика.
+    // Поиск находит услугу по SKU, названию номинала или подписи поставщика.
     const query = search.value.trim().toLocaleLowerCase('ru')
-    return items.value.filter((item) => [item.name, ...(item.nominals || []).flatMap((nominal) => [nominal.name,
+    return items.value.filter((item) => [item.name, ...(item.nominals || []).flatMap((nominal) => [nominal.name, nominal.sku || '',
       ...nominal.offers.flatMap((offer) => [offer.service_title, offer.nominal_title, offer.supplier_name])])]
       .some((value) => String(value).toLocaleLowerCase('ru').includes(query)))
   })
@@ -105,7 +110,22 @@ export function useVoucherCatalog(getToken) {
     draft.selected = []
     draft.link_nominal_id = ''
     formError.value = ''
+    warehousePreview.value = null
     try {
+      if (draft.supplier_code === 'warehouse') {
+        // Собственный склад связан с текущим SKU: чужую позицию выбирать нельзя.
+        if (warehouseLinked.value) {
+          formError.value = 'Склад уже связан. Его приоритет и включение настраиваются в списке выше.'
+          return
+        }
+        draft.service_id = String(draft.item_id)
+        const result = await apiGet(`/voucher-catalog/nominals/${draft.catalog_nominal_id}/warehouse`, { token: getToken() })
+        if (request === optionsRequest && formOpen.value) {
+          warehousePreview.value = result
+          draft.link_nominal_id = String(draft.catalog_nominal_id)
+        }
+        return
+      }
       const result = await apiGet(`/voucher-catalog/suppliers/${encodeURIComponent(draft.supplier_code)}/nominals`, { token: getToken() })
       if (request === optionsRequest && formOpen.value) options.value = result
     } catch (err) {
@@ -118,11 +138,12 @@ export function useVoucherCatalog(getToken) {
   async function openForm(item = null, nextMode = 'service', nominal = null) {
     // Все действия открывают одну знакомую модалку: услугу, пакет номиналов или отдельный номинал.
     if (saving.value) return
+    warehousePreview.value = null
     sourceItem.value = item
     mode.value = nextMode
     Object.assign(draft, { item_id: item?.item_id ?? null, name: item?.name || '',
-      catalog_nominal_id: nominal?.catalog_nominal_id ?? null, nominal_name: nominal?.name || '',
-      supplier_code: suppliers.value[0]?.code || 'interhub', service_id: '', selected: [], link_nominal_id: '', source: 'supplier',
+      catalog_nominal_id: nominal?.catalog_nominal_id ?? null, nominal_name: nominal?.name || '', sku: nominal?.sku || '',
+      supplier_code: suppliers.value.find((row) => row.code !== 'warehouse')?.code || 'interhub', service_id: '', selected: [], link_nominal_id: '', source: 'supplier',
       routing_offers: (nominal?.offers || []).map((offer) => ({ ...offer, fulfillment_enabled: offer.fulfillment_enabled !== false }))
         .sort((a, b) => (a.fulfillment_priority ?? a.offer_id) - (b.fulfillment_priority ?? b.offer_id) || a.offer_id - b.offer_id),
       fulfillment_revision: nominal?.fulfillment_revision ?? 0 })
@@ -249,6 +270,10 @@ export function useVoucherCatalog(getToken) {
     let chosen = []
     const binding = (nominalId) => ({ supplier_code: draft.supplier_code, service_id: draft.service_id, nominal_id: nominalId })
     if (mode.value === 'nominal') {
+      // Повторный выбор не должен незаметно обновлять существующую связку, даже если форма устарела.
+      const duplicate = draft.supplier_code === 'warehouse' ? warehouseLinked.value
+        : nominals.value.some((option) => String(option.nominal_id) === draft.link_nominal_id && option.linked)
+      if (draft.link_nominal_id && duplicate) { formError.value = 'Эта связка уже добавлена'; return }
       chosen = [{ catalog_nominal_id: draft.catalog_nominal_id, name: draft.nominal_name.trim(),
         routing: { revision: draft.fulfillment_revision, offers: draft.routing_offers.map((offer) => ({
           offer_id: offer.offer_id, enabled: offer.fulfillment_enabled,
@@ -296,7 +321,7 @@ export function useVoucherCatalog(getToken) {
     }
   }
 
-  return { items, suppliers, canEdit, loading, saving, optionsLoading, error, formError, formOpen,
+  return { items, suppliers, availableSuppliers, warehousePreview, canEdit, loading, saving, optionsLoading, error, formError, formOpen,
     closeConfirm, deleteConfirm, bindingOpen, mode, title, draft, search, filteredItems, services, nominals, load, loadOptions,
     openForm, selectService, toggleNominal, selectAll, save, unlink, requestClose, discard,
     moveOffer, toggleOffer, showBinding, hideBinding, askDelete, deleteNominal,

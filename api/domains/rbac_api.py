@@ -37,6 +37,7 @@ def mount_rbac_routes(
         ("catalogs", "Справочники", 60),
         ("finance", "Финансы", 70),
         ("voucher-catalog", "Каталог", 75),
+        ("voucher-warehouse", "Склад", 76),
         ("users", "Пользователи", 80),
         ("dashboard", "Дашборд", 90),
         ("telegram", "Чаты", 100)
@@ -48,7 +49,7 @@ def mount_rbac_routes(
         section = str(section_code or "").strip().lower()
         if role in {"admin", "owner"}:
             return True
-        if section in {"analytics", "catalogs", "finance", "voucher-catalog", "users", "dashboard"}:
+        if section in {"analytics", "catalogs", "finance", "voucher-catalog", "voucher-warehouse", "users", "dashboard"}:
             return False
         return True
 
