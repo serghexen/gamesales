@@ -21,7 +21,17 @@
             <tr v-if="!pageRows.length"><td :colspan="showReviewActions ? 5 : 4" class="muted">{{ loading ? 'Загрузка…' : 'Нет позиций по выбранному фильтру' }}</td></tr>
             <tr v-for="row in pageRows" :key="`${row.service_id}:${row.nominal_id}`">
               <td class="supplier-current__identity"><strong>{{ row.service_title }}</strong><div class="supplier-current__nominal"><span>{{ row.nominal_title }}</span><span class="supplier-current__ids muted">#{{ row.service_id }} / {{ row.nominal_id }}</span></div></td>
-              <td><span class="supplier-current__status" :class="{ 'is-warning': row.status !== 'active' }">{{ status(row.status) }}</span><small class="muted">{{ row.linked ? 'Связан с каталогом' : 'Не связан' }}</small><small v-if="!row.reviewed_at" class="supplier-current__new">{{ row.review_reason === 'new' ? 'Новое' : 'Есть изменения' }}</small></td>
+              <td class="supplier-current__state">
+                <span class="supplier-current__status" :class="{ 'is-warning': row.status !== 'active' }">{{ status(row.status) }}</span>
+                <small v-if="row.availability_note" class="supplier-current__reason">{{ row.availability_note }}</small>
+                <small v-if="row.status !== 'active' && row.missing_count > 0 && row.last_seen_at" class="muted">Последний раз видели: {{ date(row.last_seen_at) }}</small>
+                <small class="muted">{{ row.linked ? 'Связан с каталогом' : 'Не связан' }}</small>
+                <small v-if="!row.reviewed_at" class="supplier-current__new">{{ row.review_reason === 'new' ? 'Новое' : 'Есть изменения' }}</small>
+                <div v-if="row.change_notes.length" class="supplier-current__changes">
+                  <small v-for="note in row.change_notes" :key="note">{{ note }}</small>
+                  <small v-if="row.changes_detected_at" class="muted">Обнаружено: {{ date(row.changes_detected_at) }}</small>
+                </div>
+              </td>
               <td class="numeric"><strong>{{ money(row.price) }}</strong><small class="muted">{{ date(row.price_updated_at) }}</small><small v-if="row.price_error" class="error" :title="row.price_error">Ошибка обновления</small></td>
               <td class="numeric"><strong>{{ row.stock_count ?? '—' }}</strong><small class="muted">{{ date(row.stock_updated_at) }}</small><small v-if="row.stock_error" class="error" :title="row.stock_error">Ошибка обновления</small></td>
               <td v-if="showReviewActions"><button v-if="!row.reviewed_at" type="button" class="ghost" :disabled="saving" @click="review([row])">Просмотрено</button></td>
@@ -53,7 +63,8 @@ const filtered = computed(() => {
       filter.value === 'unlinked' && !row.linked || filter.value === 'unavailable' && row.status !== 'active'))
 })
 const pages = computed(() => Math.max(1, Math.ceil(filtered.value.length / 25)))
-const pageRows = computed(() => filtered.value.slice((page.value - 1) * 25, page.value * 25))
+const pageRows = computed(() => filtered.value.slice((page.value - 1) * 25, page.value * 25)
+  .map(row => ({ ...row, change_notes: changeNotes(row), availability_note: availabilityNote(row) })))
 const pendingPage = computed(() => pageRows.value.filter(row => !row.reviewed_at))
 const showReviewActions = computed(() => props.canReview && pendingPage.value.length > 0)
 watch([search, filter], () => { page.value = 1 })
@@ -75,6 +86,38 @@ function money(value) {
 function status(value) {
   // Подозрительное исчезновение показываем до окончательного подтверждения вторым обходом.
   return { active: 'Доступен', suspect: 'Требует проверки', unavailable: 'Недоступен' }[value] || value
+}
+function availabilityNote(row) {
+  // Причина доступности остаётся видимой и после отметки «Просмотрено»; остаток на неё не влияет.
+  if (row.status === 'active') return ''
+  if (row.missing_count > 0 || row.availability_reason === 'missing' || row.status === 'suspect') {
+    return row.status === 'suspect'
+      ? 'Не найден в каталоге. Ждём повторной проверки.'
+      : `Не найден в каталоге.${row.missing_count > 0 ? ` Проверок подряд: ${row.missing_count}.` : ''}`
+  }
+  return `${availabilityReasonName(row.availability_reason)}.`
+}
+function availabilityReasonName(reason) {
+  // Одинаковые формулировки связывают текущую причину с её прежним значением.
+  return { missing: 'Не найден в каталоге', service_disabled: 'Поставщик отключил услугу', nominal_disabled: 'Поставщик отключил номинал' }[reason]
+    || 'Позиция отключена поставщиком'
+}
+function changeNotes(row) {
+  // Сравниваем текущие поля с одним снимком до непросмотренных изменений, не создавая историю опросов.
+  if (row.reviewed_at || row.review_reason === 'new') return []
+  const before = row.review_before || {}
+  if (!Object.keys(before).length) {
+    return row.review_reason === 'missing' ? [] : ['Изменились название или доступность; прежние значения не сохранены.']
+  }
+  const notes = []
+  for (const [field, label] of [['service_title', 'Услуга'], ['nominal_title', 'Номинал']]) {
+    if (before[field] != null && before[field] !== row[field]) notes.push(`${label}: «${before[field]}» → «${row[field]}»`)
+  }
+  if (before.status && before.status !== row.status) notes.push(`Доступность: ${status(before.status)} → ${status(row.status)}`)
+  if (before.availability_reason !== undefined && before.availability_reason !== row.availability_reason && before.status === row.status) {
+    notes.push(`Причина: ${availabilityReasonName(before.availability_reason)} → ${availabilityReasonName(row.availability_reason)}`)
+  }
+  return notes.length ? notes : ['Данные менялись и вернулись к прежним значениям.']
 }
 async function load() {
   // Кнопка перечитывает БД; сетевой опрос поставщика здесь никогда не запускается.
@@ -118,6 +161,9 @@ onMounted(load)
 .supplier-current .ghost { font:inherit; font-size:12px; padding:7px 12px; min-height:32px; white-space:nowrap; }
 .supplier-current__status { color:#b9c3d4; }
 .supplier-current__status.is-warning { color:#f2ba73; }
+.supplier-current__state { min-width:210px; }
+.supplier-current__reason { color:#f2ba73; max-width:340px; white-space:normal; }
+.supplier-current__changes { margin-top:5px; padding-left:8px; border-left:2px solid rgba(83,213,182,.3); max-width:340px; overflow-wrap:anywhere; white-space:normal; }
 .supplier-current__pagination { justify-content:flex-end; margin-top:8px; font-size:12px; }
 .supplier-current .account-refresh-btn { width:36px; height:36px; flex-shrink:0; }
 .supplier-current summary:focus-visible, .supplier-current__table:focus-visible { outline:2px solid #53d5b6; outline-offset:3px; }

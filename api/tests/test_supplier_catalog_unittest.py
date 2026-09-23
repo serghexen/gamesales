@@ -77,6 +77,16 @@ class SupplierCatalogTests(TestCase):
         provider.get_detail.assert_not_called()
         provider.calculate.assert_not_called()
 
+    def test_availability_explains_disabled_service_and_nominal_separately(self):
+        # Причина берётся из явных признаков поставщика, а не из нулевого остатка или ошибки цены.
+        payload = services()
+        payload[0]['fields'][0]['value_list'][0]['active'] = False
+        targets = discovery_targets(payload)
+        self.assertEqual(targets[0]['availability_reason'], 'nominal_disabled')
+        self.assertEqual(targets[1]['availability_reason'], '')
+        payload[0]['raw'] = {'active': 'false'}
+        self.assertTrue(all(t['availability_reason'] == 'service_disabled' for t in discovery_targets(payload)))
+
     def test_multiple_nominal_fields_include_values_after_empty_field(self):
         # В живом каталоге первое поле nominal бывает пустым, а следующие содержат реальные номиналы.
         service = services()[0]

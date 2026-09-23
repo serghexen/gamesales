@@ -10,6 +10,68 @@ function button(wrapper, text) {
 }
 beforeEach(() => { vi.clearAllMocks(); apiGet.mockResolvedValue({ items: [row(20), row(50, { reviewed_at: '2026-09-22', linked: true, status: 'unavailable' })], offline: true }); apiPost.mockResolvedValue({ ok: true }) })
 describe('Список ваучеров', () => {
+  it('показывает прежние и текущие названия и доступность в изменениях', async () => {
+    // Несколько изменений до просмотра отображаются вместе; текст поставщика выводится безопасно.
+    apiGet.mockResolvedValue({ items: [row(20, { review_reason: 'changed', service_title: 'Blizzard EUR',
+      nominal_title: '<b>EUR 25</b>', review_before: { service_title: 'Blizzard', nominal_title: 'EUR 20', status: 'unavailable' },
+      changes_detected_at: '2026-09-23T06:00:00Z' })] })
+    const wrapper = mount(WorkSupplierCatalog, { props: { token: 'test', canReview: true } })
+    await flushPromises()
+    await button(wrapper, 'Изменения').trigger('click')
+    expect(wrapper.text()).toContain('Услуга: «Blizzard» → «Blizzard EUR»')
+    expect(wrapper.text()).toContain('Номинал: «EUR 20» → «<b>EUR 25</b>»')
+    expect(wrapper.text()).toContain('Доступность: Недоступен → Доступен')
+    expect(wrapper.text()).toContain('Обнаружено:')
+    expect(wrapper.find('tbody b').exists()).toBe(false)
+  })
+  it('объясняет первую и повторную пропажу и явное отключение даже после просмотра', async () => {
+    // Отметка просмотра не убирает текущую причину недоступности позиции.
+    apiGet.mockResolvedValue({ items: [
+      row(1, { status: 'suspect', missing_count: 1, review_reason: 'missing' }),
+      row(2, { status: 'unavailable', missing_count: 3, review_reason: 'missing', reviewed_at: '2026-09-23', last_seen_at: '2026-09-22T06:00:00Z' }),
+      row(3, { status: 'unavailable', availability_reason: 'service_disabled' }),
+      row(4, { status: 'unavailable', availability_reason: 'nominal_disabled' }),
+      row(5, { price_error: 'Ошибка цены', stock_error: 'Ошибка остатка' }),
+    ] })
+    const wrapper = mount(WorkSupplierCatalog, { props: { token: 'test' } })
+    await flushPromises()
+    await button(wrapper, 'Недоступны').trigger('click')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(4)
+    expect(wrapper.text()).toContain('Ждём повторной проверки.')
+    expect(wrapper.text()).toContain('Проверок подряд: 3.')
+    expect(wrapper.text()).toContain('Последний раз видели:')
+    expect(wrapper.text()).toContain('Поставщик отключил услугу.')
+    expect(wrapper.text()).toContain('Поставщик отключил номинал.')
+  })
+  it('не придумывает прежние названия для старых отметок и скрывает подробности после просмотра', async () => {
+    // Старые данные не содержат снимка до изменения, но новые отметки очищаются обычным действием.
+    apiGet.mockResolvedValue({ items: [row(20, { review_reason: 'changed' })] })
+    const wrapper = mount(WorkSupplierCatalog, { props: { token: 'test', canReview: true } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('прежние значения не сохранены')
+    apiGet.mockResolvedValue({ items: [row(20, { review_reason: 'changed', reviewed_at: '2026-09-23' })] })
+    await button(wrapper, 'Просмотрено').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.supplier-current__changes').exists()).toBe(false)
+    await button(wrapper, 'Изменения').trigger('click')
+    expect(wrapper.text()).toContain('Нет позиций по выбранному фильтру')
+  })
+  it('объясняет возврат к прежним значениям между просмотрами', async () => {
+    // Возврат после временного исчезновения не оставляет непонятное «Есть изменения» без пояснения.
+    apiGet.mockResolvedValue({ items: [row(20, { review_reason: 'changed', availability_reason: '',
+      review_before: { service_title: 'Blizzard', nominal_title: 'EUR 20', status: 'active', availability_reason: '' } })] })
+    const wrapper = mount(WorkSupplierCatalog, { props: { token: 'test' } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Данные менялись и вернулись к прежним значениям.')
+  })
+  it('показывает обе причины при изменении причины недоступности', async () => {
+    // Один и тот же статус может означать разные действия поставщика.
+    apiGet.mockResolvedValue({ items: [row(20, { status: 'unavailable', review_reason: 'changed', availability_reason: 'nominal_disabled',
+      review_before: { status: 'unavailable', availability_reason: 'service_disabled' } })] })
+    const wrapper = mount(WorkSupplierCatalog, { props: { token: 'test' } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Причина: Поставщик отключил услугу → Поставщик отключил номинал')
+  })
   it('открывает блок свёрнутым при каждом входе, а обновление данных не раскрывает его', async () => {
     // Возврат во вкладку пересоздаёт компонент; состояние раскрытия не переносится.
     const wrapper = mount(WorkSupplierCatalog, { props: { token: 'test' } })

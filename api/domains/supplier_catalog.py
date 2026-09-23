@@ -40,7 +40,9 @@ def discovery_targets(services):
             seen.add(key)
             targets.append(dict(service_id=sid, nominal_id=nid, service_title=service['title'],
                 nominal_title=entry['title'], category=service.get('category', ''), service_type='VOUCHER',
-                enabled=enabled and active(entry.get('active', True))))
+                enabled=enabled and active(entry.get('active', True)),
+                availability_reason='service_disabled' if not enabled else
+                    ('nominal_disabled' if not active(entry.get('active', True)) else '')))
     if not targets:
         raise ValueError('В ответе нет ваучеров; состояние сохранено')
     return targets
@@ -75,7 +77,8 @@ class SupplierCatalog:
         # Версия защищает от отметки новых изменений по устаревшему открытому списку.
         with self.db.connect(self.dsn) as conn, conn.cursor() as cur:
             for entry in entries:
-                cur.execute('''UPDATE app.supplier_catalog_current SET reviewed_at=now()
+                cur.execute('''UPDATE app.supplier_catalog_current SET reviewed_at=now(),
+                    review_before='{}'::jsonb,changes_detected_at=NULL
                     WHERE supplier_code='interhub' AND service_id=%s AND nominal_id=%s AND review_revision=%s''',
                     (entry['service_id'], entry['nominal_id'], entry['review_revision']))
             conn.commit()
@@ -118,25 +121,41 @@ class SupplierCatalog:
                     raise ValueError('Каталог сократился более чем на 20%; изменения не применены')
                 for target in targets:
                     cur.execute('''INSERT INTO app.supplier_catalog_current AS c
-                        (supplier_code,service_id,nominal_id,service_title,nominal_title,category,service_type,status,last_seen_at)
-                        VALUES ('interhub',%s,%s,%s,%s,%s,'VOUCHER',%s,%s)
+                        (supplier_code,service_id,nominal_id,service_title,nominal_title,category,service_type,status,last_seen_at,availability_reason)
+                        VALUES ('interhub',%s,%s,%s,%s,%s,'VOUCHER',%s,%s,%s)
                         ON CONFLICT(supplier_code,service_id,nominal_id) DO UPDATE SET
                         service_title=EXCLUDED.service_title,nominal_title=EXCLUDED.nominal_title,category=EXCLUDED.category,
                         service_type=EXCLUDED.service_type,status=EXCLUDED.status,missing_count=0,last_seen_at=EXCLUDED.last_seen_at,
-                        reviewed_at=CASE WHEN (c.service_title,c.nominal_title,c.status) IS DISTINCT FROM
-                            (EXCLUDED.service_title,EXCLUDED.nominal_title,EXCLUDED.status) THEN NULL ELSE c.reviewed_at END,
-                        review_revision=c.review_revision+CASE WHEN (c.service_title,c.nominal_title,c.status) IS DISTINCT FROM
-                            (EXCLUDED.service_title,EXCLUDED.nominal_title,EXCLUDED.status) THEN 1 ELSE 0 END,
-                        review_reason=CASE WHEN (c.service_title,c.nominal_title,c.status) IS DISTINCT FROM
-                            (EXCLUDED.service_title,EXCLUDED.nominal_title,EXCLUDED.status) THEN 'changed' ELSE c.review_reason END''',
+                        availability_reason=EXCLUDED.availability_reason,
+                        review_before=CASE WHEN (c.service_title,c.nominal_title,c.status,c.availability_reason) IS DISTINCT FROM
+                            (EXCLUDED.service_title,EXCLUDED.nominal_title,EXCLUDED.status,EXCLUDED.availability_reason)
+                            THEN CASE WHEN c.reviewed_at IS NOT NULL OR c.review_before='{}'::jsonb
+                                THEN jsonb_build_object('service_title',c.service_title,'nominal_title',c.nominal_title,
+                                    'status',c.status,'availability_reason',c.availability_reason)
+                                ELSE c.review_before END ELSE c.review_before END,
+                        changes_detected_at=CASE WHEN (c.service_title,c.nominal_title,c.status,c.availability_reason) IS DISTINCT FROM
+                            (EXCLUDED.service_title,EXCLUDED.nominal_title,EXCLUDED.status,EXCLUDED.availability_reason)
+                            THEN EXCLUDED.last_seen_at ELSE c.changes_detected_at END,
+                        reviewed_at=CASE WHEN (c.service_title,c.nominal_title,c.status,c.availability_reason) IS DISTINCT FROM
+                            (EXCLUDED.service_title,EXCLUDED.nominal_title,EXCLUDED.status,EXCLUDED.availability_reason) THEN NULL ELSE c.reviewed_at END,
+                        review_revision=c.review_revision+CASE WHEN (c.service_title,c.nominal_title,c.status,c.availability_reason) IS DISTINCT FROM
+                            (EXCLUDED.service_title,EXCLUDED.nominal_title,EXCLUDED.status,EXCLUDED.availability_reason) THEN 1 ELSE 0 END,
+                        review_reason=CASE WHEN (c.service_title,c.nominal_title,c.status,c.availability_reason) IS DISTINCT FROM
+                            (EXCLUDED.service_title,EXCLUDED.nominal_title,EXCLUDED.status,EXCLUDED.availability_reason) THEN 'changed' ELSE c.review_reason END''',
                         (str(target['service_id']),str(target['nominal_id']),target['service_title'],target['nominal_title'],
-                         target['category'],'active' if target['enabled'] else 'unavailable',stamp))
+                         target['category'],'active' if target['enabled'] else 'unavailable',stamp,target['availability_reason']))
+                # Повторный обход не затирает исходные названия, пока оператор не просмотрит изменения.
                 cur.execute('''UPDATE app.supplier_catalog_current SET missing_count=missing_count+1,
                     status=CASE WHEN missing_count>=1 THEN 'unavailable' ELSE 'suspect' END,
+                    availability_reason='missing',
+                    review_before=CASE WHEN missing_count<2 AND (reviewed_at IS NOT NULL OR review_before='{}'::jsonb)
+                        THEN jsonb_build_object('service_title',service_title,'nominal_title',nominal_title,
+                            'status',status,'availability_reason',availability_reason) ELSE review_before END,
+                    changes_detected_at=CASE WHEN missing_count<2 THEN %s ELSE changes_detected_at END,
                     reviewed_at=CASE WHEN missing_count<2 THEN NULL ELSE reviewed_at END,
                     review_revision=review_revision+CASE WHEN missing_count<2 THEN 1 ELSE 0 END,
                     review_reason='missing'
-                    WHERE supplier_code='interhub' AND service_type='VOUCHER' AND last_seen_at IS DISTINCT FROM %s''', (stamp,))
+                    WHERE supplier_code='interhub' AND service_type='VOUCHER' AND last_seen_at IS DISTINCT FROM %s''', (stamp,stamp))
                 cur.execute('''INSERT INTO app.supplier_catalog_sync_state(supplier_code,services,discovery_at,checked_at)
                     VALUES ('interhub',%s::jsonb,%s,%s) ON CONFLICT(supplier_code) DO UPDATE SET
                     services=EXCLUDED.services,discovery_at=EXCLUDED.discovery_at,checked_at=EXCLUDED.checked_at,error='' ''',
