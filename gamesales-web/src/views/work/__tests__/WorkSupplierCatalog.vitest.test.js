@@ -11,7 +11,7 @@ function button(wrapper, text) {
 beforeEach(() => { vi.clearAllMocks(); apiGet.mockResolvedValue({ items: [row(20), row(50, { reviewed_at: '2026-09-22', linked: true, status: 'unavailable' })], offline: true }); apiPost.mockResolvedValue({ ok: true }) })
 describe('Список ваучеров', () => {
   it('отделяет актуальный каталог от событий и не скрывает нулевой остаток или ошибку опроса', async () => {
-    // Остаток и ошибки не означают исчезновение; старые позиции не засоряют подбор несвязанных.
+    // Остаток и ошибки не означают исчезновение; связь видна в строке без отдельного фильтра.
     apiGet.mockResolvedValue({ items: [
       row(1, { reviewed_at: '2026-09-23', stock_count: 0, price_error: 'Ошибка' }),
       row(2, { linked: true }),
@@ -26,9 +26,9 @@ describe('Список ваучеров', () => {
     expect(wrapper.get('summary').text()).toContain('Изменений: 2')
     expect(wrapper.findAll('tbody tr')).toHaveLength(2)
     expect(wrapper.find('tbody').text()).toContain('EUR 1')
-    await button(wrapper, 'Не связаны').trigger('click')
-    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
-    expect(wrapper.find('tbody').text()).toContain('EUR 1')
+    expect(wrapper.get('.supplier-current__filters').text()).not.toContain('Не связаны')
+    expect(wrapper.find('tbody').text()).toContain('Связан с каталогом')
+    expect(wrapper.find('tbody').text()).toContain('Не связан')
     await button(wrapper, 'Изменения').trigger('click')
     expect(wrapper.findAll('tbody tr')).toHaveLength(2)
     expect(wrapper.find('tbody').text()).toContain('EUR 3')
@@ -46,7 +46,7 @@ describe('Список ваучеров', () => {
     await button(wrapper, 'Просмотрено').trigger('click')
     await flushPromises()
     expect(wrapper.get('summary').text()).not.toContain('Изменений:')
-    for (const label of ['Изменения', 'Недоступны', 'Все актуальные', 'Не связаны']) {
+    for (const label of ['Изменения', 'Недоступны', 'Все актуальные']) {
       await button(wrapper, label).trigger('click')
       expect(wrapper.find('tbody').text()).not.toContain('EUR 50')
     }
@@ -158,7 +158,7 @@ describe('Список ваучеров', () => {
     expect(viewport.element.scrollTop).toBe(0)
     expect(wrapper.find('tbody tr').text()).toContain('EUR 26')
     viewport.element.scrollTop = 120
-    await button(wrapper, 'Не связаны').trigger('click')
+    await button(wrapper, 'Новые').trigger('click')
     await flushPromises()
     expect(viewport.element.scrollTop).toBe(0)
     expect(wrapper.find('tbody tr').text()).toContain('EUR 1')

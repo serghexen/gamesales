@@ -52,7 +52,7 @@ const props = defineProps({ token: { type: String, default: '' }, canReview: Boo
 const rows = ref([]), sync = ref(null), loading = ref(false), saving = ref(false), error = ref('')
 const search = ref(''), filter = ref('all'), page = ref(1)
 const tableViewport = ref(null)
-const filters = [{ key: 'all', label: 'Все актуальные' }, { key: 'new', label: 'Новые' }, { key: 'changed', label: 'Изменения' }, { key: 'unlinked', label: 'Не связаны' }, { key: 'unavailable', label: 'Недоступны' }]
+const filters = [{ key: 'all', label: 'Все актуальные' }, { key: 'new', label: 'Новые' }, { key: 'changed', label: 'Изменения' }, { key: 'unavailable', label: 'Недоступны' }]
 const activeCount = computed(() => rows.value.filter(row => row.status === 'active').length)
 const newCount = computed(() => rows.value.filter(row => !row.reviewed_at && row.review_reason === 'new').length)
 const changedCount = computed(() => rows.value.filter(row => !row.reviewed_at && row.review_reason !== 'new').length)
@@ -62,7 +62,7 @@ const filtered = computed(() => {
   return rows.value.filter(row => (!query || `${row.service_title} ${row.nominal_title} ${row.service_id} ${row.nominal_id}`.toLowerCase().includes(query)) &&
     (filter.value === 'all' && row.status === 'active' || filter.value === 'new' && !row.reviewed_at && row.review_reason === 'new' ||
       filter.value === 'changed' && !row.reviewed_at && row.review_reason !== 'new' ||
-      filter.value === 'unlinked' && row.status === 'active' && !row.linked || filter.value === 'unavailable' && !row.reviewed_at && row.status !== 'active'))
+      filter.value === 'unavailable' && !row.reviewed_at && row.status !== 'active'))
 })
 const pages = computed(() => Math.max(1, Math.ceil(filtered.value.length / 25)))
 const pageRows = computed(() => filtered.value.slice((page.value - 1) * 25, page.value * 25)
