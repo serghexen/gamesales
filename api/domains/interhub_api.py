@@ -1,6 +1,5 @@
 import json
 import threading
-import time
 import uuid
 from datetime import date
 from typing import Literal
@@ -8,8 +7,8 @@ from typing import Literal
 from fastapi import Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from domains.interhub_price_cache import build_interhub_prices_xlsx, collect_price_targets
-from domains.interhub_stock_cache import fetch_nominal_stock, match_stock_targets, read_stock_rows, save_stock_rows
+from domains.interhub_price_cache import build_interhub_prices_xlsx
+from domains.interhub_stock_cache import fetch_nominal_stock
 from domains.purchase_history_export import build_purchase_history_xlsx
 from domains.crm_purchase_export import iter_crm_purchase_export
 
@@ -52,6 +51,7 @@ def mount_interhub_routes(
     publish_deal_event=None,
     supplier_hub_client=None,
     interhub_get_service_detail=None,
+    shared_catalog=None,
 ):
     price_jobs: dict[str, dict] = {}
     price_jobs_lock = threading.Lock()
@@ -618,130 +618,19 @@ def mount_interhub_routes(
             "stock_successes": job["stock_successes"], "stock_errors": job["stock_errors"],
         }
 
-    def save_price_calculation(batch_id: str, target: dict, result: dict, username: str) -> None:
-        # Сохраняем каждый calculate, чтобы ошибки поставщика не терялись после закрытия страницы.
-        with psycopg.connect(DB_DSN) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO app.interhub_price_calculations(
-                      batch_id, service_id, service_title, category, service_type, nominal_id, nominal_title,
-                      success, provider_status, provider_message, fixed_amount, provider_response, created_by
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
-                    """,
-                    (
-                        batch_id, target["service_id"], target["service_title"], target["category"], target["service_type"],
-                        target["nominal_id"], target["nominal_title"], bool(result.get("success")),
-                        int(result.get("status") or 0), str(result.get("message") or ""),
-                        float(result.get("fixed_amount") or 0), json.dumps(result.get("raw") or {}), username,
-                    ),
-                )
-            conn.commit()
-
     def run_price_refresh(job_id: str, username: str) -> None:
-        # Оба этапа массового опроса работают только с ваучерами: detail по услуге, calculate по номиналу.
+        # Ручной запуск использует тот же движок и блокировку, что и расписание.
+        def progress(counts):
+            # Обновляем привычный индикатор без вмешательства в открытую форму покупки.
+            with price_jobs_lock:
+                price_jobs[job_id].update(counts)
         try:
-            targets = [target for target in collect_price_targets(interhub_get_services())
-                       if target['service_type'] == 'VOUCHER']
-            service_targets = {}
-            for target in targets:
-                service_targets.setdefault(target['service_id'], []).append(target)
+            shared_catalog.refresh(progress=progress)
             with price_jobs_lock:
-                job = price_jobs[job_id]
-                job["total"] = len(targets)
-                job["stock_total"] = len(service_targets)
-                if not targets:
-                    job["state"] = "completed"
-                    job["message"] = "В каталоге нет активных номиналов ваучеров"
-                    return
-            checked_services = set()
-            for index, target in enumerate(targets):
-                if index:
-                    time.sleep(max(0, int(price_calculate_delay_ms)) / 1000)
-                if target['service_id'] not in checked_services:
-                    # Ошибка detail не мешает calculate и сохраняется отдельно от цены.
-                    checked_services.add(target['service_id'])
-                    error = ''
-                    try:
-                        if interhub_get_service_detail is None:
-                            raise RuntimeError('Метод получения остатков не настроен')
-                        stock_payload = interhub_get_service_detail(target['service_id'])
-                    except Exception as exc:
-                        error = str(getattr(exc, 'detail', exc))
-                        stock_payload = {'error': error}
-                    stock_rows = match_stock_targets(service_targets[target['service_id']], stock_payload, error=error)
-                    save_stock_rows(psycopg, DB_DSN, stock_rows, job['batch_id'], username)
-                    with price_jobs_lock:
-                        job['stock_processed'] += 1
-                        job['stock_successes'] += sum(row['stock_count'] is not None for row in stock_rows)
-                        job['stock_errors'] += sum(row['stock_count'] is None for row in stock_rows)
-                    time.sleep(max(0, int(price_calculate_delay_ms)) / 1000)
-                try:
-                    result = interhub_calculate({
-                        "service_id": target["service_id"],
-                        "account": "",
-                        "agent_transaction_id": f"gamesales-price-{job_id[:8]}-{index + 1}",
-                        "params": {"nominal": target["nominal_id"]},
-                    })
-                except Exception as exc:
-                    # Фиксируем сетевую или контрактную ошибку отдельно от корректного ответа InterHub.
-                    result = {"success": False, "status": -1, "message": str(getattr(exc, "detail", exc)), "raw": {}}
-                save_price_calculation(job["batch_id"], target, result, username)
-                with price_jobs_lock:
-                    job["processed"] += 1
-                    if result.get("success"):
-                        job["successes"] += 1
-                    else:
-                        job["errors"] += 1
-            with price_jobs_lock:
-                job["state"] = "completed"
-                job["message"] = "Обновление цен и остатков завершено"
+                price_jobs[job_id].update(state='completed', message='Цены и остатки обновлены')
         except Exception as exc:
             with price_jobs_lock:
-                job = price_jobs[job_id]
-                job["state"] = "failed"
-                job["message"] = f"Не удалось запустить расчёт: {getattr(exc, 'detail', exc)}"
-
-    def read_latest_prices() -> list[dict]:
-        # Берём последнюю успешную цену по номиналу, не затирая её временной ошибкой calculate.
-        with psycopg.connect(DB_DSN) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT DISTINCT ON (service_id, nominal_id)
-                      service_id, service_title, category, service_type, nominal_id, nominal_title,
-                      fixed_amount, calculated_at, provider_response
-                    FROM app.interhub_price_calculations
-                    WHERE success=true
-                    ORDER BY service_id, nominal_id, calculated_at DESC, id DESC
-                    """
-                )
-                rows = cur.fetchall()
-        keys = ["service_id", "service_title", "category", "service_type", "nominal_id", "nominal_title", "fixed_amount", "calculated_at", "provider_response"]
-        return [dict(zip(keys, row)) for row in rows]
-
-    def read_latest_batch_errors() -> tuple[str, list[dict]]:
-        # Выгружаем ошибки именно последнего запуска, чтобы их можно было сразу отправить InterHub.
-        with psycopg.connect(DB_DSN) as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT batch_id FROM app.interhub_price_calculations ORDER BY calculated_at DESC, id DESC LIMIT 1")
-                batch_row = cur.fetchone()
-                if not batch_row:
-                    return "", []
-                batch_id = str(batch_row[0])
-                cur.execute(
-                    """
-                    SELECT service_id, service_title, service_type, nominal_id, nominal_title,
-                           provider_status, provider_message, calculated_at, provider_response
-                    FROM app.interhub_price_calculations
-                    WHERE batch_id=%s AND success=false
-                    ORDER BY service_title, nominal_title
-                    """,
-                    (batch_id,),
-                )
-                rows = cur.fetchall()
-        keys = ["service_id", "service_title", "service_type", "nominal_id", "nominal_title", "provider_status", "provider_message", "calculated_at", "provider_response"]
-        return batch_id, [dict(zip(keys, row)) for row in rows]
+                price_jobs[job_id].update(state='failed', message=str(getattr(exc, 'detail', exc)))
 
     def read_deal_context(conn, deal_id: int, *, lock: bool = False) -> dict:
         # Читаем тип и регион из самой сделки, чтобы браузер не мог подменить разрешённый сервис поставщика.
@@ -1088,14 +977,14 @@ def mount_interhub_routes(
 
     @app.get("/integrations/interhub/services", response_model=InterHubServiceListOut)
     def list_interhub_services(user: UserOut = Depends(get_current_user)):
-        # Отдаём нормализованный каталог только авторизованным пользователям приложения.
+        # Список услуг всегда читаем онлайн, в том числе в ограниченном режиме staging.
         _ = user
         items = interhub_get_services()
         return InterHubServiceListOut(total=len(items), items=items)
 
     @app.get("/integrations/interhub/balance", response_model=InterHubBalanceOut)
     def get_interhub_balance(user: UserOut = Depends(get_current_user)):
-        # Отдаём баланс агентского счёта без раскрытия токена внешнего провайдера.
+        # Баланс всегда запрашиваем у поставщика, не подменяя его нулём на staging.
         _ = user
         return InterHubBalanceOut(**interhub_get_balance())
 
@@ -1156,14 +1045,14 @@ def mount_interhub_routes(
             ) AS history_deal_region ON true
             LEFT JOIN LATERAL (
               SELECT service_title
-              FROM app.interhub_price_calculations
+              FROM app.supplier_catalog_labels
               WHERE success=true AND service_id=history_transaction.service_id
               ORDER BY calculated_at DESC, id DESC
               LIMIT 1
             ) AS service_calculation ON true
             LEFT JOIN LATERAL (
               SELECT nominal_title
-              FROM app.interhub_price_calculations
+              FROM app.supplier_catalog_labels
               WHERE success=true
                 AND service_id=history_transaction.service_id
                 AND nominal_id::text=COALESCE(history_transaction.request_params->>'nominal', '')
@@ -1290,6 +1179,8 @@ def mount_interhub_routes(
     @app.post("/integrations/interhub/prices/refresh")
     def refresh_interhub_prices(user: UserOut = Depends(require_role("owner"))):
         # Запускаем один фоновый обход цен, чтобы владелец не мог случайно задвоить запросы.
+        if not shared_catalog or shared_catalog.offline:
+            raise HTTPException(403, 'На staging опросы отключены')
         with price_jobs_lock:
             if any(job["state"] == "running" for job in price_jobs.values()):
                 raise HTTPException(409, "InterHub price refresh is already running")
@@ -1317,24 +1208,40 @@ def mount_interhub_routes(
     def get_latest_interhub_prices(user: UserOut = Depends(get_current_user)):
         # Отдаём цену и последнюю проверку остатка с независимыми датами из локального кэша.
         _ = user
-        return {"items": read_latest_prices(), "stocks": read_stock_rows(psycopg, DB_DSN)}
+        prices, stocks = shared_catalog.legacy()
+        return {'items': prices, 'stocks': stocks, 'offline': shared_catalog.offline}
 
     @app.get("/integrations/interhub/prices/export")
     def export_interhub_prices(user: UserOut = Depends(require_role("owner"))):
         # Формируем Excel только из нашей базы, не вызывая поставщика повторно при каждой выгрузке.
         _ = user
-        batch_id, errors = read_latest_batch_errors()
-        prices = read_latest_prices()
-        stocks = read_stock_rows(psycopg, DB_DSN)
+        prices, stocks = shared_catalog.legacy()
+        errors = [{**r, 'provider_message': r['price_error'], 'calculated_at': r['price_checked_at'],
+                   'provider_response': r['price_attempt_response']}
+                  for r in prices if r['price_error']]
         if not prices and not errors and not stocks:
             raise HTTPException(404, "InterHub prices have not been calculated yet")
         content = build_interhub_prices_xlsx(prices, errors, stocks)
-        filename = f"interhub-prices-{batch_id[:8] or 'cache'}.xlsx"
+        filename = "interhub-prices-current.xlsx"
         return StreamingResponse(
             iter([content]),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
+
+    @app.get('/integrations/interhub/catalog/current')
+    def supplier_catalog_current(user: UserOut = Depends(get_current_user)):
+        # Список изменений читается только из БД, не запускает опрос поставщика.
+        return shared_catalog.overview()
+
+    @app.post('/integrations/interhub/catalog/review')
+    def review_supplier_catalog(entries: list[dict] = Body(...), user: UserOut = Depends(require_role('owner'))):
+        # Явная отметка просмотренных строк общая для команды, с защитой версии.
+        if len(entries) > 500 or any(not isinstance(e.get('review_revision'), int)
+            or not str(e.get('service_id', '')).isdigit() or not str(e.get('nominal_id', '')).isdigit() for e in entries):
+            raise HTTPException(422, 'Некорректный список позиций')
+        shared_catalog.review(entries)
+        return {'ok': True}
 
     @app.post("/integrations/interhub/calculate", response_model=InterHubPaymentCheckOut)
     def calculate_interhub_payment(payload: InterHubPaymentRequestIn = Body(...), user: UserOut = Depends(get_current_user)):

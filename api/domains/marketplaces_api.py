@@ -1919,7 +1919,7 @@ def mount_marketplaces_routes(
                 LEFT JOIN LATERAL (
                   -- Берём последнюю успешную цену calculate, чтобы в истории показать названия услуги и номинала.
                   SELECT prices.service_title, prices.nominal_title
-                  FROM app.interhub_price_calculations AS prices
+                  FROM app.supplier_catalog_labels AS prices
                   WHERE prices.success=true
                     AND prices.service_id=supplier.service_id
                     AND prices.nominal_id=CASE

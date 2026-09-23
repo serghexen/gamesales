@@ -60,6 +60,7 @@ class InterhubVoucherProvider:
     def price(self, target):
         # Calculate только узнаёт закупочную цену: платёжных вызовов в каталоге нет.
         checked_at = datetime.now(timezone.utc)
+        result = {}
         try:
             result = self.calculate({
                 'service_id': target['service_id'], 'account': '',
@@ -70,7 +71,7 @@ class InterhubVoucherProvider:
             error = '' if price is not None else str(result.get('message') or 'Поставщик не вернул корректную цену')
         except Exception:
             price, error = None, 'Не удалось получить цену у поставщика'
-        return {'value': price, 'checked_at': checked_at, 'error': error}
+        return {'value': price, 'checked_at': checked_at, 'error': error, 'raw': result.get('raw', {})}
 
     def stocks(self, targets):
         # Сравниваем все номиналы услуги, чтобы обнаруживать неоднозначные имена даже вне наших связок.
@@ -83,7 +84,7 @@ class InterhubVoucherProvider:
                                        error='Не удалось получить остатки у поставщика')
         return {str(row['nominal_id']): {
             'value': row['stock_count'], 'checked_at': checked_at,
-            'error': '' if row['stock_count'] is not None else row['message'],
+            'error': '' if row['stock_count'] is not None else row['message'], 'raw': row.get('provider_response', {}),
         } for row in rows}
 
     def snapshot(self, target, targets):
@@ -95,9 +96,10 @@ class InterhubVoucherProvider:
 
 
 class VoucherCatalogService:
-    def __init__(self, psycopg, dsn, providers):
+    def __init__(self, psycopg, dsn, providers, shared_catalog=None):
         # Новые поставщики подключаются адаптерами, структура предложений остаётся общей.
         self.db, self.dsn, self.providers = psycopg, dsn, providers
+        self.shared_catalog = shared_catalog
 
     def can_view(self, role):
         # Учитываем сохранённые права раздела и тот же fallback, что используется во фронтенде.
@@ -109,6 +111,8 @@ class VoucherCatalogService:
 
     def list_items(self):
         # Возвращаем сохранённые SKU и снимки из БД, не обращаясь к поставщику при открытии.
+        snapshots = {(r['supplier_code'], r['service_id'], r['nominal_id']): r
+                     for r in self.shared_catalog.rows()} if self.shared_catalog else {}
         with self.db.connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute('SELECT item_id, name FROM app.voucher_catalog_items ORDER BY lower(name), item_id')
             items = {row[0]: {'item_id': row[0], 'name': row[1], 'offers': [], 'nominals': []} for row in cur.fetchall()}
@@ -131,6 +135,15 @@ class VoucherCatalogService:
             keys = [column.name for column in cur.description]
             for row in cur.fetchall():
                 offer = dict(zip(keys, row))
+                if self.shared_catalog and offer['supplier_code'] != 'warehouse':
+                    shared = snapshots.get((offer['supplier_code'], offer['service_id'], offer['nominal_id']))
+                    if shared:
+                        offer.update({key: shared[key] for key in ('service_title', 'nominal_title', 'price', 'currency',
+                            'price_updated_at', 'price_checked_at', 'price_error', 'stock_count',
+                            'stock_updated_at', 'stock_checked_at', 'stock_error')})
+                        offer['supplier_status'] = shared['status']
+                        if shared['status'] != 'active':
+                            offer['stock_error'] = 'Позиция требует проверки у поставщика'
                 # Цена склада ручная, а доступный запас всегда считается из текущих ключей этого SKU.
                 if offer['supplier_code'] == 'warehouse':
                     offer.update(price=offer['warehouse_price'], stock_count=offer['warehouse_stock'],
@@ -164,7 +177,7 @@ class VoucherCatalogService:
         provider = self.providers.get(supplier_code)
         if provider is None:
             raise HTTPException(422, 'Поставщик пока не подключён')
-        return provider.targets()
+        return self.shared_catalog.options() if self.shared_catalog else provider.targets()
 
     def prepare_nominals(self, nominals, binding=None):
         # Сначала проверяем весь пакет: ошибочный последний ID не должен сохранить часть выбора.
@@ -218,6 +231,9 @@ class VoucherCatalogService:
         for row in prepared:
             link, target = row['binding'], row['target']
             if not link or link.supplier_code == 'warehouse':
+                continue
+            if self.shared_catalog:
+                # Привязка читает общий снимок и не запускает второй независимый опрос.
                 continue
             provider = self.providers[link.supplier_code]
             key = (link.supplier_code, link.service_id)
@@ -293,7 +309,7 @@ class VoucherCatalogService:
                     offer = cur.fetchone()
                     if offer is None:
                         raise HTTPException(409, 'Этот номинал поставщика уже связан с другим номиналом услуги')
-                    if link.supplier_code != 'warehouse':
+                    if link.supplier_code != 'warehouse' and not self.shared_catalog:
                         self.write_snapshot(cur, [offer[0]], 'prices', row['price'])
                         self.write_snapshot(cur, [offer[0]], 'stocks', row['stock'])
                     cur.execute('''UPDATE app.voucher_catalog_nominals
@@ -390,6 +406,10 @@ class VoucherCatalogService:
              snapshot['checked_at'], snapshot['error'], offer_ids, snapshot['checked_at']))
 
     def refresh(self, job):
+        # Прямой вызов старого метода также направляем в общее хранилище.
+        if self.shared_catalog:
+            result = self.shared_catalog.refresh(prices=job == 'prices', stocks=True)
+            return result['errors' if job == 'prices' else 'stock_errors']
         # Обходим только связанные предложения; повторяющиеся номиналы рассчитываем один раз.
         with self.db.connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute('''SELECT offer_id, supplier_code, service_id, nominal_id
@@ -430,6 +450,8 @@ class VoucherCatalogService:
 
     def run_due(self, now=None):
         # Транзакционная блокировка исключает параллельные обходы и снимается даже при аварии worker.
+        if self.shared_catalog:
+            return self.shared_catalog.refresh(scheduled=True, now=now)
         slots = schedule_slots(now or datetime.now(timezone.utc))
         with self.db.connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute('SELECT pg_try_advisory_xact_lock(20260920, 1)')

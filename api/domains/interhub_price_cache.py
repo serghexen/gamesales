@@ -63,14 +63,16 @@ def build_interhub_prices_xlsx(prices: list[dict[str, Any]], errors: list[dict[s
     workbook = Workbook()
     prices_sheet = workbook.active
     prices_sheet.title = "Закупочные цены"
-    prices_sheet.append(["ID услуги", "Услуга", "Категория", "Тип", "ID номинала", "Номинал", "Закупочная цена, ₽", "Сумма для клиента (amount_in_currency)", "Розничная цена, ₽", "Рассчитано", "Полный ответ calculate (JSON)"])
+    prices_sheet.append(["ID услуги", "Услуга", "Категория", "Тип", "ID номинала", "Номинал", "Закупочная цена, ₽", "Сумма для клиента (amount_in_currency)", "Розничная цена, ₽", "Рассчитано", "Полный ответ calculate (JSON)", "Доступность", "Новая / изменена", "Цена проверена", "Ошибка цены"])
     for row in prices:
         amount_in_currency = extract_response_number(row.get("provider_response"), "amount_in_currency")
         prices_sheet.append([
             row.get("service_id"), row.get("service_title"), row.get("category"), row.get("service_type"),
             row.get("nominal_id"), row.get("nominal_title"), row.get("fixed_amount"), amount_in_currency,
-            calculate_retail_price(row.get("fixed_amount")), format_datetime(row.get("calculated_at")),
+            calculate_retail_price(row.get("fixed_amount")) if row.get("fixed_amount") is not None else None, format_datetime(row.get("calculated_at")),
             format_provider_response(row.get("provider_response")),
+            row.get('status', ''), 'Да' if row.get('review_reason') and not row.get('reviewed_at') else '',
+            format_stock_datetime(row.get('price_checked_at')), row.get('price_error', ''),
         ])
     errors_sheet = workbook.create_sheet("Ошибки calculate")
     errors_sheet.append(["ID услуги", "Услуга", "Тип", "ID номинала", "Номинал", "Статус InterHub", "Сообщение", "Время", "Полный ответ calculate (JSON)"])
@@ -92,13 +94,14 @@ def build_interhub_prices_xlsx(prices: list[dict[str, Any]], errors: list[dict[s
         stock_sheet = workbook.create_sheet('Остатки')
         stock_sheet.append(['ID услуги', 'Услуга', 'ID номинала', 'Номинал', 'Остаток, шт.',
                             'Проверено', 'Сопоставление', 'Название у поставщика', 'Сообщение',
-                            'Полный ответ service/detail (JSON)'])
+                            'Полный ответ service/detail (JSON)', 'Доступность', 'Последняя попытка'])
         for row in stocks:
             stock_sheet.append([row.get('service_id'), row.get('service_title'), row.get('nominal_id'),
                                 row.get('nominal_title'), row.get('stock_count'), format_stock_datetime(row.get('checked_at')),
                                 STOCK_STATUS_LABELS.get(row.get('match_status'), row.get('match_status')),
                                 row.get('provider_name'), row.get('message'),
-                                format_provider_response(row.get('provider_response'))])
+                                format_provider_response(row.get('provider_response')), row.get('status', ''),
+                                format_stock_datetime(row.get('stock_checked_at'))])
         style_sheet(stock_sheet)
         stock_sheet.column_dimensions['F'].width = 24
         stock_sheet.column_dimensions['J'].width = 60
@@ -117,7 +120,7 @@ def build_interhub_prices_xlsx(prices: list[dict[str, Any]], errors: list[dict[s
 def format_datetime(value: Any) -> str:
     """Приводит дату из базы к читаемому виду в Excel."""
     if isinstance(value, datetime):
-        return value.astimezone().strftime("%d.%m.%Y %H:%M:%S")
+        return value.astimezone(ZoneInfo('Europe/Moscow')).strftime("%d.%m.%Y %H:%M:%S")
     return str(value or "")
 
 
@@ -173,6 +176,11 @@ def style_sheet(sheet) -> None:
     for column in range(1, sheet.max_column + 1):
         longest = max((len(str(sheet.cell(row, column).value or "")) for row in range(1, sheet.max_row + 1)), default=10)
         sheet.column_dimensions[get_column_letter(column)].width = min(max(longest + 2, 12), 42)
+    # Любой текст поставщика записывается как текст, включая названия, начинающиеся с =.
+    for cells in sheet.iter_rows(min_row=2):
+        for cell in cells:
+            if cell.data_type == 'f':
+                cell.data_type = 's'
     for row in range(2, sheet.max_row + 1):
         sheet.cell(row, 7).alignment = Alignment(vertical="top", wrap_text=True)
         sheet.cell(row, sheet.max_column).alignment = Alignment(vertical="top", wrap_text=True)

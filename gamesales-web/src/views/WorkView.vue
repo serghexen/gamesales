@@ -1187,6 +1187,7 @@ const interhubPayment = ref(null)
 const interhubPaymentLoading = ref(false)
 const interhubPaymentFlowVersion = ref(0)
 let interhubVoucherStatusPollTimer = null
+const interhubSupplierOffline = ref(false)
 const interhubPrices = ref([])
 const interhubStocks = ref([])
 const interhubPriceRefresh = ref(null)
@@ -2284,6 +2285,7 @@ async function loadInterhubPrices() {
   // Загружаем оба кэша одним запросом, чтобы показать цену и остаток с их собственными датами.
   try {
     const data = await apiGet('/integrations/interhub/prices/latest', { token: auth.state.token })
+    interhubSupplierOffline.value = Boolean(data?.offline)
     interhubPrices.value = Array.isArray(data?.items) ? data.items : []
     interhubStocks.value = Array.isArray(data?.stocks) ? data.stocks : []
   } catch (err) {
@@ -4098,6 +4100,8 @@ const interhubSectionCtx = asCtx({
   checkLoading: interhubCheckLoading,
   payment: interhubPayment,
   paymentLoading: interhubPaymentLoading,
+  token: computed(() => auth.state.token),
+  supplierOffline: interhubSupplierOffline,
   cachedPrices: interhubPrices,
   cachedStocks: interhubStocks,
   priceRefresh: interhubPriceRefresh,
@@ -4111,7 +4115,7 @@ const interhubSectionCtx = asCtx({
   salesHistoryPage: interhubSalesHistoryPage,
   salesHistoryPageSize: interhubSalesHistoryPageSize,
   canViewHistory: true,
-  canPay: canPayInterhub,
+  canPay: computed(() => canPayInterhub.value && !interhubSupplierOffline.value),
   canManagePrices: canPayInterhub,
   pay: payInterhub,
   refreshPaymentStatus: refreshInterhubPaymentStatus,

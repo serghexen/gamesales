@@ -11,6 +11,16 @@ import app as app_module
 
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
 class InterHubEndpointsTests(unittest.TestCase):
+    def setUp(self):
+        # Полностью подменяем пул: тест маршрутов не подключается даже к staging.
+        for target, value in [('ConnectionPool', None), ('_SUPPLIER_OFFLINE', False)]:
+            patcher = patch.object(app_module, target) if value is None else patch.object(app_module, target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        patcher = patch.object(app_module.shared_supplier_catalog, 'offline', False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _client(self):
         return TestClient(app_module.app)
 
@@ -79,3 +89,50 @@ class InterHubEndpointsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class StagingSupplierGuardTests(unittest.TestCase):
+    def test_staging_allows_owner_review_but_keeps_authorization(self):
+        # Отметка просмотренного меняет только нашу БД и остаётся доступной владельцу на staging.
+        with patch.object(app_module, '_SUPPLIER_OFFLINE', True), patch.object(app_module, 'ConnectionPool'), \
+             patch.object(app_module, '_LOCAL_UI_MODE', False), \
+             patch.object(app_module.shared_supplier_catalog, 'review') as review:
+            token = app_module.create_access_token(1, 'owner', 'owner')
+            entries = [{'service_id': '10', 'nominal_id': '1', 'review_revision': 1}]
+            with TestClient(app_module.app) as client:
+                self.assertEqual(client.post('/integrations/interhub/catalog/review', json=entries).status_code, 401)
+                response = client.post('/integrations/interhub/catalog/review', json=entries,
+                                       headers={'Authorization': f'Bearer {token}'})
+                self.assertEqual(response.status_code, 200)
+            review.assert_called_once_with(entries)
+
+    def test_staging_guard_blocks_purchase_and_refresh_before_routes(self):
+        # Запрещённые URL останавливаются до авторизации, БД и запуска фонового потока.
+        with patch.object(app_module, '_SUPPLIER_OFFLINE', True), patch.object(app_module, 'ConnectionPool'), patch.object(app_module, '_LOCAL_UI_MODE', False):
+            with TestClient(app_module.app) as client:
+                for path in ['/integrations/interhub/pay', '/integrations/interhub/check',
+                             '/integrations/interhub/prices/refresh', '/deals/1/interhub/prepare',
+                             '/integrations/interhub/vouchers/pay-batch']:
+                    self.assertEqual(client.post(path, json={}).status_code, 403)
+
+    def test_staging_reads_live_services_and_balance_without_using_saved_catalog(self):
+        # Ограничения опросов не должны подменять список услуг старой БД или баланс нулём.
+        services = [{'service_id': 7, 'title': 'Live', 'category': '', 'type': 'VOUCHER',
+                     'min_amount': 0, 'max_amount': 0, 'fields': [], 'raw': {}}]
+        with patch.object(app_module, '_SUPPLIER_OFFLINE', True), patch.object(app_module, 'ConnectionPool'), \
+             patch.object(app_module, '_LOCAL_UI_MODE', False), \
+             patch.object(app_module.shared_supplier_catalog, 'offline', True), \
+             patch.object(app_module.shared_supplier_catalog, 'services') as saved, \
+             patch.object(app_module.interhub_service, 'get_services', return_value=services) as live, \
+             patch.object(app_module.interhub_service, 'get_balance', return_value={'balance': 123, 'currency': 'RUB'}) as balance:
+            token = app_module.create_access_token(2, 'manager', 'manager')
+            headers = {'Authorization': f'Bearer {token}'}
+            with TestClient(app_module.app) as client:
+                response = client.get('/integrations/interhub/services', headers=headers)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()['items'][0]['service_id'], 7)
+                response = client.get('/integrations/interhub/balance', headers=headers)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()['balance'], 123)
+            saved.assert_not_called()
+            live.assert_called_once()
+            balance.assert_called_once()

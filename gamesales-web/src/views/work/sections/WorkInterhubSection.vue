@@ -7,7 +7,7 @@
       </div>
       <div class="interhub-catalog__head-actions">
         <button v-if="ctx.canViewHistory" class="ghost interhub-catalog__history-action" type="button" @click="openSalesHistory">История покупок</button>
-        <button v-if="ctx.canManagePrices" class="ghost interhub-catalog__price-action" type="button" title="Обновить закупочные цены и остатки только для ваучеров" :disabled="ctx.priceRefreshLoading" @click="ctx.refreshPrices">
+        <button v-if="ctx.canManagePrices" class="ghost interhub-catalog__price-action" type="button" title="Обновить закупочные цены и остатки только для ваучеров" :disabled="ctx.priceRefreshLoading || ctx.supplierOffline" @click="ctx.refreshPrices">
           {{ ctx.priceRefreshLoading ? 'Обновляем цены и остатки…' : 'Обновить закупочные цены' }}
         </button>
         <button v-if="ctx.canManagePrices" class="ghost interhub-catalog__price-action" type="button" :disabled="ctx.priceRefreshLoading" @click="ctx.exportPrices">Выгрузить Excel</button>
@@ -24,6 +24,8 @@
       <p v-if="ctx.priceRefresh" class="muted interhub-catalog__price-progress">Обновление цен: {{ ctx.priceRefresh.processed }} из {{ ctx.priceRefresh.total }} · успешно {{ ctx.priceRefresh.successes }} · ошибок {{ ctx.priceRefresh.errors }}<span v-if="ctx.priceRefresh.message"> · {{ anonymizeSupplierText(ctx.priceRefresh.message) }}</span></p>
       <p v-if="ctx.priceRefresh?.stock_total" class="muted">Остатки: {{ ctx.priceRefresh.stock_processed }} из {{ ctx.priceRefresh.stock_total }} услуг · получено для {{ ctx.priceRefresh.stock_successes }} номиналов · без остатка {{ ctx.priceRefresh.stock_errors }}</p>
 
+      <WorkSupplierCatalog :token="ctx.token" :can-review="ctx.canManagePrices" :refresh-state="ctx.priceRefresh?.state" />
+
       <div class="interhub-catalog__toolbar">
         <label class="interhub-catalog__search">
           <span class="label">Поиск услуги</span>
@@ -36,8 +38,8 @@
         </div>
       </div>
 
-      <div class="table-wrap interhub-catalog__table-wrap">
-        <table class="table table--compact">
+      <div class="table-wrap interhub-catalog__table-wrap supplier-table-wrap">
+        <table class="table table--compact table--supplier">
           <thead>
             <tr>
               <th>Услуга</th>
@@ -99,7 +101,7 @@
         <div class="interhub-catalog__actions is-single">
           <button class="btn interhub-catalog__action-btn" type="submit" :disabled="showHamster || !ctx.canPay"><span><strong>Получить</strong><small>Цена и проверка доступности</small></span></button>
         </div>
-        <p v-if="!ctx.canPay" class="interhub-catalog__owner-note muted">Получать ключи может только владелец.</p>
+        <p v-if="!ctx.canPay" class="interhub-catalog__owner-note muted">{{ ctx.supplierOffline ? 'Покупки на staging отключены.' : 'Получать ключи может только владелец.' }}</p>
         <div v-if="obtainError" class="interhub-catalog__payment-result is-error"><p class="interhub-catalog__result">{{ obtainError }}</p></div>
         <div v-if="ctx.payment" class="interhub-catalog__payment-result" :class="{ 'is-error': !ctx.payment.success }">
           <p class="interhub-catalog__result">{{ paymentMessage }}</p>
@@ -260,6 +262,7 @@
 </template>
 
 <script setup>
+import WorkSupplierCatalog from './WorkSupplierCatalog.vue'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import WorkHamsterLoader from './WorkHamsterLoader.vue'
 
@@ -348,7 +351,7 @@ const selectedCachedPrice = computed(() => {
   // Находим сохранённую цену именно для выбранных услуги и номинала без нового запроса calculate.
   const serviceId = Number(selectedService.value?.service_id || 0)
   const nominalId = Number(params.nominal || 0)
-  return (props.ctx.cachedPrices || []).find((item) => Number(item?.service_id) === serviceId && Number(item?.nominal_id) === nominalId) || null
+  return (props.ctx.cachedPrices || []).find((item) => item?.fixed_amount != null && Number(item?.service_id) === serviceId && Number(item?.nominal_id) === nominalId) || null
 })
 const selectedCachedStock = computed(() => {
   // Выбираем проверку по обоим ID: одинаковый номинал другой услуги не должен подменить остаток.
@@ -826,7 +829,7 @@ function nominalSortValue(title) {
 </script>
 
 <style scoped>
-.interhub-catalog__head { align-items: end; border-bottom: 1px solid rgba(245, 158, 11, .32); }
+.interhub-catalog__head { align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid rgba(245, 158, 11, .32); }
 .interhub-catalog__head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: end; }.interhub-catalog__price-action { white-space: nowrap; }
 .interhub-catalog__eyebrow { margin: 0 0 4px; color: #b86b12; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .interhub-catalog__title { margin: 0; letter-spacing: -.03em; }

@@ -18,11 +18,11 @@ def iter_crm_purchase_export(*, psycopg, dsn, date_from, date_to):
     query = f"""
         WITH service_titles AS (
             SELECT DISTINCT ON (service_id) service_id, service_title
-            FROM app.interhub_price_calculations WHERE success=true
+            FROM app.supplier_catalog_labels WHERE success=true
             ORDER BY service_id, calculated_at DESC, id DESC
         ), nominal_titles AS (
             SELECT DISTINCT ON (service_id, nominal_id) service_id, nominal_id, nominal_title
-            FROM app.interhub_price_calculations WHERE success=true
+            FROM app.supplier_catalog_labels WHERE success=true
             ORDER BY service_id, nominal_id, calculated_at DESC, id DESC
         )
         SELECT t.agent_transaction_id, t.service_id, COALESCE(s.service_title, ''),

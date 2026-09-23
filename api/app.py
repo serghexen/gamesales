@@ -23,6 +23,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 # Режим выбирается явно командой запуска и не может включиться из общего файла окружения.
 _LOCAL_UI_MODE = os.getenv('GAMESALES_LOCAL_UI', '').strip().lower() in {'1', 'true', 'yes', 'on'}
 load_dotenv(ROOT_DIR / ".env.dev", override=True)
+_SUPPLIER_OFFLINE = os.getenv('GAMESALES_SUPPLIER_OFFLINE', '').lower() in {'1', 'true', 'yes', 'on'}
 logger = logging.getLogger(__name__)
 # Границы защищают БД и внешний API от слишком частого цикла при ошибочном значении настройки.
 _YANDEX_MARKET_DAILY_LIMIT_POLL_INTERVAL_DEFAULT_SEC = 15
@@ -39,10 +40,11 @@ def ensure_analytics_schema():
 async def lifespan(_: FastAPI):
     global _pool
     # Локальная проверка использует только staging и не участвует ни в одном фоновом обходе API.
-    if _LOCAL_UI_MODE:
-        require_staging_tunnel(DB_DSN)
+    if _LOCAL_UI_MODE or _SUPPLIER_OFFLINE:
+        if _LOCAL_UI_MODE:
+            require_staging_tunnel(DB_DSN)
         _pool = ConnectionPool(DB_DSN, min_size=2, max_size=10, open=True)
-        logger.info('Local UI: background tasks disabled; staging DB and InterHub SSH proxy enabled')
+        logger.info('UI preview: background tasks disabled; price/stock polling and purchases restricted=%s', _SUPPLIER_OFFLINE)
         try:
             yield
         finally:
@@ -206,6 +208,20 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="GameSales API", version="0.1.0", lifespan=lifespan)
+
+@app.middleware('http')
+async def staging_supplier_guard(request, call_next):
+    # На проверочном стенде запрещаем запуск выдачи до любых изменений платёжных записей.
+    path = request.url.path
+    if _SUPPLIER_OFFLINE and (
+        ('interhub' in path and request.method != 'GET' and path != '/integrations/interhub/catalog/review')
+        or 'supplier-hub' in path
+        or (path.startswith('/integrations/') and request.method != 'GET' and path != '/integrations/interhub/catalog/review')
+    ):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=403, content={'detail': 'На staging опросы и покупки отключены'})
+    return await call_next(request)
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -421,6 +437,7 @@ from domains.voucher_warehouse_api import mount_voucher_warehouse_routes
 from domains.voucher_warehouse_service import VoucherWarehouseService
 from domains.voucher_catalog_api import mount_voucher_catalog_routes
 from domains.voucher_catalog_service import InterhubVoucherProvider, VoucherCatalogService
+from domains.supplier_catalog import SupplierCatalog
 from domains.supplier_hub_api import mount_supplier_hub_routes
 from domains.ns_gift_api import mount_ns_gift_routes
 from domains.rbac_api import mount_rbac_routes
@@ -998,6 +1015,7 @@ interhub_service = build_interhub_service(
     ca_cert_path=_INTERHUB_CA_CERT_PATH,
     proxy_url=_INTERHUB_PROXY_URL,
     ssh_tunnel_port=_INTERHUB_SSH_TUNNEL_PORT,
+    offline=_SUPPLIER_OFFLINE,
     calculate_path=_INTERHUB_CALCULATE_PATH,
     check_path=_INTERHUB_CHECK_PATH,
     pay_path=_INTERHUB_PAY_PATH,
@@ -1435,6 +1453,10 @@ mount_ns_gift_routes(
     ns_gift_create_order_and_pay=ns_gift_create_order_and_pay,
 )
 
+shared_supplier_catalog = SupplierCatalog(pooled_psycopg, DB_DSN,
+    InterhubVoucherProvider(interhub_service.get_catalog, interhub_get_service_detail, interhub_calculate,
+                           _INTERHUB_PRICE_CALCULATE_DELAY_MS), offline=_SUPPLIER_OFFLINE)
+
 interhub_refresh_pending = mount_interhub_routes(
     app,
     DB_DSN=DB_DSN,
@@ -1456,6 +1478,7 @@ interhub_refresh_pending = mount_interhub_routes(
     interhub_pay=interhub_pay,
     interhub_check_status=interhub_check_status,
     price_calculate_delay_ms=_INTERHUB_PRICE_CALCULATE_DELAY_MS,
+    shared_catalog=shared_supplier_catalog,
     publish_deal_event=publish_deal_event,
     supplier_hub_client=supplier_hub_operator_client,
 )
@@ -1463,7 +1486,7 @@ interhub_refresh_pending = mount_interhub_routes(
 voucher_catalog_service = VoucherCatalogService(pooled_psycopg, DB_DSN, {
     'interhub': InterhubVoucherProvider(interhub_get_services, interhub_get_service_detail,
                                       interhub_calculate, _INTERHUB_PRICE_CALCULATE_DELAY_MS),
-})
+}, shared_catalog=shared_supplier_catalog)
 mount_voucher_catalog_routes(app, service=voucher_catalog_service, get_current_user=get_current_user)
 mount_voucher_warehouse_routes(app, service=VoucherWarehouseService(pooled_psycopg, DB_DSN), get_current_user=get_current_user)
 

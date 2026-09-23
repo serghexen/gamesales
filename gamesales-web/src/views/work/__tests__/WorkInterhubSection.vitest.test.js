@@ -74,11 +74,21 @@ function buildCtx(overrides = {}) {
 
 async function selectServiceByTitle(wrapper, title) {
   // Выбираем строку по названию, чтобы тест не зависел от пользовательской сортировки каталога.
-  const row = wrapper.findAll('tbody tr').find((item) => item.text().includes(title))
+  const row = wrapper.findAll('.interhub-catalog__table-wrap tbody tr').find((item) => item.text().includes(title))
   await row.trigger('click')
 }
 
 describe('WorkInterhubSection', () => {
+  it('shows the live balance on staging while keeping price refresh disabled', () => {
+    // Ограниченный staging сохраняет видимый баланс и запрет массового опроса.
+    const ctx = buildCtx({ supplierOffline: true, canManagePrices: true, balance: 12345, currency: 'RUB' })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx } })
+    expect(wrapper.find('.interhub-catalog__balance').exists()).toBe(true)
+    expect(wrapper.find('.interhub-catalog__balance').text().replace(/\s/g, '')).toContain('12345')
+    const refresh = wrapper.findAll('button').find(button => button.text() === 'Обновить закупочные цены')
+    expect(refresh.attributes('disabled')).toBeDefined()
+  })
+
   it('exports both sources using current dates regardless of the selected tab and search', async () => {
     // Проверяем даты до нажатия «Показать», блокировку повторного клика и скачивание XLSX.
     let finishDownload
@@ -162,7 +172,7 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).toContain('Mobile top up')
     expect(wrapper.text()).toContain('Фикс. номинал')
     expect(wrapper.text()).toContain('PIN-код')
-    expect(wrapper.findAll('thead th')).toHaveLength(3)
+    expect(wrapper.findAll('.interhub-catalog__table-wrap thead th')).toHaveLength(3)
     expect(wrapper.text()).not.toContain('Лимит:')
     expect(wrapper.text()).not.toContain('Реквизиты')
     expect(wrapper.text()).toContain('10 000 ₽')
@@ -182,7 +192,7 @@ describe('WorkInterhubSection', () => {
     const ctx = buildCtx()
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
-    await wrapper.find('input[type="search"]').setValue('games')
+    await wrapper.find('.interhub-catalog__search input[type="search"]').setValue('games')
     expect(ctx.setSearchFromEvent).toHaveBeenCalledTimes(1)
 
     await wrapper.setProps({ ctx: { ...ctx, search: 'games' } })
@@ -211,7 +221,7 @@ describe('WorkInterhubSection', () => {
     expect(wrapper.text()).toContain('Age of Legends - Global')
     expect(wrapper.text()).not.toContain('Other service')
 
-    await wrapper.find('tbody tr').trigger('click')
+    await wrapper.find('.interhub-catalog__table-wrap tbody tr').trigger('click')
     expect(wrapper.find('.interhub-catalog__service-summary').text()).toContain('Age of Legends - Global')
     await wrapper.find('.interhub-catalog__form').trigger('submit')
     await Promise.resolve()
@@ -223,9 +233,9 @@ describe('WorkInterhubSection', () => {
   it('sorts services by title in both directions', async () => {
     const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx() } })
 
-    expect(wrapper.findAll('tbody tr')[0].text()).toContain('Gift PIN')
+    expect(wrapper.findAll('.interhub-catalog__table-wrap tbody tr')[0].text()).toContain('Gift PIN')
     await wrapper.find('.interhub-catalog__sort').trigger('click')
-    expect(wrapper.findAll('tbody tr')[0].text()).toContain('Mobile top up')
+    expect(wrapper.findAll('.interhub-catalog__table-wrap tbody tr')[0].text()).toContain('Mobile top up')
   })
 
   it('opens supplier history, reveals a result explicitly and keeps CRM as an archive', async () => {
@@ -501,7 +511,7 @@ describe('WorkInterhubSection', () => {
     })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
-    await wrapper.find('tbody tr').trigger('click')
+    await wrapper.find('.interhub-catalog__table-wrap tbody tr').trigger('click')
     await wrapper.find('.interhub-catalog__form select').setValue('250')
     expect(wrapper.text()).toContain('TRY 250')
     expect(wrapper.find('.interhub-catalog__form input[type="number"]').exists()).toBe(false)
@@ -531,7 +541,7 @@ describe('WorkInterhubSection', () => {
     })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
-    await wrapper.find('tbody tr').trigger('click')
+    await wrapper.find('.interhub-catalog__table-wrap tbody tr').trigger('click')
     expect(wrapper.find('.interhub-catalog__form input:not([type="number"])').exists()).toBe(false)
     const quantityInput = wrapper.find('.interhub-catalog__form input[type="number"]')
     expect(quantityInput.attributes('min')).toBe('1')
@@ -549,7 +559,7 @@ describe('WorkInterhubSection', () => {
     ctx.checkPayment = vi.fn(async () => { ctx.check = { success: true, message: 'Доступно' } })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
-    await wrapper.find('tbody tr').trigger('click')
+    await wrapper.find('.interhub-catalog__table-wrap tbody tr').trigger('click')
     await wrapper.find('.interhub-catalog__form input[type="number"]').setValue('3')
     await wrapper.find('.interhub-catalog__form').trigger('submit')
     await Promise.resolve()
@@ -623,7 +633,7 @@ describe('WorkInterhubSection', () => {
     })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
-    await wrapper.find('tbody tr').trigger('click')
+    await wrapper.find('.interhub-catalog__table-wrap tbody tr').trigger('click')
     expect(wrapper.text()).toContain('TESTGIFTCODE')
     expect(wrapper.text()).toContain('Оплата успешна')
 
@@ -670,7 +680,7 @@ describe('WorkInterhubSection', () => {
     })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
-    await wrapper.find('tbody tr').trigger('click')
+    await wrapper.find('.interhub-catalog__table-wrap tbody tr').trigger('click')
 
     expect(wrapper.find('.interhub-catalog__obtain-overlay .wheel-and-hamster').exists()).toBe(true)
     expect(wrapper.find('.interhub-catalog__action-btn').attributes('disabled')).toBeDefined()
@@ -684,7 +694,7 @@ describe('WorkInterhubSection', () => {
     })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
-    await wrapper.find('tbody tr').trigger('click')
+    await wrapper.find('.interhub-catalog__table-wrap tbody tr').trigger('click')
     const codes = wrapper.find('.interhub-catalog__gift-codes')
     expect(codes.exists()).toBe(true)
     expect(codes.findAll('.interhub-catalog__gift-code')).toHaveLength(2)
@@ -799,7 +809,7 @@ describe('WorkInterhubSection', () => {
     })
     const wrapper = mount(WorkInterhubSection, { props: { ctx } })
 
-    await wrapper.find('tbody tr').trigger('click')
+    await wrapper.find('.interhub-catalog__table-wrap tbody tr').trigger('click')
     expect(wrapper.text()).toContain('Первая проверка статуса — через 1 минуту')
   })
 })

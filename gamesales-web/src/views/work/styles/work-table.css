@@ -919,3 +919,31 @@
 .work-page .muted {
   opacity: 0.7;
 }
+
+/* Список ваучеров и онлайн-услуги используют одну сетку, фон и шапку. */
+.work-page .supplier-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--table-border);
+  border-radius: 12px;
+  background: var(--table-bg);
+}
+
+.work-page .supplier-table-wrap table.table--supplier {
+  margin-top: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: auto;
+  background: transparent;
+  box-shadow: none;
+  line-height: 1.4;
+}
+
+.work-page .table--supplier th,
+.work-page .table--supplier td {
+  vertical-align: middle;
+}
+
+/* Непрозрачная шапка закрывает строки при внутренней прокрутке ваучеров. */
+.work-page .table--supplier thead th {
+  background: #303445;
+}

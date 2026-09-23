@@ -181,3 +181,15 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build api
 ```
 
 Мигратор берёт блокировку на одного исполнителя и прекращает работу, если не смог получить DDL-блокировку за пять секунд. Перед первым production-запуском обязательно сделать и проверить восстановление резервной копии БД.
+
+### Unified supplier catalogue (staging preview)
+
+`app.supplier_catalog_current` holds the current price, stock and discovery state per supplier/service/nominal ID. Manual refresh and the Moscow 09:00/hourly schedule share one updater and PostgreSQL advisory lock. Excel and voucher bindings read the same saved values. Failed updates retain the last successful value and its timestamp; prices and stock have independent timestamps. Existing snapshots are migrated independently and marked reviewed. Legacy tables remain for compatibility; purchase history is preserved.
+
+Discovery merges all `nominal` fields, including explicitly empty lists. Missing fields or malformed values reject the response. Historical imported rows are not a live baseline: the 20% disappearance guard compares IDs already seen in a successful live discovery. Imported positions missing from the current catalogue still follow the usual two-observation unavailability flow, with their last successful values preserved.
+
+In **Payments → Saved vouchers**, new entries remain new until an owner marks the visible row/page reviewed. Review is versioned; a subsequent change cannot be acknowledged using an older displayed version. New supplier entries do not automatically create own services, SKUs or bindings. One valid disappearance requires review; a second makes the entry unavailable. Invalid/empty/paginated and suspiciously reduced catalogues are rejected without changing availability.
+
+`GAMESALES_SUPPLIER_OFFLINE=1` disables API background tasks, InterHub price/stock polling and purchase/refresh endpoints. The service list and balance remain live, using the configured InterHub proxy/SSH tunnel locally. Staging Compose explicitly enables it. Local `.env.dev` can enable the same mode for UI review against staging. Existing saved data and warehouse/catalogue edits remain available; price and stock polling is not performed. This flag is not enabled in production Compose. After changing it, restart the API. Do not remove the flag on staging to test a purchase.
+
+The purchase pipeline still uses live calculate/check/pay in production. Supplier Hub and Seller mappings/fulfillment are unchanged. The new shared store is informative and does not authorize a purchase.

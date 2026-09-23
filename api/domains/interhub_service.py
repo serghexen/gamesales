@@ -17,6 +17,7 @@ class InterHubService:
     pay: Callable[[dict[str, Any]], dict[str, Any]]
     check_status: Callable[[dict[str, Any]], dict[str, Any]]
     get_service_detail: Callable[[int], Any]
+    get_catalog: Callable[[], list[dict[str, Any]]] | None = None
 
 
 def build_interhub_service(
@@ -34,6 +35,7 @@ def build_interhub_service(
     deposit_path: str,
     pay_path: str = "/api/agent/payment/pay",
     check_status_path: str = "/api/agent/payment/check_status",
+    offline: bool = False,
 ):
     proxy_url = str(proxy_url or "").strip()
 
@@ -60,6 +62,9 @@ def build_interhub_service(
 
     def send_request(path: str, payload: dict[str, Any] | None = None) -> Any:
         # Выполняем авторизованный запрос к InterHub, не передавая токен в клиентский UI.
+        # На staging разрешены только чтение списка услуг и баланса; detail и платежные методы закрыты.
+        if offline and (payload is not None or path not in {'/api/agent/service/list', deposit_path}):
+            raise HTTPException(403, 'На staging опросы цен, остатков и покупки отключены')
         ensure_configured()
         url = interhub_api_url.rstrip("/") + path
         headers = {
@@ -176,6 +181,32 @@ def build_interhub_service(
         # Загружаем каталог услуг из единственного подтверждённого метода InterHub.
         return normalize_services(send_request("/api/agent/service/list"))
 
+    def get_catalog():
+        # Для обнаружения исчезнувших ID принимаем только полный, непротиворечивый каталог.
+        payload = send_request('/api/agent/service/list')
+        raw_services = []
+        collect_service_objects(payload, raw_services)
+        items = normalize_services(payload)
+        def verify_envelope(node):
+            # Явная ошибка, пагинация или несовпадающий total запрещают применять исчезновения.
+            if isinstance(node, list):
+                if any(not isinstance(item, dict) or not (item.get('id') or item.get('service_id')) for item in node):
+                    raise ValueError('Некорректная строка каталога поставщика')
+                return
+            if not isinstance(node, dict):
+                return
+            if str(node.get('success', True)).lower() in {'false', '0'} or node.get('has_more') or node.get('next') or node.get('next_page') or int(node.get('total_pages') or 1) > 1 or int(node.get('page') or 1) > 1:
+                raise ValueError('Неполный ответ каталога поставщика')
+            for key in ('total', 'total_count'):
+                if key in node and int(node[key]) != len(items):
+                    raise ValueError('Количество услуг не совпадает с полным каталогом')
+            for key in ('data', 'items', 'services', 'result', 'pagination', 'meta'):
+                verify_envelope(node.get(key))
+        verify_envelope(payload)
+        if not items or len(items) != len(raw_services):
+            raise ValueError('Некорректные или повторные услуги поставщика')
+        return items
+
     def get_service_detail(service_id: int) -> Any:
         # Один GET возвращает остатки всех номиналов услуги; сырой ответ нужен для разбора ошибок в кэше.
         if isinstance(service_id, bool) or not isinstance(service_id, int) or service_id <= 0:
@@ -221,4 +252,4 @@ def build_interhub_service(
         return normalize_payment_response(send_request(check_status_path, payload))
 
     return InterHubService(get_services=get_services, get_balance=get_balance, calculate=calculate, check=check,
-                           pay=pay, check_status=check_status, get_service_detail=get_service_detail)
+                           pay=pay, check_status=check_status, get_service_detail=get_service_detail, get_catalog=get_catalog)
