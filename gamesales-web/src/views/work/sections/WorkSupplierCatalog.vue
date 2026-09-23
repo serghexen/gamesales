@@ -55,12 +55,12 @@ const tableViewport = ref(null)
 const filters = [{ key: 'all', label: 'Все' }, { key: 'new', label: 'Новые' }, { key: 'changed', label: 'Изменения' }, { key: 'unlinked', label: 'Не связаны' }, { key: 'unavailable', label: 'Недоступны' }]
 const newCount = computed(() => rows.value.filter(row => !row.reviewed_at && row.review_reason === 'new').length)
 const filtered = computed(() => {
-  // Просмотр и связь независимы: отметка не скрывает несвязанный номинал из его фильтра.
+  // Изменения и недоступность показывают непросмотренные события; полный список сохраняется во «Все».
   const query = search.value.trim().toLowerCase()
   return rows.value.filter(row => (!query || `${row.service_title} ${row.nominal_title} ${row.service_id} ${row.nominal_id}`.toLowerCase().includes(query)) &&
     (filter.value === 'all' || filter.value === 'new' && !row.reviewed_at && row.review_reason === 'new' ||
       filter.value === 'changed' && !row.reviewed_at && row.review_reason !== 'new' ||
-      filter.value === 'unlinked' && !row.linked || filter.value === 'unavailable' && row.status !== 'active'))
+      filter.value === 'unlinked' && !row.linked || filter.value === 'unavailable' && !row.reviewed_at && row.status !== 'active'))
 })
 const pages = computed(() => Math.max(1, Math.ceil(filtered.value.length / 25)))
 const pageRows = computed(() => filtered.value.slice((page.value - 1) * 25, page.value * 25)
