@@ -10,6 +10,58 @@ function button(wrapper, text) {
 }
 beforeEach(() => { vi.clearAllMocks(); apiGet.mockResolvedValue({ items: [row(20), row(50, { reviewed_at: '2026-09-22', linked: true, status: 'unavailable' })], offline: true }); apiPost.mockResolvedValue({ ok: true }) })
 describe('Список ваучеров', () => {
+  it('отделяет актуальный каталог от событий и не скрывает нулевой остаток или ошибку опроса', async () => {
+    // Остаток и ошибки не означают исчезновение; старые позиции не засоряют подбор несвязанных.
+    apiGet.mockResolvedValue({ items: [
+      row(1, { reviewed_at: '2026-09-23', stock_count: 0, price_error: 'Ошибка' }),
+      row(2, { linked: true }),
+      row(3, { status: 'suspect', review_reason: 'missing', missing_count: 1 }),
+      row(4, { status: 'unavailable', review_reason: 'missing', reviewed_at: '2026-09-23' }),
+      row(5, { status: 'unavailable', review_reason: 'changed', availability_reason: 'nominal_disabled' }),
+    ] })
+    const wrapper = mount(WorkSupplierCatalog, { props: { token: 'test' } })
+    await flushPromises()
+    expect(wrapper.get('summary').text()).toContain('Актуальных: 2')
+    expect(wrapper.get('summary').text()).toContain('Новых: 1')
+    expect(wrapper.get('summary').text()).toContain('Изменений: 2')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(2)
+    expect(wrapper.find('tbody').text()).toContain('EUR 1')
+    await button(wrapper, 'Не связаны').trigger('click')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+    expect(wrapper.find('tbody').text()).toContain('EUR 1')
+    await button(wrapper, 'Изменения').trigger('click')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(2)
+    expect(wrapper.find('tbody').text()).toContain('EUR 3')
+    expect(wrapper.find('tbody').text()).toContain('EUR 5')
+    expect(wrapper.find('tbody').text()).not.toContain('EUR 4')
+  })
+  it('убирает исчезнувшую позицию после просмотра и показывает её возвращение как изменение', async () => {
+    // Та же запись возвращается в актуальные позиции без повторной отметки «Новое».
+    const missing = row(50, { status: 'unavailable', review_reason: 'missing', missing_count: 2 })
+    apiGet.mockResolvedValue({ items: [row(20), missing] })
+    const wrapper = mount(WorkSupplierCatalog, { props: { token: 'test', canReview: true } })
+    await flushPromises()
+    await button(wrapper, 'Изменения').trigger('click')
+    apiGet.mockResolvedValue({ items: [row(20), { ...missing, reviewed_at: '2026-09-23' }] })
+    await button(wrapper, 'Просмотрено').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('summary').text()).not.toContain('Изменений:')
+    for (const label of ['Изменения', 'Недоступны', 'Все актуальные', 'Не связаны']) {
+      await button(wrapper, label).trigger('click')
+      expect(wrapper.find('tbody').text()).not.toContain('EUR 50')
+    }
+    apiGet.mockResolvedValue({ items: [row(20), row(50, {
+      review_reason: 'changed', review_revision: 3, review_before: { status: 'unavailable' },
+    })] })
+    await wrapper.get('[aria-label="Перечитать сохранённые позиции"]').trigger('click')
+    await flushPromises()
+    await button(wrapper, 'Все актуальные').trigger('click')
+    expect(wrapper.find('tbody').text()).toContain('EUR 50')
+    await button(wrapper, 'Изменения').trigger('click')
+    expect(wrapper.find('tbody').text()).toContain('Доступность: Недоступен → Доступен')
+    await button(wrapper, 'Новые').trigger('click')
+    expect(wrapper.find('tbody').text()).not.toContain('EUR 50')
+  })
   it('показывает прежние и текущие названия и доступность в изменениях', async () => {
     // Несколько изменений до просмотра отображаются вместе; текст поставщика выводится безопасно.
     apiGet.mockResolvedValue({ items: [row(20, { review_reason: 'changed', service_title: 'Blizzard EUR',
@@ -24,8 +76,8 @@ describe('Список ваучеров', () => {
     expect(wrapper.text()).toContain('Обнаружено:')
     expect(wrapper.find('tbody b').exists()).toBe(false)
   })
-  it('объясняет первую и повторную пропажу и явное отключение даже после просмотра', async () => {
-    // Отметка просмотра не убирает текущую причину недоступности позиции.
+  it('объясняет непросмотренную пропажу и отключение, скрывая уже просмотренные события', async () => {
+    // Недоступные позиции видны в уведомлениях, пока оператор не просмотрит событие.
     apiGet.mockResolvedValue({ items: [
       row(1, { status: 'suspect', missing_count: 1, review_reason: 'missing' }),
       row(2, { status: 'unavailable', missing_count: 3, review_reason: 'missing', reviewed_at: '2026-09-23', last_seen_at: '2026-09-22T06:00:00Z' }),
@@ -39,11 +91,13 @@ describe('Список ваучеров', () => {
     expect(wrapper.findAll('tbody tr')).toHaveLength(3)
     expect(wrapper.text()).toContain('Ждём повторной проверки.')
     expect(wrapper.text()).not.toContain('Проверок подряд: 3.')
-    await button(wrapper, 'Все').trigger('click')
-    expect(wrapper.text()).toContain('Проверок подряд: 3.')
-    expect(wrapper.text()).toContain('Последний раз видели:')
+    expect(wrapper.text()).not.toContain('Последний раз видели:')
     expect(wrapper.text()).toContain('Поставщик отключил услугу.')
     expect(wrapper.text()).toContain('Поставщик отключил номинал.')
+    await button(wrapper, 'Все актуальные').trigger('click')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+    expect(wrapper.find('tbody').text()).toContain('EUR 5')
+    expect(wrapper.find('tbody').text()).not.toContain('Недоступен')
   })
   it('не придумывает прежние названия для старых отметок и скрывает подробности после просмотра', async () => {
     // Старые данные не содержат снимка до изменения, но новые отметки очищаются обычным действием.
@@ -72,6 +126,7 @@ describe('Список ваучеров', () => {
       review_before: { status: 'unavailable', availability_reason: 'service_disabled' } })] })
     const wrapper = mount(WorkSupplierCatalog, { props: { token: 'test' } })
     await flushPromises()
+    await button(wrapper, 'Изменения').trigger('click')
     expect(wrapper.text()).toContain('Причина: Поставщик отключил услугу → Поставщик отключил номинал')
   })
   it('открывает блок свёрнутым при каждом входе, а обновление данных не раскрывает его', async () => {
@@ -138,10 +193,10 @@ describe('Список ваучеров', () => {
     expect(apiPost).not.toHaveBeenCalled()
     await button(wrapper, 'Недоступны').trigger('click')
     expect(wrapper.find('tbody tr').text()).toContain('Нет позиций по выбранному фильтру')
-    await button(wrapper, 'Все').trigger('click')
-    expect(wrapper.text()).toContain('EUR 50')
+    await button(wrapper, 'Все актуальные').trigger('click')
+    expect(wrapper.text()).not.toContain('EUR 50')
   })
-  it('после просмотра недоступной позиции убирает уведомление, сохраняя новые позиции и полный список', async () => {
+  it('после просмотра недоступной позиции убирает уведомление, сохраняя новые позиции', async () => {
     // Новый товар остаётся новым, а просмотренная недоступность снова показывается только после нового события.
     const unavailable = row(50, { status: 'unavailable', review_reason: 'missing', missing_count: 2 })
     apiGet.mockResolvedValue({ items: [row(20), unavailable] })
