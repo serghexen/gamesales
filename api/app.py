@@ -211,9 +211,14 @@ app = FastAPI(title="GameSales API", version="0.1.0", lifespan=lifespan)
 
 @app.middleware('http')
 async def staging_supplier_guard(request, call_next):
-    # На проверочном стенде запрещаем запуск выдачи до любых изменений платёжных записей.
+    # На staging разрешаем подготовку и работу с журналом Airpay; оплата и выдача блокируются до обработчиков.
     path = request.url.path
-    if _SUPPLIER_OFFLINE and (
+    airpay_preparation = request.method == 'POST' and (path in {'/integrations/airpay/prepare', '/integrations/airpay/check'}
+        or (path.startswith('/integrations/airpay/batches/') and path.endswith(('/renew', '/check')))
+        or (path.startswith(('/integrations/airpay/transactions/', '/integrations/airpay/legacy/transactions/')) and path.endswith('/result'))
+        or (path.startswith('/integrations/airpay/transactions/') and path.endswith('/resolve'))
+        or (path.startswith('/integrations/airpay/jobs/') and path.endswith('/cancel')))
+    if _SUPPLIER_OFFLINE and not airpay_preparation and (
         ('interhub' in path and request.method != 'GET' and path != '/integrations/interhub/catalog/review')
         or 'supplier-hub' in path
         or (path.startswith('/integrations/') and request.method != 'GET' and path != '/integrations/interhub/catalog/review')
@@ -1452,6 +1457,22 @@ mount_ns_gift_routes(
     ns_gift_get_steam_amount=ns_gift_get_steam_amount,
     ns_gift_create_order_and_pay=ns_gift_create_order_and_pay,
 )
+
+try:
+    # Airpay подключается атомарно; его неверные настройки или неполная поставка не останавливают CRM.
+    from domains.airpay_bootstrap import mount_airpay_isolated
+    mount_airpay_isolated(app, get_current_user=get_current_user, environ=os.environ,
+        connect=lambda **kwargs: psycopg.connect(DB_DSN, **kwargs), get_secret=lambda: JWT_SECRET,
+        code_secret=lambda: os.getenv('AIRPAY_DATA_SECRET') or JWT_SECRET,
+        local_ui=_LOCAL_UI_MODE, offline=_SUPPLIER_OFFLINE)
+except Exception as airpay_setup_error:
+    # Не пишем текст исключения: настройки могут содержать секреты. Ошибка видна только на маршрутах Airpay.
+    logging.getLogger(__name__).error('Airpay initialization disabled: %s', type(airpay_setup_error).__name__)
+    app.state.airpay_backend = 'unavailable'
+    @app.api_route('/integrations/airpay/{path:path}', methods=['GET', 'POST'])
+    def airpay_unavailable(path: str, user=Depends(get_current_user)):
+        # Не допускаем автоматический fallback и не выдаём неисправный модуль за готовый к работе.
+        raise HTTPException(503, 'Airpay недоступен: проверьте установку и серверные настройки подключения.')
 
 shared_supplier_catalog = SupplierCatalog(pooled_psycopg, DB_DSN,
     InterhubVoucherProvider(interhub_service.get_catalog, interhub_get_service_detail, interhub_calculate,

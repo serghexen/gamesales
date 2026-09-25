@@ -128,6 +128,28 @@
       ],
       "dependsOrder": "parallel",
       "problemMatcher": []
+    },
+    {
+      "label": "Airpay Tunnel",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/python api/scripts/run_airpay_tunnel.py",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Local UI + suppliers (no workers)",
+      "dependsOn": [
+        "Staging DB SSH Tunnel",
+        "InterHub Tunnel",
+        "Airpay Tunnel",
+        "Backend UI (no workers)",
+        "Frontend UI (local API)"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
     }
   ]
 }

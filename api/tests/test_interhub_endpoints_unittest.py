@@ -91,6 +91,24 @@ if __name__ == "__main__":
     unittest.main()
 
 class StagingSupplierGuardTests(unittest.TestCase):
+    def test_airpay_preparation_passes_staging_guard_but_still_requires_owner(self):
+        # Проверяем настоящую middleware и авторизацию; сеть и запись в журнал заменены заглушками.
+        with patch.object(app_module, '_SUPPLIER_OFFLINE', True), patch.object(app_module, 'ConnectionPool'), \
+             patch.object(app_module, '_LOCAL_UI_MODE', False), \
+             patch('domains.airpay_api.AirpayPreparation.prepare', return_value={'preparation_token': 'signed'}) as prepare, \
+             patch('domains.airpay_api.AirpayPreparation.read_draft', return_value={'service': {}}), \
+             patch('domains.airpay_api.AirpayPurchase.check', return_value={'success': True, 'payments_enabled': False}) as check:
+            owner = {'Authorization': f"Bearer {app_module.create_access_token(1, 'owner', 'owner')}"}
+            manager = {'Authorization': f"Bearer {app_module.create_access_token(2, 'manager', 'manager')}"}
+            with TestClient(app_module.app) as client:
+                for path, body in (('/integrations/airpay/prepare', {'service_id': 'A1', 'fields': {'account': '123'}}),
+                                   ('/integrations/airpay/check', {'preparation_token': 'signed'})):
+                    self.assertEqual(client.post(path, json=body).status_code, 401)
+                    self.assertEqual(client.post(path, json=body, headers=manager).status_code, 403)
+                    self.assertEqual(client.post(path, json=body, headers=owner).status_code, 200)
+            prepare.assert_called_once()
+            check.assert_called_once_with('owner', 'signed')
+
     def test_staging_allows_owner_review_but_keeps_authorization(self):
         # Отметка просмотренного меняет только нашу БД и остаётся доступной владельцу на staging.
         with patch.object(app_module, '_SUPPLIER_OFFLINE', True), patch.object(app_module, 'ConnectionPool'), \
@@ -111,7 +129,10 @@ class StagingSupplierGuardTests(unittest.TestCase):
             with TestClient(app_module.app) as client:
                 for path in ['/integrations/interhub/pay', '/integrations/interhub/check',
                              '/integrations/interhub/prices/refresh', '/deals/1/interhub/prepare',
-                             '/integrations/interhub/vouchers/pay-batch']:
+                             '/integrations/interhub/vouchers/pay-batch',
+                             '/integrations/airpay/transactions/1/pay', '/integrations/airpay/transactions/1/reconcile',
+                             '/integrations/airpay/transactions/1/voucher', '/integrations/airpay/check/pay',
+                             '/integrations/airpay/batches/1/pay', '/integrations/airpay/batches/1/vouchers']:
                     self.assertEqual(client.post(path, json={}).status_code, 403)
 
     def test_staging_reads_live_services_and_balance_without_using_saved_catalog(self):

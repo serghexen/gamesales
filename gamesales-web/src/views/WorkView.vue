@@ -32,7 +32,7 @@
           :ctx="nsGiftSectionCtx"
         />
 
-        <WorkInterhubSection
+        <WorkPaymentsSection
           v-if="canViewInterhubSection && activeTab === 'interhub'"
           :ctx="interhubSectionCtx"
         />
@@ -232,7 +232,7 @@ import WorkCatalogsSection from './work/sections/WorkCatalogsSection.vue'
 import WorkTelegramSection from './work/sections/WorkTelegramSection.vue'
 import WorkTopBar from './work/sections/WorkTopBar.vue'
 import WorkNsGiftSection from './work/sections/WorkNsGiftSection.vue'
-import WorkInterhubSection from './work/sections/WorkInterhubSection.vue'
+import WorkPaymentsSection from './work/sections/WorkPaymentsSection.vue'
 import './work/styles/work-bundle.css'
 
 const router = useRouter()
@@ -4116,6 +4116,7 @@ const interhubSectionCtx = asCtx({
   salesHistoryPageSize: interhubSalesHistoryPageSize,
   canViewHistory: true,
   canPay: computed(() => canPayInterhub.value && !interhubSupplierOffline.value),
+  canPrepareAirpay: canPayInterhub,
   canManagePrices: canPayInterhub,
   pay: payInterhub,
   refreshPaymentStatus: refreshInterhubPaymentStatus,

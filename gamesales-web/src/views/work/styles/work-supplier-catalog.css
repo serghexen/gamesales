@@ -1,0 +1,24 @@
+/* Общий вид поставщиков повторяет Interhub; подключаем scoped в каждом компоненте. */
+.supplier-catalog__head { align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid rgba(245, 158, 11, .32); }
+.supplier-catalog__head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: end; }
+.supplier-catalog__eyebrow { margin: 0 0 4px; color: #b86b12; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.supplier-catalog__title { margin: 0; letter-spacing: -.03em; }
+.supplier-catalog__balance { display: inline-grid; gap: 3px; margin: 0 0 18px; padding: 8px 12px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .08); }
+.supplier-catalog__balance span, .supplier-catalog__balance small { color: var(--muted, #7a766f); font-size: 12px; }
+.supplier-catalog__balance strong { font-size: 20px; }
+.supplier-catalog__toolbar { display: flex; gap: 16px; align-items: end; justify-content: space-between; margin-bottom: 18px; }
+.supplier-catalog__search { width: min(460px, 100%); }
+.supplier-catalog__sort { margin-right: auto; white-space: nowrap; }
+.supplier-catalog__stats { display: grid; min-width: 120px; padding: 8px 12px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .08); }
+.supplier-catalog__stats strong { font-size: 20px; line-height: 1; }
+.supplier-catalog__stats span, .supplier-catalog__id { color: var(--muted, #7a766f); font-size: 12px; }
+.supplier-catalog__id { display: block; margin-top: 3px; font-family: ui-monospace, monospace; }
+.supplier-catalog__type { display: inline-flex; padding: 3px 7px; border: 1px solid rgba(232, 134, 19, .35); color: #9b570d; font-size: 12px; font-weight: 700; }
+.supplier-catalog__pagination { display: flex; gap: 12px; align-items: center; justify-content: end; margin-top: 12px; color: var(--muted, #7a766f); font-size: 13px; }
+@media (max-width: 680px) {
+  .supplier-catalog__head { align-items: start; flex-direction: column; }
+  .supplier-catalog__head-actions { justify-content: start; }
+  .supplier-catalog__toolbar { align-items: stretch; flex-direction: column; }
+  .supplier-catalog__search { width: 100%; }
+  .supplier-catalog__stats { width: fit-content; }
+}

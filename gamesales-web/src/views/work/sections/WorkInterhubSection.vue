@@ -1,11 +1,12 @@
 <template>
-  <section class="panel panel--wide interhub-catalog">
-    <div class="panel__head interhub-catalog__head">
+  <section class="interhub-catalog" :class="{ panel: !embedded, 'panel--wide': !embedded }">
+    <div class="panel__head interhub-catalog__head supplier-catalog__head">
       <div>
-        <p class="interhub-catalog__eyebrow">Поставщик · агентский каталог</p>
-        <h2 class="interhub-catalog__title">Платежи</h2>
+        <p class="interhub-catalog__eyebrow supplier-catalog__eyebrow">Поставщик · агентский каталог</p>
+        <h3 v-if="embedded" class="interhub-catalog__title supplier-catalog__title">Interhub</h3>
+        <h2 v-else class="interhub-catalog__title supplier-catalog__title">Платежи</h2>
       </div>
-      <div class="interhub-catalog__head-actions">
+      <div class="interhub-catalog__head-actions supplier-catalog__head-actions">
         <button v-if="ctx.canViewHistory" class="ghost interhub-catalog__history-action" type="button" @click="openSalesHistory">История покупок</button>
         <button v-if="ctx.canManagePrices" class="ghost interhub-catalog__price-action" type="button" title="Обновить закупочные цены и остатки только для ваучеров" :disabled="ctx.priceRefreshLoading || ctx.supplierOffline" @click="ctx.refreshPrices">
           {{ ctx.priceRefreshLoading ? 'Обновляем цены и остатки…' : 'Обновить закупочные цены' }}
@@ -18,7 +19,7 @@
     </div>
 
       <div class="panel__body">
-      <div class="interhub-catalog__balance"><span>Депозит поставщика</span><strong>{{ formatBalance(ctx.balance, ctx.currency) }}</strong><small v-if="hasOverdraft">Овердрафт: {{ formatBalance(overdraftBalance, ctx.currency) }} из {{ formatBalance(overdraftLimit, ctx.currency) }}</small><small v-if="hasOverdraft">Доступно для оплат: {{ formatBalance(availableForPayments, ctx.currency) }}</small><small v-else>Агентский счёт</small></div>
+      <div class="interhub-catalog__balance supplier-catalog__balance"><span>Депозит поставщика</span><strong>{{ formatBalance(ctx.balance, ctx.currency) }}</strong><small v-if="hasOverdraft">Овердрафт: {{ formatBalance(overdraftBalance, ctx.currency) }} из {{ formatBalance(overdraftLimit, ctx.currency) }}</small><small v-if="hasOverdraft">Доступно для оплат: {{ formatBalance(availableForPayments, ctx.currency) }}</small><small v-else>Агентский счёт</small></div>
       <p v-if="ctx.error" class="error">{{ anonymizeSupplierText(ctx.error) }}</p>
       <p v-if="ctx.priceError" class="error">{{ anonymizeSupplierText(ctx.priceError) }}</p>
       <p v-if="ctx.priceRefresh" class="muted interhub-catalog__price-progress">Обновление цен: {{ ctx.priceRefresh.processed }} из {{ ctx.priceRefresh.total }} · успешно {{ ctx.priceRefresh.successes }} · ошибок {{ ctx.priceRefresh.errors }}<span v-if="ctx.priceRefresh.message"> · {{ anonymizeSupplierText(ctx.priceRefresh.message) }}</span></p>
@@ -26,13 +27,13 @@
 
       <WorkSupplierCatalog :token="ctx.token" :can-review="ctx.canManagePrices" :refresh-state="ctx.priceRefresh?.state" />
 
-      <div class="interhub-catalog__toolbar">
-        <label class="interhub-catalog__search">
+      <div class="interhub-catalog__toolbar supplier-catalog__toolbar">
+        <label class="interhub-catalog__search supplier-catalog__search">
           <span class="label">Поиск услуги</span>
           <input class="input" type="search" :value="ctx.search" placeholder="Название или категория" @input="ctx.setSearchFromEvent" />
         </label>
-        <button class="ghost interhub-catalog__sort" type="button" @click="toggleServicesSort">По названию: {{ servicesSortDirection === 'asc' ? 'А–Я' : 'Я–А' }}</button>
-        <div class="interhub-catalog__stats" aria-label="Статистика каталога">
+        <button class="ghost interhub-catalog__sort supplier-catalog__sort" type="button" @click="toggleServicesSort">По названию: {{ servicesSortDirection === 'asc' ? 'А–Я' : 'Я–А' }}</button>
+        <div class="interhub-catalog__stats supplier-catalog__stats" aria-label="Статистика каталога">
           <strong>{{ filteredServices.length }}</strong>
           <span>из {{ ctx.services.length }} услуг</span>
         </div>
@@ -57,22 +58,22 @@
             <tr v-for="service in pagedServices" :key="service.service_id" class="interhub-catalog__row" :class="{ 'is-selected': selectedService?.service_id === service.service_id }" @click="selectService(service)">
               <td>
                 <strong>{{ formatServiceTitle(service.title) }}</strong>
-                <span class="interhub-catalog__id">#{{ service.service_id }}</span>
+                <span class="interhub-catalog__id supplier-catalog__id">#{{ service.service_id }}</span>
               </td>
               <td>{{ anonymizeSupplierText(service.category) || '—' }}</td>
-              <td><span class="interhub-catalog__type">{{ formatType(service.type) }}</span></td>
+              <td><span class="interhub-catalog__type supplier-catalog__type">{{ formatType(service.type) }}</span></td>
             </tr>
           </tbody>
         </table>
       </div>
-      <nav v-if="totalPages > 1" class="interhub-catalog__pagination" aria-label="Страницы каталога поставщика">
+      <nav v-if="totalPages > 1" class="interhub-catalog__pagination supplier-catalog__pagination" aria-label="Страницы каталога поставщика">
         <button class="ghost" type="button" :disabled="currentPage === 1" aria-label="Предыдущая страница" @click="changePage(-1)">Назад</button>
         <span>Страница {{ currentPage }} из {{ totalPages }}</span>
         <button class="ghost" type="button" :disabled="currentPage === totalPages" aria-label="Следующая страница" @click="changePage(1)">Далее</button>
       </nav>
       <form v-if="selectedService" ref="paymentForm" class="interhub-catalog__form" :class="{ 'has-optional-account': paymentType === 'TOP_UP_FIXED' }" @submit.prevent="preparePurchase">
         <div v-if="showHamster" class="interhub-catalog__obtain-overlay"><WorkHamsterLoader :label="obtainLoadingLabel" /></div>
-        <div class="interhub-catalog__service-summary"><p class="interhub-catalog__eyebrow">Получение</p><h3>{{ formatServiceTitle(selectedService.title) }}</h3></div>
+        <div class="interhub-catalog__service-summary"><p class="interhub-catalog__eyebrow supplier-catalog__eyebrow">Получение</p><h3>{{ formatServiceTitle(selectedService.title) }}</h3></div>
         <div class="interhub-catalog__fields">
           <label v-if="showAccount" class="field"><span class="label">{{ accountLabel }}<i v-if="accountRequired"> *</i></span><input v-model.trim="account" class="input" :required="accountRequired" @input="resetPaymentAfterInputChange" /><small v-if="!accountRequired" class="muted">Необязательно для этого типа услуги</small></label>
           <div v-if="amountFromNominal" class="interhub-catalog__auto-amount"><span>Сумма пополнения</span><strong>{{ selectedNominalTitle || 'Выберите номинал' }}</strong><small>Подставляется автоматически из номинала</small></div>
@@ -117,7 +118,7 @@
       <section class="modal interhub-history" role="dialog" aria-modal="true" aria-labelledby="interhub-history-title">
         <div class="modal__head panel__head panel__head--tight interhub-history__head">
           <div>
-            <p class="interhub-catalog__eyebrow">Поставщики · {{ ctx.canPay ? 'операции владельца' : 'покупки по сделкам' }}</p>
+            <p class="interhub-catalog__eyebrow supplier-catalog__eyebrow">Поставщики · {{ ctx.canPay ? 'операции владельца' : 'покупки по сделкам' }}</p>
             <h3 id="interhub-history-title">История покупок</h3>
           </div>
           <button class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close" type="button" aria-label="Закрыть" title="Закрыть" @click="closeSalesHistory">
@@ -234,7 +235,7 @@
       <section class="modal modal--auto interhub-confirm" role="dialog" aria-modal="true" aria-labelledby="interhub-confirm-title">
         <div class="modal__head panel__head panel__head--tight interhub-confirm__head">
           <div>
-            <p class="interhub-catalog__eyebrow">Поставщик · подтверждение покупки</p>
+            <p class="interhub-catalog__eyebrow supplier-catalog__eyebrow">Поставщик · подтверждение покупки</p>
             <h3 id="interhub-confirm-title">Проверьте покупку</h3>
           </div>
           <button class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close" type="button" aria-label="Закрыть подтверждение покупки" title="Закрыть" @click="closePurchaseConfirmation">
@@ -269,6 +270,7 @@ import WorkHamsterLoader from './WorkHamsterLoader.vue'
 // Контекст содержит каталог и действия загрузки, чтобы экран не знал деталей API.
 const props = defineProps({
   ctx: { type: Object, required: true },
+  embedded: { type: Boolean, default: false },
 })
 
 const titleCollator = new Intl.Collator('ru', { numeric: true, sensitivity: 'base' })
@@ -828,29 +830,18 @@ function nominalSortValue(title) {
 }
 </script>
 
+<style scoped src="../styles/work-supplier-catalog.css"></style>
+
 <style scoped>
-.interhub-catalog__head { align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid rgba(245, 158, 11, .32); }
-.interhub-catalog__head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: end; }.interhub-catalog__price-action { white-space: nowrap; }
-.interhub-catalog__eyebrow { margin: 0 0 4px; color: #b86b12; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
-.interhub-catalog__title { margin: 0; letter-spacing: -.03em; }
+.interhub-catalog__price-action { white-space: nowrap; }
 .interhub-catalog__lead { max-width: 680px; margin: 0 0 20px; color: var(--muted, #7a766f); }
-.interhub-catalog__balance { display: inline-grid; gap: 3px; margin: 0 0 18px; padding: 8px 12px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .08); }.interhub-catalog__balance span, .interhub-catalog__balance small { color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__balance strong { font-size: 20px; }
 .interhub-catalog__price-progress { margin: -8px 0 18px; }
-.interhub-catalog__toolbar { display: flex; gap: 16px; align-items: end; justify-content: space-between; margin-bottom: 18px; }
-.interhub-catalog__search { width: min(460px, 100%); }
-.interhub-catalog__sort { margin-right: auto; white-space: nowrap; }
-.interhub-catalog__stats { display: grid; min-width: 120px; padding: 8px 12px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .08); }
-.interhub-catalog__stats strong { font-size: 20px; line-height: 1; }
-.interhub-catalog__stats span, .interhub-catalog__id { color: var(--muted, #7a766f); font-size: 12px; }
-.interhub-catalog__id { display: block; margin-top: 3px; font-family: ui-monospace, monospace; }
-.interhub-catalog__type { display: inline-flex; padding: 3px 7px; border: 1px solid rgba(232, 134, 19, .35); color: #9b570d; font-size: 12px; font-weight: 700; }
 .interhub-catalog__row { cursor: pointer; }.interhub-catalog__row.is-selected td { background: rgba(232, 134, 19, .08); }.interhub-catalog__form { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(0, 1fr) minmax(220px, .72fr); gap: 16px 18px; align-items: start; margin-top: 22px; padding: 22px; border-left: 3px solid #e88613; background: rgba(232, 134, 19, .06); scroll-margin-block: 24px; }.interhub-catalog__service-summary { align-self: center; padding-right: 12px; }.interhub-catalog__form h3 { margin: 0; }.interhub-catalog__fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px 18px; min-width: 0; }.interhub-catalog__actions { display: grid; width: 100%; max-width: 300px; min-width: 0; grid-template-columns: 1fr; justify-self: start; align-self: start; margin-top: 35px; }.interhub-catalog__action-btn { display: flex; min-width: 0; min-height: 58px; gap: 9px; align-items: center; justify-content: flex-start; padding: 8px 11px; text-align: left; transition: transform .16s ease, box-shadow .16s ease, filter .16s ease; }.interhub-catalog__action-btn:not(:disabled):hover { box-shadow: 0 8px 20px rgba(70, 224, 185, .16); filter: brightness(1.04); transform: translateY(-1px); }.interhub-catalog__action-btn > span:last-child { display: grid; gap: 1px; min-width: 0; }.interhub-catalog__action-btn strong { font-size: 14px; line-height: 1.08; }.interhub-catalog__action-btn small { color: rgba(9, 18, 27, .68); font-size: 10px; font-weight: 700; letter-spacing: .05em; }.interhub-catalog__action-index { display: grid; width: 24px; height: 24px; flex: 0 0 24px; place-items: center; border: 1px solid rgba(9, 18, 27, .28); border-radius: 50%; font-size: 11px; font-weight: 800; }.interhub-catalog__quantity-input { color-scheme: dark; }.interhub-catalog__quantity-input::-webkit-inner-spin-button { opacity: 1; filter: brightness(0) invert(1); }.interhub-catalog__result { margin: 0; font-weight: 700; }.interhub-catalog__payment-result { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(250px, .8fr) minmax(0, 1fr) auto; gap: 10px 18px; align-items: center; padding-top: 14px; border-top: 1px solid rgba(232, 134, 19, .18); }.interhub-catalog__payment-result.is-error { color: #d45f5f; }.interhub-catalog__payment-result .muted { grid-column: 1 / -1; }.interhub-catalog__gift-code { width: fit-content; padding: 8px 10px; border: 1px dashed rgba(232, 134, 19, .7); background: rgba(232, 134, 19, .08); color: inherit; font-weight: 700; letter-spacing: .04em; }
 .interhub-catalog__form { position: relative; }
 .interhub-catalog__obtain-overlay { position: absolute; z-index: 3; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(9, 18, 27, .78); backdrop-filter: blur(2px); }
 .interhub-catalog__owner-note { grid-column: 1 / -1; margin: 0; }
 .interhub-catalog__gift-codes { display: grid; justify-items: start; gap: 8px; }
 .interhub-catalog__gift-code { max-width: 100%; overflow-wrap: anywhere; }
-.interhub-catalog__pagination { display: flex; gap: 12px; align-items: center; justify-content: end; margin-top: 12px; color: var(--muted, #7a766f); font-size: 13px; }
 .interhub-catalog__auto-amount { display: grid; gap: 3px; min-height: 42px; padding: 8px 10px; border: 1px solid rgba(232, 134, 19, .35); }.interhub-catalog__auto-amount span, .interhub-catalog__auto-amount small { color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__auto-amount strong { font-size: 18px; }
 .interhub-catalog__calculate-response { margin-top: 7px; color: var(--muted, #7a766f); font-size: 12px; }.interhub-catalog__calculate-response summary { cursor: pointer; color: inherit; }.interhub-catalog__calculate-response pre { max-width: 420px; max-height: 180px; margin: 8px 0 0; padding: 8px; overflow: auto; border: 1px solid rgba(232, 134, 19, .2); background: rgba(9, 12, 25, .38); color: var(--text, #eee); font: 11px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
 .interhub-confirm-backdrop { --modal-bg: #101626; --modal-text: #f4f7ff; --ink: #f4f7ff; --muted: #b5bfd3; --ghost-bg: rgba(255, 255, 255, .08); --ghost-text: #f4f7ff; --ghost-border: rgba(255, 255, 255, .18); z-index: 85; align-items: center; padding: 16px; }
@@ -863,11 +854,6 @@ function nominalSortValue(title) {
 .interhub-history__sources { display: flex; flex-wrap: wrap; gap: 8px; }.interhub-history__sources .ghost { display: grid; gap: 2px; min-width: 190px; justify-items: start; padding: 10px 14px; }.interhub-history__sources .ghost small { color: #9da9bf; font-size: 11px; font-weight: 500; }.interhub-history__sources .ghost.is-active { border-color: rgba(232, 134, 19, .7); background: rgba(232, 134, 19, .14); box-shadow: inset 3px 0 0 #e88613; }.interhub-history__state { display: inline-flex; padding: 4px 8px; border: 1px solid rgba(181, 194, 219, .28); border-radius: 999px; color: #c8d1e4; font-size: 11px; font-weight: 750; white-space: nowrap; }.interhub-history__state.is-succeeded { border-color: rgba(70, 224, 185, .46); color: #62e4c0; }.interhub-history__state.is-processing, .interhub-history__state.is-payment_started { border-color: rgba(246, 187, 76, .52); color: #f6c66e; }.interhub-history__state.is-failed, .interhub-history__state.is-requires_attention { border-color: rgba(255, 121, 121, .5); color: #ff9b9b; }.interhub-history__result-cell { min-width: 130px; }.interhub-history__reveal { min-height: 32px; padding: 5px 9px; white-space: nowrap; }.interhub-history__mobile-list { display: none; }.interhub-history__audit-note { margin: 0; padding: 10px 12px; border-left: 3px solid rgba(181, 194, 219, .3); background: rgba(181, 194, 219, .06); color: #9da9bf; font-size: 12px; line-height: 1.45; }
 @media (max-width: 1120px) { .interhub-catalog__form { grid-template-columns: minmax(220px, .8fr) minmax(0, 1fr); }.interhub-catalog__fields { grid-column: 2; }.interhub-catalog__actions { grid-column: 2; margin-top: 0; }.interhub-catalog__payment-result { grid-template-columns: 1fr auto; } }
 @media (max-width: 680px) {
-  .interhub-catalog__head { align-items: start; flex-direction: column; }
-  .interhub-catalog__head-actions { justify-content: start; }
-  .interhub-catalog__toolbar { align-items: stretch; flex-direction: column; }
-  .interhub-catalog__search { width: 100%; }
-  .interhub-catalog__stats { width: fit-content; }
   .interhub-catalog__form { grid-template-columns: 1fr; padding: 16px; }
   .interhub-catalog__fields, .interhub-catalog__actions, .interhub-catalog__payment-result { grid-column: auto; grid-template-columns: 1fr; }
   .interhub-confirm__details > div { grid-template-columns: 1fr; gap: 5px; }
