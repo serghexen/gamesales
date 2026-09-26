@@ -124,12 +124,13 @@ describe('Airpay voucher quantity', () => {
 
   it('opens a whole batch from a child history record using only a database read', async () => {
     // История восстанавливает группу даже со страницы, на которой видна только одна её позиция.
-    apiGet.mockResolvedValueOnce({ items: [items[1]] }).mockResolvedValueOnce(batch)
+    apiGet.mockResolvedValueOnce({ items: [items[1]] }).mockResolvedValueOnce(items[1]).mockResolvedValueOnce(batch)
     wrapper = mount(WorkAirpayHistory, { global, props: { token: 'crm' } })
     await flushPromises()
+    await wrapper.get('.airpay-history-service').trigger('click'); await flushPromises()
     const button = wrapper.findAll('button').find(button => button.text() === 'Открыть покупку 3 ключей')
     await button.trigger('click'); await flushPromises()
-    expect(apiGet.mock.calls[1][0]).toBe('/integrations/airpay/batches/2')
+    expect(apiGet.mock.calls[2][0]).toBe('/integrations/airpay/batches/2')
     expect(wrapper.findComponent(WorkAirpayBatch).exists()).toBe(true)
     expect(apiPost).not.toHaveBeenCalled()
   })

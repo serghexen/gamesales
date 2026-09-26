@@ -63,7 +63,7 @@ describe('Airpay history filters and export', () => {
     openHistory(); await flushPromises()
     await wrapper.get('input[type="search"]').setValue('1645129032053759724')
     await wrapper.get('form').trigger('submit'); await flushPromises()
-    await wrapper.get('select').setValue('true'); await flushPromises()
+    await wrapper.findAll('.airpay-history-sources button')[1].trigger('click'); await flushPromises()
     expect(apiGet.mock.calls.at(-1)[0]).toContain('q=1645129032053759724&archive=crm')
     apiGetFile.mockRejectedValue(new Error('Уточните фильтры'))
     await button('Выгрузить Excel').trigger('click'); await flushPromises()
@@ -91,4 +91,70 @@ describe('Airpay history filters and export', () => {
     expect(create).not.toHaveBeenCalled()
     expect(apiGet.mock.calls.at(-1)[1]).toEqual({ token: 'other' })
   })
+})
+
+
+describe('Airpay history table and details', () => {
+  it('opens transaction IDs only on explicit selection and preserves the page on return', async () => {
+    // Таблица не монтирует карточки и не раскрывает коды; детали читаются отдельным GET.
+    const row = { ...item, service_title: 'PSN TRY 250', provider_transaction_id: 'provider-42', amount: '654.03', currency: 'RUB', result_available: true }
+    apiGet.mockResolvedValueOnce({ items: [row] }).mockResolvedValueOnce(row)
+    openHistory(); await flushPromises()
+    expect(wrapper.find('work-airpay-transaction-stub').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain(row.agent_transaction_id)
+    expect(wrapper.text()).not.toContain('provider-42')
+    expect(wrapper.text()).toContain('Код сохранён')
+    await wrapper.get('.airpay-history-row').trigger('click'); await flushPromises()
+    expect(apiGet.mock.calls[1][0]).toBe(`/integrations/airpay/transactions/${row.agent_transaction_id}`)
+    expect(wrapper.getComponent({ name: 'WorkAirpayTransaction' }).props('transaction')).toEqual(row)
+    await button('← Вернуться к истории').trigger('click'); await flushPromises()
+    expect(wrapper.get('.airpay-history-row').text()).toContain('PSN TRY 250')
+    expect(apiGet).toHaveBeenCalledTimes(2)
+    expect(apiPost).not.toHaveBeenCalled()
+  })
+
+  it('does not show stale details after a session change', async () => {
+    // Поздний ответ прежнего владельца не должен раскрыться в новом сеансе.
+    let finish
+    apiGet.mockResolvedValueOnce({ items: [item] }).mockImplementationOnce(() => new Promise(resolve => { finish = resolve })).mockResolvedValueOnce({ items: [] })
+    openHistory(); await flushPromises()
+    await wrapper.get('.airpay-history-service').trigger('click')
+    await wrapper.setProps({ token: 'other' }); await flushPromises()
+    finish(item); await flushPromises()
+    expect(wrapper.find('work-airpay-transaction-stub').exists()).toBe(false)
+    expect(apiPost).not.toHaveBeenCalled()
+  })
+
+  it('distinguishes unpaid checks and totals only paid amounts by currency on this page', async () => {
+    // Проверка и отсутствующая цена не становятся оплатой, разные валюты не суммируются вместе.
+    apiGet.mockResolvedValue({ items: [
+      { ...item, agent_transaction_id: '1', state: 'checked', amount: '900', currency: 'RUB' },
+      { ...item, agent_transaction_id: '2', amount: '654.03', currency: 'RUB', result_available: true },
+      { ...item, agent_transaction_id: '3', amount: '2', currency: 'USD', result_available: false },
+    ] })
+    openHistory(); await flushPromises()
+    expect(wrapper.text()).toContain('Проверена, не оплачена')
+    expect(wrapper.text()).toContain('Оплачено · ожидается код')
+    const totals = wrapper.get('[aria-label="Итоги текущей страницы"]').text()
+    expect(totals).toContain('654,03 RUB')
+    expect(totals).toContain('2,00 USD')
+    expect(totals).not.toContain('900')
+  })
+})
+
+
+it('keeps failed detail reads in the table and blocks navigation during a detail action', async () => {
+  // Ошибка чтения не открывает карточку, а активное действие нельзя оборвать возвратом к списку.
+  apiGet.mockResolvedValueOnce({ items: [item] }).mockRejectedValueOnce(new Error('Нет связи')).mockResolvedValueOnce(item)
+  openHistory(); await flushPromises()
+  await wrapper.get('.airpay-history-service').trigger('click'); await flushPromises()
+  expect(wrapper.get('[role="alert"]').text()).toBe('Нет связи')
+  expect(wrapper.find('table').exists()).toBe(true)
+  await wrapper.get('.airpay-history-service').trigger('click'); await flushPromises()
+  wrapper.getComponent({ name: 'WorkAirpayTransaction' }).vm.$emit('busy-change', true)
+  await flushPromises()
+  expect(button('← Вернуться к истории').attributes('disabled')).toBeDefined()
+  await button('← Вернуться к истории').trigger('click')
+  expect(wrapper.find('table').exists()).toBe(false)
+  expect(apiPost).not.toHaveBeenCalled()
 })
