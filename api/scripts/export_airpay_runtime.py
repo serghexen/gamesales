@@ -10,7 +10,7 @@ def export(destination):
     root = Path(__file__).resolve().parents[2]
     package = destination / 'api' / 'airpay_runtime'
     package.mkdir(parents=True, exist_ok=True)
-    files = ['airpay_api', 'airpay_service', 'airpay_preparation', 'airpay_purchase', 'airpay_batch', 'airpay_repository', 'airpay_jobs', 'airpay_contract', 'airpay_resolution', 'airpay_history', 'airpay_queue']
+    files = ['airpay_api', 'airpay_service', 'airpay_preparation', 'airpay_purchase', 'airpay_batch', 'airpay_repository', 'airpay_jobs', 'airpay_contract', 'airpay_resolution', 'airpay_history', 'airpay_queue', 'airpay_diagnostics']
     manifest = {}
     for name in files:
         source = root / 'api' / 'domains' / (name + '.py')
@@ -24,7 +24,7 @@ def export(destination):
     (package / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     migrations = destination / 'migrations/airpay/runtime'
     migrations.mkdir(parents=True, exist_ok=True)
-    for source in sorted((root / 'db/migrations/runtime').glob('20260923_*airpay*.sql')):
+    for source in sorted((root / 'db/migrations/runtime').glob('*airpay*.sql')):
         data = source.read_text().replace('app.airpay_', 'supplier_hub_airpay.airpay_')
         (migrations / source.name).write_text(data)
     # Мигратор имеет отдельный журнал и каталог, не затрагивает таблицы Interhub.

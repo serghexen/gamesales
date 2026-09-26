@@ -85,6 +85,30 @@ class AirpayBatchTests(unittest.TestCase):
             self.preparation.prepare('owner', 'A1', {'account': 'x'}, amount_to='10', quantity=2)
         self.assertEqual(len(self.repo.rows), 0)
 
+    def test_overdraft_covers_batch_and_only_unpaid_remainder(self):
+        # Кредит покрывает всю пачку; продолжение проверяет только ещё не оплаченные позиции.
+        self.service.get_balance.return_value.update(balance=0, overdraft=37.5)
+        result = self.check()
+        self.assertTrue(result['purchase_ready'])
+        ids = [int(row['agent_transaction_id']) for row in result['batch']['items']]
+        self.repo.rows[ids[0]]['state'] = 'paid'
+        self.service.get_balance.return_value['balance'] = -12.5
+        self.assertEqual(self.batch.pay('owner', self.id, '37.50')['paid_quantity'], 3)
+        self.assertEqual([call.args[0]['agentTransactionId'] for call in self.service.pay.call_args_list], ids[1:])
+        self.service.get_voucher.assert_not_called()
+
+    def test_credit_insufficient_for_total_and_reduced_after_check(self):
+        # На один ключ кредита достаточно, но общая сумма также должна укладываться в лимит.
+        self.service.get_balance.return_value.update(balance=0, overdraft=37.49)
+        self.assertFalse(self.check()['purchase_ready'])
+        self.service.pay.assert_not_called()
+        self.setUp()
+        self.service.get_balance.return_value.update(balance=0, overdraft=37.5)
+        self.assertTrue(self.check()['purchase_ready'])
+        self.service.get_balance.return_value['overdraft'] = 37.49
+        with self.assertRaises(HTTPException): self.batch.pay('owner', self.id, '37.50')
+        self.service.pay.assert_not_called()
+
     def test_total_balance_and_confirmation_enforced_before_pay(self):
         # Депозита может хватить на один ключ, но не на весь заказ.
         self.service.get_balance.return_value['balance'] = 20

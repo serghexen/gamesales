@@ -14,12 +14,12 @@ afterEach(() => {
 })
 
 describe('WorkAirpaySection', () => {
-  it('labels the cutoff threshold and handles missing provider currency', async () => {
-    // Порог из overdraft не считается кредитным лимитом, а отсутствие валюты видно оператору.
+  it('labels the allowed overdraft and handles missing provider currency', async () => {
+    // Подтверждённый кредит входит в доступную сумму, отсутствие валюты видно оператору.
     apiGet.mockResolvedValue({ configured: true, balance: 12, overdraft: 5000, currency: '' })
     wrapper = mount(WorkAirpaySection)
     await flushPromises()
-    expect(wrapper.text()).toContain('Порог отключения платежей')
+    expect(wrapper.text()).toContain('Разрешённый овердрафт')
     expect(wrapper.get('[data-testid="airpay-balance"]').text()).toBe('12,00 · валюта не указана')
   })
   it('shows a real zero balance and overdraft in the provider currency', async () => {
@@ -29,6 +29,7 @@ describe('WorkAirpaySection', () => {
     await flushPromises()
     expect(wrapper.get('[data-testid="airpay-balance"]').text()).toBe('0,00 ₽')
     expect(wrapper.get('[data-testid="airpay-overdraft"]').text()).toBe('5 000,00 ₽')
+    expect(wrapper.get('[data-testid="airpay-available"]').text()).toBe('5 000,00 ₽')
     expect(apiGet).toHaveBeenCalledWith('/integrations/airpay/balance', { token: 'crm-token' })
   })
 
@@ -71,4 +72,13 @@ describe('WorkAirpaySection', () => {
     await flushPromises()
     expect(wrapper.get('[data-testid="airpay-balance"]').text()).toContain('20,00')
   })
+})
+
+
+it('subtracts used credit from the amount available for purchases', async () => {
+  // Отрицательный баланс уменьшает кредитный лимит, а не добавляет его повторно.
+  apiGet.mockResolvedValue({ configured: true, balance: -4500, overdraft: 5000, currency: 'RUB' })
+  wrapper = mount(WorkAirpaySection)
+  await flushPromises()
+  expect(wrapper.get('[data-testid="airpay-available"]').text()).toBe('500,00 ₽')
 })

@@ -302,6 +302,30 @@ class AirpayPurchaseTests(unittest.TestCase):
             self.flow.pay('owner', self.id, '0.01')
         self.service.pay.assert_not_called()
 
+    def test_check_and_mock_payment_use_allowed_overdraft(self):
+        # При нулевом или отрицательном балансе покупка доступна ровно в пределах оставшегося кредита.
+        for balance, credit in ((0, 12.5), (-4987.5, 5000)):
+            with self.subTest(balance=balance):
+                self.setUp()
+                self.service.get_balance.return_value.update(balance=balance, overdraft=credit)
+                self.checked()
+                self.assertEqual(self.flow.pay('owner', self.id, '12.50')['state'], 'paid')
+                self.service.pay.assert_called_once()
+                self.service.get_voucher.assert_not_called()
+
+    def test_credit_exhaustion_and_limit_change_block_before_transport(self):
+        # Недостаток даже одной копейки и уменьшение лимита после check не должны пропускать оплату.
+        self.service.get_balance.return_value.update(balance=-4987.51, overdraft=5000)
+        draft = self.prepare()
+        self.assertFalse(self.flow.check('owner', draft['preparation_token'])['purchase_ready'])
+        self.service.pay.assert_not_called()
+        self.setUp()
+        self.service.get_balance.return_value.update(balance=0, overdraft=12.5)
+        self.checked()
+        self.service.get_balance.return_value['overdraft'] = 12.49
+        with self.assertRaises(HTTPException): self.flow.pay('owner', self.id, '12.50')
+        self.service.pay.assert_not_called()
+
     def test_expiry_insufficient_balance_other_owner_and_no_check(self):
         # Права, свежесть цены и депозит проверяются до списания.
         self.prepare()

@@ -16,8 +16,8 @@ from domains.airpay_purchase import public_transaction
 from domains.airpay_contract import CONTRACT_HEADER, CONTRACT_VERSION
 
 
-SAFE_POST = re.compile(r'^(jobs/[a-fA-F0-9-]{36}/cancel|prepare|check|batches/[1-9][0-9]*/(?:renew|check)|(?:legacy/)?transactions/[1-9][0-9]*/result|transactions/[1-9][0-9]*/resolve)$')
-VALID_PATH = re.compile(r'^(contract|cutover|queue|balance|services|service|prepare|check|transactions/export|legacy/transactions/[1-9][0-9]*(?:/(?:result|events))?|transactions(?:/[1-9][0-9]*(?:/(?:pay|reconcile|voucher|result|events|resolve))?)?|batches/[1-9][0-9]*(?:/(?:pay|vouchers|renew|check))?|jobs/[a-fA-F0-9-]{36}(?:/cancel)?)$')
+SAFE_POST = re.compile(r'^(diagnostics(?:/[a-fA-F0-9-]{36}/(?:next|cancel))?|jobs/[a-fA-F0-9-]{36}/cancel|prepare|check|batches/[1-9][0-9]*/(?:renew|check)|(?:legacy/)?transactions/[1-9][0-9]*/result|transactions/[1-9][0-9]*/resolve)$')
+VALID_PATH = re.compile(r'^(diagnostics(?:/[a-fA-F0-9-]{36}(?:/(?:next|cancel))?)?|contract|cutover|queue|balance|services|service|prepare|check|transactions/export|legacy/transactions/[1-9][0-9]*(?:/(?:result|events))?|transactions(?:/[1-9][0-9]*(?:/(?:pay|reconcile|voucher|result|events|resolve))?)?|batches/[1-9][0-9]*(?:/(?:pay|vouchers|renew|check))?|jobs/[a-fA-F0-9-]{36}(?:/cancel)?)$')
 NEW_WORK = re.compile(r'^(jobs/[a-fA-F0-9-]{36}/cancel|prepare|check|transactions/[1-9][0-9]*/pay|batches/[1-9][0-9]*/(?:pay|check|renew))$')
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 
@@ -112,7 +112,9 @@ def mount_airpay_hub_proxy(app, *, get_current_user, environ, restricted=False, 
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoTunnelRedirects())
             req = urllib.request.Request(target, data=data, headers=headers, method=method)
             try:
-                with opener.open(req, timeout=30) as response:
+                # Диагностический шаг последовательно читает service и check; ему нужен запас сверх одного сетевого таймаута.
+                diagnostic_step = path.startswith('diagnostics') and method == 'POST'
+                with opener.open(req, timeout=250 if diagnostic_step else 30) as response:
                     if response.headers.get(CONTRACT_HEADER) != CONTRACT_VERSION:
                         raise HTTPException(502, 'Supplier Hub требует обновления контракта Airpay')
                     raw = response.read(MAX_RESPONSE_BYTES + 1)

@@ -29,6 +29,16 @@ class AirpayHubClientTests(unittest.TestCase):
                               restricted=restricted, legacy_connect=legacy)
         return TestClient(app)
 
+    def test_diagnostics_are_owner_only_and_available_without_payment_permission(self):
+        # Новый маршрут использует тот же Hub и handshake, сохраняя запрет любых платёжных методов локально.
+        run_id = 'bbf9af7b-4f3e-4847-9574-ef2e9cc27cf5'
+        client = self.client(restricted=True)
+        for path in ('diagnostics', f'diagnostics/{run_id}/next', f'diagnostics/{run_id}/cancel'):
+            self.assertEqual(client.post('/integrations/airpay/' + path, json={}).status_code, 200)
+        self.opener.open.reset_mock()
+        self.assertEqual(self.client(role='manager').get('/integrations/airpay/diagnostics').status_code, 403)
+        self.opener.open.assert_not_called()
+
     def test_server_credentials_and_same_payload_are_forwarded(self):
         # CRM Bearer не передаётся поставщику, а idempotency key сохраняется без подмены.
         response = self.client().post('/integrations/airpay/prepare', json={'preparation_key': 'stable'}, headers={'Authorization': 'Bearer CRM-SECRET'})

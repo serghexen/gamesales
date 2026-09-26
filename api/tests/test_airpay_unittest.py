@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.testclient import TestClient
 from domains.airpay_api import mount_airpay_routes
-from domains.airpay_service import build_airpay_service, normalize_airpay_balance, normalize_airpay_services
+from domains.airpay_service import build_airpay_service, normalize_airpay_balance, normalize_airpay_services, available_airpay_funds
 from domains.interhub_ssh_transport import NoTunnelRedirects, TunnelHTTPSHandler
 from scripts.run_airpay_tunnel import build_tunnel_command
 
@@ -41,6 +41,16 @@ class AirpayServiceTests(unittest.TestCase):
         self.patcher = patch('domains.airpay_service.urllib.request.build_opener', return_value=self.opener)
         self.build_opener = self.patcher.start()
         self.addCleanup(self.patcher.stop)
+
+    def test_available_funds_validate_credit_and_preserve_decimal_precision(self):
+        # Не используем некорректный лимит и не превращаем отрицательный кредит в доступные деньги.
+        from decimal import Decimal
+        self.assertEqual(available_airpay_funds({'configured': True, 'balance': '-4343.82', 'overdraft': '5000'}), Decimal('656.18'))
+        self.assertEqual(available_airpay_funds({'configured': True, 'balance': '0.10', 'overdraft': '.20'}), Decimal('.30'))
+        self.assertEqual(available_airpay_funds({'configured': True, 'balance': '-5001', 'overdraft': '5000'}), Decimal('-1'))
+        for value in (None, True, -1, 'NaN', 'Infinity', 'wrong'):
+            with self.subTest(value=value), self.assertRaises(HTTPException):
+                available_airpay_funds({'configured': True, 'balance': 0, 'overdraft': value})
 
     def test_balance_basic_auth_and_no_private_agent_fields(self):
         # Basic уходит только поставщику, а UI получает суммы без имени и ID агента.
