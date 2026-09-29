@@ -173,12 +173,10 @@ def _normalize_finance_accrual(row: dict[str, Any], day: date) -> dict[str, Any]
     posting = row.get("posting") or {}
     for product in posting.get("products") or []:
         product_commission = product.get("commission") or {}
-        # Цена за единицу не учитывает весь объём: берём реализацию и компенсации скидок.
-        gross += sum(
-            (_accrual_money(product_commission.get(key)) for key in ("sale_amount", "bonus", "coinvestment")),
-            Decimal("0"),
-        )
-        commission += _accrual_money(product_commission.get("sale_commission"))
+        # Реализация уже учтена в sale_amount: баллы и софинансирование повторно не прибавляем.
+        gross += _accrual_money(product_commission.get("sale_amount"))
+        # Для выплаты нужна итоговая комиссия, а не комиссия по прайс-листу sale_commission.
+        commission += _accrual_money(product_commission.get("commission"))
         delivery = product.get("delivery") or {}
         # Итог доставки уже включает услуги: не складываем его повторно с детализацией.
         services.append({"name": "delivery", "price": _accrual_money(delivery.get("total_accrued"))})

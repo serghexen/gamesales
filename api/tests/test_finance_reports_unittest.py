@@ -10,6 +10,7 @@ except Exception:  # pragma: no cover
 
 import app as app_module
 from domains import finance_api as finance_api_module
+from domains import ozon_service as ozon_service_module
 from domains.purchase_cost_sql import PAID_VOUCHER_COST_SQL, purchase_cost_rate_sql
 
 
@@ -996,17 +997,27 @@ class FinanceReportsTests(unittest.TestCase):
 
     # Ручная синхронизация Ozon должна создавать дневные gross/expense проводки из финансовых операций.
     def test_finance_ozon_sync_creates_daily_gross_and_expense_entries(self):
-        ozon_rows = [{"operation_id": 10}, {"operation_id": 11}]
-        daily_rows = [
+        # Пропускаем ответ нового API через настоящий расчёт до сохранения дневных проводок.
+        accruals = [
             {
-                "biz_date": date(2026, 6, 1),
-                "gross_amount": "1200.00",
-                "expense_amount": "430.00",
-                "payout_amount": "770.00",
-                "external_key_base": "ozon:asat:finance-transactions:daily:2026-06-01",
-                "comment": "Ozon ASAT; финансовые операции за 2026-06-01; строк 2",
-                "payload_json": {"provider": "ozon", "store_code": "asat", "payout_amount": "770.00"},
-            }
+                "accrual_id": 10, "date": "2026-06-01", "accrued_category": "POSTING",
+                "total_amount": {"amount": "870.00", "currency": "RUB"},
+                "posting": {"products": [{
+                    "commission": {
+                        "sale_amount": {"amount": "1200.00", "currency": "RUB"},
+                        "bonus": {"amount": "100.00", "currency": "RUB"},
+                        "coinvestment": {"amount": "20.00", "currency": "RUB"},
+                        "sale_commission": {"amount": "-350.00", "currency": "RUB"},
+                        "commission": {"amount": "-300.00", "currency": "RUB"},
+                    },
+                    "delivery": {"total_accrued": {"amount": "-30.00", "currency": "RUB"}},
+                }]},
+            },
+            {
+                "accrual_id": 11, "date": "2026-06-01", "accrued_category": "NON_ITEM",
+                "total_amount": {"amount": "-100.00", "currency": "RUB"},
+                "non_item_fee": {"type_id": 1, "accrued": {"amount": "-100.00", "currency": "RUB"}},
+            },
         ]
         script = [
             {"one": (99,)},
@@ -1074,8 +1085,8 @@ class FinanceReportsTests(unittest.TestCase):
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script, sql_collector=sql_collector)),
-            patch.object(finance_api_module, "fetch_ozon_finance_transactions", return_value=ozon_rows),
-            patch.object(finance_api_module, "aggregate_ozon_finance_transactions", return_value=daily_rows),
+            patch.object(ozon_service_module, "_request_json", return_value={"accruals": accruals, "last_id": ""}) as ozon_request,
+            patch.object(ozon_service_module, "_required_store_env", return_value="test-only"),
             patch.dict(os.environ, {"FINANCE_OZON_SYNC_INLINE": "1"}),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
             patch.object(app_module, "JWT_ALG", "HS256"),
@@ -1094,6 +1105,8 @@ class FinanceReportsTests(unittest.TestCase):
         self.assertEqual(body["result"]["store_code"], "asat")
         self.assertEqual(body["result"]["created_rows"], 1)
         self.assertEqual(body["result"]["failed_rows"], 0)
+        self.assertEqual(body["result"]["total_rows"], 2)
+        self.assertEqual(ozon_request.call_args.kwargs["payload"], {"date": "2026-06-01", "last_id": ""})
         self.assertTrue(any("finance.entries" in sql and "input_channel" in sql for sql in sql_collector))
 
     # Повторная синхронизация Яндекса должна обновлять дневной итог, если отчет пересчитался.

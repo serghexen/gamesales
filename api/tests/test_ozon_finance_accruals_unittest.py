@@ -27,7 +27,7 @@ class OzonFinanceAccrualsTest(unittest.TestCase):
         self.day = date(2026, 9, 29)
 
     def test_daily_totals_include_returns_discounts_and_all_fee_categories(self):
-        # Разные категории влияют на выплату один раз, а скидки сохраняются в начислениях.
+        # Разные категории влияют на выплату один раз; баллы не увеличивают готовую реализацию.
         accruals = [
             {
                 "accrual_id": 101, "date": "2026-09-29", "accrued_category": "POSTING",
@@ -35,8 +35,8 @@ class OzonFinanceAccrualsTest(unittest.TestCase):
                 "posting": {"products": [{
                     "commission": {
                         "seller_price": money("500"), "sale_price": money("450"),
-                        "sale_amount": money("900"), "bonus": money("80"), "coinvestment": money("20"),
-                        "sale_commission": money("-150"), "commission": money("-50"),
+                        "sale_amount": money("1000"), "bonus": money("80"), "coinvestment": money("20"),
+                        "sale_commission": money("-200"), "commission": money("-150"),
                     },
                     "delivery": {"total_accrued": money("-70"), "services": [{"accrued": money("-70"), "type_id": 1}]},
                 }]},
@@ -45,7 +45,7 @@ class OzonFinanceAccrualsTest(unittest.TestCase):
                 "accrual_id": 102, "accrued_category": "POSTING", "unit_number": "return-1",
                 "total_amount": money("-180"),
                 "posting": {"products": [{
-                    "commission": {"sale_amount": money("-200"), "sale_commission": money("30")},
+                    "commission": {"sale_amount": money("-200"), "sale_commission": money("40"), "commission": money("30")},
                     "delivery": {"total_accrued": money("-10")},
                 }]},
             },
@@ -80,6 +80,34 @@ class OzonFinanceAccrualsTest(unittest.TestCase):
         result = ozon_service.aggregate_ozon_finance_transactions([row], fallback_date=self.day)[0]
         self.assertEqual(result["gross_amount"], Decimal("125.50"))
         self.assertEqual(result["expense_amount"], Decimal("0"))
+
+    def test_discount_fields_do_not_change_sale_or_refund_amount(self):
+        # Встреченный в production ответ содержит баллы, уже учтённые в готовых суммах.
+        for sign in (1, -1):
+            with self.subTest(sign=sign):
+                row = ozon_service._normalize_finance_accrual({
+                    "accrued_category": "POSTING", "total_amount": money(sign * 850),
+                    "posting": {"products": [{"commission": {
+                        "sale_amount": money(sign * 1000), "seller_price": money(sign * 1000),
+                        "bonus": money(sign * 80), "coinvestment": money(sign * 20),
+                        "sale_commission": money(sign * -150), "commission": money(sign * -150),
+                    }}]},
+                }, self.day)
+                self.assertEqual(row["accruals_for_sale"], Decimal(sign * 1000))
+                self.assertEqual(row["sale_commission"], Decimal(sign * -150))
+                self.assertEqual(row["amount"], Decimal(sign * 850))
+
+    def test_final_commission_may_be_zero_with_nonzero_list_commission(self):
+        # Нулевая итоговая комиссия не должна подменяться ненулевым тарифом.
+        row = ozon_service._normalize_finance_accrual({
+            "accrued_category": "POSTING", "total_amount": money("1000"),
+            "posting": {"products": [{"commission": {
+                "sale_amount": money("1000"), "sale_commission": money("-150"),
+                "commission": money("0"), "bonus": money("150"),
+            }}]},
+        }, self.day)
+        self.assertEqual(row["sale_commission"], Decimal("0"))
+        self.assertEqual(row["accruals_for_sale"], Decimal("1000"))
 
     def test_empty_page_with_cursor_does_not_skip_following_page(self):
         # Даже пустая промежуточная страница не означает конец, пока сервер возвращает курсор.
