@@ -63,9 +63,11 @@ class OzonServiceTest(unittest.TestCase):
 
     # Пагинация должна передавать кабинетные заголовки и собирать все операции.
     def test_fetch_transactions_reads_all_pages(self):
+        # Курсор относится к одному дню и должен сбрасываться перед следующим.
         responses = [
-            _Response({"result": {"operations": [{"operation_id": 1}], "page_count": 2}}),
-            _Response({"result": {"operations": [{"operation_id": 2}], "page_count": 2}}),
+            _Response({"accruals": [{"accrual_id": 1, "total_amount": {"amount": "10", "currency": "RUB"}}], "last_id": "next"}),
+            _Response({"accruals": [{"accrual_id": 2, "total_amount": {"amount": "-2", "currency": "RUB"}}], "last_id": ""}),
+            _Response({"accruals": [], "last_id": ""}),
         ]
         with (
             patch.dict(
@@ -73,7 +75,6 @@ class OzonServiceTest(unittest.TestCase):
                 {
                     "OZON_CLIENT_ID": "client-1",
                     "OZON_API_KEY": "secret-1",
-                    "OZON_TRANSACTION_PAGE_SIZE": "1",
                 },
                 clear=False,
             ),
@@ -85,9 +86,12 @@ class OzonServiceTest(unittest.TestCase):
         first_request = urlopen.call_args_list[0].args[0]
         self.assertEqual(first_request.headers["Client-id"], "client-1")
         self.assertEqual(first_request.headers["Api-key"], "secret-1")
-        first_payload = json.loads(first_request.data.decode("utf-8"))
-        self.assertEqual(first_payload["filter"]["transaction_type"], "all")
-        self.assertEqual(first_payload["page_size"], 1)
+        self.assertTrue(all(call.args[0].full_url == "https://api-seller.ozon.ru/v1/finance/accrual/by-day" for call in urlopen.call_args_list))
+        self.assertEqual([json.loads(call.args[0].data) for call in urlopen.call_args_list], [
+            {"date": "2026-06-01", "last_id": ""},
+            {"date": "2026-06-01", "last_id": "next"},
+            {"date": "2026-06-02", "last_id": ""},
+        ])
 
     # Дневная агрегация должна сохранять равенство gross минус expense итоговой выплате Ozon.
     def test_aggregate_transactions_builds_daily_gross_and_expense(self):
@@ -158,7 +162,7 @@ class OzonServiceTest(unittest.TestCase):
     # Ошибка лимита должна вернуть пользователю время безопасного повтора.
     def test_request_json_maps_rate_limit(self):
         error = urllib.error.HTTPError(
-            url="https://api-seller.ozon.ru/v3/finance/transaction/list",
+            url="https://api-seller.ozon.ru/v1/finance/accrual/by-day",
             code=429,
             msg="Too Many Requests",
             hdrs={"Retry-After": "5"},
@@ -167,7 +171,7 @@ class OzonServiceTest(unittest.TestCase):
         with patch.object(ozon_service.urllib.request, "urlopen", side_effect=error):
             with self.assertRaisesRegex(Exception, "через 5 сек"):
                 ozon_service._request_json(
-                    "https://api-seller.ozon.ru/v3/finance/transaction/list",
+                    "https://api-seller.ozon.ru/v1/finance/accrual/by-day",
                     client_id="client-1",
                     api_key="secret-1",
                     payload={},

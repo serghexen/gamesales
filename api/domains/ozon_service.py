@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import json
@@ -129,21 +129,6 @@ def _request_json(
     return data
 
 
-def _iter_date_chunks(date_from: date, date_to: date, chunk_days: int = 30) -> Iterator[tuple[date, date]]:
-    # Делим длинный период на интервалы до 30 дней, чтобы соблюдать ограничение финансового метода Ozon.
-    cursor = date_from
-    while cursor <= date_to:
-        chunk_to = min(date_to, cursor + timedelta(days=max(1, chunk_days) - 1))
-        yield cursor, chunk_to
-        cursor = chunk_to + timedelta(days=1)
-
-
-def _ozon_timestamp(value: date, *, end_of_day: bool = False) -> str:
-    # Формируем UTC-время начала или конца дня в формате фильтра Seller API.
-    moment = datetime.combine(value, datetime.max.time() if end_of_day else datetime.min.time(), tzinfo=timezone.utc)
-    return moment.replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
 def _parse_money(value: Any) -> Decimal:
     # Преобразуем денежное поле Ozon в Decimal без потери копеек.
     text = str(value if value not in (None, "") else "0").strip().replace(" ", "").replace(",", ".")
@@ -164,13 +149,78 @@ def _parse_date(value: Any, fallback: date) -> date:
         return fallback
 
 
+def _accrual_money(value: Any, *, required: bool = False) -> Decimal:
+    # Не превращаем повреждённую сумму или другую валюту в рублёвую проводку.
+    if value is None and not required:
+        return Decimal("0")
+    if not isinstance(value, dict) or value.get("currency") != "RUB":
+        raise HTTPException(502, "Ozon accrual contains missing money or unsupported currency")
+    try:
+        amount = Decimal(str(value["amount"]))
+    except (KeyError, InvalidOperation, ValueError):
+        raise HTTPException(502, "Ozon accrual contains invalid amount")
+    if not amount.is_finite():
+        raise HTTPException(502, "Ozon accrual contains non-finite amount")
+    return amount
+
+
+def _normalize_finance_accrual(row: dict[str, Any], day: date) -> dict[str, Any]:
+    # Приводим начисления нового API к дневному учёту, сохраняя прежние ключи записей.
+    category = str(row.get("accrued_category") or "UNSPECIFIED")
+    gross = Decimal("0")
+    commission = Decimal("0")
+    services: list[dict[str, Any]] = []
+    posting = row.get("posting") or {}
+    for product in posting.get("products") or []:
+        product_commission = product.get("commission") or {}
+        # Цена за единицу не учитывает весь объём: берём реализацию и компенсации скидок.
+        gross += sum(
+            (_accrual_money(product_commission.get(key)) for key in ("sale_amount", "bonus", "coinvestment")),
+            Decimal("0"),
+        )
+        commission += _accrual_money(product_commission.get("sale_commission"))
+        delivery = product.get("delivery") or {}
+        # Итог доставки уже включает услуги: не складываем его повторно с детализацией.
+        services.append({"name": "delivery", "price": _accrual_money(delivery.get("total_accrued"))})
+
+    fees = list((row.get("container_fees") or {}).get("fees") or [])
+    for item in (row.get("item_fees") or {}).get("fees") or []:
+        fees.extend(item.get("fees") or [])
+    if row.get("non_item_fee"):
+        fees.append(row["non_item_fee"])
+    for fee in fees:
+        services.append({"name": f"type_id:{fee.get('type_id')}", "price": _accrual_money(fee.get("accrued"), required=True)})
+
+    # Дата запроса известна даже при пустой дате строки; чужой день не записываем в этот период.
+    raw_date = row.get("date") or day.isoformat()
+    if raw_date != day.isoformat():
+        raise HTTPException(502, "Ozon accrual date differs from requested day")
+    total = _accrual_money(row.get("total_amount"), required=True)
+    # До записи сверяем разложение отправления с итогом API, чтобы новый формат не исказил выручку.
+    if category == "POSTING":
+        calculated_total = gross + commission + sum((service["price"] for service in services), Decimal("0"))
+        if calculated_total.quantize(Decimal("0.01")) != total.quantize(Decimal("0.01")):
+            raise HTTPException(502, "Ozon: сумма продажи, комиссий и услуг не совпадает с итогом начисления; требуется сверка формата API")
+    return {
+        "operation_id": row.get("accrual_id"),
+        "operation_date": raw_date,
+        "operation_type": category,
+        "accruals_for_sale": gross,
+        "sale_commission": commission,
+        "amount": total,
+        "posting": {"posting_number": row.get("unit_number") if category == "POSTING" else ""},
+        "services": services,
+        "report_type": "finance_accrual_by_day_v1",
+    }
+
+
 def fetch_ozon_finance_transactions(
     date_from: date,
     date_to: date,
     store_code: str = "asat",
     progress: Callable[[str], None] | None = None,
 ) -> list[dict[str, Any]]:
-    # Загружаем все финансовые операции Ozon по страницам и месячным интервалам.
+    # Старый transaction/list отключён: читаем каждый день через курсор нового API.
     if date_to < date_from:
         raise HTTPException(400, "date_to must be >= date_from")
     normalized_store_code = normalize_ozon_store_code(store_code)
@@ -178,45 +228,38 @@ def fetch_ozon_finance_transactions(
     api_key = _required_store_env("API_KEY", store_code=normalized_store_code)
     base_url = str(os.getenv("OZON_SELLER_BASE_URL", OZON_SELLER_BASE_URL) or OZON_SELLER_BASE_URL).rstrip("/")
     timeout = max(5, _env_int("OZON_TIMEOUT_SEC", 60))
-    page_size = min(1000, max(1, _env_int("OZON_TRANSACTION_PAGE_SIZE", 1000)))
     max_pages = max(1, _env_int("OZON_TRANSACTION_MAX_PAGES", 1000))
     rows: list[dict[str, Any]] = []
 
-    for chunk_from, chunk_to in _iter_date_chunks(date_from, date_to):
+    for offset in range((date_to - date_from).days + 1):
+        day = date_from + timedelta(days=offset)
+        last_id = ""
+        seen_cursors: set[str] = set()
         for page in range(1, max_pages + 1):
             if progress:
-                progress(f"Загружаем операции Ozon {chunk_from.isoformat()} - {chunk_to.isoformat()}: страница {page}")
+                progress(f"Загружаем начисления Ozon {day.isoformat()}: страница {page}")
             data = _request_json(
-                f"{base_url}/v3/finance/transaction/list",
+                f"{base_url}/v1/finance/accrual/by-day",
                 client_id=client_id,
                 api_key=api_key,
-                payload={
-                    "filter": {
-                        "date": {
-                            "from": _ozon_timestamp(chunk_from),
-                            "to": _ozon_timestamp(chunk_to, end_of_day=True),
-                        },
-                        "operation_type": [],
-                        "posting_number": "",
-                        "transaction_type": "all",
-                    },
-                    "page": page,
-                    "page_size": page_size,
-                },
+                payload={"date": day.isoformat(), "last_id": last_id},
                 timeout=timeout,
             )
-            result = data.get("result")
-            if not isinstance(result, dict):
-                raise HTTPException(502, "Ozon Seller API response does not contain result")
-            operations = result.get("operations")
-            if not isinstance(operations, list):
-                raise HTTPException(502, "Ozon Seller API response does not contain operations")
-            rows.extend(row for row in operations if isinstance(row, dict))
-            page_count = int(result.get("page_count") or 0)
-            if not operations or (page_count > 0 and page >= page_count) or len(operations) < page_size:
+            accruals = data.get("accruals")
+            if not isinstance(accruals, list) or any(not isinstance(row, dict) for row in accruals):
+                raise HTTPException(502, "Ozon Seller API response does not contain valid accruals")
+            rows.extend(_normalize_finance_accrual(row, day) for row in accruals)
+            next_id = data.get("last_id")
+            if not isinstance(next_id, str):
+                raise HTTPException(502, "Ozon accrual response does not contain last_id")
+            if not next_id:
                 break
+            if next_id in seen_cursors:
+                raise HTTPException(502, "Ozon accrual pagination did not advance")
+            seen_cursors.add(next_id)
+            last_id = next_id
         else:
-            raise HTTPException(502, f"Ozon transaction list exceeded {max_pages} pages")
+            raise HTTPException(502, f"Ozon accrual list exceeded {max_pages} pages for {day.isoformat()}")
     return rows
 
 
@@ -551,7 +594,7 @@ def aggregate_ozon_finance_transactions(
     fallback_date: date,
     store_code: str = "asat",
 ) -> list[dict[str, Any]]:
-    # Сворачиваем операции Ozon по дням и сохраняем расшифровку удержаний для сверки с кабинетом.
+    # Сворачиваем операции по дням; формат источника храним отдельно от стабильного ключа записи.
     normalized_store_code = normalize_ozon_store_code(store_code)
     groups: dict[date, dict[str, Any]] = {}
     for row in rows:
@@ -573,6 +616,7 @@ def aggregate_ozon_finance_transactions(
                 "posting_numbers": [],
                 "operation_types": set(),
                 "service_breakdown": {},
+                "report_type": row.get("report_type") or "finance_transaction_list_v3",
             },
         )
         accrual = _parse_money(row.get("accruals_for_sale"))
@@ -629,7 +673,7 @@ def aggregate_ozon_finance_transactions(
                 "payload_json": {
                     "provider": "ozon",
                     "store_code": normalized_store_code,
-                    "report_type": "finance_transaction_list_v3",
+                    "report_type": group["report_type"],
                     "aggregation": "daily",
                     "biz_date": biz_date.isoformat(),
                     "rows_count": group["rows_count"],
