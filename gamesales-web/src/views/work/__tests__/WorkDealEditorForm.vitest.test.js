@@ -258,10 +258,11 @@ describe('WorkDealEditorForm template', () => {
   })
 
   it('uses the same protected purchase cost input in sale create and edit forms', () => {
-    // Обе формы используют проверенный компонент, чтобы блокировка не разошлась между режимами.
+    // Обе формы отдают поле и подпись компоненту, чтобы скрытие закупа не зависело от режима.
     const source = readTemplateSource()
     const purchaseInputs = source.match(/<WorkDealPurchaseCostInput[\s\S]*?\/>/g) || []
 
+    expect(source).not.toContain('<span class="label">Закупочная цена</span>')
     expect(purchaseInputs).toHaveLength(2)
     for (const input of purchaseInputs) {
       expect(input).toContain(':clamp-price="clampPrice"')

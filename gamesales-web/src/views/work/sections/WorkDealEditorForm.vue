@@ -876,15 +876,12 @@
                             </select>
                           </label>
                             <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--price">
-                              <label class="field">
-                                <span class="label">Закупочная цена</span>
-                                <WorkDealPurchaseCostInput
-                                  :deal="editDeal"
-                                  :max="maxPrice"
-                                  :clamp-price="clampPrice"
-                                  :readonly="dealEditMode === 'view'"
-                                />
-                              </label>
+                              <WorkDealPurchaseCostInput
+                                :deal="editDeal"
+                                :max="maxPrice"
+                                :clamp-price="clampPrice"
+                                :readonly="dealEditMode === 'view'"
+                              />
                               <label class="field">
                                 <span class="label">Сумма продажи</span>
                                 <input
@@ -1600,14 +1597,11 @@
                             </select>
                           </label>
                             <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--price">
-                              <label class="field">
-                                <span class="label">Закупочная цена</span>
-                                <WorkDealPurchaseCostInput
-                                  :deal="newDeal"
-                                  :max="maxPrice"
-                                  :clamp-price="clampPrice"
-                                />
-                              </label>
+                              <WorkDealPurchaseCostInput
+                                :deal="newDeal"
+                                :max="maxPrice"
+                                :clamp-price="clampPrice"
+                              />
                               <label class="field">
                                 <span class="label">Сумма продажи</span>
                                 <input

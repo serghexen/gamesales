@@ -1,16 +1,18 @@
 <template>
-  <input
-    class="input"
-    type="number"
-    min="0"
-    step="0.01"
-    :max="max"
-    :value="voucherDeal && !deal.deal_id ? '' : deal.purchase_cost"
-    :disabled="voucherDeal"
-    :readonly="readonly"
-    :title="voucherDeal ? 'Сохранённый закуп доступен только для просмотра. Новые покупки учитываются по ваучерам' : undefined"
-    @input="updateManualCost"
-  />
+  <!-- В ваучерных сделках скрываем вместе поле и подпись, сохраняя закуп в учёте. -->
+  <label v-if="!voucherDeal" class="field">
+    <span class="label">Закупочная цена</span>
+    <input
+      class="input"
+      type="number"
+      min="0"
+      step="0.01"
+      :max="max"
+      :value="deal.purchase_cost"
+      :readonly="readonly"
+      @input="updateManualCost"
+    />
+  </label>
 </template>
 
 <script setup>
@@ -24,11 +26,11 @@ const props = defineProps({
   clampPrice: { type: Function, required: true },
 })
 
-// В сохранённых сделках показываем закуп, включая исторический; ручной ввод остаётся закрытым.
+// Единое правило скрывает закуп ваучеров в новой и сохранённой карточке для всех ролей.
 const voucherDeal = computed(() => isSupplierVoucherDeal(props.deal))
 
 function updateManualCost(event) {
-  // Заблокированное поле не меняет учёт даже при программно отправленном событии ввода.
+  // Ручной ввод меняет закуп только в обычной услуге и вне режима просмотра.
   if (voucherDeal.value || props.readonly) return
   props.deal.purchase_cost = props.clampPrice(event.target.value === '' ? '' : Number(event.target.value))
 }

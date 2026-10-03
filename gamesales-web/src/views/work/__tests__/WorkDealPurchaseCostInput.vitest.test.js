@@ -4,32 +4,43 @@ import { mount } from '@vue/test-utils'
 import WorkDealPurchaseCostInput from '../sections/WorkDealPurchaseCostInput.vue'
 
 describe('WorkDealPurchaseCostInput', () => {
-  it.each(['TR', 'PL'])('shows saved %s cost without allowing edits in either form mode', async (region) => {
-    // Старый закуп виден и в просмотре, и в редактировании, но событие ввода не меняет сумму.
+  it.each(['TR', 'PL'])('hides saved %s cost in view and edit modes without changing accounting', async (region) => {
+    // Исторический закуп остаётся в модели, но ни поле, ни подпись не попадают в карточку.
     const deal = reactive({ deal_id: 42, deal_type_code: 'sale', region_code: region, purchase_cost: 475.04 })
     const clampPrice = vi.fn(Number)
     const wrapper = mount(WorkDealPurchaseCostInput, { props: { deal, max: 100000, clampPrice } })
-    const input = wrapper.get('input')
-    expect(input.element.value).toBe('475.04')
-    expect(input.element.disabled).toBe(true)
-    input.element.value = '123'
-    input.element.dispatchEvent(new Event('input'))
-    expect(clampPrice).not.toHaveBeenCalled()
-    expect(deal.purchase_cost).toBe(475.04)
+    expect(wrapper.find('input').exists()).toBe(false)
+    expect(wrapper.find('label').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('475.04')
     await wrapper.setProps({ readonly: true })
-    expect(input.element.disabled).toBe(true)
+    expect(wrapper.find('input').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Закупочная цена')
+    expect(deal.purchase_cost).toBe(475.04)
+    expect(clampPrice).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
-  it.each(['TR', 'PL'])('keeps new %s cost empty and disabled until the deal is saved', async (region) => {
-    // Новая карточка не предлагает ручной ввод; после сохранения показывает учётную сумму.
+  it.each(['TR', 'PL'])('keeps new %s cost hidden after saving and buying vouchers', async (region) => {
+    // Сохранение и получение суммы закупа не раскрывают скрытое поле.
     const deal = reactive({ deal_type_code: 'sale', region_code: region, purchase_cost: 0 })
     const wrapper = mount(WorkDealPurchaseCostInput, { props: { deal, max: 100000, clampPrice: Number } })
-    expect(wrapper.get('input').element.value).toBe('')
-    expect(wrapper.get('input').element.disabled).toBe(true)
+    expect(wrapper.find('label').exists()).toBe(false)
     await wrapper.setProps({ deal: { ...deal, deal_id: 42, purchase_cost: 950.08 } })
-    expect(wrapper.get('input').element.value).toBe('950.08')
-    expect(wrapper.get('input').element.disabled).toBe(true)
+    expect(wrapper.find('input').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('950.08')
+    wrapper.unmount()
+  })
+
+  it('updates cost visibility when the region changes without clearing its value', async () => {
+    // Переключение региона меняет видимость поля, но не стирает учётную сумму.
+    const deal = reactive({ deal_type_code: 'sale', region_code: 'US', purchase_cost: 50 })
+    const wrapper = mount(WorkDealPurchaseCostInput, { props: { deal, max: 100000, clampPrice: Number } })
+    expect(wrapper.get('input').element.value).toBe('50')
+    await wrapper.setProps({ deal: { ...deal, region_code: 'TR' } })
+    expect(wrapper.find('label').exists()).toBe(false)
+    await wrapper.setProps({ deal })
+    expect(wrapper.get('input').element.value).toBe('50')
+    expect(wrapper.text()).toContain('Закупочная цена')
     wrapper.unmount()
   })
 
