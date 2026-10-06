@@ -1,4 +1,4 @@
-"""Узкий read-only контракт текущих остатков для Supplier Hub и Seller."""
+"""Узкий read-only контракт текущих цен и остатков для Supplier Hub и Seller."""
 from hmac import compare_digest
 import os
 from datetime import datetime, timezone
@@ -7,19 +7,23 @@ from domains.interhub_stock_cache import detail_items
 
 
 def stock_item(row):
-    # Отдаём только наличие и тип ошибки: цены, ключи и сырые ответы за границу CRM не выходят.
-    service_id, nominal_id, status, count, checked_at, error, response, peer_ok = row
+    # Передаём цену и даты отдельно от остатков, без сырых ответов и текста ошибок.
+    (service_id, nominal_id, status, count, checked_at, error, response, peer_ok,
+     price, currency, price_updated_at, price_checked_at, price_error) = row
     items, malformed = detail_items(response)
     scope = ''
     if error:
         # Невалидный/пустой ответ услуги нельзя принять за ошибку отдельного номинала.
         scope = 'item' if items and not malformed and peer_ok else 'common'
     return dict(service_id=str(service_id), nominal_id=str(nominal_id), status=status,
-                stock_count=count, checked_at=checked_at, error_scope=scope)
+                stock_count=count, checked_at=checked_at, error_scope=scope,
+                price=str(price) if price is not None else None, currency=currency,
+                price_updated_at=price_updated_at, price_checked_at=price_checked_at,
+                price_error=bool(price_error))
 
 
 def mount_supplier_stock_snapshot(app, *, db, dsn):
-    # Отдельный машинный секрет разрешает только чтение уже сохранённых остатков.
+    # Отдельный машинный секрет разрешает только чтение уже сохранённых цен и остатков.
     @app.get('/internal/supplier-stock/interhub', include_in_schema=False)
     def snapshot(x_supplier_stock_token: str = Header(default='')):
         expected = os.getenv('SUPPLIER_STOCK_SNAPSHOT_TOKEN', '')
@@ -31,7 +35,8 @@ def mount_supplier_stock_snapshot(app, *, db, dsn):
                      ELSE c.stock_checked_at END,c.stock_error,c.stock_attempt_response,
                 EXISTS(SELECT 1 FROM app.supplier_catalog_current peer
                   WHERE peer.supplier_code=c.supplier_code AND peer.service_id=c.service_id
-                    AND peer.stock_checked_at=c.stock_checked_at AND peer.stock_error='' AND peer.stock_count IS NOT NULL)
+                    AND peer.stock_checked_at=c.stock_checked_at AND peer.stock_error='' AND peer.stock_count IS NOT NULL),
+                c.price,c.currency,c.price_updated_at,c.price_checked_at,c.price_error
                 FROM app.supplier_catalog_current c
                 WHERE c.supplier_code='interhub' AND c.service_type='VOUCHER'
                 ORDER BY c.service_id,c.nominal_id''')
