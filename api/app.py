@@ -443,6 +443,7 @@ from domains.voucher_warehouse_service import VoucherWarehouseService
 from domains.voucher_catalog_api import mount_voucher_catalog_routes
 from domains.voucher_catalog_service import InterhubVoucherProvider, VoucherCatalogService
 from domains.supplier_catalog import SupplierCatalog
+from domains.supplier_stock_snapshot import mount_supplier_stock_snapshot
 from domains.supplier_hub_api import mount_supplier_hub_routes
 from domains.ns_gift_api import mount_ns_gift_routes
 from domains.rbac_api import mount_rbac_routes
@@ -1473,6 +1474,8 @@ except Exception as airpay_setup_error:
     def airpay_unavailable(path: str, user=Depends(get_current_user)):
         # Не допускаем автоматический fallback и не выдаём неисправный модуль за готовый к работе.
         raise HTTPException(503, 'Airpay недоступен: проверьте установку и серверные настройки подключения.')
+
+mount_supplier_stock_snapshot(app, db=pooled_psycopg, dsn=DB_DSN)
 
 shared_supplier_catalog = SupplierCatalog(pooled_psycopg, DB_DSN,
     InterhubVoucherProvider(interhub_service.get_catalog, interhub_get_service_detail, interhub_calculate,

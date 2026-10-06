@@ -193,3 +193,11 @@ In **Payments → Saved vouchers**, new entries remain new until an owner marks 
 `GAMESALES_SUPPLIER_OFFLINE=1` disables API background tasks, InterHub price/stock polling and purchase/refresh endpoints. The service list and balance remain live, using the configured InterHub proxy/SSH tunnel locally. Staging Compose explicitly enables it. Local `.env.dev` can enable the same mode for UI review against staging. Existing saved data and warehouse/catalogue edits remain available; price and stock polling is not performed. This flag is not enabled in production Compose. After changing it, restart the API. Do not remove the flag on staging to test a purchase.
 
 The purchase pipeline still uses live calculate/check/pay in production. Supplier Hub and Seller mappings/fulfillment are unchanged. The new shared store is informative and does not authorize a purchase.
+
+### Read-only остатки для Seller
+
+`GET /internal/supplier-stock/interhub` читает единое хранилище текущих остатков.
+Доступ — только по отдельному `X-Supplier-Stock-Token`, соответствующему
+`SUPPLIER_STOCK_SNAPSHOT_TOKEN`. Без секрета endpoint закрыт. Предназначен для
+Supplier Hub, не выполняет опросов Интерхаба и не отдаёт цены, ключи или сырые
+ответы. Покупки CRM/Seller продолжают работать по прежнему контракту Hub.
