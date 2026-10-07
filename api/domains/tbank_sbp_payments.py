@@ -133,7 +133,7 @@ def tbank_settings() -> TBankSettings:
 
 
 def payment_receipt(*, amount: int, description: str) -> dict[str, Any]:
-    """Формирует чек аванса ФФД 1.2, сохраняя описание оператора и полную сумму."""
+    """Формирует чек полного расчёта за услугу ФФД 1.2, сохраняя описание и сумму."""
     email = str(os.getenv("TBANK_RECEIPT_EMAIL", "")).strip().lower()
     taxation = str(os.getenv("TBANK_RECEIPT_TAXATION", "")).strip().lower()
     tax = str(os.getenv("TBANK_RECEIPT_TAX", "")).strip().lower()
@@ -154,8 +154,8 @@ def payment_receipt(*, amount: int, description: str) -> dict[str, Any]:
                 "Quantity": 1,
                 "Amount": amount,
                 "Tax": tax,
-                "PaymentMethod": "advance",
-                "PaymentObject": "payment",
+                "PaymentMethod": "full_payment",
+                "PaymentObject": "service",
                 "MeasurementUnit": "шт",
             }
         ],

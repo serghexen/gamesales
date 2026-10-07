@@ -56,8 +56,8 @@ class TBankSbpPaymentsTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             qr_data_url('<svg xmlns="http://www.w3.org/2000/svg"><foreignObject /></svg>')
 
-    def test_receipt_uses_operator_description_as_ffd_12_advance(self) -> None:
-        # Проверяет признаки аванса и сохранение названия, введённого оператором.
+    def test_receipt_uses_operator_description_as_ffd_12_service_full_payment(self) -> None:
+        # Проверяет полный расчёт за услугу и сохранение названия оператора.
         with patch.dict(
             "os.environ",
             {
@@ -72,11 +72,11 @@ class TBankSbpPaymentsTests(unittest.TestCase):
         self.assertEqual(receipt["Email"], "asat@asatmail.com")
         self.assertEqual(receipt["Taxation"], "usn_income_outcome")
         self.assertEqual(receipt["Items"][0]["Name"], "A Way Out для PS5")
-        self.assertEqual(receipt["Items"][0]["PaymentObject"], "payment")
-        self.assertEqual(receipt["Items"][0]["PaymentMethod"], "advance")
+        self.assertEqual(receipt["Items"][0]["PaymentObject"], "service")
+        self.assertEqual(receipt["Items"][0]["PaymentMethod"], "full_payment")
         self.assertEqual(receipt["Items"][0]["Tax"], "vat105")
 
-    def test_advance_init_preserves_description_and_gross_amount(self) -> None:
+    def test_service_full_payment_init_preserves_description_and_gross_amount(self) -> None:
         # НДС не меняет сумму, а шаблон и произвольное описание одинаково доходят до банка и чека.
         captured = []
         client = TBankClient(TBankSettings("https://example.test/v2", "Terminal", "secret", "n", "s", "f", 3))
@@ -104,8 +104,8 @@ class TBankSbpPaymentsTests(unittest.TestCase):
                         self.assertEqual(items[0]["Name"], description)
                         self.assertEqual(items[0]["Price"] * items[0]["Quantity"], amount)
                         self.assertEqual(items[0]["Tax"], "vat105")
-                        self.assertEqual(items[0]["PaymentMethod"], "advance")
-                        self.assertEqual(items[0]["PaymentObject"], "payment")
+                        self.assertEqual(items[0]["PaymentMethod"], "full_payment")
+                        self.assertEqual(items[0]["PaymentObject"], "service")
 
     def test_receipt_rejects_missing_or_invalid_tax_configuration(self) -> None:
         # При ошибке налоговых настроек запрещаем формирование некорректного чека.
