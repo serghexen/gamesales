@@ -17,6 +17,8 @@ from fastapi.responses import Response
 from openpyxl import Workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl.writer.theme import theme_xml
 from openpyxl.utils import get_column_letter
 
 MSK = ZoneInfo('Europe/Moscow')
@@ -204,44 +206,93 @@ def assemble_rows(sales, matches, catalog, types, start, end):
 
 
 def build_xlsx(rows):
-    # В файле только название магазина и таблица; пустых магазинов, дат периода и счётчиков нет.
+    # Повторяем оформление выгрузок из чата; неподтверждённые цены находятся отдельным блоком внизу.
     if not rows:
         raise HTTPException(404, 'За выбранный период продаж ваучеров нет')
     workbook = Workbook(); workbook.remove(workbook.active)
+    # Цвет штатной полосатой таблицы совпадает с темой эталонного файла.
+    workbook.loaded_theme = theme_xml.replace('4F81BD', '156082').encode()
     groups = defaultdict(list)
     for row in rows:
         groups[row['connection_id']].append(row)
     names = set()
-    for cid,items in groups.items():
+
+    def write_header(sheet, number):
+        # Одинаковые заголовки основной таблицы и нижнего блока помогают сравнивать строки.
+        for column, label in enumerate(HEADERS, 1):
+            cell = sheet.cell(number, column, label)
+            cell.fill = PatternFill('solid', fgColor='243B53')
+            cell.font = Font(name='Arial', size=11, bold=True, color='FFFFFF')
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+        sheet.row_dimensions[number].height = 30
+
+    def write_items(sheet, items, first):
+        # Сохраняем числовые цены, даты, комментарии и цвета подтверждённых ручных выдач/пула.
+        for number, item in enumerate(items, first):
+            values = [item['order'], item['service'], item['nominal'],
+                      item['amount'] if item['amount'] is not None else 'Не подтверждена',
+                      item['date'], item['comment']]
+            color = {'manual':'FFF1C9', 'pool':'ECE3F8'}.get(item['kind'])
+            if item['amount'] is None:
+                color = 'FBE4DF'
+            for column, value in enumerate(values, 1):
+                cell = sheet.cell(number, column, value)
+                cell.font = Font(name='Arial', size=11, color='243B53')
+                cell.alignment = Alignment(vertical='center', horizontal='right' if column in (4,5) else 'left')
+                if color:
+                    cell.fill = PatternFill('solid', fgColor=color)
+            sheet.row_dimensions[number].height = 25
+            sheet.cell(number,1).number_format = '@'
+            sheet.cell(number,4).number_format = '#,##0.00'
+            sheet.cell(number,5).number_format = 'dd/mm/yyyy hh:mm'
+            if item['detail']:
+                sheet.cell(number,6).comment = Comment(item['detail'], 'CRM')
+
+    for index, items in enumerate(groups.values(), 1):
         title = re.sub(r'[\\/*?:\[\]]', '_', items[0]['shop']).strip("'")[:31] or 'Магазин'
-        base = title; index = 1
+        base = title; suffix_index = 1
         while title.lower() in names:
-            index += 1; suffix = f' ({index})'; title = base[:31-len(suffix)]+suffix
+            suffix_index += 1; suffix = f' ({suffix_index})'; title = base[:31-len(suffix)]+suffix
         names.add(title.lower()); sheet = workbook.create_sheet(title)
         sheet.sheet_view.showGridLines = False
-        sheet.append([items[0]['shop']]); sheet['A1'].font = Font(name='Arial',size=15,bold=True)
-        sheet.append(HEADERS)
-        for cell in sheet[2]:
-            cell.fill = PatternFill('solid',fgColor='243B53'); cell.font = Font(name='Arial',bold=True,color='FFFFFF')
-        for item in items:
-            sheet.append([item['order'],item['service'],item['nominal'],item['amount'] if item['amount'] is not None else 'Не подтверждена',item['date'],item['comment']])
-            rownum = sheet.max_row
-            color = {'manual':'FFF1C9','pool':'ECE3F8','unconfirmed':'FBE4DF'}.get(item['kind'])
-            for cell in sheet[rownum]:
-                cell.font = Font(name='Arial',size=11)
+        sheet['A1'] = items[0]['shop']
+        sheet['A1'].font = Font(name='Arial', size=15, bold=True, color='243B53')
+        sheet['A1'].alignment = Alignment(vertical='center')
+        sheet.row_dimensions[1].height = 32
+        known = [item for item in items if item['amount'] is not None]
+        unknown = [item for item in items if item['amount'] is None]
+        if known:
+            write_header(sheet, 2)
+            write_items(sheet, known, 3)
+            table = Table(displayName=f'Sales{index}', ref=f'A2:F{len(known)+2}')
+            table.tableStyleInfo = TableStyleInfo(name='TableStyleMedium2', showRowStripes=True,
+                                                 showFirstColumn=False, showLastColumn=False)
+            sheet.add_table(table)
+        if unknown:
+            # Две пустые строки отделяют проблемные продажи; пустой основной таблицы не создаём.
+            band = len(known)+5 if known else 2
+            sheet.merge_cells(start_row=band, start_column=1, end_row=band, end_column=6)
+            label = ('Ручная выдача — цена не подтверждена'
+                     if all(item['comment'].startswith('Ручная выдача') for item in unknown)
+                     else 'Закупочная цена не подтверждена')
+            sheet.cell(band,1,label)
+            for cell in sheet[band]:
+                cell.fill = PatternFill('solid', fgColor='FBE4DF')
+                cell.font = Font(name='Arial', size=11, bold=True, color='243B53')
                 cell.alignment = Alignment(vertical='center')
-                if color: cell.fill = PatternFill('solid',fgColor=color)
-            sheet.cell(rownum,4).number_format = '#,##0.00'
-            sheet.cell(rownum,5).number_format = 'dd.mm.yyyy hh:mm'
-            if item['detail']:sheet.cell(rownum,6).comment = Comment(item['detail'],'CRM')
-        # Названия и номера могут начинаться с «=»; они всегда остаются текстом Excel.
+            sheet.row_dimensions[band].height = 28
+            write_header(sheet, band+1)
+            write_items(sheet, unknown, band+2)
+        # Текст из заказа не должен превращаться в формулу Excel.
         for row in sheet:
             for cell in row:
-                if isinstance(cell.value,str):cell.data_type='s'
-        for col,width in enumerate([24,48,20,24,24,65],1):
-            sheet.column_dimensions[get_column_letter(col)].width=width
-        sheet.freeze_panes='A3';sheet.auto_filter.ref=f'A2:F{sheet.max_row}'
-    output=BytesIO();workbook.save(output);return output.getvalue()
+                if isinstance(cell.value, str):
+                    cell.data_type = 's'
+        widths = [22.78,43.33,13.89,24,22,60.56 if any(item['comment'] for item in items) else 27.78]
+        for column, width in enumerate(widths, 1):
+            sheet.column_dimensions[get_column_letter(column)].width = width
+        sheet.freeze_panes = 'A3' if known else 'A4'
+    output = BytesIO(); workbook.save(output); return output.getvalue()
 
 
 def mount_voucher_sales_report(app, *, db, dsn, require_role):

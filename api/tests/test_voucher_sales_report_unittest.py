@@ -67,10 +67,35 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(s['A2'].value,'Номер заказа');self.assertEqual(s['A3'].data_type,'s')
         self.assertEqual(s['D3'].value,123.45);self.assertIsInstance(s['E3'].value,datetime)
         self.assertEqual(s['E3'].value.hour,23);self.assertEqual(s.freeze_panes,'A3')
-        unknown=wb.worksheets[1];self.assertEqual(unknown['D3'].value,'Не подтверждена')
-        self.assertTrue(unknown['A3'].fill.fgColor.rgb.endswith('FBE4DF'));self.assertEqual(unknown['F3'].comment.text,'Проверить')
+        unknown=wb.worksheets[1];self.assertEqual(unknown['D4'].value,'Не подтверждена')
+        self.assertTrue(unknown['A4'].fill.fgColor.rgb.endswith('FBE4DF'));self.assertEqual(unknown['F4'].comment.text,'Проверить')
         with self.assertRaises(HTTPException) as error:build_xlsx([])
         self.assertEqual(error.exception.status_code,404)
+
+    def test_confirmed_table_and_separate_problem_block(self):
+        # Неподтверждённая цена идёт вниз, за пределы фильтра основной таблицы; суммы и цвета сохраняются.
+        normal=self.assemble([sale()])[0]
+        missing={**normal,'order':'missing','amount':None,'kind':'unconfirmed',
+                 'comment':'Ручная выдача — закупка не найдена.','detail':'Проверить закупку'}
+        manual={**normal,'order':'manual','kind':'manual','comment':'Ручная выдача','detail':'Точный код'}
+        pool={**normal,'order':'pool','kind':'pool','comment':'Из пула','detail':'Точный код'}
+        sheet=load_workbook(BytesIO(build_xlsx([missing,normal,manual,pool]))).active
+        table=list(sheet.tables.values())[0]
+        self.assertEqual(table.ref,'A2:F5');self.assertEqual(table.tableStyleInfo.name,'TableStyleMedium2')
+        self.assertTrue(table.tableStyleInfo.showRowStripes)
+        self.assertEqual([sheet.cell(n,1).value for n in (3,4,5,10)],['00123','manual','pool','missing'])
+        self.assertIsNone(sheet['A6'].value);self.assertIsNone(sheet['A7'].value)
+        self.assertEqual(sheet['A8'].value,'Ручная выдача — цена не подтверждена')
+        self.assertEqual(sheet['A9'].value,'Номер заказа');self.assertEqual(sheet['D10'].value,'Не подтверждена')
+        self.assertEqual(sheet['F10'].comment.text,'Проверить закупку')
+        for cell,color in [('A4','FFF1C9'),('A5','ECE3F8'),('A10','FBE4DF')]:
+            self.assertTrue(sheet[cell].fill.fgColor.rgb.endswith(color))
+        self.assertEqual(sheet['E3'].number_format,'dd/mm/yyyy hh:mm')
+        self.assertEqual(sheet.row_dimensions[3].height,25)
+        self.assertEqual(sheet['A2'].alignment.horizontal,'center')
+        only=load_workbook(BytesIO(build_xlsx([missing]))).active
+        self.assertEqual(len(only.tables),0);self.assertEqual(only.max_row,4)
+        self.assertEqual(only['A2'].value,'Ручная выдача — цена не подтверждена')
 
     def test_route_owner_required_and_busy_retry(self):
         # Повторный одновременный запрос не запускает второе дорогое чтение архива.
