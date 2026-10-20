@@ -8,6 +8,7 @@
       </div>
       <div class="interhub-catalog__head-actions supplier-catalog__head-actions">
         <button v-if="ctx.canViewHistory" class="ghost interhub-catalog__history-action" type="button" @click="openSalesHistory">История покупок</button>
+        <WorkVoucherReport v-if="ctx.canPay" :token="ctx.token" />
         <button v-if="ctx.canManagePrices" class="ghost interhub-catalog__price-action" type="button" title="Обновить закупочные цены и остатки только для ваучеров" :disabled="ctx.priceRefreshLoading || ctx.supplierOffline" @click="ctx.refreshPrices">
           {{ ctx.priceRefreshLoading ? 'Обновляем цены и остатки…' : 'Обновить закупочные цены' }}
         </button>
@@ -264,6 +265,7 @@
 
 <script setup>
 import WorkSupplierCatalog from './WorkSupplierCatalog.vue'
+import WorkVoucherReport from './WorkVoucherReport.vue'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import WorkHamsterLoader from './WorkHamsterLoader.vue'
 

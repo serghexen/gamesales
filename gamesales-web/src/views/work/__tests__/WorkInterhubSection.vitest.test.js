@@ -79,6 +79,17 @@ async function selectServiceByTitle(wrapper, title) {
 }
 
 describe('WorkInterhubSection', () => {
+  it('places the voucher report next to history for owners only', async () => {
+    // Право владельца скрывает выгрузку закупочных цен от операторов.
+    const wrapper = mount(WorkInterhubSection, { props: { ctx: buildCtx({ canPay: true }) } })
+    const history = wrapper.findAll('button').find(button => button.text() === 'История покупок')
+    expect(history.element.nextElementSibling.textContent).toBe('Отчёт')
+    await wrapper.setProps({ ctx: buildCtx({ canPay: false }) })
+    expect(wrapper.findAll('button').some(button => button.text() === 'Отчёт')).toBe(false)
+    wrapper.unmount()
+  })
+
+
   it('shows the live balance on staging while keeping price refresh disabled', () => {
     // Ограниченный staging сохраняет видимый баланс и запрет массового опроса.
     const ctx = buildCtx({ supplierOffline: true, canManagePrices: true, balance: 12345, currency: 'RUB' })
