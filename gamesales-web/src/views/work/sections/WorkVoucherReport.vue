@@ -12,7 +12,6 @@
             <label class="field"><span class="label">Дата с</span><input v-model="dateFrom" class="input" type="date" required :max="today" :disabled="busy" /></label>
             <label class="field"><span class="label">Дата по</span><input v-model="dateTo" class="input" type="date" required :max="today" :disabled="busy" /></label>
           </div>
-          <p class="muted">Даты включительно, по Москве. Каждый магазин — на отдельном листе Excel.</p>
           <p v-if="error" class="error" role="alert">{{ error }}</p>
           <p v-if="done" class="muted" role="status">Файл готов и передан для скачивания.</p>
           <button class="btn" type="submit" :disabled="busy" :aria-busy="busy">{{ busy ? 'Формируем отчёт…' : 'Выгрузить' }}</button>
