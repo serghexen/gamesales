@@ -3593,6 +3593,7 @@ const {
   dealEditorFormCtx,
   catalogsSectionCtx,
 } = useWorkSectionContexts({
+  auth,
   editProduct,
   showProductForm,
   closeProductModal,
@@ -4478,6 +4479,7 @@ useWorkLifecycleWatchers({
 
 // Следит за формами сделок и связанными слотами/назначениями.
 useDealsWatchers({
+  auth,
   newDeal,
   editDeal,
   productsAll,

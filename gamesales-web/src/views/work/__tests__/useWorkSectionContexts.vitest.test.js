@@ -5,6 +5,8 @@ import { useWorkSectionContexts } from '../useWorkSectionContexts.js'
 
 describe('useWorkSectionContexts', () => {
   it('builds deal modal shell/body reactive state', () => {
+    // Контекст формы должен получать актуальную роль после смены пользователя.
+    const auth = { state: reactive({ role: 'owner' }) }
     const editDeal = reactive({ open: false, flow_status_code: '' })
     const showDealForm = ref(false)
     const dealEditMode = ref('view')
@@ -19,6 +21,7 @@ describe('useWorkSectionContexts', () => {
     const updateDeal = vi.fn()
     const updateDealDraft = vi.fn()
     const ctx = useWorkSectionContexts({
+      auth,
       editDeal,
       newDeal,
       showDealForm,
@@ -67,6 +70,9 @@ describe('useWorkSectionContexts', () => {
     expect(ctx.dealEditorModalBodyCtx.quickBusyLabel).toBe('Создаем товар…')
     expect(ctx.dealEditorFormCtx.responsibleUserOptions).toEqual(['manager1'])
     expect(ctx.dealEditorFormCtx.allowCompletedDealEdit).toBe(true)
+    expect(ctx.dealEditorFormCtx.currentUserRole).toBe('owner')
+    auth.state.role = 'admin'
+    expect(ctx.dealEditorFormCtx.currentUserRole).toBe('admin')
 
     editDeal.flow_status_code = 'draft'
     expect(ctx.dealEditorModalShellCtx.showSaveDraft).toBe(false)

@@ -1,6 +1,6 @@
 <template>
-  <!-- В ваучерных сделках скрываем вместе поле и подпись, сохраняя закуп в учёте. -->
-  <label v-if="!voucherDeal" class="field">
+  <!-- Владелец видит закуп ваучеров, остальные роли — только закуп обычных услуг. -->
+  <label v-if="canEnterCost" class="field">
     <span class="label">Закупочная цена</span>
     <input
       class="input"
@@ -17,21 +17,22 @@
 
 <script setup>
 import { computed } from 'vue'
-import { isSupplierVoucherDeal } from '../dealsUtils.js'
+import { canEnterManualPurchaseCost } from '../dealsUtils.js'
 
 const props = defineProps({
   deal: { type: Object, required: true },
+  userRole: { type: String, default: '' },
   readonly: { type: Boolean, default: false },
   max: { type: Number, required: true },
   clampPrice: { type: Function, required: true },
 })
 
-// Единое правило скрывает закуп ваучеров в новой и сохранённой карточке для всех ролей.
-const voucherDeal = computed(() => isSupplierVoucherDeal(props.deal))
+// Проверяем роль и регион одинаково при создании, просмотре и редактировании.
+const canEnterCost = computed(() => canEnterManualPurchaseCost(props.deal, props.userRole))
 
 function updateManualCost(event) {
-  // Ручной ввод меняет закуп только в обычной услуге и вне режима просмотра.
-  if (voucherDeal.value || props.readonly) return
+  // Разрешённый для роли закуп меняем только вне режима просмотра.
+  if (!canEnterCost.value || props.readonly) return
   props.deal.purchase_cost = props.clampPrice(event.target.value === '' ? '' : Number(event.target.value))
 }
 </script>

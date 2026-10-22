@@ -1,6 +1,7 @@
 import { computed, proxyRefs } from 'vue'
 
 export function useWorkSectionContexts({
+  auth,
   editProduct,
   showProductForm,
   closeProductModal,
@@ -503,6 +504,8 @@ export function useWorkSectionContexts({
 
   // Контекст большой формы сделки.
   const dealEditorFormCtx = proxyRefs({
+    // Передаём актуальную роль, чтобы поле закупа реагировало на смену пользователя.
+    currentUserRole: computed(() => auth?.state?.role || ''),
     syncDealAfterSupplierPurchase,
     setDealSupplierBusy,
     editDeal,

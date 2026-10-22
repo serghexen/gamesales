@@ -1,7 +1,8 @@
 import { watch } from 'vue'
-import { isSupplierVoucherDeal } from './dealsUtils.js'
+import { canEnterManualPurchaseCost } from './dealsUtils.js'
 
 export function useDealsWatchers({
+  auth,
   newDeal,
   editDeal,
   productsAll,
@@ -26,8 +27,8 @@ export function useDealsWatchers({
   watch(
     () => [newDeal.deal_type_code, newDeal.region_code],
     () => {
-      // При переходе на ваучеры убираем ранее введённый ручной закуп.
-      if (isSupplierVoucherDeal(newDeal)) newDeal.purchase_cost = 0
+      // При переходе на ваучеры очищаем скрытый закуп, но сохраняем доступную владельцу сумму.
+      if (!canEnterManualPurchaseCost(newDeal, auth?.state?.role)) newDeal.purchase_cost = 0
     }
   )
   watch(
@@ -35,7 +36,8 @@ export function useDealsWatchers({
     () => {
       // Загрузка карточки и синхронизация после оплаты должны сохранить учётную сумму.
       if (!editDeal.open || dealInitLock.value) return
-      if (isSupplierVoucherDeal(editDeal)) editDeal.purchase_cost = 0
+      // При ручной смене региона сохраняем закуп владельца.
+      if (!canEnterManualPurchaseCost(editDeal, auth?.state?.role)) editDeal.purchase_cost = 0
     }
   )
 

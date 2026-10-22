@@ -1,7 +1,12 @@
 export function isSupplierVoucherDeal(deal) {
-  // В этих услугах закуп формируется из купленных ваучеров, а не вводится вручную.
+  // Определяем услуги, в которых поставщик автоматически учитывает закуп ваучеров.
   return deal?.deal_type_code === 'sale'
     && ['TR', 'PL'].includes(String(deal?.region_code || '').trim().toUpperCase())
+}
+
+export function canEnterManualPurchaseCost(deal, role) {
+  // В ваучерных услугах ручной закуп доступен только владельцу; остальные услуги не ограничиваем.
+  return !isSupplierVoucherDeal(deal) || String(role || '').trim().toLowerCase() === 'owner'
 }
 
 export function createNewDealState() {

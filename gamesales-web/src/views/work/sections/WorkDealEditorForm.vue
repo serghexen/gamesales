@@ -877,6 +877,7 @@
                           </label>
                             <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--price">
                               <WorkDealPurchaseCostInput
+                                :user-role="ctx.currentUserRole"
                                 :deal="editDeal"
                                 :max="maxPrice"
                                 :clamp-price="clampPrice"
@@ -1598,6 +1599,7 @@
                           </label>
                             <div class="deal-form__account-details deal-form__account-details--sale deal-form__sale-group deal-form__sale-group--price">
                               <WorkDealPurchaseCostInput
+                                :user-role="ctx.currentUserRole"
                                 :deal="newDeal"
                                 :max="maxPrice"
                                 :clamp-price="clampPrice"

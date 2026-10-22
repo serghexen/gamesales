@@ -4,6 +4,31 @@ import { mount } from '@vue/test-utils'
 import WorkDealPurchaseCostInput from '../sections/WorkDealPurchaseCostInput.vue'
 
 describe('WorkDealPurchaseCostInput', () => {
+  it.each(['TR', 'PL'])('lets only the owner view and edit new and saved %s purchase costs', async (region) => {
+    // Проверяем обе карточки и смену роли, чтобы администратор не получил доступ владельца.
+    for (const dealId of [undefined, 42]) {
+      const deal = reactive({ deal_id: dealId, deal_type_code: 'sale', region_code: region, purchase_cost: 475.04 })
+      const wrapper = mount(WorkDealPurchaseCostInput, {
+        props: { deal, userRole: 'owner', readonly: true, max: 100000, clampPrice: Number },
+      })
+      expect(wrapper.text()).toContain('Закупочная цена')
+      expect(wrapper.get('input').element.value).toBe('475.04')
+      await wrapper.get('input').setValue('999')
+      expect(deal.purchase_cost).toBe(475.04)
+      await wrapper.setProps({ readonly: false })
+      await wrapper.get('input').setValue('123.45')
+      expect(deal.purchase_cost).toBe(123.45)
+      for (const userRole of ['admin', 'operator', 'manager', '']) {
+        await wrapper.setProps({ userRole })
+        expect(wrapper.find('label').exists()).toBe(false)
+        expect(deal.purchase_cost).toBe(123.45)
+      }
+      await wrapper.setProps({ userRole: ' OWNER ' })
+      expect(wrapper.get('input').element.value).toBe('123.45')
+      wrapper.unmount()
+    }
+  })
+
   it.each(['TR', 'PL'])('hides saved %s cost in view and edit modes without changing accounting', async (region) => {
     // Исторический закуп остаётся в модели, но ни поле, ни подпись не попадают в карточку.
     const deal = reactive({ deal_id: 42, deal_type_code: 'sale', region_code: region, purchase_cost: 475.04 })

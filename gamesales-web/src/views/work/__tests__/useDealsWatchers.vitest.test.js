@@ -3,8 +3,10 @@ import { reactive, ref, nextTick } from 'vue'
 
 import { useDealsWatchers } from '../useDealsWatchers.js'
 
-function createHarness() {
+function createHarness(role = '') {
+  // Передаём роль, чтобы проверить сохранение и сброс закупа при смене региона.
   const deps = {
+    auth: { state: { role } },
     newDeal: reactive({ product_id: '', slot_type_code: 'share', account_id: 77, reserve_key: 'reserve1' }),
     editDeal: reactive({ open: true, product_id: '', slot_type_code: 'full', account_id: 88, reserve_key: 'reserve2' }),
     productsAll: ref([
@@ -34,6 +36,19 @@ function createHarness() {
 }
 
 describe('useDealsWatchers', () => {
+  it.each(['TR', 'PL'])('preserves owner cost when switching new and saved services to %s', async (region) => {
+    // Поле остаётся доступным владельцу, поэтому переход на ваучеры не стирает его сумму.
+    const h = createHarness('owner')
+    for (const deal of [h.newDeal, h.editDeal]) {
+      Object.assign(deal, { deal_type_code: 'sale', region_code: 'US', purchase_cost: 123.45 })
+    }
+    await nextTick()
+    for (const deal of [h.newDeal, h.editDeal]) deal.region_code = region
+    await nextTick()
+    expect(h.newDeal.purchase_cost).toBe(123.45)
+    expect(h.editDeal.purchase_cost).toBe(123.45)
+  })
+
   it.each(['TR', 'PL'])('clears manual cost on switching new and edited services to %s', async (region) => {
     // Возврат к обычному региону не должен воскресить ранее введённый закуп.
     const h = createHarness()
