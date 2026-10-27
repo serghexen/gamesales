@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
 import {
+  isCompletedDeal,
   createNewDealState,
   createEditDealState,
   createDealFiltersState,
@@ -8,6 +9,15 @@ import {
 } from '../dealsUtils.js'
 
 describe('dealsUtils', () => {
+  it('recognizes completion by current status even when no reserve remains', () => {
+    // Исторический timestamp не должен скрывать новую выдачу после возврата сделки в работу.
+    expect(isCompletedDeal({ flow_status_code: 'completed', reserve_key: null })).toBe(true)
+    expect(isCompletedDeal({ flow_status_code: ' COMPLETED ' })).toBe(true)
+    expect(isCompletedDeal({ flow_status_code: 'pending', completed_at: '2026-10-01' })).toBe(false)
+    expect(isCompletedDeal({ flow_status_code: 'draft' })).toBe(false)
+    expect(isCompletedDeal(null)).toBe(false)
+  })
+
   it('createNewDealState returns expected defaults', () => {
     const state = createNewDealState()
     expect(state.deal_type_code).toBe('sale')

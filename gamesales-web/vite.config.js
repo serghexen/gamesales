@@ -10,6 +10,8 @@ export default defineConfig({
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
   },
   test: {
+    // Ограничиваем число процессов, чтобы полный прогон не упирался в запуск десятков workers.
+    maxWorkers: 2,
     environment: 'jsdom',
     globals: true,
     include: ['src/**/*.vitest.test.js'],

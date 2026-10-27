@@ -8,6 +8,7 @@ except Exception:  # pragma: no cover
     TestClient = None
 
 import app as app_module
+from domains.account_reserves import AccountReserves
 
 
 class _DummyConnCtx:
@@ -474,15 +475,19 @@ class AccountsEndpointsTests(unittest.TestCase):
 
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json(), {"used_reserve_keys": ["reserve1", "reserve2"]})
-        self.assertIn("d.deal_id <> %s", sql_collector[0])
+        self.assertIn("d.deal_id<>%s", sql_collector[0])
 
     # Первое копирование должно атомарно создать отметку и вернуть токен владельцу формы.
     def test_claim_account_reserve_success(self):
+        # Порядок SQL включает блокировку аккаунта до проверки состояния кода.
         script = [
-            {"one": (1,)},  # ensure_account_exists
-            {"one": (1,)},  # reserve secret exists
-            {"one": None},  # reserve is not used by deal
-            {"one": ("claim-row",)},  # claim insert
+            {"one": (1,)},
+            {"all": [(1, 'reserve1', 'hash', True, None, None, 'Qw==')]},
+            {"all": []},
+            {"one": None},
+            {"rowcount": 1},
+            {"rowcount": 1},
+            {"rowcount": 1},
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
@@ -503,11 +508,11 @@ class AccountsEndpointsTests(unittest.TestCase):
 
     # Повторное копирование уже занятого резерва должно завершаться конфликтом без выдачи значения.
     def test_claim_account_reserve_conflict(self):
+        # Чужая выдача не может быть захвачена повторно даже из формы существующей сделки.
         script = [
-            {"one": (1,)},  # ensure_account_exists
-            {"one": (1,)},  # reserve secret exists
-            {"one": None},  # reserve is not used by deal
-            {"one": None},  # unique claim already exists
+            {"one": (1,)},
+            {"all": [(1, 'reserve1', 'hash', True, '2026-10-26', None, 'Qw==')]},
+            {"all": [('reserve1',)]},
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
@@ -548,10 +553,10 @@ class AccountsEndpointsTests(unittest.TestCase):
     def test_patch_account_secrets_success(self):
         script = [
             {"one": (1,)},
-            {"rowcount": 2},
             {"rowcount": 1},
         ]
         with (
+            patch.object(AccountReserves, "patch_legacy", return_value=["reserve3"]) as patch_reserves,
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
             patch.object(app_module.psycopg, "connect", return_value=_ScriptedConnCtx(script)),
             patch.object(app_module, "JWT_SECRET", "test-secret"),
@@ -571,6 +576,9 @@ class AccountsEndpointsTests(unittest.TestCase):
                 )
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json().get("ok"), True)
+
+        patch_reserves.assert_called_once()
+        self.assertEqual(patch_reserves.call_args.args[2:4], ({'reserve1': 'r1'}, ['reserve2']))
 
     # Проверяем новый безопасный сценарий: доступность слотов по product_id.
     def test_slot_availability_for_deal_supports_product_id(self):

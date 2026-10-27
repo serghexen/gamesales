@@ -144,12 +144,14 @@ export function useAccountsFlow({
   }
 
   // Возвращает резервы аккаунта как список пар key/value, отсортированных по номеру reserveN.
-  function getReserveSecretEntries(accountId) {
+  function getReserveSecretEntries(accountId, includeUnlisted = false) {
     const list = accountSecrets.value[accountId] || []
     return list
-      .filter((s) => /^reserve\d+$/i.test(String(s.secret_key || '').trim()))
+      .filter((s) => /^reserve\d+$/i.test(String(s.secret_key || '').trim()) && (includeUnlisted || s.reserve_listed !== false))
       .map((s) => ({
         key: normalizeReserveKey(s.secret_key),
+        listed: s.reserve_listed !== false,
+        reserve_id: s.reserve_id,
         value: s.secret_value_b64 ? decodeSecret(s.secret_value_b64).trim() : '',
       }))
       .filter((item) => item.key && item.value)
@@ -221,6 +223,7 @@ export function useAccountsFlow({
     // Держим текст и список ключей в одном и том же порядке, чтобы не переименовывать резервы при сохранении.
     editAccount.reserve_text = reserveEntries.map((item) => item.value).join(' ')
     editAccount.existing_reserve_keys = reserveEntries.map((item) => item.key)
+    editAccount.expected_reserves = Object.fromEntries(reserveEntries.map((item) => [item.key, item.value]))
     editAccount.has_account = Boolean(account)
     editAccount.has_email = Boolean(email)
     editAccount.has_auth = Boolean(authSecret)
@@ -562,6 +565,7 @@ export function useAccountsFlow({
     editAccount.auth_key = 'auth_code'
     editAccount.reserve_text = ''
     editAccount.existing_reserve_keys = []
+    editAccount.expected_reserves = {}
     editAccount.has_account = false
     editAccount.has_email = false
     editAccount.has_auth = false
@@ -719,13 +723,10 @@ export function useAccountsFlow({
         .split(/\s+/)
         .map((v) => v.trim())
         .filter(Boolean)
-      reserveValues.forEach((val, idx) => {
-        secretUpserts.push({ secret_key: `reserve${idx + 1}`, secret_value: val })
-      })
-      if (secretUpserts.length) {
+      if (secretUpserts.length || reserveValues.length) {
         await apiPut(
           `/accounts/${created.account_id}/secrets`,
-          { upserts: secretUpserts, delete_keys: [] },
+          { upserts: secretUpserts, delete_keys: [], reserve_values: reserveValues, expected_reserves: {} },
           { token: auth.state.token }
         )
       }
@@ -855,45 +856,17 @@ export function useAccountsFlow({
         .map((v) => v.trim())
         .filter(Boolean)
 
-      // Сохраняем существующие ключи резервов, чтобы редактирование не сбивало их нумерацию.
-      const existingReserveKeys = Array.from(
-        new Set(
-          (Array.isArray(editAccount.existing_reserve_keys) ? editAccount.existing_reserve_keys : [])
-            .map((key) => normalizeReserveKey(key))
-            .filter(Boolean)
-        )
-      ).sort(compareReserveKeys)
-
-      // Для новых значений подбираем ближайший свободный reserveN без конфликтов.
-      const takeNextFreeReserveKey = (usedKeys) => {
-        for (let idx = 1; idx <= 50; idx += 1) {
-          const key = `reserve${idx}`
-          if (!usedKeys.has(key)) return key
-        }
-        return `reserve${usedKeys.size + 1}`
-      }
-
-      const keepKeys = []
-      const usedKeys = new Set(existingReserveKeys)
-      reserveValues.forEach((val, idx) => {
-        const key = existingReserveKeys[idx] || takeNextFreeReserveKey(usedKeys)
-        usedKeys.add(key)
-        keepKeys.push(key)
-        secretUpserts.push({ secret_key: key, secret_value: val })
-      })
-      existingReserveKeys
-        .filter((k) => !keepKeys.includes(k))
-        .forEach((k) => {
-          secretDeleteKeys.push(k)
-        })
-
-      if (secretUpserts.length || secretDeleteKeys.length) {
-        await apiPut(
-          `/accounts/${editAccount.account_id}/secrets`,
-          { upserts: secretUpserts, delete_keys: secretDeleteKeys },
-          { token: auth.state.token }
-        )
-      }
+      // Сервер сопоставляет коды по значениям и отклоняет устаревший снимок списка.
+      await apiPut(
+        `/accounts/${editAccount.account_id}/secrets`,
+        {
+          upserts: secretUpserts,
+          delete_keys: secretDeleteKeys,
+          reserve_values: reserveValues,
+          expected_reserves: editAccount.expected_reserves || {},
+        },
+        { token: auth.state.token }
+      )
       // Принудительно обновляем кеш секретов, чтобы сразу показать актуальные резервы без ручного refresh.
       await ensureAccountSecretsLoaded(editAccount.account_id, true)
 

@@ -139,10 +139,13 @@ describe('useDealsWatchers', () => {
 
   it('loads account secrets when editing account changes', async () => {
     const h = createHarness()
+    h.editDeal.reserve_claim_token = 'old-claim'
 
     h.editDeal.account_id = 99
     await nextTick()
 
     expect(h.ensureAccountSecretsLoaded).toHaveBeenCalledWith(99)
+    expect(h.editDeal.reserve_key).toBe('')
+    expect(h.editDeal.reserve_claim_token).toBe('')
   })
 })

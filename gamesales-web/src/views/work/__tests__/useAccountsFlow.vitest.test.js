@@ -305,6 +305,7 @@ describe('useAccountsFlow', () => {
     h.editAccount.has_auth = true
     h.editAccount.reserve_text = 'r1'
     h.editAccount.existing_reserve_keys = ['reserve1', 'reserve2']
+    h.editAccount.expected_reserves = { reserve1: 'r1', reserve2: 'r2' }
     h.apiPut.mockResolvedValue({ ok: true })
     h.suppressUnsavedConfirm.value = true
 
@@ -316,12 +317,31 @@ describe('useAccountsFlow', () => {
         upserts: [
           { secret_key: 'account_password', secret_value: 'acc-pass' },
           { secret_key: 'auth_code', secret_value: 'auth-pass' },
-          { secret_key: 'reserve1', secret_value: 'r1' },
         ],
-        delete_keys: ['email_password', 'reserve2'],
+        delete_keys: ['email_password'],
+        reserve_values: ['r1'],
+        expected_reserves: { reserve1: 'r1', reserve2: 'r2' },
       },
       { token: 'token-1' }
     )
+  })
+
+  it('sends replaced and reordered values with the original identity snapshot', async () => {
+    // Новый код нельзя отправлять как перезапись старой занятой ячейки.
+    const h = createHarness()
+    Object.assign(h.editAccount, {
+      login_name: 'user', domain_code: 'mail.com', region_code: 'RU',
+      reserve_text: 'B NEW', existing_reserve_keys: ['reserve1', 'reserve2'],
+      expected_reserves: { reserve1: 'OLD', reserve2: 'B' },
+    })
+    h.apiPut.mockResolvedValue({ ok: true })
+    h.suppressUnsavedConfirm.value = true
+    await h.updateAccount()
+    expect(h.apiPut).toHaveBeenCalledWith('/accounts/5/secrets', expect.objectContaining({
+      reserve_values: ['B', 'NEW'], expected_reserves: { reserve1: 'OLD', reserve2: 'B' },
+    }), { token: 'token-1' })
+    const payload = h.apiPut.mock.calls.find(([url]) => url.endsWith('/secrets'))[1]
+    expect(payload.upserts.some((item) => item.secret_key.startsWith('reserve'))).toBe(false)
   })
 
   it('updateAccount refreshes account secrets cache after save', async () => {

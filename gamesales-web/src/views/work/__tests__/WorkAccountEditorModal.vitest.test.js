@@ -114,6 +114,20 @@ describe('WorkAccountEditorModal', () => {
     vi.useRealTimers()
   })
 
+  it('does not label unknown usage as used while loading or after a failed request', async () => {
+    // Ошибка сети не должна выглядеть как подтверждённая выдача всех кодов.
+    const wrapper = mount(WorkAccountEditorModal, { props: buildProps({
+      accountEditMode: 'view',
+      editAccount: { open: true, account_id: 5, reserve_text: 'CODE', existing_reserve_keys: ['reserve1'], product_ids: [] },
+      loadAccountUsedReserveKeys: vi.fn().mockRejectedValue(new Error('offline')),
+    }), global: { stubs: { teleport: true } } })
+    expect(wrapper.find('.account-reserve-row__badge').exists()).toBe(false)
+    await flushPromises()
+    expect(wrapper.find('.account-reserve-row__badge').exists()).toBe(false)
+    expect(wrapper.find('button[aria-label="Копировать Резерв 1"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('shows deactivation checkbox only in edit mode', () => {
     const wrapper = mount(WorkAccountEditorModal, {
       props: buildProps({ accountEditMode: 'edit' }),
@@ -428,6 +442,30 @@ describe('WorkAccountEditorModal', () => {
     expect(wrapper.find('button[aria-label="Копировать Резерв 1"]').exists()).toBe(false)
     expect(wrapper.find('.account-reserve-row input').element.value).toBe('AAA111')
     expect(wrapper.find('.account-reserve-row__badge').text()).toBe('использован')
+  })
+
+  it.each([true, false])('trusts server rollback after a clipboard failure (released=%s)', async (released) => {
+    // Не показываем код свободным, если сервер сохранил отметку параллельной выдачи.
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true, value: { writeText: vi.fn().mockRejectedValue(new Error('clipboard denied')) },
+    })
+    const loadUsage = vi.fn().mockResolvedValueOnce([]).mockResolvedValue(['reserve1'])
+    const release = vi.fn().mockResolvedValue({ ok: true, released })
+    const wrapper = mount(WorkAccountEditorModal, {
+      props: buildProps({
+        accountEditMode: 'view',
+        editAccount: { ...buildProps().editAccount, reserve_text: 'CODE', existing_reserve_keys: ['reserve1'] },
+        loadAccountUsedReserveKeys: loadUsage,
+        releaseAccountReserveClaim: release,
+      }),
+      global: { stubs: { teleport: true } },
+    })
+    await flushPromises()
+    await wrapper.find('button[aria-label="Копировать Резерв 1"]').trigger('click')
+    await flushPromises()
+    expect(release).toHaveBeenCalledWith(5, 'reserve1', 'claim-1')
+    expect(wrapper.find('.account-reserve-row__badge').exists()).toBe(!released)
+    wrapper.unmount()
   })
 
   it('opens deal editor when user clicks deal row in account modal', async () => {

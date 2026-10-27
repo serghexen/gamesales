@@ -1,3 +1,8 @@
+export function isCompletedDeal(deal) {
+  // Ориентируемся на текущий статус, а не на оставшуюся после возврата дату завершения.
+  return String(deal?.flow_status_code || '').trim().toLowerCase() === 'completed'
+}
+
 export function isSupplierVoucherDeal(deal) {
   // Определяем услуги, в которых поставщик автоматически учитывает закуп ваучеров.
   return deal?.deal_type_code === 'sale'

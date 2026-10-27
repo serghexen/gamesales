@@ -135,6 +135,8 @@ export function useWorkSectionContexts({
   maxDate,
   editDeal,
   startEditDeal,
+  openAccountFromDeal,
+  canViewAccountsSection,
   markDealCompleted,
   markDealReturned,
   dealSaving,
@@ -504,6 +506,8 @@ export function useWorkSectionContexts({
 
   // Контекст большой формы сделки.
   const dealEditorFormCtx = proxyRefs({
+    openAccountFromDeal,
+    canViewAccountsSection,
     // Передаём актуальную роль, чтобы поле закупа реагировало на смену пользователя.
     currentUserRole: computed(() => auth?.state?.role || ''),
     syncDealAfterSupplierPurchase,

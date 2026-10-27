@@ -715,7 +715,16 @@ def mount_accounts_import_routes(
                       max(CASE WHEN s.secret_key = 'reserve9' THEN s.secret_value END) AS reserve9,
                       max(CASE WHEN s.secret_key = 'reserve10' THEN s.secret_value END) AS reserve10
                     FROM app.accounts a
-                    LEFT JOIN app.account_secrets s ON s.account_id = a.account_id
+                    LEFT JOIN (
+                      SELECT account_id, secret_key, secret_value FROM app.account_secrets WHERE secret_key='account_password'
+                      UNION ALL
+                      SELECT c.account_id,
+                        'reserve' || row_number() OVER (PARTITION BY c.account_id ORDER BY substring(c.reserve_key from '[0-9]+$')::bigint),
+                        s.secret_value
+                      FROM app.account_reserve_codes c JOIN app.account_secrets s
+                        ON s.account_id=c.account_id AND s.secret_key=c.reserve_key
+                      WHERE c.is_listed AND c.consumed_at IS NULL
+                    ) s ON s.account_id = a.account_id
                     WHERE {account_active_clause}
                     GROUP BY a.account_id, a.login_name
                     ORDER BY lower(a.login_name), a.account_id

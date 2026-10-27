@@ -372,11 +372,12 @@ const productSaving = createBooleanFlag(false)
 const catalogSaving = createBooleanFlag(false)
 
 // Загружает занятые резервы аккаунта напрямую из БД, независимо от фильтров таблицы сделок.
-async function loadAccountUsedReserveKeys(accountId, excludeDealId = null) {
+async function loadAccountUsedReserveKeys(accountId, excludeDealId = null, forDeal = false) {
   const targetId = Number(accountId || 0)
   if (!targetId) return []
   const params = new URLSearchParams()
   if (Number(excludeDealId || 0)) params.set('exclude_deal_id', String(Number(excludeDealId)))
+  if (forDeal) params.set('for_deal', 'true')
   const query = params.toString()
   const result = await apiGet(`/accounts/${targetId}/reserve-usage${query ? `?${query}` : ''}`, {
     token: auth.state.token,
@@ -385,11 +386,11 @@ async function loadAccountUsedReserveKeys(accountId, excludeDealId = null) {
 }
 
 // Атомарно отмечает резерв использованным перед записью значения в буфер обмена.
-async function claimAccountReserve(accountId, reserveKey) {
+async function claimAccountReserve(accountId, reserveKey, dealId = null) {
   const targetId = Number(accountId || 0)
   const normalizedKey = String(reserveKey || '').trim().toLowerCase()
   if (!targetId || !normalizedKey) throw new Error('Не выбран резерв')
-  return apiPost(`/accounts/${targetId}/reserves/${encodeURIComponent(normalizedKey)}/claim`, {}, {
+  return apiPost(`/accounts/${targetId}/reserves/${encodeURIComponent(normalizedKey)}/claim`, { deal_id: Number(dealId) || null }, {
     token: auth.state.token,
   })
 }
@@ -401,7 +402,7 @@ async function releaseAccountReserveClaim(accountId, reserveKey, claimToken) {
   const token = String(claimToken || '').trim()
   if (!targetId || !normalizedKey || !token) return
   const params = new URLSearchParams({ claim_token: token })
-  await apiDelete(`/accounts/${targetId}/reserves/${encodeURIComponent(normalizedKey)}/claim?${params.toString()}`, {
+  return apiDelete(`/accounts/${targetId}/reserves/${encodeURIComponent(normalizedKey)}/claim?${params.toString()}`, {
     token: auth.state.token,
   })
 }
@@ -2694,6 +2695,16 @@ async function reopenAccountByIdFromDealReturn(accountId) {
   startEditAccount(fallbackAccount)
 }
 
+async function loadAccountForDealNavigation(accountId) {
+  // Полная карточка и свежие секреты нужны для корректной деактивации и выбора другого резерва.
+  const [account, secrets] = await Promise.all([
+    apiGet(`/accounts/${Number(accountId)}`, { token: auth.state.token }),
+    apiGet(`/accounts/${Number(accountId)}/secrets`, { token: auth.state.token }),
+  ])
+  accountSecrets.value = { ...accountSecrets.value, [accountId]: secrets || [] }
+  return account
+}
+
 // Логика формы сделки: быстрые создания, загрузки связей, слоты.
 const {
   createQuickProduct,
@@ -2784,6 +2795,7 @@ const {
   openCreateSaleModal,
   openCreateSharingModal,
   closeDealModal: closeDealModalFromFlow,
+  openAccountFromDeal,
   startEditDeal,
   toggleDealEditMode,
   syncSavedDealFromSupplier,
@@ -2840,6 +2852,10 @@ const {
   canEditCompletedDeal: canEditCompletedDeals,
   showDealWarning,
   reopenAccountByIdFromDealReturn,
+  loadAccountForDealNavigation,
+  startEditAccount,
+  canOpenAccountFromDeal: () => canViewAccountsSection.value,
+  isDealNavigationBlocked: () => Boolean(dealLoading.value || dealSaving.value || dealSupplierBusy.value || dealQuickAccountBusy.value || dealQuickProductBusy.value),
 })
 
 closeDealModalDeferred.set(closeDealModalFromFlow)
@@ -3724,6 +3740,8 @@ const {
   maxDate,
   editDeal,
   startEditDeal,
+  openAccountFromDeal,
+  canViewAccountsSection,
   markDealCompleted,
   markDealReturned,
   dealSaving,

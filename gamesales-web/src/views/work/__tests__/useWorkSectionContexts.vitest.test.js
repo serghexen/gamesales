@@ -20,6 +20,8 @@ describe('useWorkSectionContexts', () => {
 
     const updateDeal = vi.fn()
     const updateDealDraft = vi.fn()
+    const openAccountFromDeal = vi.fn()
+    const canViewAccountsSection = ref(true)
     const ctx = useWorkSectionContexts({
       auth,
       editDeal,
@@ -36,12 +38,18 @@ describe('useWorkSectionContexts', () => {
       dealModalTitle: ref('Title'),
       updateDeal,
       updateDealDraft,
+      openAccountFromDeal,
+      canViewAccountsSection,
       createDeal: () => {},
       createDealDraft: () => {},
       toggleDealEditMode: () => {},
     })
 
     expect(ctx.dealEditorModalShellCtx.isOpen).toBe(false)
+    expect(ctx.dealEditorFormCtx.openAccountFromDeal).toBe(openAccountFromDeal)
+    expect(ctx.dealEditorFormCtx.canViewAccountsSection).toBe(true)
+    canViewAccountsSection.value = false
+    expect(ctx.dealEditorFormCtx.canViewAccountsSection).toBe(false)
     showDealForm.value = true
     expect(ctx.dealEditorModalShellCtx.isOpen).toBe(true)
     expect(ctx.dealEditorModalShellCtx.showCreateDraft).toBe(true)

@@ -1,12 +1,48 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { isCompletedDeal } from '../dealsUtils'
 
 describe('WorkDealEditorForm template', () => {
   function readTemplateSource() {
     const filePath = resolve(process.cwd(), 'src/views/work/sections/WorkDealEditorForm.vue')
     return readFileSync(filePath, 'utf8')
   }
+
+  it('offers account navigation in both deal forms only with account-section access', () => {
+    // Оба перехода используют общий защищённый обработчик формы сделки.
+    const source = readTemplateSource()
+    expect(source).toContain("@click=\"openAccountFromDeal('edit')\"")
+    expect(source).toContain("@click=\"openAccountFromDeal('new')\"")
+    expect(source.match(/<button v-if="canViewAccountsSection"/g)).toHaveLength(2)
+  })
+
+  function reserveControls(deal) {
+    // Проверяем настоящие функции компонента с управляемым чтением секретов, без браузерного smoke.
+    const source = readTemplateSource()
+    const names = ['getSharingReserveDisplayValue', 'canCopySharingReserve']
+    const functions = names.map((name) => source.match(new RegExp(`function ${name}\\(target\\) \\{[\\s\\S]*?^\\}`, 'm'))[0]).join('\n')
+    const readCode = vi.fn().mockReturnValue('SAVED-CODE')
+    const factory = new Function('editDeal', 'newDeal', 'isCompletedDeal', 'getDealReserveLabel',
+      'hasAccountReserveUsage', 'normalizeReserveKey', `${functions}; return { ${names.join(',')} };`)
+    return { ...factory({ value: deal }, { value: deal }, isCompletedDeal, readCode, () => true, (key) => key), readCode }
+  }
+
+  it('shows only issued and cannot copy in completed deals even without a stored code', () => {
+    for (const reserve_key of ['reserve1', null]) {
+      const controls = reserveControls({ deal_id: 10, account_id: 5, reserve_key, flow_status_code: 'completed' })
+      expect(controls.getSharingReserveDisplayValue('edit')).toBe('выдан')
+      expect(controls.canCopySharingReserve('edit')).toBe(false)
+      expect(controls.readCode).not.toHaveBeenCalled()
+    }
+  })
+
+  it('keeps the saved reserve available when a deal is in progress', () => {
+    const controls = reserveControls({ deal_id: 10, account_id: 5, reserve_key: 'reserve4', flow_status_code: 'pending' })
+    expect(controls.getSharingReserveDisplayValue('edit')).toBe('SAVED-CODE')
+    expect(controls.canCopySharingReserve('edit')).toBe(true)
+    expect(controls.readCode).toHaveBeenCalledWith(5, 'reserve4', 10, { allowFallback: false, emptyLabel: '— не назначен' })
+  })
 
   it('does not render slot helper blocks in sharing forms', () => {
     const source = readTemplateSource()
@@ -159,7 +195,7 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('Данные аккаунта')
     expect(source).toContain('const value = String(getAccountSecret.value?.(accountId) || \'\').trim()')
     expect(source).toContain('function getUsedReserveKeysByAccount(accountId, currentDealId = null)')
-    expect(source).toContain('const entries = Array.isArray(getReserveSecretEntries.value?.(accountId))')
+    expect(source).toContain('const entries = Array.isArray(getReserveSecretEntries.value?.(accountId, true))')
     expect(source).not.toContain('deal-form__account-details">\n                          <div class="deal-form__double">')
     expect(source).toContain('deal-form__account-details-head">Данные аккаунта</div>')
     expect(newRentalMain).not.toContain('getAccountPasswordById(newDeal.account_id)')
@@ -185,7 +221,7 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain("v-if=\"canCopySharingReserve('edit')\"")
     expect(source).toContain("v-if=\"canCopySharingReserve('new')\"")
     expect(source).toContain('function canCopySharingReserve(target)')
-    expect(source).toContain('claimAccountReserve.value?.(accountId, reserveKey)')
+    expect(source).toContain('claimAccountReserve.value?.(accountId, reserveKey, isEditTarget ? deal?.deal_id : null)')
     expect(source).toContain('deal.reserve_claim_token = claimToken')
   })
 
@@ -211,10 +247,10 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('const reserveKey = pickFirstFreeReserveKey(accountId)')
     expect(source).toContain('newDeal.value.reserve_key = reserveKey')
     expect(source).toContain('if (!normalizedKey && !allowFallback) return emptyLabel')
-    expect(source).toContain('loadAccountUsedReserveKeys.value(targetId, currentDealId)')
+    expect(source).toContain('loadAccountUsedReserveKeys.value(targetId, currentDealId, true)')
     expect(source).toContain('hasAccountReserveUsage(accountId, currentDealId)')
     expect(source).toContain('return new Set(accountReserveUsage.value[cacheKey] || [])')
-    expect(source).toContain("if (!String(deal?.reserve_claim_token || '').trim() && (target === 'new' || !currentKey || used.has(currentKey)))")
+    expect(source).toContain("if (target === 'new' && !String(deal?.reserve_claim_token || '').trim() && (!currentKey || used.has(currentKey)))")
   })
 
   it('hides refund field in pending and draft statuses and keeps it only for other flows', () => {

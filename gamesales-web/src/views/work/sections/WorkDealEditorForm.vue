@@ -505,7 +505,10 @@
                               </div>
                             </label>
                             <div v-if="editDeal.account_id" class="deal-form__account-details">
-                              <div class="deal-form__account-details-head">Данные аккаунта</div>
+                              <div class="deal-form__account-details-toolbar">
+                                <div class="deal-form__account-details-head">Данные аккаунта</div>
+                                <button v-if="canViewAccountsSection" class="ghost ghost--small" type="button" :disabled="dealLoading" @click="openAccountFromDeal('edit')">Открыть аккаунт</button>
+                              </div>
                               <div v-if="!dealLoading && shouldShowDealAccountDetailsLoader('edit')" class="loader-wrap loader-wrap--compact deal-form__account-details-loader">
                                 <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
                                   <div class="wheel"></div>
@@ -568,11 +571,11 @@
                                 <label class="field">
                                   <span class="label">Резерв</span>
                                   <div class="input--select-wrap">
-                                    <input
-                                      class="input input--with-copy"
-                                      :value="getSharingReserveDisplayValue('edit')"
-                                      readonly
-                                    />
+                                    <select v-if="dealEditMode === 'edit' && !isCompletedDeal(editDeal)" v-model="editDeal.reserve_key" class="input input--select input--with-copy">
+                                      <option value="">— не назначен</option>
+                                      <option v-for="item in getSharingReserveOptions('edit')" :key="item.key" :value="item.key">{{ item.value }}</option>
+                                    </select>
+                                    <input v-else class="input input--with-copy" :value="getSharingReserveDisplayValue('edit')" readonly />
                                     <button
                                       v-if="canCopySharingReserve('edit')"
                                       class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
@@ -1323,7 +1326,10 @@
                               </div>
                             </label>
                             <div v-if="newDeal.account_id" class="deal-form__account-details">
-                              <div class="deal-form__account-details-head">Данные аккаунта</div>
+                              <div class="deal-form__account-details-toolbar">
+                                <div class="deal-form__account-details-head">Данные аккаунта</div>
+                                <button v-if="canViewAccountsSection" class="ghost ghost--small" type="button" :disabled="dealLoading" @click="openAccountFromDeal('new')">Открыть аккаунт</button>
+                              </div>
                               <div v-if="!dealLoading && shouldShowDealAccountDetailsLoader('new')" class="loader-wrap loader-wrap--compact deal-form__account-details-loader">
                                 <div aria-label="Orange and tan hamster running in a metal wheel" role="img" class="wheel-and-hamster wheel-and-hamster--mini">
                                   <div class="wheel"></div>
@@ -1386,7 +1392,11 @@
                                 <label class="field">
                                   <span class="label">Резерв</span>
                                   <div class="input--select-wrap">
-                                    <input class="input input--with-copy" :value="getSharingReserveDisplayValue('new')" readonly />
+                                    <select v-if="!isCompletedDeal(newDeal)" v-model="newDeal.reserve_key" class="input input--select input--with-copy">
+                                      <option value="">— не назначен</option>
+                                      <option v-for="item in getSharingReserveOptions('new')" :key="item.key" :value="item.key">{{ item.value }}</option>
+                                    </select>
+                                    <input v-else class="input input--with-copy" :value="getSharingReserveDisplayValue('new')" readonly />
                                     <button
                                       v-if="canCopySharingReserve('new')"
                                       class="btn btn--icon-plain btn--icon-round btn--icon-clear btn--icon-clear--select"
@@ -1657,6 +1667,7 @@
 
 <script setup>
 import { computed, reactive, ref, toRefs, watch } from 'vue'
+import { isCompletedDeal } from '../dealsUtils'
 import WorkDealSupplierNominals from './WorkDealSupplierNominals.vue'
 import WorkDealPurchaseCostInput from './WorkDealPurchaseCostInput.vue'
 
@@ -1668,6 +1679,8 @@ const ctx = reactive(props.ctx)
 
 const {
   editDeal,
+  openAccountFromDeal,
+  canViewAccountsSection,
   dealEditMode,
   allowCompletedDealEdit,
   dealAccountsForProductLoading,
@@ -2119,7 +2132,7 @@ async function ensureAccountReserveUsageLoaded(accountId, currentDealId = null, 
     delete nextUsage[cacheKey]
     accountReserveUsage.value = nextUsage
   }
-  const keys = await loadAccountUsedReserveKeys.value(targetId, currentDealId)
+  const keys = await loadAccountUsedReserveKeys.value(targetId, currentDealId, true)
   accountReserveUsage.value = {
     ...(accountReserveUsage.value || {}),
     [cacheKey]: (Array.isArray(keys) ? keys : []).map(normalizeReserveKey).filter(Boolean),
@@ -2151,14 +2164,15 @@ function getUsedReserveKeysByAccount(accountId, currentDealId = null) {
 
 // Возвращает список резервов аккаунта и признак, занят ли каждый резерв.
 function getAccountReserveEntriesForDeal(accountId, currentDealId = null) {
-  const entries = Array.isArray(getReserveSecretEntries.value?.(accountId))
-    ? getReserveSecretEntries.value(accountId)
+  const entries = Array.isArray(getReserveSecretEntries.value?.(accountId, true))
+    ? getReserveSecretEntries.value(accountId, true)
     : []
   const used = getUsedReserveKeysByAccount(accountId, currentDealId)
   return entries.map((item) => {
     const normalizedKey = normalizeReserveKey(item?.key)
     return {
       key: normalizedKey,
+      listed: item?.listed !== false,
       value: String(item?.value || '').trim(),
       used: normalizedKey ? used.has(normalizedKey) : false,
     }
@@ -2168,7 +2182,7 @@ function getAccountReserveEntriesForDeal(accountId, currentDealId = null) {
 // Выбирает первый свободный резерв из уже загруженных данных.
 function pickFirstFreeReserveKey(accountId, currentDealId = null) {
   const entries = getAccountReserveEntriesForDeal(accountId, currentDealId)
-  const free = entries.find((item) => item.key && !item.used)
+  const free = entries.find((item) => item.key && item.listed && !item.used)
   return free?.key || ''
 }
 
@@ -2254,7 +2268,6 @@ async function ensureDealAccountDetailsLoaded(target) {
   const loadingRef = target === 'edit' ? editDealAccountDetailsLoading : newDealAccountDetailsLoading
   const currentDealId = target === 'edit' ? editDeal.value?.deal_id : null
   const hasLabel = hasAccountLabelForDetails(accountId)
-  const hasSecrets = hasAccountSecretsForDetails(accountId)
   loadingRef.value = true
   try {
     const tasks = []
@@ -2262,8 +2275,8 @@ async function ensureDealAccountDetailsLoaded(target) {
       // Для карточки сделки подгружаем только подпись нужного аккаунта, без полного /accounts.
       tasks.push(loadAccountsAll.value([accountId]))
     }
-    if (!hasSecrets && typeof ensureAccountSecretsLoaded.value === 'function') {
-      tasks.push(ensureAccountSecretsLoaded.value(accountId))
+    if (typeof ensureAccountSecretsLoaded.value === 'function') {
+      tasks.push(ensureAccountSecretsLoaded.value(accountId, true))
     }
     // При каждом выборе аккаунта обновляем занятость, чтобы новая сделка не использовала устаревший кеш.
     tasks.push(ensureAccountReserveUsageLoaded(accountId, currentDealId, true))
@@ -2274,8 +2287,8 @@ async function ensureDealAccountDetailsLoaded(target) {
     if (String(deal?.deal_type_code || '').toLowerCase() !== 'rental') return
     const currentKey = normalizeReserveKey(deal?.reserve_key)
     const used = getUsedReserveKeysByAccount(accountId, currentDealId)
-    // Для новой сделки всегда пересчитываем выбор; в edit сохраняем текущий ключ, если он свободен.
-    if (!String(deal?.reserve_claim_token || '').trim() && (target === 'new' || !currentKey || used.has(currentKey))) {
+    // Просмотр и редактирование не назначают код автоматически: новую выдачу выбирает сотрудник.
+    if (target === 'new' && !String(deal?.reserve_claim_token || '').trim() && (!currentKey || used.has(currentKey))) {
       deal.reserve_key = pickFirstFreeReserveKey(accountId, currentDealId)
     }
     if (target === 'new' && !deal.reserve_key && getAccountReserveEntriesForDeal(accountId).length > 0) {
@@ -2448,8 +2461,8 @@ watch(() => newDeal.value?.account_id, (accountId) => {
   void ensureDealAccountDetailsLoaded('new')
 }, { immediate: true })
 
-watch(() => editDeal.value?.account_id, (accountId) => {
-  if (!accountId) {
+watch(() => [editDeal.value?.open, editDeal.value?.account_id, editDeal.value?.deal_id], ([open, accountId]) => {
+  if (!open || !accountId) {
     editDealAccountDetailsLoading.value = false
     return
   }
@@ -2537,26 +2550,14 @@ watch(() => newDeal.value?.account_id, (accountId) => {
   }
 })
 
-watch(() => editDeal.value?.account_id, (accountId) => {
-  if (!editDeal.value?.open || editDeal.value?.deal_type_code !== 'rental' || dealEditMode.value !== 'edit') return
-  if (!accountId) {
-    editDeal.value.reserve_key = ''
-    editDeal.value.reserve_claim_token = ''
-    return
-  }
-  const currentKey = normalizeReserveKey(editDeal.value?.reserve_key)
-  if (currentKey) return
-  // В редактировании подбираем резерв только когда в сделке еще нет ключа.
-  editDeal.value.reserve_key = pickFirstFreeReserveKey(accountId, editDeal.value?.deal_id)
+// Смена выбранного кода сбрасывает только токен формы; уже выданный код остаётся в учёте.
+watch(() => [editDeal.value?.account_id, editDeal.value?.reserve_key], () => {
+  if (editDeal.value) editDeal.value.reserve_claim_token = ''
 })
 
-watch(() => dealEditMode.value, (mode) => {
-  if (mode !== 'edit') return
-  if (!editDeal.value?.open || editDeal.value?.deal_type_code !== 'rental') return
-  if (!editDeal.value?.account_id) return
-  if (normalizeReserveKey(editDeal.value?.reserve_key)) return
-  // При входе в редактирование импортной сделки подбираем свободный резерв, но в режиме просмотра ничего не подставляем.
-  editDeal.value.reserve_key = pickFirstFreeReserveKey(editDeal.value.account_id, editDeal.value?.deal_id)
+// При ручном выборе другого кода не переносим на него токен предыдущей выдачи.
+watch(() => newDeal.value?.reserve_key, () => {
+  if (newDeal.value) newDeal.value.reserve_claim_token = ''
 })
 
 watch(() => editDeal.value?.product_link, (value) => {
@@ -2624,8 +2625,11 @@ async function copyTextToClipboard(value) {
   tempInput.style.left = '-9999px'
   document.body.appendChild(tempInput)
   tempInput.select()
-  document.execCommand('copy')
-  document.body.removeChild(tempInput)
+  try {
+    if (!document.execCommand('copy')) throw new Error('Clipboard copy failed')
+  } finally {
+    document.body.removeChild(tempInput)
+  }
   return true
 }
 
@@ -2643,37 +2647,32 @@ function getSharingFieldCopyLabel(target, field) {
   return 'Копировать логин'
 }
 
-// Проверяет, что резерв уже закреплен сделкой или был занят предыдущим копированием.
-function isSharingReserveUsed(target) {
-  const isEditTarget = target === 'edit'
-  const deal = isEditTarget ? editDeal.value : newDeal.value
-  const accountId = Number(deal?.account_id || 0)
-  const reserveKey = normalizeReserveKey(deal?.reserve_key)
-  if (!accountId || !reserveKey) return false
-  if (String(deal?.reserve_claim_token || '').trim()) return true
-  if (isEditTarget && Number(deal?.deal_id || 0)) return true
-  return getUsedReserveKeysByAccount(accountId, null).has(reserveKey)
-}
-
 // Разрешает копировать резерв своей уже сохраненной сделки, но не свободную выдачу чужого used-резерва.
 function canCopySharingReserve(target) {
+  // Для завершённой сделки скрываем и значение, и возможность его копирования.
   const isEditTarget = target === 'edit'
   const deal = isEditTarget ? editDeal.value : newDeal.value
+  if (isCompletedDeal(deal)) return false
   const accountId = Number(deal?.account_id || 0)
-  const reserveKey = normalizeReserveKey(deal?.reserve_key)
-  if (!accountId || !reserveKey) return false
-  if (isEditTarget && Number(deal?.deal_id || 0)) return true
-  return !isSharingReserveUsed(target)
+  const key = normalizeReserveKey(deal?.reserve_key)
+  return Boolean(accountId && key && hasAccountReserveUsage(accountId, isEditTarget ? deal?.deal_id : null))
 }
 
-// Показывает выбранный резерв, а запрет копирования держим отдельно через кнопку и обработчик.
+// В завершённой сделке оставляем ровно одну метку, независимо от наличия старого кода.
 function getSharingReserveDisplayValue(target) {
   const isEditTarget = target === 'edit'
   const deal = isEditTarget ? editDeal.value : newDeal.value
+  if (isCompletedDeal(deal)) return 'выдан'
   const accountId = Number(deal?.account_id || 0)
-  return isEditTarget
-    ? getDealReserveLabel(accountId, deal?.reserve_key, deal?.deal_id, { allowFallback: dealEditMode.value === 'edit', emptyLabel: '— не назначен' })
-    : getDealReserveLabel(accountId, deal?.reserve_key, null, { allowFallback: true })
+  return getDealReserveLabel(accountId, deal?.reserve_key, isEditTarget ? deal?.deal_id : null,
+    { allowFallback: false, emptyLabel: '— не назначен' })
+}
+
+// Для ручной новой выдачи доступны свободные коды и уже выбранный код этой сделки.
+function getSharingReserveOptions(target) {
+  const deal = target === 'edit' ? editDeal.value : newDeal.value
+  return getAccountReserveEntriesForDeal(deal?.account_id, target === 'edit' ? deal?.deal_id : null)
+    .filter((item) => (item.listed && !item.used) || item.key === deal?.reserve_key)
 }
 
 // Возвращает реальное значение поля шеринга для копирования без служебных подплейсхолдеров.
@@ -2707,20 +2706,19 @@ async function copySharingField(target, field) {
   const accountId = Number(deal?.account_id || 0)
   const reserveKey = normalizeReserveKey(deal?.reserve_key)
   let claimToken = ''
+  let freshClaim = false
   try {
     if (field === 'reserve') {
       if (!accountId || !reserveKey || !canCopySharingReserve(target)) return
-      if (!(isEditTarget && Number(deal?.deal_id || 0))) {
-        const claim = await claimAccountReserve.value?.(accountId, reserveKey)
-        claimToken = String(claim?.claim_token || '').trim()
-        if (!claimToken) return
-        deal.reserve_claim_token = claimToken
-        const cacheKey = getReserveUsageCacheKey(accountId, null)
-        accountReserveUsage.value = {
-          ...(accountReserveUsage.value || {}),
-          [cacheKey]: Array.from(new Set([...(accountReserveUsage.value?.[cacheKey] || []), reserveKey])),
-        }
+      // Сервер проверяет сохранённую связь даже при копировании из существующей сделки.
+      const claim = await claimAccountReserve.value?.(accountId, reserveKey, isEditTarget ? deal?.deal_id : null)
+      claimToken = String(claim?.claim_token || '').trim()
+      freshClaim = Boolean(claimToken && !claim?.reused)
+      if (!claimToken && !claim?.assigned) return
+      if (Number(deal?.account_id || 0) !== accountId || normalizeReserveKey(deal?.reserve_key) !== reserveKey || isCompletedDeal(deal)) {
+        throw new Error('Reserve selection changed')
       }
+      deal.reserve_claim_token = claimToken
     }
     await copyTextToClipboard(value)
     copiedSharingFieldKey.value = getSharingFieldCopyKey(target, field)
@@ -2730,14 +2728,10 @@ async function copySharingField(target, field) {
       copiedSharingFieldTimerId = 0
     }, 1400)
   } catch {
-    if (field === 'reserve' && claimToken) {
+    if (field === 'reserve' && freshClaim) {
       await Promise.resolve(releaseAccountReserveClaim.value?.(accountId, reserveKey, claimToken)).catch(() => {})
       deal.reserve_claim_token = ''
-      const cacheKey = getReserveUsageCacheKey(accountId, isEditTarget ? deal?.deal_id : null)
-      accountReserveUsage.value = {
-        ...(accountReserveUsage.value || {}),
-        [cacheKey]: (accountReserveUsage.value?.[cacheKey] || []).filter((key) => key !== reserveKey),
-      }
+      await ensureAccountReserveUsageLoaded(accountId, isEditTarget ? deal?.deal_id : null, true).catch(() => {})
     }
     showDealWarning.value?.('Не удалось скопировать значение')
   }

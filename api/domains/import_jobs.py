@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import os
+import base64
+
+from .account_reserves import AccountReserves
 import threading
 from typing import Callable, Optional
 
@@ -45,6 +48,14 @@ def build_import_jobs(
     set_import_progress,
     MIN_DATE,
 ):
+    def reserve_rows(conn, sql, params):
+        # Читаем резервы в той же транзакции импорта, не открывая дополнительное соединение.
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchall()
+
+    reserves = AccountReserves(q1, reserve_rows, exec1)
+
     # Ищет game-товар по названию и точному набору платформ.
     def find_game_product_by_title_platforms(conn, title: str, platform_codes: list[str]):
         if not title or not platform_codes:
@@ -594,24 +605,21 @@ def build_import_jobs(
                                     """,
                                     (account_id, "account_password", b64_encode(password)),
                                 )
-                            # Сохраняем резервы как reserve1..reserve10, чтобы их можно было сразу использовать в сделках.
+                            # Колонки импорта обозначают позиции списка, а не постоянные ID кодов.
                             reserve_values = item.get("reserve_values") or {}
-                            for reserve_idx in range(1, 11):
-                                reserve_key = f"reserve{reserve_idx}"
-                                reserve_raw = reserve_values.get(reserve_key, item.get(reserve_key))
-                                reserve_val = str(reserve_raw or "").strip()
-                                if not reserve_val:
-                                    continue
-                                exec1(
-                                    conn,
-                                    """
-                                    INSERT INTO app.account_secrets(account_id, secret_key, secret_value)
-                                    VALUES (%s, %s, %s)
-                                    ON CONFLICT (account_id, secret_key)
-                                    DO UPDATE SET secret_value=excluded.secret_value
-                                    """,
-                                    (account_id, reserve_key, b64_encode(reserve_val)),
-                                )
+                            incoming = {idx: str(reserve_values.get(f'reserve{idx}', item.get(f'reserve{idx}')) or '').strip()
+                                        for idx in range(1, 11)}
+                            if any(incoming.values()):
+                                reserves.lock(conn, account_id)
+                                values = [base64.b64decode(r[6]).decode() for r in reserves.rows(conn, account_id)
+                                          if r[3] and r[6] and r[5] is None]
+                                for idx, value in incoming.items():
+                                    if not value:
+                                        continue
+                                    while len(values) < idx:
+                                        values.append('')
+                                    values[idx - 1] = value
+                                reserves.replace(conn, account_id, values, owner)
                         conn.commit()
                         upload_done += 1
                         last_success_row = idx

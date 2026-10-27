@@ -273,7 +273,7 @@
                             <div class="account-reserve-row__meta">
                               <span class="label account-reserve-row__label">{{ reserveItem.label }}</span>
                               <span
-                                v-if="isReserveUsedByKey(reserveItem.key)"
+                                v-if="!isReserveUsagePending() && isReserveUsedByKey(reserveItem.key)"
                                 class="account-reserve-row__badge"
                               >
                                 использован
@@ -929,10 +929,13 @@ const copyTextToClipboard = async (value) => {
   tempInput.style.left = '-9999px'
   document.body.appendChild(tempInput)
   tempInput.select()
-  if (typeof document.execCommand === 'function') {
-    document.execCommand('copy')
+  try {
+    if (typeof document.execCommand !== 'function' || !document.execCommand('copy')) {
+      throw new Error('Clipboard copy failed')
+    }
+  } finally {
+    document.body.removeChild(tempInput)
   }
-  document.body.removeChild(tempInput)
   return true
 }
 
@@ -992,10 +995,12 @@ const copyAccountField = async (field, reserveItem = null) => {
   const reserveKey = normalizeReserveKey(reserveItem?.key)
   if (field === 'reserve' && (!accountId || !reserveKey || isReserveUsedByKey(reserveKey))) return
   let claimToken = ''
+  let freshClaim = false
   try {
     if (field === 'reserve') {
       const claim = await props.claimAccountReserve?.(accountId, reserveKey)
       claimToken = String(claim?.claim_token || '').trim()
+      freshClaim = Boolean(claimToken && !claim?.reused)
       if (!claimToken) return
       persistedUsedReserveKeys.value = new Set([...persistedUsedReserveKeys.value, reserveKey])
     }
@@ -1007,11 +1012,15 @@ const copyAccountField = async (field, reserveItem = null) => {
       copiedAccountFieldTimerId = 0
     }, 1400)
   } catch {
-    if (field === 'reserve' && claimToken) {
-      await Promise.resolve(props.releaseAccountReserveClaim?.(accountId, reserveKey, claimToken)).catch(() => {})
-      const nextKeys = new Set(persistedUsedReserveKeys.value)
-      nextKeys.delete(reserveKey)
-      persistedUsedReserveKeys.value = nextKeys
+    if (field === 'reserve' && freshClaim) {
+      const result = await Promise.resolve(props.releaseAccountReserveClaim?.(accountId, reserveKey, claimToken)).catch(() => null)
+      if (result?.released) {
+        const nextKeys = new Set(persistedUsedReserveKeys.value)
+        nextKeys.delete(reserveKey)
+        persistedUsedReserveKeys.value = nextKeys
+      } else {
+        await loadPersistedReserveUsage()
+      }
     }
     // Ошибку копирования игнорируем: форма продолжает работать без блокировки.
   }

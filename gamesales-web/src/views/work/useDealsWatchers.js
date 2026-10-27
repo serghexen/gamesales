@@ -183,6 +183,9 @@ export function useDealsWatchers({
         dealAccountAssignmentsEdit.value = []
         return
       }
+      // Номер старого аккаунта не должен автоматически выбирать другой код нового аккаунта.
+      editDeal.reserve_key = ''
+      editDeal.reserve_claim_token = ''
       if (!prev) return
       accountSlotStatusEdit.value = []
       dealAccountAssignmentsEdit.value = []

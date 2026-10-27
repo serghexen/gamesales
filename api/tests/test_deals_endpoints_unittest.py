@@ -8,6 +8,8 @@ except Exception:  # pragma: no cover
     TestClient = None
 
 import app as app_module
+from fastapi import HTTPException
+from domains.account_reserves import AccountReserves
 
 
 class _ScriptedCursor:
@@ -68,6 +70,16 @@ class _ScriptedConnCtx:
 
 @unittest.skipIf(TestClient is None, "fastapi.testclient requires httpx")
 class DealsEndpointsTests(unittest.TestCase):
+    def setUp(self):
+        # Сервис проверяем отдельно; здесь сохраняем покрытие маршрутов и слотных правил.
+        self.reserve_mocks = {}
+        for name in ('lock', 'select', 'assigned', 'finish', 'detached', 'related', 'finish_deal'):
+            patcher = patch.object(AccountReserves, name)
+            self.reserve_mocks[name] = patcher.start()
+            self.addCleanup(patcher.stop)
+        self.reserve_mocks['select'].side_effect = lambda conn, account, key, actor, **kwargs: key
+        self.reserve_mocks['related'].return_value = []
+
     def _client(self):
         return TestClient(app_module.app)
 
@@ -589,8 +601,10 @@ class DealsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 409)
             self.assertIn("Not enough free slots", res.text)
 
-    # Если фронт прислал занятый резерв, backend должен выбрать следующий свободный и сохранить сделку.
-    def test_create_deal_rental_replaces_used_reserve(self):
+    # Явно выбранный занятый резерв отклоняем без подмены.
+    def test_create_deal_rental_rejects_used_reserve(self):
+        # Конфликт не должен выдавать клиенту другой код молча.
+        self.reserve_mocks['select'].side_effect = HTTPException(409, 'Reserve already used')
         script = [
             {"one": ("game", False)},  # product lookup
             {"one": (1,)},  # ensure_account_exists
@@ -600,12 +614,6 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (7,)},  # region from account
             {"one": (22,)},  # customer insert
             {"one": (1,)},  # get_account_slot_free
-            {"all": [("reserve1",)]},  # reserve1 already used
-            {"all": [("reserve1", "cjE="), ("reserve2", "cjI=")]},  # account reserves
-            {"all": [("reserve1",)]},  # used reserves for fallback selection
-            {"one": (33,)},  # deal insert
-            {"one": (44,)},  # deal_item insert with reserve2
-            {"rowcount": 1},  # assignment insert
         ]
         with (
             patch.object(app_module, "ensure_analytics_schema", return_value=None),
@@ -629,8 +637,8 @@ class DealsEndpointsTests(unittest.TestCase):
                     },
                 )
 
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json(), {"deal_id": 33})
+        self.assertEqual(res.status_code, 409)
+        self.reserve_mocks['assigned'].assert_not_called()
 
     # Сделка с токеном копирования должна сохранить именно занятый этой формой резерв и поглотить токен.
     def test_create_deal_rental_consumes_reserve_claim(self):
@@ -643,12 +651,9 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (7,)},  # region from account
             {"one": (22,)},  # customer insert
             {"one": (1,)},  # get_account_slot_free
-            {"one": (1,)},  # reserve claim belongs to this form
-            {"all": []},  # no usage except excluded claim
             {"one": (33,)},  # deal insert
             {"one": (44,)},  # deal_item insert
             {"rowcount": 1},  # assignment insert
-            {"rowcount": 1},  # consume claim
         ]
         sql_collector = []
         with (
@@ -676,7 +681,8 @@ class DealsEndpointsTests(unittest.TestCase):
 
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json(), {"deal_id": 33})
-        self.assertTrue(any("DELETE FROM app.account_reserve_claims" in sql for sql in sql_collector))
+        self.assertEqual(self.reserve_mocks['select'].call_args.kwargs['token'], 'claim-1')
+        self.assertEqual(self.reserve_mocks['assigned'].call_args.args[1:], (7, 'reserve1', 'admin', 33))
 
     # Аренда по product_id должна поддерживать подписку как товар.
     def test_create_deal_rental_with_subscription_product(self):
@@ -994,6 +1000,7 @@ class DealsEndpointsTests(unittest.TestCase):
             {"one": (33,)},  # deal insert
             {"one": (44,)},  # deal_item insert
             {"rowcount": 1},  # assignment insert
+            {"rowcount": 1},  # reserve binding
             {"one": (1, 1)},  # slots_summary
         ]
         with (
@@ -2119,6 +2126,7 @@ class DealsEndpointsTests(unittest.TestCase):
     def test_delete_deal_draft_soft_delete_success(self):
         script = [
             {"one": ("draft",)},  # current flow_status
+            {"all": []},
             {"rowcount": 1},  # update deals status_code=cancelled
         ]
         with (

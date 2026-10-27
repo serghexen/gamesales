@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
-import uuid
 
 from fastapi import Depends, HTTPException, Query
+from .account_reserves import AccountReserves, reserve_key as normalize_reserve_key
 
 from .accounts_models import (
     AccountCreate,
@@ -20,6 +20,7 @@ from .accounts_models import (
     AccountSecretsBatchItem,
     AccountReserveUsageOut,
     AccountReserveClaimOut,
+    AccountReserveClaimIn,
     SlotAvailabilityOut,
     AccountProductsIn,
     AccountLabelOut,
@@ -50,6 +51,7 @@ def mount_accounts_routes(
     require_role,
     get_current_user,
 ):
+    reserves = AccountReserves(q1, qall, exec1)
     # Безопасно читает значение из SQL-строки по индексу, даже если тест дает укороченный кортеж.
     def row_value(row, idx, default=None):
         return row[idx] if row is not None and len(row) > idx else default
@@ -682,116 +684,41 @@ def mount_accounts_routes(
             rows = qall(
                 conn,
                 """
-                SELECT secret_key, secret_value, created_at
-                FROM app.account_secrets
-                WHERE account_id=%s
-                ORDER BY secret_key
+                SELECT s.secret_key, s.secret_value, s.created_at, c.reserve_id, COALESCE(c.is_listed,true)
+                FROM app.account_secrets s
+                LEFT JOIN app.account_reserve_codes c ON c.account_id=s.account_id AND c.reserve_key=s.secret_key
+                WHERE s.account_id=%s
+                ORDER BY s.secret_key
                 """,
                 (account_id,),
             )
-        return [AccountSecretOut(secret_key=r0, secret_value_b64=r1, created_at=r2) for (r0, r1, r2) in rows]
+        return [AccountSecretOut(secret_key=r[0], secret_value_b64=r[1], created_at=r[2],
+            reserve_id=row_value(r, 3), reserve_listed=row_value(r, 4, True)) for r in rows]
 
     @app.get("/accounts/{account_id}/reserve-usage", response_model=AccountReserveUsageOut)
     def get_account_reserve_usage(
         account_id: int,
         exclude_deal_id: Optional[int] = None,
+        for_deal: bool = False,
         user=Depends(require_role("admin", "owner", "manager", "operator")),
     ):
-        # Читаем занятые резервы напрямую из БД, чтобы фильтры и пагинация сделок не искажали результат.
-        params = [account_id]
-        exclude_sql = ""
-        if exclude_deal_id is not None:
-            exclude_sql = "AND d.deal_id <> %s"
-            params.append(exclude_deal_id)
+        # Полный учёт выдачи не зависит от страницы сделок; свои копирования можно привязать к сделке.
         with psycopg.connect(DB_DSN) as conn:
-            rows = qall(
-                conn,
-                f"""
-                SELECT DISTINCT lower(used.reserve_key)
-                FROM (
-                  SELECT di.reserve_key
-                  FROM app.deal_items di
-                  JOIN app.deals d ON d.deal_id = di.deal_id
-                  WHERE d.deal_type_code='rental'
-                    AND di.account_id=%s
-                    AND di.reserve_key IS NOT NULL
-                    AND d.status_code <> 'cancelled'
-                    {exclude_sql}
-                  UNION ALL
-                  SELECT arc.reserve_key
-                  FROM app.account_reserve_claims arc
-                  WHERE arc.account_id=%s
-                ) used
-                """,
-                tuple([*params, account_id]),
-            )
-        keys = []
-        for row in rows:
-            raw = str(row[0] or "").strip().lower()
-            suffix = raw.replace("reserve", "", 1) if raw.startswith("reserve") else ""
-            if suffix.isdigit():
-                keys.append(f"reserve{int(suffix)}")
-        keys = sorted(set(keys), key=lambda key: int(key.replace("reserve", "", 1)))
-        return AccountReserveUsageOut(used_reserve_keys=keys)
+            keys = reserves.used(conn, account_id, exclude_deal_id, user.username if for_deal else None)
+        return AccountReserveUsageOut(used_reserve_keys=sorted(keys, key=lambda key: int(key[7:])))
 
     @app.post("/accounts/{account_id}/reserves/{reserve_key}/claim", response_model=AccountReserveClaimOut)
     def claim_account_reserve(
         account_id: int,
         reserve_key: str,
+        payload: Optional[AccountReserveClaimIn] = None,
         user=Depends(require_role("admin", "owner", "manager", "operator")),
     ):
-        # Атомарно занимает резерв перед копированием, чтобы два пользователя не получили один код.
-        raw_key = str(reserve_key or "").strip().lower()
-        suffix = raw_key.replace("reserve", "", 1) if raw_key.startswith("reserve") else ""
-        if not suffix.isdigit():
-            raise HTTPException(400, "Invalid reserve_key")
-        normalized_key = f"reserve{int(suffix)}"
-        claim_token = str(uuid.uuid4())
+        # Общая проверка одинаково защищает создание, просмотр и редактирование сделки.
         with psycopg.connect(DB_DSN) as conn:
-            ensure_account_exists(conn, account_id)
-            secret_row = q1(
-                conn,
-                """
-                SELECT 1
-                FROM app.account_secrets
-                WHERE account_id=%s
-                  AND lower(secret_key)=%s
-                  AND btrim(COALESCE(secret_value, '')) <> ''
-                """,
-                (account_id, normalized_key),
-            )
-            if not secret_row:
-                raise HTTPException(404, "Reserve not found")
-            deal_row = q1(
-                conn,
-                """
-                SELECT 1
-                FROM app.deal_items di
-                JOIN app.deals d ON d.deal_id = di.deal_id
-                WHERE d.deal_type_code='rental'
-                  AND d.status_code <> 'cancelled'
-                  AND di.account_id=%s
-                  AND lower(di.reserve_key)=%s
-                LIMIT 1
-                """,
-                (account_id, normalized_key),
-            )
-            if deal_row:
-                raise HTTPException(409, "Reserve already used")
-            row = q1(
-                conn,
-                """
-                INSERT INTO app.account_reserve_claims(claim_token, account_id, reserve_key, claimed_by)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (account_id, reserve_key) DO NOTHING
-                RETURNING claim_token
-                """,
-                (claim_token, account_id, normalized_key, user.username),
-            )
-            if not row:
-                raise HTTPException(409, "Reserve already used")
+            result = reserves.claim(conn, account_id, reserve_key, user.username, payload.deal_id if payload else None)
             conn.commit()
-        return AccountReserveClaimOut(claim_token=claim_token, reserve_key=normalized_key)
+        return AccountReserveClaimOut(**result)
 
     @app.delete("/accounts/{account_id}/reserves/{reserve_key}/claim")
     def release_account_reserve_claim(
@@ -800,18 +727,11 @@ def mount_accounts_routes(
         claim_token: str,
         user=Depends(require_role("admin", "owner", "manager", "operator")),
     ):
-        # Освобождает отметку только по выданному токену, если копирование в браузере не удалось.
+        # Откатываем только подтверждённый сбой копирования своего свежего токена.
         with psycopg.connect(DB_DSN) as conn:
-            exec1(
-                conn,
-                """
-                DELETE FROM app.account_reserve_claims
-                WHERE account_id=%s AND lower(reserve_key)=lower(%s) AND claim_token=%s
-                """,
-                (account_id, reserve_key, claim_token),
-            )
+            released = reserves.release(conn, account_id, reserve_key, claim_token, user.username)
             conn.commit()
-        return {"ok": True}
+        return {"ok": True, "released": released}
 
     @app.post("/accounts/secrets/batch", response_model=List[AccountSecretsBatchItem])
     def list_account_secrets_batch(payload: AccountSecretsBatchIn, user=Depends(require_role("admin", "owner", "manager", "operator"))):
@@ -822,20 +742,23 @@ def mount_accounts_routes(
             rows = qall(
                 conn,
                 """
-                SELECT account_id, secret_key, secret_value, created_at
-                FROM app.account_secrets
-                WHERE account_id = ANY(%s)
-                ORDER BY account_id, secret_key
+                SELECT s.account_id, s.secret_key, s.secret_value, s.created_at, c.reserve_id, COALESCE(c.is_listed,true)
+                FROM app.account_secrets s
+                LEFT JOIN app.account_reserve_codes c ON c.account_id=s.account_id AND c.reserve_key=s.secret_key
+                WHERE s.account_id = ANY(%s)
+                ORDER BY s.account_id, s.secret_key
                 """,
                 (account_ids,),
             )
         out_map = {aid: [] for aid in account_ids}
-        for account_id, secret_key, secret_value, created_at in rows:
+        for row in rows:
+            account_id, secret_key, secret_value, created_at = row[:4]
             out_map.setdefault(account_id, []).append(
                 AccountSecretOut(
                     secret_key=secret_key,
                     secret_value_b64=secret_value,
                     created_at=created_at,
+                    reserve_id=row_value(row, 4), reserve_listed=row_value(row, 5, True),
                 )
             )
         return [AccountSecretsBatchItem(account_id=aid, secrets=out_map.get(aid, [])) for aid in account_ids]
@@ -846,8 +769,20 @@ def mount_accounts_routes(
         payload: AccountSecretIn,
         user=Depends(require_role("admin", "owner", "manager", "operator")),
     ):
+        # Старый одиночный API тоже создаёт новую личность при замене значения резерва.
         value_b64 = b64_encode(payload.secret_value)
         with psycopg.connect(DB_DSN) as conn:
+            reserve = normalize_reserve_key(payload.secret_key)
+            if reserve:
+                if not payload.secret_value.strip():
+                    raise HTTPException(400, 'Резерв не может быть пустым')
+                reserves.patch_legacy(conn, account_id, {reserve: payload.secret_value}, [], user.username)
+                row = q1(conn, '''SELECT s.secret_key,s.secret_value,s.created_at,c.reserve_id
+                    FROM app.account_secrets s JOIN app.account_reserve_codes c
+                    ON c.account_id=s.account_id AND c.reserve_key=s.secret_key
+                    WHERE s.account_id=%s AND s.secret_value=%s AND c.is_listed''', (account_id, value_b64))
+                conn.commit()
+                return AccountSecretOut(secret_key=row[0], secret_value_b64=row[1], created_at=row[2], reserve_id=row[3])
             q1(
                 conn,
                 """
@@ -878,6 +813,20 @@ def mount_accounts_routes(
             ensure_account_exists(conn, account_id)
             upserts = payload.upserts or []
             delete_keys = [str(k or "").strip() for k in (payload.delete_keys or []) if str(k or "").strip()]
+
+            # Новый редактор передаёт снимок списка; параллельное изменение не затираем.
+            reserve_upserts = {normalize_reserve_key(i.secret_key): i.secret_value for i in upserts if normalize_reserve_key(i.secret_key)}
+            reserve_deletes = [normalize_reserve_key(k) for k in delete_keys if normalize_reserve_key(k)]
+            if payload.reserve_values is not None:
+                if payload.expected_reserves is None:
+                    raise HTTPException(400, 'Для изменения резервов нужен исходный список')
+                if reserve_upserts or reserve_deletes:
+                    raise HTTPException(400, 'Нельзя смешивать два формата изменения резервов')
+                reserves.replace(conn, account_id, payload.reserve_values, user.username, payload.expected_reserves)
+            elif reserve_upserts or reserve_deletes:
+                reserves.patch_legacy(conn, account_id, reserve_upserts, reserve_deletes, user.username)
+            upserts = [i for i in upserts if not normalize_reserve_key(i.secret_key)]
+            delete_keys = [k for k in delete_keys if not normalize_reserve_key(k)]
 
             # Если один и тот же ключ пришел несколько раз, оставляем последнее значение.
             upserts_map: dict[str, str] = {}
@@ -920,7 +869,13 @@ def mount_accounts_routes(
         secret_key: str,
         user=Depends(require_role("admin", "owner", "manager", "operator")),
     ):
+        # Удаление из списка не стирает значение, которое ещё хранит незавершённая сделка.
         with psycopg.connect(DB_DSN) as conn:
+            reserve = normalize_reserve_key(secret_key)
+            if reserve:
+                reserves.patch_legacy(conn, account_id, {}, [reserve], user.username)
+                conn.commit()
+                return {"ok": True}
             exec1(
                 conn,
                 "DELETE FROM app.account_secrets WHERE account_id=%s AND secret_key=%s",

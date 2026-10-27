@@ -53,6 +53,10 @@ export function useDealModalFlow({
   canEditCompletedDeal,
   showDealWarning,
   reopenAccountByIdFromDealReturn,
+  loadAccountForDealNavigation,
+  startEditAccount,
+  canOpenAccountFromDeal,
+  isDealNavigationBlocked,
 }) {
   // Возвращает дефолтную дату срока: сегодня плюс один год.
   function getDefaultSubscriptionTermDate() {
@@ -73,6 +77,7 @@ export function useDealModalFlow({
   let initialCreateDealSnapshot = null
   let pendingReturnTab = ''
   let pendingReturnAccountId = 0
+  let openingLinkedAccount = false
 
   // Проверяет, есть ли в кеше подпись выбранного аккаунта.
   // Возвращает true, если подпись уже есть и ждать загрузку не нужно.
@@ -271,7 +276,8 @@ export function useDealModalFlow({
     syncCreateDealSnapshot()
   }
 
-  async function closeDealModal() {
+  async function closeDealModal({ returnToSource = true } = {}) {
+    // Явный переход в аккаунт использует проверку правок, но не возвращает в прежний раздел.
     const guardEnabled = !suppressUnsavedConfirm?.value
     const createBaseline = initialCreateDealSnapshot || {
       deal_type_code: 'sale',
@@ -432,12 +438,40 @@ export function useDealModalFlow({
     const returnAccountId = Number(pendingReturnAccountId || 0)
     pendingReturnTab = ''
     pendingReturnAccountId = 0
-    if (returnTab) setActiveTab(returnTab)
+    if (returnToSource && returnTab) setActiveTab(returnTab)
     // Если сделка открывалась из карточки аккаунта, после закрытия возвращаем и саму карточку.
-    if (returnTab === 'accounts' && returnAccountId > 0 && typeof reopenAccountByIdFromDealReturn === 'function') {
+    if (returnToSource && returnTab === 'accounts' && returnAccountId > 0 && typeof reopenAccountByIdFromDealReturn === 'function') {
       await Promise.resolve(reopenAccountByIdFromDealReturn(returnAccountId))
     }
     return true
+  }
+
+  async function openAccountFromDeal(target = 'edit') {
+    // Сначала загружаем свежую карточку; ошибка сети или отказ закрыть правки сохраняют сделку на экране.
+    if (openingLinkedAccount || !canOpenAccountFromDeal?.() || isDealNavigationBlocked?.()) return false
+    const source = target === 'new' ? newDeal : editDeal
+    const isSourceOpen = () => target === 'new' ? showDealForm.value : editDeal.open
+    const accountId = Number(source.account_id || 0)
+    const dealId = source.deal_id
+    if (!isSourceOpen() || !Number.isSafeInteger(accountId) || accountId <= 0) return false
+    if (typeof loadAccountForDealNavigation !== 'function' || typeof startEditAccount !== 'function') return false
+    openingLinkedAccount = true
+    dealLoading.value = true
+    try {
+      const account = await loadAccountForDealNavigation(accountId)
+      if (!isSourceOpen() || source.deal_id !== dealId || Number(source.account_id) !== accountId || !canOpenAccountFromDeal()) return false
+      if (Number(account?.account_id) !== accountId) throw new Error('Account mismatch')
+      if (!(await closeDealModal({ returnToSource: false }))) return false
+      setActiveTab('accounts')
+      startEditAccount(account)
+      return true
+    } catch {
+      showDealWarning?.('Не удалось открыть аккаунт. Попробуйте ещё раз.')
+      return false
+    } finally {
+      openingLinkedAccount = false
+      dealLoading.value = false
+    }
   }
 
   function savedDealSnapshot(deal) {
@@ -598,6 +632,7 @@ export function useDealModalFlow({
     openCreateSaleModal,
     openCreateSharingModal,
     closeDealModal,
+    openAccountFromDeal,
     startEditDeal,
     cancelEditDeal,
     toggleDealEditMode,

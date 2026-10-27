@@ -5,6 +5,8 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException
 
+from .account_reserves import AccountReserves, reserve_key as normalize_reserve_key
+
 from .deals_models import RentalCreate, DealCreate, DealUpdate, DealListItem, DealListOut
 
 
@@ -34,6 +36,8 @@ def mount_deals_routes(
     get_current_user,
     publish_deal_event=None,
 ):
+    reserves = AccountReserves(q1, qall, exec1)
+
     def lock_deal_for_supplier_consistency(conn, deal_id: int) -> None:
         # Отдельный запрос блокировки даёт следующему SELECT свежий снимок покупок после ожидания.
         with conn.cursor() as cur:
@@ -70,136 +74,6 @@ def mount_deals_routes(
             ),
         )
         return int(row[0]) if row and row[0] is not None else None
-
-    # Нормализует ключ резерва к формату reserveN; если значение невалидно, возвращает None.
-    def normalize_reserve_key(value: Optional[str]) -> Optional[str]:
-        raw = (value or "").strip().lower()
-        if not raw:
-            return None
-        if not raw.startswith("reserve"):
-            return None
-        suffix = raw.replace("reserve", "", 1).strip()
-        if not suffix.isdigit():
-            return None
-        return f"reserve{int(suffix)}"
-
-    # Возвращает резервы аккаунта в виде пар (reserve_key, decoded_value), отсортированные по номеру.
-    def list_account_reserves(conn, account_id: int):
-        rows = qall(
-            conn,
-            """
-            SELECT secret_key, secret_value
-            FROM app.account_secrets
-            WHERE account_id=%s
-              AND secret_key LIKE 'reserve%%'
-            ORDER BY secret_key
-            """,
-            (account_id,),
-        )
-        parsed = []
-        for secret_key, secret_value in rows:
-            key = normalize_reserve_key(secret_key)
-            if not key:
-                continue
-            # В БД секреты уже хранятся в base64; пустые значения резервами не считаем.
-            value = str(secret_value or "").strip()
-            if not value:
-                continue
-            parsed.append((key, value))
-        parsed.sort(key=lambda item: int(item[0].replace("reserve", "", 1)))
-        return parsed
-
-    # Возвращает резервы, занятые сделками или атомарным копированием в интерфейсе.
-    def get_used_reserve_keys(
-        conn,
-        account_id: int,
-        *,
-        exclude_deal_id: Optional[int] = None,
-        exclude_claim_token: Optional[str] = None,
-    ):
-        deal_exclude_sql = ""
-        params = [account_id]
-        if exclude_deal_id is not None:
-            deal_exclude_sql = "AND d.deal_id <> %s"
-            params.append(exclude_deal_id)
-        claim_exclude_sql = ""
-        if exclude_claim_token:
-            claim_exclude_sql = "AND arc.claim_token <> %s"
-        claim_params = [account_id]
-        if exclude_claim_token:
-            claim_params.append(exclude_claim_token)
-        rows = qall(
-            conn,
-            f"""
-            SELECT DISTINCT used.reserve_key
-            FROM (
-              SELECT di.reserve_key
-              FROM app.deal_items di
-              JOIN app.deals d ON d.deal_id = di.deal_id
-              WHERE d.deal_type_code='rental'
-                AND di.account_id=%s
-                AND di.reserve_key IS NOT NULL
-                AND d.status_code <> 'cancelled'
-                {deal_exclude_sql}
-              UNION ALL
-              SELECT arc.reserve_key
-              FROM app.account_reserve_claims arc
-              WHERE arc.account_id=%s
-                {claim_exclude_sql}
-            ) used
-            """,
-            tuple([*params, *claim_params]),
-        )
-        return {normalize_reserve_key(row[0]) for row in rows if normalize_reserve_key(row[0])}
-
-    # Выбирает первый свободный резерв аккаунта; если свободных нет, возвращает None.
-    def pick_first_free_reserve_key(
-        conn,
-        account_id: int,
-        *,
-        exclude_deal_id: Optional[int] = None,
-        exclude_claim_token: Optional[str] = None,
-    ) -> Optional[str]:
-        reserves = list_account_reserves(conn, account_id)
-        if not reserves:
-            return None
-        used_keys = get_used_reserve_keys(
-            conn,
-            account_id,
-            exclude_deal_id=exclude_deal_id,
-            exclude_claim_token=exclude_claim_token,
-        )
-        for reserve_key, _ in reserves:
-            if reserve_key not in used_keys:
-                return reserve_key
-        return None
-
-    # Проверяет, что токен копирования принадлежит выбранному резерву и аккаунту.
-    def validate_reserve_claim(conn, account_id: int, reserve_key: Optional[str], claim_token: Optional[str]) -> Optional[str]:
-        normalized_key = normalize_reserve_key(reserve_key)
-        normalized_token = (claim_token or "").strip()
-        if not normalized_token:
-            return None
-        if not normalized_key:
-            raise HTTPException(409, "Reserve claim does not match reserve_key")
-        row = q1(
-            conn,
-            """
-            SELECT 1
-            FROM app.account_reserve_claims
-            WHERE claim_token=%s AND account_id=%s AND lower(reserve_key)=%s
-            """,
-            (normalized_token, account_id, normalized_key),
-        )
-        if not row:
-            raise HTTPException(409, "Reserve claim is invalid or already used")
-        return normalized_token
-
-    # Удаляет временную отметку после того, как резерв закреплен за сохраненной сделкой.
-    def consume_reserve_claim(conn, claim_token: Optional[str]) -> None:
-        if not claim_token:
-            return
-        exec1(conn, "DELETE FROM app.account_reserve_claims WHERE claim_token=%s", (claim_token,))
 
     # Проверяет привилегии пользователя для операций с завершенными/возвратными сделками.
     def has_completed_deal_access(user) -> bool:
@@ -730,6 +604,7 @@ def mount_deals_routes(
             if free < 1:
                 raise HTTPException(409, "Not enough free slots for selected slot type")
     
+            selected_reserve_key = reserves.select(conn, payload.account_id, None, user.username)
             # create deal + item
             deal_row = q1(conn, """
                 INSERT INTO app.deals(
@@ -777,6 +652,8 @@ def mount_deals_routes(
                     user.username,
                 ),
             )
+            exec1(conn, 'UPDATE app.deal_items SET reserve_key=%s WHERE deal_item_id=%s', (selected_reserve_key, deal_item_id))
+            reserves.assigned(conn, payload.account_id, selected_reserve_key, user.username, deal_id)
             conn.commit()
 
             # return updated slots
@@ -911,31 +788,14 @@ def mount_deals_routes(
                     account_id=payload.account_id,
                 )
 
+            # Один серверный механизм обслуживает обычные сделки и черновики.
             selected_reserve_key = None
-            selected_reserve_claim_token = None
-            if deal_type == "rental" and payload.account_id and customer_id is not None:
-                # Резерв подбираем только когда есть покупатель, иначе оставляем ключ пустым.
-                normalized_payload_reserve = normalize_reserve_key(payload.reserve_key)
-                selected_reserve_claim_token = validate_reserve_claim(
-                    conn,
-                    payload.account_id,
-                    normalized_payload_reserve,
-                    payload.reserve_claim_token,
+            if deal_type == "rental" and payload.account_id:
+                selected_reserve_key = reserves.select(
+                    conn, payload.account_id, payload.reserve_key, user.username,
+                    token=payload.reserve_claim_token, auto=customer_id is not None and payload.reserve_key is None,
                 )
-                if normalized_payload_reserve:
-                    used_keys = get_used_reserve_keys(
-                        conn,
-                        payload.account_id,
-                        exclude_claim_token=selected_reserve_claim_token,
-                    )
-                    selected_reserve_key = normalized_payload_reserve if normalized_payload_reserve not in used_keys else None
-                if selected_reserve_key is None:
-                    selected_reserve_key = pick_first_free_reserve_key(
-                        conn,
-                        payload.account_id,
-                        exclude_claim_token=selected_reserve_claim_token,
-                    )
-    
+
             deal_row = q1(conn, """
                 INSERT INTO app.deals(
                   deal_type_code, status_code, flow_status_code, region_id, customer_id, messenger_id, currency, total_amount, order_number, responsible_username
@@ -977,7 +837,7 @@ def mount_deals_routes(
                 """, (
                     deal_id, payload.account_id, payload.product_id, platform_id,
                     payload.price, payload.purchase_cost, payload.purchase_at, payload.start_at, payload.end_at,
-                    0, payload.slot_type_code, None, payload.notes, product_link
+                    0, payload.slot_type_code, selected_reserve_key, payload.notes, product_link
                 ))
             deal_item_id = int(row_item[0])
             if deal_type == "rental" and not rental_is_draft:
@@ -1009,7 +869,10 @@ def mount_deals_routes(
                         assignment_id=int(duplicate_assignment_to_release["assignment_id"]),
                         released_by=user.username,
                     )
-                consume_reserve_claim(conn, selected_reserve_claim_token)
+            if deal_type == "rental" and payload.account_id:
+                reserves.assigned(conn, payload.account_id, selected_reserve_key, user.username, deal_id)
+                if new_flow_status == 'completed':
+                    reserves.finish(conn, payload.account_id, selected_reserve_key, user.username, deal_id)
             conn.commit()
             # После фиксации публикуем событие, чтобы клиенты могли обновить список сделок в реальном времени.
             if publish_deal_event:
@@ -1240,13 +1103,9 @@ def mount_deals_routes(
     
             new_slot_type_code = payload.slot_type_code if payload.slot_type_code is not None else slot_type_code
             new_subscription_term_id = payload.subscription_term_id if payload.subscription_term_id is not None else subscription_term_id
+            if payload.reserve_key and not normalize_reserve_key(payload.reserve_key):
+                raise HTTPException(400, 'Invalid reserve_key')
             new_reserve_key = normalize_reserve_key(payload.reserve_key) if payload.reserve_key is not None else normalize_reserve_key(reserve_key)
-            selected_reserve_claim_token = validate_reserve_claim(
-                conn,
-                int(new_account_id),
-                new_reserve_key,
-                payload.reserve_claim_token,
-            ) if deal_type == "rental" and new_account_id else None
             new_platform_id = platform_id
             if deal_type == "rental" and not rental_is_draft:
                 if not new_slot_type_code:
@@ -1444,23 +1303,27 @@ def mount_deals_routes(
                     free_adjusted += 1
                 if free_adjusted < 1:
                     raise HTTPException(409, "Not enough free slots for selected slot type")
-                # Для rental резерв должен быть уникален в рамках аккаунта: выбираем первый свободный.
-                used_keys = get_used_reserve_keys(
-                    conn,
-                    new_account_id,
-                    exclude_deal_id=deal_id,
-                    exclude_claim_token=selected_reserve_claim_token,
-                )
-                if new_reserve_key in used_keys:
+            # При смене аккаунта блокируем оба в одном порядке, чтобы параллельные переносы не зависали.
+            reserve_history = reserves.related(conn, deal_id) if new_flow_status == 'completed' and flow_status_code != 'completed' else []
+            if reserve_key or (deal_type == 'rental' and new_account_id) or reserve_history:
+                for reserve_account_id in sorted({int(v) for v in (account_id, new_account_id, *(r[0] for r in reserve_history)) if v}):
+                    reserves.lock(conn, reserve_account_id)
+
+            # Проверка резерва обязательна и без пересчёта слотов, в том числе для черновика.
+            if deal_type == "rental" and new_account_id:
+                if account_id != new_account_id and payload.reserve_key is None:
                     new_reserve_key = None
-                if not new_reserve_key:
-                    new_reserve_key = pick_first_free_reserve_key(
-                        conn,
-                        new_account_id,
-                        exclude_deal_id=deal_id,
-                        exclude_claim_token=selected_reserve_claim_token,
-                    )
-    
+                if flow_status_code == 'completed' and new_flow_status == 'completed' and (
+                    new_account_id != account_id or new_reserve_key != normalize_reserve_key(reserve_key)
+                ):
+                    raise HTTPException(409, 'Для новой выдачи сначала верните сделку в работу')
+                new_reserve_key = reserves.select(
+                    conn, new_account_id, new_reserve_key, user.username, deal_id=deal_id,
+                    token=payload.reserve_claim_token, auto=False,
+                )
+            else:
+                new_reserve_key = None
+
             completed_at_changed = flow_status_code != new_flow_status
             completed_at_value = None
             if completed_at_changed:
@@ -1690,8 +1553,12 @@ def mount_deals_routes(
                             """,
                             (new_customer_id, current_assign),
                         )
-            if deal_type == "rental" and not rental_is_draft:
-                consume_reserve_claim(conn, selected_reserve_claim_token)
+            if reserve_key and (account_id != new_account_id or reserve_key != new_reserve_key or deal_type != 'rental'):
+                reserves.detached(conn, account_id, reserve_key, user.username, deal_id)
+            if deal_type == "rental" and new_account_id:
+                reserves.assigned(conn, new_account_id, new_reserve_key, user.username, deal_id)
+            if new_flow_status == 'completed' and flow_status_code != 'completed':
+                reserves.finish_deal(conn, deal_id, user.username)
             conn.commit()
             # После успешного update отправляем событие об изменении сделки.
             if publish_deal_event:
@@ -1798,7 +1665,12 @@ def mount_deals_routes(
                 raise HTTPException(400, "delete is allowed only for draft deals")
             if len(row) > 1 and row[1]:
                 raise HTTPException(409, "Нельзя удалить черновик с оплаченными ваучерами или незавершённой оплатой.")
+            bindings = qall(conn, 'SELECT account_id,reserve_key FROM app.deal_items WHERE deal_id=%s AND reserve_key IS NOT NULL ORDER BY account_id', (deal_id,))
+            for reserve_account_id in sorted({r[0] for r in bindings if r[0]}):
+                reserves.lock(conn, reserve_account_id)
             exec1(conn, "UPDATE app.deals SET status_code='cancelled', lock_version=lock_version + 1 WHERE deal_id=%s", (deal_id,))
+            for reserve_account_id, key in bindings:
+                reserves.detached(conn, reserve_account_id, key, user.username, deal_id)
             conn.commit()
             if publish_deal_event:
                 try:

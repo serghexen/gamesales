@@ -585,6 +585,14 @@
   letter-spacing: 0.04em;
 }
 
+.work-page .deal-form .deal-form__account-details-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .work-page .form--compact .account-reserve-list {
   display: grid;
   grid-template-columns: repeat(4, minmax(180px, 1fr));

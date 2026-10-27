@@ -90,6 +90,8 @@ class AccountSecretOut(BaseModel):
     secret_key: str
     secret_value_b64: str
     created_at: datetime
+    reserve_id: Optional[int] = None
+    reserve_listed: bool = True
 
 
 class AccountSecretsBatchIn(BaseModel):
@@ -108,6 +110,12 @@ class AccountReserveUsageOut(BaseModel):
 class AccountReserveClaimOut(BaseModel):
     claim_token: str
     reserve_key: str
+    assigned: bool = False
+    reused: bool = False
+
+
+class AccountReserveClaimIn(BaseModel):
+    deal_id: Optional[int] = None
 
 
 class AccountSecretPatchItemIn(BaseModel):
@@ -118,6 +126,8 @@ class AccountSecretPatchItemIn(BaseModel):
 class AccountSecretsPatchIn(BaseModel):
     upserts: List[AccountSecretPatchItemIn] = Field(default_factory=list)
     delete_keys: List[str] = Field(default_factory=list)
+    reserve_values: Optional[List[str]] = None
+    expected_reserves: Optional[dict[str, str]] = None
 
 
 class SlotAvailabilityOut(BaseModel):

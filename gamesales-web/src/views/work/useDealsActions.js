@@ -136,7 +136,7 @@ export function useDealsActions({
       slot_type_code: dealTypeCode === 'rental' ? (deal.slot_type_code || null) : null,
       // Для подписочного шеринга сохраняем выбранный срок подписки как отдельный id.
       subscription_term_id: dealTypeCode === 'rental' ? normalizeOptionalInt(deal.subscription_term_id) : null,
-      reserve_key: dealTypeCode === 'rental' ? (deal.reserve_key || null) : null,
+      reserve_key: dealTypeCode === 'rental' ? (deal.reserve_key || '') : null,
       reserve_claim_token: dealTypeCode === 'rental' ? (deal.reserve_claim_token || null) : null,
       // Для принудительного дубля передаем id выбранного назначения, которое нужно снять при сохранении.
       duplicate_assignment_id: dealTypeCode === 'rental' ? normalizeOptionalInt(deal.duplicate_assignment_id) : null,

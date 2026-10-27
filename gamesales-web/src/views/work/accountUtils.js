@@ -35,6 +35,7 @@ export function createEditAccountState() {
     auth_key: 'auth_code',
     reserve_text: '',
     existing_reserve_keys: [],
+    expected_reserves: {},
     has_account: false,
     has_email: false,
     has_auth: false,

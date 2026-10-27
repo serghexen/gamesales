@@ -107,10 +107,104 @@ function createDeps() {
     canEditCompletedDeal: ref(true),
     showDealWarning: vi.fn(),
     reopenAccountByIdFromDealReturn: vi.fn(),
+    loadAccountForDealNavigation: vi.fn().mockImplementation(async (account_id) => ({ account_id, is_deactivated: true })),
+    startEditAccount: vi.fn(),
+    canOpenAccountFromDeal: vi.fn().mockReturnValue(true),
+    isDealNavigationBlocked: vi.fn().mockReturnValue(false),
   }
 }
 
 describe('useDealModalFlow', () => {
+  it('opens the actual account from a saved deal without returning to the former source', async () => {
+    // Явный переход должен открыть аккаунт сделки, а не карточку, из которой её открыли раньше.
+    const deps = createDeps()
+    const api = useDealModalFlow(deps)
+    await api.startEditDeal({ deal_id: 42, account_id: 9, deal_type_code: 'rental', flow_status_code: 'completed' },
+      { returnTab: 'accounts', returnAccountId: 7 })
+    expect(await api.openAccountFromDeal('edit')).toBe(true)
+    expect(deps.loadAccountForDealNavigation).toHaveBeenCalledWith(9)
+    expect(deps.startEditAccount).toHaveBeenCalledWith({ account_id: 9, is_deactivated: true })
+    expect(deps.setActiveTab).toHaveBeenLastCalledWith('accounts')
+    expect(deps.reopenAccountByIdFromDealReturn).not.toHaveBeenCalled()
+    expect(deps.editDeal.open).toBe(false)
+    expect(deps.dealLoading.value).toBe(false)
+  })
+
+  it('keeps unsaved deal changes and return destination when navigation is cancelled', async () => {
+    // Отказ подтверждения сохраняет и текст, и обычный путь возврата из сделки.
+    const deps = createDeps()
+    const api = useDealModalFlow(deps)
+    await api.startEditDeal({ deal_id: 42, account_id: 9, deal_type_code: 'rental' },
+      { returnTab: 'accounts', returnAccountId: 7 })
+    api.toggleDealEditMode()
+    deps.editDeal.notes = 'Несохранённая правка'
+    deps.requestUnsavedConfirm.mockResolvedValueOnce(false).mockResolvedValue(true)
+    expect(await api.openAccountFromDeal('edit')).toBe(false)
+    expect(deps.editDeal.notes).toBe('Несохранённая правка')
+    expect(deps.editDeal.open).toBe(true)
+    expect(deps.startEditAccount).not.toHaveBeenCalled()
+    await api.closeDealModal()
+    expect(deps.reopenAccountByIdFromDealReturn).toHaveBeenCalledWith(7)
+  })
+
+  it('opens the selected account from a new deal after confirming unsaved changes', async () => {
+    // Выбор аккаунта новой сделки не должен теряться без штатного подтверждения.
+    const deps = createDeps()
+    const api = useDealModalFlow(deps)
+    api.openCreateSharingModal()
+    deps.newDeal.account_id = 8
+    deps.newDeal.notes = 'Новая сделка'
+    expect(await api.openAccountFromDeal('new')).toBe(true)
+    expect(deps.requestUnsavedConfirm).toHaveBeenCalled()
+    expect(deps.startEditAccount).toHaveBeenCalledWith({ account_id: 8, is_deactivated: true })
+    expect(deps.showDealForm.value).toBe(false)
+  })
+
+  it('leaves the deal intact if account loading fails', async () => {
+    // Ошибка API не закрывает исходную карточку и не предлагает отбросить её правки.
+    const deps = createDeps()
+    const api = useDealModalFlow(deps)
+    await api.startEditDeal({ deal_id: 42, account_id: 9, deal_type_code: 'rental' })
+    deps.loadAccountForDealNavigation.mockRejectedValue(new Error('offline'))
+    expect(await api.openAccountFromDeal('edit')).toBe(false)
+    expect(deps.editDeal.open).toBe(true)
+    expect(deps.editDeal.account_id).toBe(9)
+    expect(deps.startEditAccount).not.toHaveBeenCalled()
+    expect(deps.requestUnsavedConfirm).not.toHaveBeenCalled()
+    expect(deps.showDealWarning).toHaveBeenCalled()
+    expect(deps.dealLoading.value).toBe(false)
+  })
+
+  it('ignores duplicate clicks and an outdated account response', async () => {
+    // Поздний ответ не должен открыть прежний аккаунт после смены выбора.
+    const deps = createDeps()
+    const api = useDealModalFlow(deps)
+    await api.startEditDeal({ deal_id: 42, account_id: 9, deal_type_code: 'rental' })
+    let resolveAccount
+    deps.loadAccountForDealNavigation.mockReturnValue(new Promise((resolve) => { resolveAccount = resolve }))
+    const opening = api.openAccountFromDeal('edit')
+    expect(await api.openAccountFromDeal('edit')).toBe(false)
+    deps.editDeal.account_id = 10
+    resolveAccount({ account_id: 9 })
+    expect(await opening).toBe(false)
+    expect(deps.loadAccountForDealNavigation).toHaveBeenCalledTimes(1)
+    expect(deps.startEditAccount).not.toHaveBeenCalled()
+    expect(deps.editDeal.open).toBe(true)
+  })
+
+  it.each(['permission', 'busy', 'no-account'])('does not navigate when blocked: %s', async (reason) => {
+    // Проверка действует в обработчике, а не только через доступность кнопки.
+    const deps = createDeps()
+    const api = useDealModalFlow(deps)
+    await api.startEditDeal({ deal_id: 42, account_id: 9, deal_type_code: 'rental' })
+    if (reason === 'permission') deps.canOpenAccountFromDeal.mockReturnValue(false)
+    if (reason === 'busy') deps.isDealNavigationBlocked.mockReturnValue(true)
+    if (reason === 'no-account') deps.editDeal.account_id = ''
+    expect(await api.openAccountFromDeal('edit')).toBe(false)
+    expect(deps.loadAccountForDealNavigation).not.toHaveBeenCalled()
+    expect(deps.startEditAccount).not.toHaveBeenCalled()
+  })
+
   it('synchronizes supplier cost, version and baseline before the next edit and cancel', async () => {
     // После покупки отмена следующей правки возвращает новую сумму, а не старый снимок до оплаты.
     const deps = createDeps()
