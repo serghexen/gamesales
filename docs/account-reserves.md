@@ -70,3 +70,9 @@
 соединениями. Unit-тесты сервиса используют изолированный SQL-движок в памяти и
 не доказывают поведение блокировок PostgreSQL. Ручной smoke WorkView выполняет
 пользователь согласно AGENTS.md.
+
+Production-выкладка и проверки 27.10.2026 зафиксированы в
+[отчёте о релизе](account-reserves-release-20261027.md). Интеграционные проверки
+`api/tests/test_account_reserves_postgres_unittest.py` принимают только явно заданный
+`GAMESALES_RESERVES_TEST_DSN` с именем отдельной восстановленной БД
+`gamesales_reserves_test`; они не предназначены для production.
