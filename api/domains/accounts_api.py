@@ -777,6 +777,8 @@ def mount_accounts_routes(
                 if not payload.secret_value.strip():
                     raise HTTPException(400, 'Резерв не может быть пустым')
                 reserves.patch_legacy(conn, account_id, {reserve: payload.secret_value}, [], user.username)
+                # Сервис убирает пробелы по краям; ответ ищем по фактически сохранённому значению.
+                value_b64 = b64_encode(payload.secret_value.strip())
                 row = q1(conn, '''SELECT s.secret_key,s.secret_value,s.created_at,c.reserve_id
                     FROM app.account_secrets s JOIN app.account_reserve_codes c
                     ON c.account_id=s.account_id AND c.reserve_key=s.secret_key

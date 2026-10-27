@@ -455,6 +455,32 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json()["secret_value_b64"], "c2VjcmV0")
 
+    def test_legacy_reserve_upsert_returns_trimmed_saved_value(self):
+        # Старый клиент может передать пробелы: ответ должен найти новый постоянный ключ.
+        original_execute = _ScriptedCursor.execute
+        captured = []
+
+        def capture(cursor, sql, params=None):
+            # Проверяем параметры реального поиска, чтобы мок не скрывал промах по значению.
+            captured.append(params)
+            return original_execute(cursor, sql, params)
+
+        with (
+            patch.object(AccountReserves, 'patch_legacy', return_value=['reserve3']),
+            patch.object(_ScriptedCursor, 'execute', capture),
+            patch.object(app_module.psycopg, 'connect', return_value=_ScriptedConnCtx([
+                {'one': ('reserve3', 'TkVX', '2026-10-27T00:00:00Z', 123)},
+            ])),
+            patch.object(app_module, 'JWT_SECRET', 'test-secret'),
+            patch.object(app_module, 'JWT_ALG', 'HS256'),
+        ):
+            with self._client() as client:
+                response = client.post('/accounts/7/secrets', headers=self._auth_headers(role='admin'),
+                                       json={'secret_key': 'reserve1', 'secret_value': ' NEW '})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['secret_key'], 'reserve3')
+        self.assertEqual(captured, [(7, 'TkVX')])
+
     # Endpoint занятости резервов должен нормализовать ключи и исключать текущую сделку.
     def test_get_account_reserve_usage(self):
         script = [
