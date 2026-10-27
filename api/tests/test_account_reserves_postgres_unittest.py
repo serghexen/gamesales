@@ -4,6 +4,7 @@ import os
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 
 import psycopg
 from fastapi import HTTPException
@@ -130,6 +131,37 @@ class ReservePostgresTests(unittest.TestCase):
         with self.connection() as conn:
             self.assertEqual(one(conn, 'SELECT flow_status_code FROM app.deals WHERE deal_id=%s', (deal,))[0], 'pending')
             self.assertIsNotNone(self.service.rows(conn, self.account)[0][6])
+
+    def test_http_account_navigation_and_reserve_replacement(self):
+        # Проверяем реальные маршруты и SQL вместе, без запуска фоновых задач или внешних сервисов.
+        from fastapi.testclient import TestClient
+
+        with patch('dotenv.load_dotenv', return_value=False), patch.dict(os.environ, {
+            'DATABASE_URL': DSN, 'JWT_SECRET': 'isolated-reserves-test', 'GAMESALES_SUPPLIER_OFFLINE': '1',
+        }):
+            import app
+        app.app.dependency_overrides[app.get_current_user] = lambda: app.UserOut(username='test-alice', role='owner')
+        try:
+            # Без context manager TestClient не запускает lifespan приложения.
+            client = TestClient(app.app)
+            self.addCleanup(client.close)
+            account_path = f'/accounts/{self.account}'
+            response = client.get(account_path)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['account_id'], self.account)
+            self.assertEqual(client.get(account_path + '/secrets').status_code, 200)
+            claim = client.post(account_path + f'/reserves/{self.keys[0]}/claim', json={})
+            self.assertEqual(claim.status_code, 200)
+            response = client.post(account_path + '/secrets', json={'secret_key': self.keys[0], 'secret_value': ' TEST-NEW '})
+            self.assertEqual(response.status_code, 200)
+            new_key = response.json()['secret_key']
+            self.assertNotEqual(new_key, self.keys[0])
+            usage = client.get(account_path + '/reserve-usage')
+            self.assertEqual(usage.status_code, 200)
+            self.assertIn(self.keys[0], usage.json()['used_reserve_keys'])
+            self.assertNotIn(new_key, usage.json()['used_reserve_keys'])
+        finally:
+            app.app.dependency_overrides.pop(app.get_current_user, None)
 
 
 if __name__ == '__main__':

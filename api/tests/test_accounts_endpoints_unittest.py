@@ -138,6 +138,42 @@ class AccountsEndpointsTests(unittest.TestCase):
             self.assertEqual(body["items"][0]["login_full"], "login1@gmail.com")
             self.assertEqual(len(body["items"][0]["slot_status"]), 1)
 
+    def test_get_account_for_deal_navigation_preserves_full_card(self):
+        # По ID доступна и архивная карточка: даты и заметки нельзя заменять значениями по умолчанию.
+        script = [
+            {'one': (7, 'RU', 'archived', 'login1', 'gmail.com', '2024-01-10', 'notes', True,
+                     '2026-10-27T00:00:00Z', '2026-11-27T00:00:00Z')},
+            {'all': [('ps5', 2, 0, 2)]},
+            {'all': [('ps5_p1', 'ps5', 'single', 1, 0, 1)]},
+        ]
+        with (
+            patch.object(app_module.psycopg, 'connect', return_value=_ScriptedConnCtx(script)),
+            patch.object(app_module, 'JWT_SECRET', 'test-secret'),
+            patch.object(app_module, 'JWT_ALG', 'HS256'),
+        ):
+            with self._client() as client:
+                response = client.get('/accounts/7', headers=self._auth_headers(role='manager'))
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body['account_id'], 7)
+        self.assertEqual(body['status'], 'archived')
+        self.assertEqual(body['login_full'], 'login1@gmail.com')
+        self.assertEqual(body['notes'], 'notes')
+        self.assertTrue(body['is_deactivated'])
+        self.assertTrue(body['next_activation_at'].startswith('2026-11-27'))
+        self.assertEqual(len(body['slot_status']), 1)
+
+    def test_get_account_for_deal_navigation_missing_and_unauthorized(self):
+        # Отсутствующая карточка возвращает 404, а запрос без входа не раскрывает её данные.
+        with (
+            patch.object(app_module.psycopg, 'connect', return_value=_ScriptedConnCtx([{'one': None}])),
+            patch.object(app_module, 'JWT_SECRET', 'test-secret'),
+            patch.object(app_module, 'JWT_ALG', 'HS256'),
+        ):
+            with self._client() as client:
+                self.assertEqual(client.get('/accounts/7').status_code, 401)
+                self.assertEqual(client.get('/accounts/7', headers=self._auth_headers(role='manager')).status_code, 404)
+
     # Общий поиск аккаунтов должен учитывать номер заказа в связанных сделках.
     def test_list_accounts_search_includes_deal_order_number(self):
         script = [{"all": []}]

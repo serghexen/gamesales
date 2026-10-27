@@ -668,6 +668,30 @@ def mount_accounts_routes(
                 next_activation_at=row_value(row, 9),
             )
     
+    @app.get("/accounts/{account_id:int}", response_model=AccountOut)
+    def get_account(account_id: int, user=Depends(get_current_user)):
+        # Переход из сделки получает полную свежую карточку, включая архив и даты деактивации.
+        with psycopg.connect(DB_DSN) as conn:
+            row = q1(conn, '''
+                SELECT a.account_id,r.code,a.status_code,a.login_name,d.name,
+                       a.account_date,a.notes,a.is_deactivated,a.deactivated_at,a.next_activation_at
+                FROM app.accounts a
+                LEFT JOIN app.regions r ON r.region_id=a.region_id
+                LEFT JOIN app.domains d ON d.domain_id=a.domain_id
+                WHERE a.account_id=%s
+            ''', (account_id,))
+            if not row:
+                raise HTTPException(404, 'Account not found')
+            return AccountOut(
+                account_id=row[0], region_code=row[1], status=row[2],
+                login_name=row[3], domain_code=row[4],
+                login_full=f'{row[3]}@{row[4]}' if row[3] and row[4] else None,
+                account_date=row[5], notes=row[6], is_deactivated=bool(row[7]),
+                deactivated_at=row[8], next_activation_at=row[9],
+                platform_slots=get_account_platform_slots(conn, account_id),
+                slot_status=get_account_slot_status(conn, account_id),
+            )
+
     @app.delete("/accounts/{account_id}")
     def archive_account(account_id: int, user=Depends(get_current_user)):
         with psycopg.connect(DB_DSN) as conn:
