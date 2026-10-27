@@ -140,6 +140,12 @@ class ReservePostgresTests(unittest.TestCase):
             'DATABASE_URL': DSN, 'JWT_SECRET': 'isolated-reserves-test', 'GAMESALES_SUPPLIER_OFFLINE': '1',
         }):
             import app
+        # Поднимаем только настоящий пул БД; полный lifespan запустил бы фоновые интеграции.
+        pool = app.ConnectionPool(DSN, min_size=1, max_size=2)
+        self.addCleanup(pool.close)
+        pool_patch = patch.object(app, '_pool', pool)
+        pool_patch.start()
+        self.addCleanup(pool_patch.stop)
         app.app.dependency_overrides[app.get_current_user] = lambda: app.UserOut(username='test-alice', role='owner')
         try:
             # Без context manager TestClient не запускает lifespan приложения.
