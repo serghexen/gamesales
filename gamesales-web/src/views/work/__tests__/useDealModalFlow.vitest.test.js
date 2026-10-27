@@ -123,11 +123,36 @@ describe('useDealModalFlow', () => {
       { returnTab: 'accounts', returnAccountId: 7 })
     expect(await api.openAccountFromDeal('edit')).toBe(true)
     expect(deps.loadAccountForDealNavigation).toHaveBeenCalledWith(9)
-    expect(deps.startEditAccount).toHaveBeenCalledWith({ account_id: 9, is_deactivated: true })
+    expect(deps.startEditAccount).toHaveBeenCalledWith({ account_id: 9, is_deactivated: true }, { onClose: expect.any(Function) })
     expect(deps.setActiveTab).toHaveBeenLastCalledWith('accounts')
     expect(deps.reopenAccountByIdFromDealReturn).not.toHaveBeenCalled()
     expect(deps.editDeal.open).toBe(false)
     expect(deps.dealLoading.value).toBe(false)
+    // Закрытие аккаунта возвращает ту же завершённую сделку и сохраняет её прежний маршрут назад.
+    await deps.startEditAccount.mock.calls[0][1].onClose()
+    expect(deps.editDeal.open).toBe(true)
+    expect(deps.editDeal.deal_id).toBe(42)
+    expect(deps.editDeal.account_id).toBe(9)
+    expect(deps.editDeal.flow_status_code).toBe('completed')
+    expect(deps.setActiveTab).toHaveBeenLastCalledWith('deals')
+    await api.closeDealModal()
+    expect(deps.reopenAccountByIdFromDealReturn).toHaveBeenCalledExactlyOnceWith(7)
+  })
+
+  it('returns to the saved deal without resurrecting discarded edits', async () => {
+    // Подтверждённый сброс правок действует и после возврата из карточки аккаунта.
+    const deps = createDeps()
+    const api = useDealModalFlow(deps)
+    await api.startEditDeal({ deal_id: 42, account_id: 9, deal_type_code: 'rental', lock_version: 3, notes: 'Сохранено' })
+    api.toggleDealEditMode()
+    deps.editDeal.notes = 'Несохранённое'
+    await api.openAccountFromDeal()
+    await deps.startEditAccount.mock.calls[0][1].onClose()
+    expect(deps.editDeal.deal_id).toBe(42)
+    expect(deps.editDeal.notes).toBe('Сохранено')
+    expect(deps.editDeal.lock_version).toBe(3)
+    expect(deps.dealEditMode.value).toBe('view')
+    expect(deps.loadAccountSlotStatus).toHaveBeenLastCalledWith('edit')
   })
 
   it('keeps unsaved deal changes and return destination when navigation is cancelled', async () => {
@@ -156,8 +181,13 @@ describe('useDealModalFlow', () => {
     deps.newDeal.notes = 'Новая сделка'
     expect(await api.openAccountFromDeal('new')).toBe(true)
     expect(deps.requestUnsavedConfirm).toHaveBeenCalled()
-    expect(deps.startEditAccount).toHaveBeenCalledWith({ account_id: 8, is_deactivated: true })
+    expect(deps.startEditAccount).toHaveBeenCalledWith({ account_id: 8, is_deactivated: true }, { onClose: expect.any(Function) })
     expect(deps.showDealForm.value).toBe(false)
+    await deps.startEditAccount.mock.calls[0][1].onClose()
+    expect(deps.showDealForm.value).toBe(true)
+    expect(deps.newDeal.deal_type_code).toBe('rental')
+    expect(deps.newDeal.notes).toBe('')
+    expect(deps.setActiveTab).toHaveBeenLastCalledWith('deals')
   })
 
   it('leaves the deal intact if account loading fails', async () => {

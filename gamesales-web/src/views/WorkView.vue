@@ -1001,7 +1001,7 @@ function closeAllModals() {
     closePlatformModal()
     closeRegionModal()
     closeUserModal()
-    cancelEditAccount()
+    cancelEditAccount({ returnToSource: false })
   } finally {
     suppressUnsavedConfirm.value = false
   }

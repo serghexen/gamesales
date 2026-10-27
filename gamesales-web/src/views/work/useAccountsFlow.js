@@ -74,6 +74,7 @@ export function useAccountsFlow({
   }
 
   let initialEditAccountSnapshot = null
+  let pendingAccountReturn = null
   let accountDealsRequestSeq = 0
   let accountsRequestSeq = 0
   let accountsAllRequestSeq = 0
@@ -369,8 +370,10 @@ export function useAccountsFlow({
   }
 
   // Открывает модалку аккаунта в режиме просмотра.
-  function startEditAccount(a) {
+  function startEditAccount(a, { onClose } = {}) {
+    // Возврат привязан только к этой карточке и задаётся после закрытия прежних модалок.
     closeAllModals()
+    pendingAccountReturn = typeof onClose === 'function' ? onClose : null
     resetModalPos()
     accountModalMode.value = 'edit'
     accountEditMode.value = 'view'
@@ -453,7 +456,9 @@ export function useAccountsFlow({
 
   // Открывает модалку создания нового аккаунта.
   function openCreateAccountModal() {
+    // Создание нового аккаунта не наследует возврат из ранее открытой карточки.
     closeAllModals()
+    pendingAccountReturn = null
     resetModalPos()
     accountModalMode.value = 'create'
     accountEditMode.value = 'edit'
@@ -511,7 +516,8 @@ export function useAccountsFlow({
     accountEditMode.value = 'edit'
   }
 
-  async function cancelEditAccount() {
+  async function cancelEditAccount({ returnToSource = true } = {}) {
+    // Смена сценария закрывает карточку без возврата; крестик и сохранение возвращают в сделку.
     const guardEnabled = !suppressUnsavedConfirm?.value
     const createDirty = accountModalMode.value === 'create' && isSameNormalized(newAccount, {
       login_name: '',
@@ -545,6 +551,8 @@ export function useAccountsFlow({
     const editDirty = accountModalMode.value === 'edit' && accountEditMode.value === 'edit' && !isSameNormalized(editCurrent, initialEditAccountSnapshot || {})
     if (guardEnabled && !(await confirmDiscardIfNeeded(createDirty || editDirty, { requestConfirm: requestUnsavedConfirm }))) return false
 
+    const onClose = returnToSource ? pendingAccountReturn : null
+    pendingAccountReturn = null
     editAccount.open = false
     accountModalMode.value = 'edit'
     editAccount.account_id = null
@@ -600,6 +608,8 @@ export function useAccountsFlow({
     quickEditAccountProduct.platform_codes = []
     quickEditAccountProductError.value = ''
     initialEditAccountSnapshot = null
+    // Сначала сбрасываем карточку и одноразовый возврат, чтобы открытие сделки не вызвало цикл.
+    if (onClose) await onClose()
     return true
   }
 

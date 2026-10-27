@@ -461,9 +461,21 @@ export function useDealModalFlow({
       const account = await loadAccountForDealNavigation(accountId)
       if (!isSourceOpen() || source.deal_id !== dealId || Number(source.account_id) !== accountId || !canOpenAccountFromDeal()) return false
       if (Number(account?.account_id) !== accountId) throw new Error('Account mismatch')
+      // Запоминаем сохранённую сделку и её исходный маршрут до штатного сброса формы.
+      const returnDeal = { ...initialEditDealSnapshot, deal_id: dealId }
+      const returnOptions = { returnTab: pendingReturnTab, returnAccountId: pendingReturnAccountId }
+      const createType = newDeal.deal_type_code
       if (!(await closeDealModal({ returnToSource: false }))) return false
       setActiveTab('accounts')
-      startEditAccount(account)
+      startEditAccount(account, { onClose: async () => {
+        // После аккаунта возвращаем ту же сделку; подтверждённые к сбросу правки не восстанавливаем.
+        if (target === 'new') {
+          if (createType === 'rental') openCreateSharingModal()
+          else openCreateSaleModal()
+        } else {
+          await startEditDeal(returnDeal, returnOptions)
+        }
+      } })
       return true
     } catch {
       showDealWarning?.('Не удалось открыть аккаунт. Попробуйте ещё раз.')

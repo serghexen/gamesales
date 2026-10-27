@@ -73,6 +73,61 @@ function createHarness() {
 }
 
 describe('useAccountsFlow', () => {
+  it('returns once to the source after closing an account', async () => {
+    // Перед возвратом карточка уже закрыта; повторное закрытие не открывает старую сделку.
+    const h = createHarness()
+    const onClose = vi.fn(() => {
+      expect(h.editAccount.open).toBe(false)
+      expect(h.editAccount.account_id).toBeNull()
+    })
+    h.startEditAccount({ account_id: 5 }, { onClose })
+    expect(await h.cancelEditAccount()).toBe(true)
+    await h.cancelEditAccount()
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the return destination when account discard is cancelled', async () => {
+    // Отказ закрыть несохранённый аккаунт не теряет путь обратно в сделку.
+    const h = createHarness()
+    const onClose = vi.fn()
+    h.startEditAccount({ account_id: 5, notes: 'Сохранено' }, { onClose })
+    await Promise.resolve()
+    h.toggleAccountEditMode()
+    h.editAccount.notes = 'Изменено'
+    h.requestUnsavedConfirm.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+    expect(await h.cancelEditAccount()).toBe(false)
+    expect(h.editAccount.open).toBe(true)
+    expect(onClose).not.toHaveBeenCalled()
+    expect(await h.cancelEditAccount()).toBe(true)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not return when another modal replaces the account', async () => {
+    // Общий closeAllModals должен погасить возврат, чтобы не открыть две сделки одновременно.
+    const h = createHarness()
+    const onClose = vi.fn()
+    h.startEditAccount({ account_id: 5 }, { onClose })
+    await h.cancelEditAccount({ returnToSource: false })
+    await h.cancelEditAccount()
+    expect(onClose).not.toHaveBeenCalled()
+    h.startEditAccount({ account_id: 5 }, { onClose })
+    h.startEditAccount({ account_id: 9 })
+    await h.cancelEditAccount()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('returns to the source after saving account changes', async () => {
+    // Успешное сохранение и крестик используют одинаковый путь закрытия карточки.
+    const h = createHarness()
+    const onClose = vi.fn()
+    h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com', region_code: 'RU' }, { onClose })
+    h.apiPut.mockResolvedValue({ ok: true })
+    await h.updateAccount()
+    expect(h.accountsError.value).toBeNull()
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(h.editAccount.open).toBe(false)
+  })
+
   it('loadAccounts sends without_products only when the quick filter is active', async () => {
     const h = createHarness()
     h.accountFilters.without_products = true
