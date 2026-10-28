@@ -1666,7 +1666,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, toRefs, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, toRefs, watch } from 'vue'
 import { isCompletedDeal } from '../dealsUtils'
 import WorkDealSupplierNominals from './WorkDealSupplierNominals.vue'
 import WorkDealPurchaseCostInput from './WorkDealPurchaseCostInput.vue'
@@ -1747,6 +1747,7 @@ const {
   createQuickProduct,
   quickEditProductError,
   dealLoading,
+  dealReserveSelectionLoading,
   dealError,
   dealOk,
   newDeal,
@@ -1793,6 +1794,14 @@ const newSaleProductLinks = ref([])
 const editDealAccountDetailsLoading = ref(false)
 const newDealAccountDetailsLoading = ref(false)
 const accountReserveUsage = ref({})
+const editDealOpenedAsDraft = ref(false)
+const accountDetailsRequestSeq = { new: 0, edit: 0 }
+onBeforeUnmount(() => {
+  // Поздние ответы закрытой формы не меняют резерв и не снимают блокировку новой формы.
+  accountDetailsRequestSeq.new += 1
+  accountDetailsRequestSeq.edit += 1
+  dealReserveSelectionLoading.value = false
+})
 const copiedSaleLinkKey = ref('')
 const copiedSharingFieldKey = ref('')
 const forceNewDuplicateMode = ref(false)
@@ -2262,10 +2271,16 @@ function getDealAccountLoginLabel(target) {
 }
 
 // Догружает справочник, секреты и точную занятость резервов перед показом блока с деталями.
-async function ensureDealAccountDetailsLoaded(target) {
+async function ensureDealAccountDetailsLoaded(target, { assignDraftReserve = false } = {}) {
+  // Номер запроса защищает выбор при смене аккаунта, сделки или закрытии формы во время загрузки.
+  const requestId = ++accountDetailsRequestSeq[target]
   const accountId = getDealAccountIdByTarget(target)
-  if (!accountId) return
   const loadingRef = target === 'edit' ? editDealAccountDetailsLoading : newDealAccountDetailsLoading
+  if (target === 'edit') dealReserveSelectionLoading.value = Boolean(accountId && assignDraftReserve)
+  if (!accountId) {
+    loadingRef.value = false
+    return
+  }
   const currentDealId = target === 'edit' ? editDeal.value?.deal_id : null
   const hasLabel = hasAccountLabelForDetails(accountId)
   loadingRef.value = true
@@ -2281,21 +2296,29 @@ async function ensureDealAccountDetailsLoaded(target) {
     // При каждом выборе аккаунта обновляем занятость, чтобы новая сделка не использовала устаревший кеш.
     tasks.push(ensureAccountReserveUsageLoaded(accountId, currentDealId, true))
     if (tasks.length) await Promise.allSettled(tasks)
+    if (requestId !== accountDetailsRequestSeq[target]) return
     if (!hasAccountReserveUsage(accountId, currentDealId)) return
     if (getDealAccountIdByTarget(target) !== accountId) return
     const deal = target === 'edit' ? editDeal.value : newDeal.value
+    if (target === 'edit' && (!deal?.open || deal.deal_id !== currentDealId)) return
     if (String(deal?.deal_type_code || '').toLowerCase() !== 'rental') return
     const currentKey = normalizeReserveKey(deal?.reserve_key)
     const used = getUsedReserveKeysByAccount(accountId, currentDealId)
-    // Просмотр и редактирование не назначают код автоматически: новую выдачу выбирает сотрудник.
-    if (target === 'new' && !String(deal?.reserve_claim_token || '').trim() && (!currentKey || used.has(currentKey))) {
+    // Черновик получает предложение только после выбора аккаунта в редактировании, а не при открытии.
+    const canAssignDraft = assignDraftReserve && editDealOpenedAsDraft.value
+      && dealEditMode.value === 'edit' && !isCompletedDeal(deal)
+    const shouldAssign = target === 'new' ? (!currentKey || used.has(currentKey)) : (canAssignDraft && !currentKey)
+    if (shouldAssign && !String(deal?.reserve_claim_token || '').trim()) {
       deal.reserve_key = pickFirstFreeReserveKey(accountId, currentDealId)
     }
-    if (target === 'new' && !deal.reserve_key && getAccountReserveEntriesForDeal(accountId).length > 0) {
+    if (!deal.reserve_key && (canAssignDraft || (target === 'new' && getAccountReserveEntriesForDeal(accountId).length > 0))) {
       showDealWarning.value?.('У выбранного аккаунта нет доступных резервов')
     }
   } finally {
-    loadingRef.value = false
+    if (requestId === accountDetailsRequestSeq[target]) {
+      loadingRef.value = false
+      if (target === 'edit') dealReserveSelectionLoading.value = false
+    }
   }
 }
 
@@ -2452,23 +2475,28 @@ watch(() => newDealProductTypeFilter.value, (typeCode, prev) => {
   }
 })
 
-watch(() => newDeal.value?.account_id, (accountId) => {
-  if (!accountId) {
-    newDealAccountDetailsLoading.value = false
-    return
-  }
+watch(() => newDeal.value?.account_id, () => {
   // Для блока "Данные аккаунта" заранее догружаем логин и секреты выбранного аккаунта.
   void ensureDealAccountDetailsLoaded('new')
 }, { immediate: true })
 
-watch(() => [editDeal.value?.open, editDeal.value?.account_id, editDeal.value?.deal_id], ([open, accountId]) => {
+function handleEditDealAccountChange([open, accountId, dealId], previous = []) {
+  // Помним исходный статус: сотрудник может выбрать «В ожидании» раньше аккаунта.
+  const [wasOpen, previousAccountId, previousDealId] = previous
+  const sameDeal = Boolean(open && wasOpen && dealId === previousDealId)
+  if (!sameDeal) editDealOpenedAsDraft.value = Boolean(open && editDeal.value?.flow_status_code === 'draft')
   if (!open || !accountId) {
+    accountDetailsRequestSeq.edit += 1
     editDealAccountDetailsLoading.value = false
+    dealReserveSelectionLoading.value = false
     return
   }
-  // В редактировании применяем ту же догрузку, чтобы в форме не мелькал сырой account_id.
-  void ensureDealAccountDetailsLoaded('edit')
-}, { immediate: true })
+  const assignDraftReserve = sameDeal && editDealOpenedAsDraft.value && dealEditMode.value === 'edit'
+    && Number(accountId) !== Number(previousAccountId)
+  void ensureDealAccountDetailsLoaded('edit', { assignDraftReserve })
+}
+
+watch(() => [editDeal.value?.open, editDeal.value?.account_id, editDeal.value?.deal_id], handleEditDealAccountChange, { immediate: true })
 
 watch(() => newDeal.value?.product_id, () => {
   // При смене товара выходим из принудительного режима дубля: это уже другой сценарий.

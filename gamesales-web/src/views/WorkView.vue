@@ -446,6 +446,8 @@ const productAccountsPageSize = 15
 const dealError = ref(null)
 const dealOk = ref(null)
 const dealLoading = ref(false)
+// Пока выбирается резерв черновика, сохранение не должно отправить прежнее пустое значение.
+const dealReserveSelectionLoading = ref(false)
 const dealBackgroundSync = ref(false)
 const dealCompletingId = ref(null)
 const dealInitLock = ref(false)
@@ -2855,7 +2857,7 @@ const {
   loadAccountForDealNavigation,
   startEditAccount,
   canOpenAccountFromDeal: () => canViewAccountsSection.value,
-  isDealNavigationBlocked: () => Boolean(dealLoading.value || dealSaving.value || dealSupplierBusy.value || dealQuickAccountBusy.value || dealQuickProductBusy.value),
+  isDealNavigationBlocked: () => Boolean(dealLoading.value || dealReserveSelectionLoading.value || dealSaving.value || dealSupplierBusy.value || dealQuickAccountBusy.value || dealQuickProductBusy.value),
 })
 
 closeDealModalDeferred.set(closeDealModalFromFlow)
@@ -3765,6 +3767,7 @@ const {
   updateDealDraft,
   deleteDeal,
   dealLoading,
+  dealReserveSelectionLoading,
   dealSupplierBusy,
   syncDealAfterSupplierPurchase,
   setDealSupplierBusy,

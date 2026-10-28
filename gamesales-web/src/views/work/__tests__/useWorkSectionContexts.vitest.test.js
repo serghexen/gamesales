@@ -11,6 +11,7 @@ describe('useWorkSectionContexts', () => {
     const showDealForm = ref(false)
     const dealEditMode = ref('view')
     const dealLoading = ref(false)
+    const dealReserveSelectionLoading = ref(false)
     const dealSupplierBusy = ref(false)
     const dealQuickAccountBusy = ref(false)
     const dealQuickProductBusy = ref(false)
@@ -29,6 +30,7 @@ describe('useWorkSectionContexts', () => {
       showDealForm,
       dealEditMode,
       dealLoading,
+      dealReserveSelectionLoading,
       dealSupplierBusy,
       dealQuickAccountBusy,
       dealQuickProductBusy,
@@ -67,6 +69,15 @@ describe('useWorkSectionContexts', () => {
     ctx.dealEditorModalShellCtx.onSaveEdit()
     expect(updateDeal).not.toHaveBeenCalled()
     dealSupplierBusy.value = false
+    expect(ctx.dealEditorModalShellCtx.actionsDisabled).toBe(false)
+
+    // Подбор резерва блокирует сохранение до завершения загрузки и разделяет флаг с формой.
+    ctx.dealEditorFormCtx.dealReserveSelectionLoading = true
+    expect(dealReserveSelectionLoading.value).toBe(true)
+    expect(ctx.dealEditorModalShellCtx.actionsDisabled).toBe(true)
+    ctx.dealEditorModalShellCtx.onSaveEdit()
+    expect(updateDeal).not.toHaveBeenCalled()
+    dealReserveSelectionLoading.value = false
     expect(ctx.dealEditorModalShellCtx.actionsDisabled).toBe(false)
 
     dealQuickAccountBusy.value = true

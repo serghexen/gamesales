@@ -241,6 +241,7 @@ describe('WorkDealEditorForm template', () => {
   })
 
   it('shows warning when selected sharing account has no free reserve', () => {
+    // Условия автоподстановки проверяются поведением Vue в draftReserveSelection, а здесь — подключение данных.
     const source = readTemplateSource()
 
     expect(source).toContain("showDealWarning.value('У выбранного аккаунта нет доступных резервов')")
@@ -250,7 +251,6 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain('loadAccountUsedReserveKeys.value(targetId, currentDealId, true)')
     expect(source).toContain('hasAccountReserveUsage(accountId, currentDealId)')
     expect(source).toContain('return new Set(accountReserveUsage.value[cacheKey] || [])')
-    expect(source).toContain("if (target === 'new' && !String(deal?.reserve_claim_token || '').trim() && (!currentKey || used.has(currentKey)))")
   })
 
   it('hides refund field in pending and draft statuses and keeps it only for other flows', () => {

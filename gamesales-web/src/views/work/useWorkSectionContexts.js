@@ -161,6 +161,7 @@ export function useWorkSectionContexts({
   updateDealDraft,
   deleteDeal,
   dealLoading,
+  dealReserveSelectionLoading,
   dealSupplierBusy,
   syncDealAfterSupplierPurchase,
   setDealSupplierBusy,
@@ -308,7 +309,8 @@ export function useWorkSectionContexts({
   async function saveEditDeal() {
     // Кнопка сохранения в режиме редактирования всегда выполняет обычное сохранение,
     // чтобы черновик можно было перевести в рабочую сделку.
-    if (dealSupplierBusy?.value) return
+    // Сохранение ждёт выбора резерва, чтобы сетевой ответ не опоздал к отправке формы.
+    if (dealSupplierBusy?.value || dealReserveSelectionLoading?.value) return
     await updateDeal()
   }
 
@@ -493,7 +495,7 @@ export function useWorkSectionContexts({
     onCreateDraft: createDealDraft,
     onDelete: deleteDeal,
     onEdit: toggleDealEditMode,
-    actionsDisabled: computed(() => dealLoading.value || Boolean(dealSupplierBusy?.value)),
+    actionsDisabled: computed(() => dealLoading.value || Boolean(dealSupplierBusy?.value) || Boolean(dealReserveSelectionLoading?.value)),
   })
 
   // Контекст тела модалки сделки.
@@ -506,6 +508,7 @@ export function useWorkSectionContexts({
 
   // Контекст большой формы сделки.
   const dealEditorFormCtx = proxyRefs({
+    dealReserveSelectionLoading,
     openAccountFromDeal,
     canViewAccountsSection,
     // Передаём актуальную роль, чтобы поле закупа реагировало на смену пользователя.

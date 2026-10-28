@@ -316,6 +316,21 @@ describe('useDealsActions', () => {
     expect(deps.dealError.value).toBe('Укажите покупателя')
   })
 
+  it('saves the reserve chosen for a draft together with its duplicate account selection', async () => {
+    // Выбранный в форме код должен попасть в тот же запрос, который занимает слот дубля.
+    const deps = createDeps()
+    Object.assign(deps.editDeal, {
+      deal_type_code: 'rental', account_id: 4466, product_id: 632, slot_type_code: 'play_ps5',
+      flow_status_code: 'pending', reserve_key: 'reserve4', is_duplicate_flow: true,
+      duplicate_assignment_id: 18265,
+    })
+    const { updateDeal } = useDealsActions(deps)
+    await updateDeal()
+    expect(deps.apiPut).toHaveBeenCalledWith(expect.stringMatching(/^\/deals\//), expect.objectContaining({
+      account_id: 4466, reserve_key: 'reserve4', duplicate_assignment_id: 18265, flow_status_code: 'pending',
+    }), expect.anything())
+  })
+
   it('createDeal requires subscription term for rental subscription', async () => {
     const deps = createDeps({
       resolveProductTypeCode: vi.fn(() => 'subscription'),
