@@ -11,15 +11,21 @@
       </button>
       <span v-else-if="readonly" class="account-authenticator__empty">Не прикреплён</span>
       <div v-if="!readonly" class="account-authenticator__actions">
-        <button type="button" class="btn" :disabled="reading" @click="fileInput?.click()">{{ image ? 'Заменить' : 'Прикрепить' }}</button>
-        <button v-if="image" type="button" class="btn" :disabled="reading" @click="$emit('update:image', '')">Удалить</button>
+        <button type="button" class="btn--ghost account-authenticator__action" :disabled="reading" @click="fileInput?.click()">{{ image ? 'Заменить' : 'Прикрепить' }}</button>
+        <button v-if="image" type="button" class="btn--ghost account-authenticator__action" :disabled="reading" @click="$emit('update:image', '')">Удалить</button>
         <input ref="fileInput" class="account-authenticator__file" type="file" accept="image/png,image/jpeg,image/webp" aria-label="Прикрепить QR аутентификатора" @change="selectFile" />
         <small>PNG, JPEG, WebP · до 1 МБ</small>
       </div>
       <p v-if="error" class="bad account-authenticator__error" role="alert">{{ error }}</p>
     </div>
     <dialog ref="preview" class="account-authenticator__preview" aria-label="QR аутентификатора" @click="closeOnBackdrop" @keydown.esc.stop.prevent="closePreview">
-      <button type="button" class="btn" autofocus @click="closePreview">Закрыть</button>
+      <div class="modal__head account-authenticator__preview-head">
+        <button type="button" class="btn btn--icon-plain btn--icon-round deal-create-action-btn deal-create-action-btn--close" aria-label="Закрыть" title="Закрыть" autofocus @click="closePreview">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 6l12 12M18 6l-12 12" />
+          </svg>
+        </button>
+      </div>
       <img v-if="previewOpen" :src="image" alt="QR аутентификатора — увеличенное изображение" />
     </dialog>
   </div>
@@ -97,18 +103,24 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.account-authenticator { display: grid; grid-template-columns: minmax(0, 1fr) 170px; align-items: start; gap: 16px; min-width: 0; }
+.account-authenticator { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 170px); align-items: start; gap: 16px; min-width: 0; }
 .account-authenticator__code { min-width: 0; }
 .account-authenticator__image { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
 .account-authenticator__thumbnail { width: 96px; height: 96px; box-sizing: border-box; flex: none; padding: 4px; background: #fff; border: 1px solid #64748b; border-radius: 10px; cursor: zoom-in; }
 .account-authenticator__thumbnail img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .account-authenticator__actions { display: flex; flex-wrap: wrap; gap: 6px; max-width: 100%; }
-.account-authenticator__actions .btn { min-width: 0; padding: 6px 10px; font-size: 12px; }
+/* Общий .btn в компактной форме имеет min-width: 200px; действия QR используют свои размеры. */
+.account-authenticator__action { box-sizing: border-box; width: auto; min-width: 0; max-width: 100%; min-height: 32px; padding: 6px 8px; border: 1px solid var(--ghost-border); border-radius: 10px; background: var(--ghost-bg); color: var(--ghost-text); font: inherit; font-size: 12px; line-height: 18px; cursor: pointer; overflow-wrap: anywhere; }
+.account-authenticator__action:hover:not(:disabled) { filter: brightness(1.15); }
+.account-authenticator__action:disabled { opacity: .55; cursor: not-allowed; }
+.account-authenticator__action:focus-visible, .account-authenticator__thumbnail:focus-visible { outline: 2px solid var(--ink, #fff); outline-offset: 2px; }
 .account-authenticator__actions small, .account-authenticator__empty { font-size: 12px; opacity: .7; }
+.account-authenticator__actions small { flex-basis: 100%; overflow-wrap: anywhere; }
 .account-authenticator__file { display: none; }
 .account-authenticator__error { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
 .account-authenticator__preview { width: min(640px, 88vw); max-width: 88vw; max-height: 88dvh; box-sizing: border-box; padding: 16px; border: 1px solid #64748b; border-radius: 16px; background: #101827; color: #fff; }
 .account-authenticator__preview::backdrop { background: rgb(0 0 0 / .75); }
-.account-authenticator__preview img { display: block; margin: 12px auto 0; max-width: 100%; max-height: 68dvh; object-fit: contain; background: #fff; }
+.account-authenticator__preview .account-authenticator__preview-head { display: flex; justify-content: flex-end; margin: 0; padding: 0; cursor: default; }
+.account-authenticator__preview img { display: block; margin: 12px auto 0; max-width: 100%; max-height: min(68dvh, calc(88dvh - 88px)); object-fit: contain; background: #fff; }
 @media (max-width: 600px) { .account-authenticator { grid-template-columns: minmax(0, 1fr); } }
 </style>

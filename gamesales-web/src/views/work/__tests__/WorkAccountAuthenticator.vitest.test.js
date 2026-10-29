@@ -63,6 +63,38 @@ describe('account authenticator field', () => {
     expect(wrapper.text()).not.toContain('Удалить')
   })
 
+  it('keeps QR controls outside the wide compact-form button rule', async () => {
+    // Именно этот общий селектор растягивал кнопки до 200px внутри колонки шириной 170px.
+    const wrapper = create()
+    const page = document.createElement('div')
+    page.className = 'work-page'
+    const form = document.createElement('div')
+    form.className = 'form--compact'
+    page.append(form)
+    form.append(wrapper.element)
+    const wideButton = '.work-page .form--compact .btn:not(.btn--icon-plain):not(.btn--icon-clear):not(.btn--icon-clear--select)'
+    expect(wrapper.findAll('.account-authenticator__actions button')).toHaveLength(1)
+    expect(page.querySelector(wideButton)).toBeNull()
+    await wrapper.setProps({ image: 'data:image/png;base64,TEST' })
+    expect(wrapper.findAll('.account-authenticator__actions button')).toHaveLength(2)
+    expect(page.querySelector(wideButton)).toBeNull()
+  })
+
+  it('closes the preview with the account-style cross without changing account data', async () => {
+    // Крестик использует общие стили шапки аккаунта; закрытие не меняет сам файл.
+    const wrapper = create({ image: 'data:image/png;base64,TEST' })
+    await wrapper.find('.account-authenticator__thumbnail').trigger('click')
+    const close = wrapper.find('dialog .modal__head button[aria-label="Закрыть"]')
+    expect(close.classes()).toContain('deal-create-action-btn--close')
+    expect(close.classes()).toContain('btn--icon-round')
+    expect(close.find('svg').exists()).toBe(true)
+    await close.trigger('click')
+    expect(wrapper.find('dialog').element.open).toBe(false)
+    expect(wrapper.find('dialog img').exists()).toBe(false)
+    expect(wrapper.emitted('update:image')).toBeUndefined()
+    expect(wrapper.emitted('update:code')).toBeUndefined()
+  })
+
   it('keeps the previous image when a selected file is invalid', async () => {
     // Ошибка чтения не очищает уже прикреплённый QR.
     const wrapper = create({ image: 'data:image/png;base64,OLD' })
