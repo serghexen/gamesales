@@ -172,4 +172,16 @@ describe('draft reserve selection', () => {
     await h.ensureDealAccountDetailsLoaded('new')
     expect(h.newDeal.value.reserve_key).toBe('reserve4')
   })
+  it('does not pick a reserve from stale cache when fresh secrets failed to load', async () => {
+    // Сохранённый кеш не подтверждает наличие кода после ошибки обновления.
+    const h = harness()
+    h.ensureAccountSecretsLoaded.value.mockResolvedValue(false)
+    h.dealEditMode.value = 'edit'
+    h.editDeal.value.account_id = 7
+    await settle()
+    expect(h.pickFirstFreeReserveKey).not.toHaveBeenCalled()
+    expect(h.editDeal.value.reserve_key).toBe('')
+    expect(h.dealReserveSelectionLoading.value).toBe(false)
+  })
+
 })

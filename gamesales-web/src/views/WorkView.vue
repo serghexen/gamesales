@@ -183,6 +183,7 @@ import {
 import { createNewAccountState, createEditAccountState, createAccountFiltersState, resolveAccountSort } from './work/accountUtils'
 import { createNewDealState, createEditDealState, createDealFiltersState, resolveDealFlowStatusFilter } from './work/dealsUtils'
 import { readDealFiltersSession, writeDealFiltersSession } from './work/dealsSessionFilters'
+import { buildResponsibleUserOptions } from './work/responsibleUsers'
 import { useDeals } from './work/useDeals'
 import { useDealsActions } from './work/useDealsActions'
 import { useDealsFlow } from './work/useDealsFlow'
@@ -584,27 +585,11 @@ function handleDealsRealtimeEvent(payload) {
 }
 
 const responsibleUserOptions = computed(() => {
-  // Строит список ответственных и скрывает admin/owner для остальных пользователей.
-  const hiddenRoles = new Set(['admin', 'owner'])
-  const seen = new Set()
-  const options = []
-
-  const pushName = (rawName, roleCode = '') => {
-    const name = String(rawName || '').trim()
-    if (!name) return
-    const role = String(roleCode || '').trim().toLowerCase()
-    const key = name.toLowerCase()
-    if (seen.has(key)) return
-    if (!canViewPrivilegedResponsible.value && hiddenRoles.has(role)) return
-    seen.add(key)
-    options.push(name)
-  }
-
-  for (const user of responsibleUsers.value) {
-    pushName(user?.name, user?.role)
-  }
-  pushName(currentUserResponsibleName.value)
-  return options
+  // Администраторы доступны в фильтре и формах; правило видимости владельца остаётся прежним.
+  return buildResponsibleUserOptions(responsibleUsers.value, {
+    canViewOwner: canViewPrivilegedResponsible.value,
+    currentUserName: currentUserResponsibleName.value,
+  })
 })
 
 const responsibleNameByUsername = computed(() => {
@@ -2611,6 +2596,7 @@ const {
   getReserveSecrets,
   getReserveSecretEntries,
   ensureAccountSecretsLoaded,
+  loadAccountForDealNavigation,
   loadAccounts,
   loadAccountsAll: loadAccountsAllFromAccountsFlow,
   refreshOpenAccountFromDb,
@@ -2695,16 +2681,6 @@ async function reopenAccountByIdFromDealReturn(accountId) {
     account_date: '',
   }
   startEditAccount(fallbackAccount)
-}
-
-async function loadAccountForDealNavigation(accountId) {
-  // Полная карточка и свежие секреты нужны для корректной деактивации и выбора другого резерва.
-  const [account, secrets] = await Promise.all([
-    apiGet(`/accounts/${Number(accountId)}`, { token: auth.state.token }),
-    apiGet(`/accounts/${Number(accountId)}/secrets`, { token: auth.state.token }),
-  ])
-  accountSecrets.value = { ...accountSecrets.value, [accountId]: secrets || [] }
-  return account
 }
 
 // Логика формы сделки: быстрые создания, загрузки связей, слоты.

@@ -128,6 +128,8 @@ class AccountSecretsPatchIn(BaseModel):
     delete_keys: List[str] = Field(default_factory=list)
     reserve_values: Optional[List[str]] = None
     expected_reserves: Optional[dict[str, str]] = None
+    authenticator_image: Optional[str] = Field(default=None, max_length=1_398_232)
+    expected_authenticator_image_version: Optional[str] = Field(default=None, max_length=64)
 
 
 class SlotAvailabilityOut(BaseModel):

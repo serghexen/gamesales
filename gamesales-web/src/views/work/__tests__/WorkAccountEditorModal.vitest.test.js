@@ -570,4 +570,14 @@ describe('WorkAccountEditorModal', () => {
     await wrapper.setProps({ editAccountProductSearch: 'PS Plus Deluxe' })
     expect(quickEditAccountProduct.title).toBe('PS Plus Deluxe')
   })
+  it('disables edit and save while the fresh account snapshot is loading', async () => {
+    // Данные из кеша видны, но действия недоступны до свежего ответа API.
+    const props = buildProps({ accountEditMode: 'edit' })
+    props.editAccount.details_loading = true
+    const wrapper = mount(WorkAccountEditorModal, { props, global: { stubs: { teleport: true } } })
+    expect(wrapper.find('button[title="Редактировать"]').element.disabled).toBe(true)
+    expect(wrapper.find('button[title="Сохранить изменения"]').element.disabled).toBe(true)
+    expect(wrapper.find('button[title="Обновить из базы"]').element.disabled).toBe(true)
+  })
+
 })

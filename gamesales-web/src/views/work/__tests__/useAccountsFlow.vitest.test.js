@@ -16,7 +16,7 @@ function createDeferred() {
 function createHarness() {
   const h = {
     auth: { state: reactive({ token: 'token-1' }) },
-    apiGet: vi.fn(),
+    apiGet: vi.fn().mockImplementation(async (url) => url.endsWith('/authenticator-image') ? { image: '', version: '' } : url.endsWith('/secrets') || url.endsWith('/products') ? [] : { items: [], total: 0 }),
     apiPost: vi.fn(),
     apiPut: vi.fn(),
     apiDelete: vi.fn(),
@@ -90,8 +90,7 @@ describe('useAccountsFlow', () => {
     // Отказ закрыть несохранённый аккаунт не теряет путь обратно в сделку.
     const h = createHarness()
     const onClose = vi.fn()
-    h.startEditAccount({ account_id: 5, notes: 'Сохранено' }, { onClose })
-    await Promise.resolve()
+    await h.startEditAccount({ account_id: 5, notes: 'Сохранено' }, { onClose })
     h.toggleAccountEditMode()
     h.editAccount.notes = 'Изменено'
     h.requestUnsavedConfirm.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
@@ -120,7 +119,7 @@ describe('useAccountsFlow', () => {
     // Успешное сохранение и крестик используют одинаковый путь закрытия карточки.
     const h = createHarness()
     const onClose = vi.fn()
-    h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com', region_code: 'RU' }, { onClose })
+    await h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com', region_code: 'RU' }, { onClose })
     h.apiPut.mockResolvedValue({ ok: true })
     await h.updateAccount()
     expect(h.accountsError.value).toBeNull()
@@ -153,15 +152,16 @@ describe('useAccountsFlow', () => {
     expect(h.editAccount.product_titles).toEqual(['Game A', 'PS Plus до 09/04/27'])
   })
 
-  it('loadAccountProducts returns empty list on products endpoint error', async () => {
+  it('loadAccountProducts preserves known products on endpoint error', async () => {
     const h = createHarness()
     h.apiGet.mockRejectedValueOnce(new Error('404'))
+    h.editAccount.product_ids = [55]
 
-    await h.loadAccountProducts(5)
+    expect(await h.loadAccountProducts(5)).toBe(false)
 
     expect(h.apiGet).toHaveBeenCalledTimes(1)
     expect(h.apiGet).toHaveBeenCalledWith('/accounts/5/products', { token: 'token-1' })
-    expect(h.editAccount.product_ids).toEqual([])
+    expect(h.editAccount.product_ids).toEqual([55])
   })
 
   it('loadAccountsAll supports lightweight labels lookup by id list', async () => {
@@ -228,6 +228,7 @@ describe('useAccountsFlow', () => {
     h.newAccount.product_ids = [77]
     h.newAccount.subscription_valid_until = '2027-03-26'
     h.apiPost.mockImplementation(async (url) => {
+      if (url.endsWith('/authenticator-image')) return { image: '', version: '' }
       if (url === '/accounts') return { account_id: 9 }
       return {}
     })
@@ -267,9 +268,9 @@ describe('useAccountsFlow', () => {
     expect(h.quickEditAccountProduct.platform_codes).toEqual([])
   })
 
-  it('toggleAccountEditMode reverts unsaved changes on second click', () => {
+  it('toggleAccountEditMode reverts unsaved changes on second click', async () => {
     const h = createHarness()
-    h.startEditAccount({
+    await h.startEditAccount({
       account_id: 5,
       login_name: 'user',
       domain_code: 'mail.com',
@@ -406,6 +407,7 @@ describe('useAccountsFlow', () => {
     h.editAccount.region_code = 'RU'
     h.editAccount.reserve_text = ''
     h.editAccount.existing_reserve_keys = ['reserve1']
+    h.editAccount.expected_reserves = { reserve1: 'old' }
     h.editAccount.has_account = false
     h.editAccount.has_email = false
     h.editAccount.has_auth = false
@@ -414,6 +416,7 @@ describe('useAccountsFlow', () => {
     }
     h.apiPut.mockResolvedValue({ ok: true })
     h.apiGet.mockImplementation(async (url) => {
+      if (url.endsWith('/authenticator-image')) return { image: '', version: '' }
       if (url === '/accounts/5/secrets') {
         return [{ secret_key: 'reserve2', secret_value_b64: 'bmV3' }]
       }
@@ -468,4 +471,323 @@ describe('useAccountsFlow', () => {
     expect(h.accounts.value).toEqual([{ account_id: 2, login_name: 'new' }])
     expect(h.accountsTotal.value).toBe(1)
   })
+  it('saves only deactivation when a completed deal removed a reserve after opening', async () => {
+    // Устаревшие резервы, пароли и товары не мешают изменить только деактивацию.
+    const h = createHarness()
+    h.accountSecrets.value[5] = [{ secret_key: 'reserve1', secret_value_b64: btoa('OLD') }]
+    h.apiGet.mockImplementation(async (url) => {
+      if (url.endsWith('/authenticator-image')) return { image: '', version: '' }
+      if (url.endsWith('/secrets')) return [
+        { secret_key: 'reserve2', secret_value_b64: btoa('LIVE') },
+        { secret_key: 'account_password', secret_value_b64: btoa('password') },
+      ]
+      if (url.endsWith('/products')) return [{ product_id: 7 }]
+      return { items: [], total: 0 }
+    })
+    await h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    expect(h.editAccount.expected_reserves).toEqual({ reserve2: 'LIVE' })
+    h.toggleAccountEditMode()
+    h.editAccount.is_deactivated = true
+    h.apiPut.mockImplementation(async (url) => {
+      if (url.endsWith('/authenticator-image')) return { image: '', version: '' }
+      if (url.endsWith('/secrets')) throw new Error('Резервы изменились. Откройте аккаунт заново.')
+      return { ok: true }
+    })
+    await h.updateAccount()
+    expect(h.apiPut.mock.calls).toEqual([['/accounts/5', { is_deactivated: true }, { token: 'token-1' }]])
+    expect(h.accountsError.value).toBeNull()
+    expect(h.editAccount.open).toBe(false)
+  })
+
+  it('does not replace reserves for whitespace or order changes', async () => {
+    // Постоянные ID не зависят от порядка строк, пробелы не требуют записи списка.
+    const h = createHarness()
+    h.apiGet.mockImplementation(async (url) => url.endsWith('/authenticator-image') ? { image: '', version: '' } : [
+      { secret_key: 'reserve1', secret_value_b64: btoa('A') },
+      { secret_key: 'reserve2', secret_value_b64: btoa('B') },
+    ])
+    await h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    h.toggleAccountEditMode()
+    h.editAccount.reserve_text = ' B\n A  '
+    await h.updateAccount()
+    expect(h.apiPut).not.toHaveBeenCalled()
+  })
+
+  it.each(['new-password', ''])('writes only the edited password, value=%s', async (password) => {
+    // Изменение или удаление пароля не отправляет соседние секреты и резервы.
+    const h = createHarness()
+    h.apiGet.mockImplementation(async (url) => url.endsWith('/authenticator-image') ? { image: '', version: '' } : url.endsWith('/secrets') ? [
+      { secret_key: 'account_password', secret_value_b64: btoa('old-password') },
+      { secret_key: 'email_password', secret_value_b64: btoa('email-password') },
+      { secret_key: 'reserve1', secret_value_b64: btoa('A') },
+    ] : [])
+    await h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    h.toggleAccountEditMode()
+    h.editAccount.account_password = password
+    await h.updateAccount()
+    expect(h.apiPut.mock.calls).toEqual([['/accounts/5/secrets', {
+      upserts: password ? [{ secret_key: 'account_password', secret_value: password }] : [],
+      delete_keys: password ? [] : ['account_password'],
+    }, { token: 'token-1' }]])
+  })
+
+  it.each(['NEW', ''])('keeps conflict protection for a real reserve edit, value=%s', async (value) => {
+    // Замена и очистка требуют исходного снимка; конфликт не повторяется автоматически.
+    const h = createHarness()
+    h.apiGet.mockImplementation(async (url) => url.endsWith('/authenticator-image') ? { image: '', version: '' } : url.endsWith('/secrets')
+      ? [{ secret_key: 'reserve9', secret_value_b64: btoa('OLD') }] : [])
+    await h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    h.toggleAccountEditMode()
+    h.editAccount.reserve_text = value
+    h.apiPut.mockRejectedValue(new Error('Резервы изменились. Откройте аккаунт заново.'))
+    await h.updateAccount()
+    expect(h.apiPut).toHaveBeenCalledExactlyOnceWith('/accounts/5/secrets', {
+      upserts: [], delete_keys: [], reserve_values: value ? [value] : [], expected_reserves: { reserve9: 'OLD' },
+    }, { token: 'token-1' })
+    expect(h.editAccount.reserve_text).toBe(value)
+    expect(h.editAccount.open).toBe(true)
+    expect(h.accountsError.value).toContain('Резервы изменились')
+  })
+
+  it('preserves cache on a failed reload and retries an initially failed request', async () => {
+    // Ошибка сети не становится пустым списком, блокирующим следующие загрузки.
+    const h = createHarness()
+    const known = [{ secret_key: 'reserve1', secret_value_b64: btoa('A') }]
+    h.accountSecrets.value[5] = known
+    h.apiGet.mockRejectedValue(new Error('offline'))
+    expect(await h.ensureAccountSecretsLoaded(5, true)).toBe(false)
+    expect(h.accountSecrets.value[5]).toEqual(known)
+    expect(await h.ensureAccountSecretsLoaded(9)).toBe(false)
+    expect(h.accountSecrets.value).not.toHaveProperty('9')
+    h.apiGet.mockResolvedValue([])
+    expect(await h.ensureAccountSecretsLoaded(9)).toBe(true)
+    expect(h.accountSecrets.value[9]).toEqual([])
+  })
+
+  it('ignores an old secret response that arrives after a newer reload', async () => {
+    // Медленный старый запрос не возвращает уже удалённый код в общий кеш.
+    const h = createHarness()
+    const older = createDeferred()
+    const newer = createDeferred()
+    h.apiGet.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise)
+    const first = h.ensureAccountSecretsLoaded(5, true)
+    const second = h.ensureAccountSecretsLoaded(5, true)
+    newer.resolve([])
+    await second
+    older.resolve([{ secret_key: 'reserve1', secret_value_b64: btoa('DELETED') }])
+    expect(await first).toBe(true)
+    expect(h.accountSecrets.value[5]).toEqual([])
+  })
+
+  it('blocks editing and saving until fresh account details have loaded', async () => {
+    // Быстрый клик не отправляет пустые поля до ответа сервера.
+    const h = createHarness()
+    const pending = createDeferred()
+    h.apiGet.mockImplementation(async (url) => url.endsWith('/authenticator-image') ? { image: '', version: '' } : url.endsWith('/secrets') ? pending.promise : [])
+    const opening = h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    h.toggleAccountEditMode()
+    await h.updateAccount()
+    expect(h.accountEditMode.value).toBe('view')
+    expect(h.apiPut).not.toHaveBeenCalled()
+    pending.resolve([])
+    await opening
+    h.toggleAccountEditMode()
+    expect(h.accountEditMode.value).toBe('edit')
+  })
+
+  it.each(['secrets', 'products'])('blocks saving after failed %s loading and recovers on refresh', async (endpoint) => {
+    // Неизвестный список секретов или товаров нельзя отправлять как намеренную очистку.
+    const h = createHarness()
+    h.apiGet.mockImplementation(async (url) => {
+      if (url.endsWith('/authenticator-image')) return { image: '', version: '' }
+      if (url.endsWith(`/${endpoint}`)) throw new Error('offline')
+      return []
+    })
+    await h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    expect(h.editAccount.details_load_failed).toBe(true)
+    await h.updateAccount()
+    expect(h.apiPut).not.toHaveBeenCalled()
+    h.apiGet.mockImplementation(async (url) => {
+      if (url.endsWith('/authenticator-image')) return { image: '', version: '' }
+      if (url.startsWith('/accounts?')) return { items: [{ account_id: 5, login_name: 'user', domain_code: 'mail.com' }] }
+      return []
+    })
+    await h.refreshOpenAccountFromDb()
+    expect(h.editAccount.details_load_failed).toBe(false)
+    h.toggleAccountEditMode()
+    expect(h.accountEditMode.value).toBe('edit')
+  })
+
+  it('does not apply a response from a previous opening of the same account', async () => {
+    // Закрытие и повторное открытие одного ID не дают старому ответу сбросить правки.
+    const h = createHarness()
+    const pending = createDeferred()
+    let secretReads = 0
+    h.apiGet.mockImplementation(async (url) => {
+      if (url.endsWith('/authenticator-image')) return { image: '', version: '' }
+      if (url.endsWith('/secrets')) return ++secretReads === 1 ? pending.promise : []
+      return []
+    })
+    const first = h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    await h.cancelEditAccount()
+    await h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    h.toggleAccountEditMode()
+    h.editAccount.reserve_text = 'MY-EDIT'
+    pending.resolve([{ secret_key: 'reserve1', secret_value_b64: btoa('OLD') }])
+    await first
+    expect(h.editAccount.reserve_text).toBe('MY-EDIT')
+    expect(h.editAccount.expected_reserves).toEqual({})
+  })
+
+  it('does not refresh over unsaved edits even if the handler is called directly', async () => {
+    // Защита работает и вне кнопки, которая недоступна при редактировании.
+    const h = createHarness()
+    await h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    h.toggleAccountEditMode()
+    h.editAccount.reserve_text = 'MY-EDIT'
+    h.apiGet.mockClear()
+    await h.refreshOpenAccountFromDb()
+    expect(h.apiGet).not.toHaveBeenCalled()
+    expect(h.editAccount.reserve_text).toBe('MY-EDIT')
+  })
+
+  it('rebases saved reserves before retrying a failed products update', async () => {
+    // Повтор сохранения после частичного сбоя не отправляет собственный устаревший снимок.
+    const h = createHarness()
+    let secrets = [{ secret_key: 'reserve1', secret_value_b64: btoa('OLD') }]
+    h.apiGet.mockImplementation(async (url) => url.endsWith('/authenticator-image') ? { image: '', version: '' } : url.endsWith('/secrets') ? secrets : [])
+    await h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    h.toggleAccountEditMode()
+    h.editAccount.reserve_text = 'NEW'
+    h.editAccount.product_ids = [7]
+    h.apiPut.mockImplementation(async (url) => {
+      if (url.endsWith('/authenticator-image')) return { image: '', version: '' }
+      if (url.endsWith('/secrets')) {
+        secrets = [{ secret_key: 'reserve2', secret_value_b64: btoa('NEW') }]
+        return {}
+      }
+      throw new Error('products unavailable')
+    })
+    await h.updateAccount()
+    expect(h.accountsError.value).toContain('Часть изменений уже сохранена')
+    expect(h.editAccount.expected_reserves).toEqual({ reserve2: 'NEW' })
+    h.apiPut.mockReset().mockResolvedValue({})
+    await h.updateAccount()
+    expect(h.apiPut).toHaveBeenCalledExactlyOnceWith('/accounts/5/products', { product_ids: [7] }, { token: 'token-1' })
+    expect(h.editAccount.open).toBe(false)
+  })
+
+  it('stops a save chain when another account replaces its editor', async () => {
+    // После смены карточки оставшиеся запросы не отправляются с новым account_id.
+    const h = createHarness()
+    await h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    h.toggleAccountEditMode()
+    h.editAccount.notes = 'changed'
+    h.editAccount.reserve_text = 'NEW'
+    const pending = createDeferred()
+    h.apiPut.mockReturnValue(pending.promise)
+    const saving = h.updateAccount()
+    await h.startEditAccount({ account_id: 9, login_name: 'another', domain_code: 'mail.com' })
+    pending.resolve({})
+    await saving
+    expect(h.apiPut).toHaveBeenCalledExactlyOnceWith('/accounts/5', { notes: 'changed' }, { token: 'token-1' })
+    expect(h.editAccount.account_id).toBe(9)
+    expect(h.editAccount.open).toBe(true)
+  })
+
+  it('loads account navigation through the shared fresh secrets cache', async () => {
+    // Открытие из сделки не обходит защиту общего кеша отдельной записью.
+    const h = createHarness()
+    h.accountSecrets.value[5] = [{ secret_key: 'reserve1', secret_value_b64: btoa('OLD') }]
+    h.apiGet.mockImplementation(async (url) => url.endsWith('/authenticator-image') ? { image: '', version: '' } : url.endsWith('/secrets') ? [] : { account_id: 5 })
+    expect(await h.loadAccountForDealNavigation(5)).toEqual({ account_id: 5 })
+    expect(h.accountSecrets.value[5]).toEqual([])
+  })
+
+  it('rejects navigation when fresh secrets cannot be loaded', async () => {
+    // Ошибка оставляет исходную сделку открытой через существующий обработчик перехода.
+    const h = createHarness()
+    h.apiGet.mockImplementation(async (url) => {
+      if (url.endsWith('/authenticator-image')) return { image: '', version: '' }
+      if (url.endsWith('/secrets')) throw new Error('offline')
+      return { account_id: 5 }
+    })
+    await expect(h.loadAccountForDealNavigation(5)).rejects.toThrow('Не удалось загрузить данные аккаунта')
+  })
+
+  it.each(['data:image/png;base64,NEW', ''])('saves an image edit with its original version: %s', async (image) => {
+    // Замена и удаление QR не требуют перезаписи резервов или других секретов.
+    const h = createHarness()
+    let server = { image: 'data:image/png;base64,OLD', version: 'v1' }
+    h.apiGet.mockImplementation(async (url) => url.endsWith('/authenticator-image') ? server : [])
+    await h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    expect(h.editAccount.authenticator_image).toBe(server.image)
+    h.toggleAccountEditMode()
+    h.editAccount.authenticator_image = image
+    h.apiPut.mockImplementation(async () => { server = { image, version: 'v2' } })
+    await h.updateAccount()
+    expect(h.apiPut).toHaveBeenCalledExactlyOnceWith('/accounts/5/secrets', {
+      upserts: [], delete_keys: [], authenticator_image: image, expected_authenticator_image_version: 'v1',
+    }, { token: 'token-1' })
+  })
+
+  it('does not resend an unchanged image while saving a comment', async () => {
+    // Картинка другого сотрудника не может быть затёрта обычным сохранением заметки.
+    const h = createHarness()
+    h.apiGet.mockImplementation(async (url) => url.endsWith('/authenticator-image') ? { image: 'data:image/png;base64,OLD', version: 'v1' } : [])
+    await h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    h.toggleAccountEditMode()
+    h.editAccount.notes = 'comment'
+    await h.updateAccount()
+    expect(h.apiPut).toHaveBeenCalledExactlyOnceWith('/accounts/5', { notes: 'comment' }, { token: 'token-1' })
+  })
+
+  it('reverts image edits and confirms closing a changed image', async () => {
+    // QR участвует в обычной отмене редактирования и защите несохранённых изменений.
+    const h = createHarness()
+    await h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    h.toggleAccountEditMode()
+    h.editAccount.authenticator_image = 'data:image/png;base64,NEW'
+    h.requestUnsavedConfirm.mockResolvedValue(false)
+    expect(await h.cancelEditAccount()).toBe(false)
+    h.toggleAccountEditMode()
+    expect(h.editAccount.authenticator_image).toBe('')
+  })
+
+  it('blocks saving when the image has not loaded or its file is still being read', async () => {
+    // Сетевая ошибка не превращает сохранённый QR в намеренное удаление.
+    const h = createHarness()
+    h.apiGet.mockImplementation(async (url) => {
+      if (url.endsWith('/authenticator-image')) throw new Error('offline')
+      return []
+    })
+    await h.startEditAccount({ account_id: 5, login_name: 'user', domain_code: 'mail.com' })
+    await h.updateAccount()
+    expect(h.editAccount.details_load_failed).toBe(true)
+    expect(h.apiPut).not.toHaveBeenCalled()
+    h.editAccount.details_load_failed = false
+    h.editAccount.authenticator_image_loading = true
+    await h.updateAccount()
+    expect(h.apiPut).not.toHaveBeenCalled()
+  })
+
+  it('creates an account with a QR instead of a text authenticator code', async () => {
+    // Изображение может заменить ручной код, остальные обязательные поля остаются прежними.
+    const h = createHarness()
+    h.openCreateAccountModal()
+    Object.assign(h.newAccount, { login_name: 'user', domain_code: 'mail.com', region_code: 'RU', account_date: '2026-10-28', email_password: 'email', account_password: 'password', authenticator_image: 'data:image/png;base64,QR' })
+    h.apiPost.mockResolvedValue({ account_id: 9 })
+    await h.createAccount()
+    expect(h.apiPut).toHaveBeenCalledWith('/accounts/9/secrets', expect.objectContaining({ authenticator_image: 'data:image/png;base64,QR', expected_authenticator_image_version: '' }), { token: 'token-1' })
+    expect(h.newAccount.authenticator_image).toBe('')
+  })
+
+  it('does not warn about unsaved changes in an untouched new account form', async () => {
+    // Служебный флаг чтения файла не делает пустую форму изменённой.
+    const h = createHarness()
+    h.openCreateAccountModal()
+    expect(await h.cancelEditAccount()).toBe(true)
+    expect(h.requestUnsavedConfirm).not.toHaveBeenCalled()
+  })
+
 })

@@ -4,6 +4,8 @@ from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
+from .account_authenticator_image import AccountAuthenticatorImage, IMAGE_SECRET_KEY
 from .account_reserves import AccountReserves, reserve_key as normalize_reserve_key
 
 from .accounts_models import (
@@ -52,6 +54,7 @@ def mount_accounts_routes(
     get_current_user,
 ):
     reserves = AccountReserves(q1, qall, exec1)
+    authenticator_images = AccountAuthenticatorImage(q1, exec1)
     # Безопасно читает значение из SQL-строки по индексу, даже если тест дает укороченный кортеж.
     def row_value(row, idx, default=None):
         return row[idx] if row is not None and len(row) > idx else default
@@ -711,13 +714,21 @@ def mount_accounts_routes(
                 SELECT s.secret_key, s.secret_value, s.created_at, c.reserve_id, COALESCE(c.is_listed,true)
                 FROM app.account_secrets s
                 LEFT JOIN app.account_reserve_codes c ON c.account_id=s.account_id AND c.reserve_key=s.secret_key
-                WHERE s.account_id=%s
+                WHERE s.account_id=%s AND s.secret_key <> 'authenticator_image'
                 ORDER BY s.secret_key
                 """,
                 (account_id,),
             )
         return [AccountSecretOut(secret_key=r[0], secret_value_b64=r[1], created_at=r[2],
             reserve_id=row_value(r, 3), reserve_listed=row_value(r, 4, True)) for r in rows]
+
+    @app.get("/accounts/{account_id}/authenticator-image")
+    def get_authenticator_image(account_id: int, user=Depends(require_role("admin", "owner", "manager", "operator"))):
+        # QR содержит секрет: выдаём только авторизованному сотруднику без браузерного кеширования.
+        with psycopg.connect(DB_DSN) as conn:
+            ensure_account_exists(conn, account_id)
+            result = authenticator_images.read(conn, account_id)
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
     @app.get("/accounts/{account_id}/reserve-usage", response_model=AccountReserveUsageOut)
     def get_account_reserve_usage(
@@ -769,7 +780,7 @@ def mount_accounts_routes(
                 SELECT s.account_id, s.secret_key, s.secret_value, s.created_at, c.reserve_id, COALESCE(c.is_listed,true)
                 FROM app.account_secrets s
                 LEFT JOIN app.account_reserve_codes c ON c.account_id=s.account_id AND c.reserve_key=s.secret_key
-                WHERE s.account_id = ANY(%s)
+                WHERE s.account_id = ANY(%s) AND s.secret_key <> 'authenticator_image'
                 ORDER BY s.account_id, s.secret_key
                 """,
                 (account_ids,),
@@ -794,6 +805,8 @@ def mount_accounts_routes(
         user=Depends(require_role("admin", "owner", "manager", "operator")),
     ):
         # Старый одиночный API тоже создаёт новую личность при замене значения резерва.
+        if payload.secret_key.strip().lower() == IMAGE_SECRET_KEY:
+            raise HTTPException(400, 'Изменяйте изображение через сохранение карточки аккаунта')
         value_b64 = b64_encode(payload.secret_value)
         with psycopg.connect(DB_DSN) as conn:
             reserve = normalize_reserve_key(payload.secret_key)
@@ -839,6 +852,12 @@ def mount_accounts_routes(
             ensure_account_exists(conn, account_id)
             upserts = payload.upserts or []
             delete_keys = [str(k or "").strip() for k in (payload.delete_keys or []) if str(k or "").strip()]
+
+            # Картинка сохраняется с контролем версии в той же транзакции, что и остальные секреты.
+            if any(i.secret_key.strip().lower() == IMAGE_SECRET_KEY for i in upserts) or any(k.lower() == IMAGE_SECRET_KEY for k in delete_keys):
+                raise HTTPException(400, 'Для изменения изображения используйте поле authenticator_image')
+            if payload.authenticator_image is not None:
+                authenticator_images.replace(conn, account_id, payload.authenticator_image, payload.expected_authenticator_image_version)
 
             # Новый редактор передаёт снимок списка; параллельное изменение не затираем.
             reserve_upserts = {normalize_reserve_key(i.secret_key): i.secret_value for i in upserts if normalize_reserve_key(i.secret_key)}
@@ -896,6 +915,8 @@ def mount_accounts_routes(
         user=Depends(require_role("admin", "owner", "manager", "operator")),
     ):
         # Удаление из списка не стирает значение, которое ещё хранит незавершённая сделка.
+        if secret_key.strip().lower() == IMAGE_SECRET_KEY:
+            raise HTTPException(400, 'Удаляйте изображение через сохранение карточки аккаунта')
         with psycopg.connect(DB_DSN) as conn:
             reserve = normalize_reserve_key(secret_key)
             if reserve:

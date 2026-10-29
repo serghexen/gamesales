@@ -9,14 +9,19 @@ export function createNewAccountState() {
     account_password: '',
     reserve_text: '',
     auth_code: '',
+    authenticator_image: '',
+    authenticator_image_loading: false,
     product_ids: [],
     subscription_valid_until: '',
   }
 }
 
 export function createEditAccountState() {
+  // Отдельно учитываем готовность данных карточки, чтобы не сохранить неполный снимок.
   return {
     open: false,
+    details_loading: false,
+    details_load_failed: false,
     account_id: null,
     login_name: '',
     domain_code: '',
@@ -32,10 +37,13 @@ export function createEditAccountState() {
     account_key: 'account_password',
     email_key: 'email_password',
     auth_code: '',
+    authenticator_image: '',
+    authenticator_image_loading: false,
     auth_key: 'auth_code',
     reserve_text: '',
     existing_reserve_keys: [],
     expected_reserves: {},
+    expected_authenticator_image_version: '',
     has_account: false,
     has_email: false,
     has_auth: false,

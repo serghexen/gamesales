@@ -76,6 +76,7 @@
                         type="button"
                         aria-label="Редактировать"
                         title="Редактировать"
+                        :disabled="accountBusy || (editAccount.details_load_failed && accountEditMode !== 'edit')"
                         @click="toggleAccountEditMode"
                       >
                         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -249,10 +250,13 @@
                           </div>
                         </label>
                       </div>
-                      <label class="field field--full">
-                        <span class="label">Код аутентификатора</span>
-                        <input v-model.trim="editAccount.auth_code" class="input" placeholder="код" :readonly="accountEditMode === 'view'" />
-                      </label>
+                      <WorkAccountAuthenticator
+                        :key="`auth-${editAccount.account_id}`"
+                        v-model:code="editAccount.auth_code"
+                        v-model:image="editAccount.authenticator_image"
+                        :readonly="accountEditMode === 'view' || accountsLoading || accountSaving || editAccount.details_loading"
+                        @loading="editAccount.authenticator_image_loading = $event"
+                      />
                       <div class="field field--comment-collapsible field--full">
                         <button class="comment-toggle" type="button" @click="editAccountReserveOpen = !editAccountReserveOpen" :disabled="accountEditMode === 'view'">
                           {{ editAccountReserveOpen || editAccount.reserve_text ? 'Резерв' : '+ Резерв' }}
@@ -579,10 +583,13 @@
                           </div>
                         </label>
                       </div>
-                      <label class="field field--full">
-                        <span class="label">Код аутентификатора</span>
-                        <input v-model.trim="newAccount.auth_code" class="input" placeholder="код" />
-                      </label>
+                      <WorkAccountAuthenticator
+                        key="new-auth"
+                        v-model:code="newAccount.auth_code"
+                        v-model:image="newAccount.authenticator_image"
+                        :readonly="accountsLoading || accountSaving"
+                        @loading="newAccount.authenticator_image_loading = $event"
+                      />
                       <div class="field field--comment-collapsible field--full">
                         <button class="comment-toggle" type="button" @click="newAccountReserveOpen = !newAccountReserveOpen">
                           {{ newAccountReserveOpen || newAccount.reserve_text ? 'Резерв' : '+ Резерв' }}
@@ -689,6 +696,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import WorkAccountAuthenticator from './WorkAccountAuthenticator.vue'
 
 const props = defineProps([
   'editAccount',
@@ -772,7 +780,7 @@ const editAccountProductSearchModel = computed({
 })
 
 // Блокируем форму при загрузке или сохранении, чтобы пользователь видел единый индикатор.
-const accountBusy = computed(() => Boolean(props.accountsLoading || props.accountSaving))
+const accountBusy = computed(() => Boolean(props.accountsLoading || props.accountSaving || props.editAccount?.details_loading || (props.accountModalMode === 'create' ? props.newAccount?.authenticator_image_loading : props.editAccount?.authenticator_image_loading)))
 
 // Ручное снятие и возврат слотов доступны только административным ролям.
 const canManageSlotAssignments = computed(() => props.canManageAccountSlotAssignments !== false)

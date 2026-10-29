@@ -69,7 +69,7 @@ export function useAccountsFlow({
     if (!String(newAccount.account_date || '').trim()) missing.push('Дата')
     if (!String(newAccount.account_password || '').trim()) missing.push('Пароль аккаунта')
     if (!String(newAccount.email_password || '').trim()) missing.push('Пароль почты')
-    if (!String(newAccount.auth_code || '').trim()) missing.push('Код аутентификатора')
+    if (!String(newAccount.auth_code || '').trim() && !newAccount.authenticator_image) missing.push('Код аутентификатора')
     return missing
   }
 
@@ -79,6 +79,8 @@ export function useAccountsFlow({
   let accountsRequestSeq = 0
   let accountsAllRequestSeq = 0
   let accountProductsRequestSeq = 0
+  let accountEditorRequestSeq = 0
+  const accountSecretsRequests = new Map()
 
   // Сравнивает account_id как число, чтобы корректно мержить строки и числа.
   function isSameAccountId(leftId, rightId) {
@@ -166,24 +168,62 @@ export function useAccountsFlow({
     return item?.secret_value_b64 ? decodeSecret(item.secret_value_b64) : ''
   }
 
-  // Догружает секреты для одного аккаунта, если их еще нет в локальном кеше.
+  // Обновляет кеш только последним ответом; ошибка загрузки не означает пустой список секретов.
   async function ensureAccountSecretsLoaded(accountId, forceReload = false) {
     const targetId = Number(accountId || 0)
-    if (!targetId) return
-    if (!forceReload && Object.prototype.hasOwnProperty.call(accountSecrets.value || {}, targetId)) return
+    if (!targetId) return false
+    if (!forceReload && Object.prototype.hasOwnProperty.call(accountSecrets.value || {}, targetId)) return true
+    const request = {}
+    accountSecretsRequests.set(targetId, request)
+    request.promise = (async () => {
+      try {
+        const secrets = await apiGet(`/accounts/${targetId}/secrets`, { token: auth.state.token })
+        if (accountSecretsRequests.get(targetId) !== request) return accountSecretsRequests.get(targetId).promise
+        if (!Array.isArray(secrets)) return false
+        accountSecrets.value = { ...(accountSecrets.value || {}), [targetId]: secrets }
+        return true
+      } catch {
+        if (accountSecretsRequests.get(targetId) !== request) return accountSecretsRequests.get(targetId).promise
+        return false
+      }
+    })()
+    return request.promise
+  }
+
+  async function fetchAuthenticatorImage(accountId) {
+    // QR загружается только для карточки аккаунта и не занимает общий кеш секретов.
     try {
-      const secrets = await apiGet(`/accounts/${targetId}/secrets`, { token: auth.state.token })
-      accountSecrets.value = {
-        ...(accountSecrets.value || {}),
-        [targetId]: secrets || [],
-      }
+      const result = await apiGet(`/accounts/${accountId}/authenticator-image`, { token: auth.state.token })
+      return result && typeof result.image === 'string' && typeof result.version === 'string' ? result : null
     } catch {
-      // Даже при ошибке фиксируем пустой список, чтобы не спамить повторными запросами.
-      accountSecrets.value = {
-        ...(accountSecrets.value || {}),
-        [targetId]: [],
-      }
+      return null
     }
+  }
+
+  function applyAuthenticatorImage(result) {
+    // Снимок версии остаётся рядом с изображением для проверки параллельного редактирования.
+    editAccount.authenticator_image = result.image
+    editAccount.expected_authenticator_image_version = result.version
+  }
+
+  async function loadAccountForDealNavigation(accountId) {
+    // Переход из сделки использует тот же кеш с защитой от запоздалых ответов.
+    const [account, secretsLoaded] = await Promise.all([
+      apiGet(`/accounts/${Number(accountId)}`, { token: auth.state.token }),
+      ensureAccountSecretsLoaded(accountId, true),
+    ])
+    if (!secretsLoaded) throw new Error('Не удалось загрузить данные аккаунта. Повторите открытие.')
+    return account
+  }
+
+  // Разбирает поле резервов без пустых строк, сохраняя дубли для серверной проверки.
+  function reserveValuesFromText(text) {
+    return String(text || '').split(/\s+/).filter(Boolean)
+  }
+
+  function sameListValues(left, right) {
+    // Порядок кодов и привязок не меняет их принадлежность аккаунту.
+    return JSON.stringify([...left].sort()) === JSON.stringify([...right].sort())
   }
 
   // Фиксирует текущее состояние карточки как эталон "без изменений" для режима просмотра.
@@ -201,6 +241,7 @@ export function useAccountsFlow({
       email_password: editAccount.email_password,
       account_password: editAccount.account_password,
       auth_code: editAccount.auth_code,
+      authenticator_image: editAccount.authenticator_image || '',
       reserve_text: editAccount.reserve_text,
       product_ids: [...(editAccount.product_ids || [])],
     }
@@ -233,19 +274,22 @@ export function useAccountsFlow({
   // Загружает товары, привязанные к аккаунту.
   async function loadAccountProducts(accountId) {
     const requestId = ++accountProductsRequestSeq
+    const editorRequestId = accountEditorRequestSeq
     accountProductsLoading.value = true
     try {
       // Используем только новый product endpoint для привязок аккаунта.
       const items = await apiGet(`/accounts/${accountId}/products`, { token: auth.state.token })
+      if (!Array.isArray(items)) throw new Error('Invalid products response')
       // Применяем ответ только если это последний запрос и карточка все еще открыта на тот же аккаунт.
-      if (requestId !== accountProductsRequestSeq || Number(editAccount?.account_id || 0) !== Number(accountId || 0)) return
+      if (editorRequestId !== accountEditorRequestSeq || requestId !== accountProductsRequestSeq || Number(editAccount?.account_id || 0) !== Number(accountId || 0)) return
       editAccount.product_ids = [...new Set((items || []).map((p) => Number(p?.product_id || 0)).filter(Boolean))]
       // Доверяем API: backend уже возвращает подписки с датами, если они есть.
       editAccount.product_titles = [...new Set((items || []).map((p) => String(p?.title || '').trim()).filter(Boolean))]
+      return true
     } catch {
-      if (requestId !== accountProductsRequestSeq || Number(editAccount?.account_id || 0) !== Number(accountId || 0)) return
-      editAccount.product_ids = []
-      editAccount.product_titles = []
+      if (editorRequestId !== accountEditorRequestSeq || requestId !== accountProductsRequestSeq || Number(editAccount?.account_id || 0) !== Number(accountId || 0)) return
+      // Не превращаем сетевую ошибку в команду удалить все привязки при сохранении.
+      return false
     } finally {
       if (requestId === accountProductsRequestSeq) {
         accountProductsLoading.value = false
@@ -390,46 +434,68 @@ export function useAccountsFlow({
     editAccount.notes = a.notes || ''
     editAccount.account_date = a.account_date || ''
 
-    // Сначала показываем то, что уже есть в локальном кеше.
+    const requestId = ++accountEditorRequestSeq
+    editAccount.details_loading = true
+    editAccount.details_load_failed = false
+    editAccount.authenticator_image = ''
+    editAccount.expected_authenticator_image_version = ''
+    editAccount.authenticator_image_loading = false
+    accountsError.value = null
+    accountsOk.value = null
+    editAccount.product_ids = []
+    editAccount.product_titles = []
+    // Кеш служит только для показа: редактирование доступно после свежего снимка с сервера.
     applyCachedSecretsToEditAccount(a.account_id)
-    // Если кеша нет, тихо догружаем и обновляем поля без повторного открытия карточки.
-    ensureAccountSecretsLoaded(a.account_id).then(() => {
-      if (editAccount.open && Number(editAccount.account_id || 0) === Number(a.account_id || 0)) {
-        applyCachedSecretsToEditAccount(a.account_id)
-      }
-    })
     editAccountProductType.value = 'game'
     quickEditAccountProduct.title = ''
     quickEditAccountProduct.platform_codes = []
     quickEditAccountProductError.value = ''
     syncInitialEditAccountSnapshot()
-    loadAccountProducts(a.account_id).finally(() => {
-      if (editAccount.open && accountEditMode.value === 'view') syncInitialEditAccountSnapshot()
-    })
     loadAccountDeals(a.account_id)
     loadAccountSlotAssignments(a.account_id)
+    return Promise.all([
+      ensureAccountSecretsLoaded(a.account_id, true),
+      loadAccountProducts(a.account_id),
+      fetchAuthenticatorImage(a.account_id),
+    ]).then(([secretsLoaded, productsLoaded, image]) => {
+      // Повторное открытие того же аккаунта тоже считается другой формой.
+      if (requestId !== accountEditorRequestSeq || !editAccount.open || !isSameAccountId(editAccount.account_id, a.account_id)) return
+      editAccount.details_loading = false
+      editAccount.details_load_failed = !secretsLoaded || !productsLoaded || !image
+      if (editAccount.details_load_failed) {
+        accountsError.value = 'Не удалось загрузить данные аккаунта. Нажмите «Обновить из базы» перед редактированием.'
+        return
+      }
+      applyCachedSecretsToEditAccount(a.account_id)
+      applyAuthenticatorImage(image)
+      syncInitialEditAccountSnapshot()
+    })
   }
 
   // Перезагружает текущую карточку аккаунта с сервера, чтобы подтянуть изменения из других вкладок.
   async function refreshOpenAccountFromDb() {
     const targetId = Number(editAccount.account_id || 0)
-    if (!targetId || accountModalMode.value !== 'edit') return
-    const isSameOpenedAccount = () => editAccount.open && Number(editAccount.account_id || 0) === targetId
+    if (!targetId || accountModalMode.value !== 'edit' || accountEditMode.value === 'edit' || accountSaving.value || editAccount.details_loading || editAccount.authenticator_image_loading) return
+    const requestId = ++accountEditorRequestSeq
+    const isSameOpenedAccount = () => requestId === accountEditorRequestSeq && editAccount.open && Number(editAccount.account_id || 0) === targetId
+    editAccount.details_loading = true
     accountsError.value = null
     accountsOk.value = null
-    accountsLoading.value = true
     try {
-      const [accountsData] = await Promise.all([
+      const [accountsData, , secretsLoaded, productsLoaded, image] = await Promise.all([
         apiGet('/accounts?all=true&sort_key=login&sort_dir=asc', { token: auth.state.token }),
         loadAccountsAll([targetId]),
         ensureAccountSecretsLoaded(targetId, true),
         loadAccountProducts(targetId),
+        fetchAuthenticatorImage(targetId),
         loadAccountDeals(targetId),
         loadAccountSlotAssignments(targetId),
       ])
       if (!isSameOpenedAccount()) return
+      if (!secretsLoaded || !productsLoaded || !image) throw new Error('Не удалось загрузить данные аккаунта. Повторите обновление.')
       const list = Array.isArray(accountsData?.items) ? accountsData.items : []
       const freshAccount = list.find((item) => isSameAccountId(item?.account_id, targetId))
+      if (!freshAccount) throw new Error('Не удалось загрузить карточку аккаунта. Повторите обновление.')
       if (freshAccount) {
         editAccount.login_name = freshAccount.login_name || ''
         editAccount.domain_code = freshAccount.domain_code || ''
@@ -442,21 +508,29 @@ export function useAccountsFlow({
         editAccount.account_date = freshAccount.account_date || ''
       }
       applyCachedSecretsToEditAccount(targetId)
+      applyAuthenticatorImage(image)
       if (accountEditMode.value === 'view') {
         syncInitialEditAccountSnapshot()
       }
+      editAccount.details_load_failed = false
       accountsOk.value = 'Данные аккаунта обновлены'
     } catch (e) {
       if (!isSameOpenedAccount()) return
+      editAccount.details_load_failed = true
       accountsError.value = mapApiError(e?.message)
     } finally {
-      accountsLoading.value = false
+      if (isSameOpenedAccount()) {
+        editAccount.details_loading = false
+      }
     }
   }
 
   // Открывает модалку создания нового аккаунта.
   function openCreateAccountModal() {
     // Создание нового аккаунта не наследует возврат из ранее открытой карточки.
+    accountEditorRequestSeq += 1
+    editAccount.details_loading = false
+    editAccount.details_load_failed = false
     closeAllModals()
     pendingAccountReturn = null
     resetModalPos()
@@ -475,6 +549,8 @@ export function useAccountsFlow({
     newAccount.account_password = ''
     newAccount.reserve_text = ''
     newAccount.auth_code = ''
+    newAccount.authenticator_image = ''
+    newAccount.authenticator_image_loading = false
     newAccount.product_ids = []
     newAccount.subscription_valid_until = getDefaultSubscriptionTermDate()
     accountProductSearch.value = ''
@@ -491,7 +567,7 @@ export function useAccountsFlow({
 
   // Переключает режим просмотра/редактирования и при возврате в просмотр откатывает несохраненные поля.
   function toggleAccountEditMode() {
-    if (accountModalMode.value !== 'edit') return
+    if (accountModalMode.value !== 'edit' || accountSaving.value || accountsLoading.value || editAccount.details_loading || editAccount.authenticator_image_loading) return
     if (accountEditMode.value === 'edit') {
       const snapshot = initialEditAccountSnapshot || {}
       editAccount.login_name = snapshot.login_name || ''
@@ -506,6 +582,7 @@ export function useAccountsFlow({
       editAccount.email_password = snapshot.email_password || ''
       editAccount.account_password = snapshot.account_password || ''
       editAccount.auth_code = snapshot.auth_code || ''
+      editAccount.authenticator_image = snapshot.authenticator_image || ''
       editAccount.reserve_text = snapshot.reserve_text || ''
       editAccount.product_ids = [...(snapshot.product_ids || [])]
       accountEditMode.value = 'view'
@@ -513,6 +590,7 @@ export function useAccountsFlow({
       editAccountProductType.value = 'game'
       return
     }
+    if (editAccount.details_load_failed) return
     accountEditMode.value = 'edit'
   }
 
@@ -529,6 +607,8 @@ export function useAccountsFlow({
       account_password: '',
       reserve_text: '',
       auth_code: '',
+      authenticator_image: '',
+      authenticator_image_loading: false,
       product_ids: [],
       subscription_valid_until: getDefaultSubscriptionTermDate(),
     }) === false
@@ -545,6 +625,7 @@ export function useAccountsFlow({
       email_password: editAccount.email_password,
       account_password: editAccount.account_password,
       auth_code: editAccount.auth_code,
+      authenticator_image: editAccount.authenticator_image || '',
       reserve_text: editAccount.reserve_text,
       product_ids: [...(editAccount.product_ids || [])],
     }
@@ -553,6 +634,9 @@ export function useAccountsFlow({
 
     const onClose = returnToSource ? pendingAccountReturn : null
     pendingAccountReturn = null
+    accountEditorRequestSeq += 1
+    editAccount.details_loading = false
+    editAccount.details_load_failed = false
     editAccount.open = false
     accountModalMode.value = 'edit'
     editAccount.account_id = null
@@ -570,6 +654,9 @@ export function useAccountsFlow({
     editAccount.account_password = ''
     editAccount.account_key = 'account_password'
     editAccount.auth_code = ''
+    editAccount.authenticator_image = ''
+    editAccount.expected_authenticator_image_version = ''
+    editAccount.authenticator_image_loading = false
     editAccount.auth_key = 'auth_code'
     editAccount.reserve_text = ''
     editAccount.existing_reserve_keys = []
@@ -597,6 +684,8 @@ export function useAccountsFlow({
     newAccount.account_password = ''
     newAccount.reserve_text = ''
     newAccount.auth_code = ''
+    newAccount.authenticator_image = ''
+    newAccount.authenticator_image_loading = false
     newAccount.product_ids = []
     newAccount.subscription_valid_until = getDefaultSubscriptionTermDate()
     accountProductSearch.value = ''
@@ -685,6 +774,8 @@ export function useAccountsFlow({
   }
 
   async function createAccount() {
+    // Дожидаемся чтения файла, чтобы QR не потерялся при быстром сохранении.
+    if (newAccount.authenticator_image_loading || accountsLoading.value) return
     accountsError.value = null
     accountsOk.value = null
     // На форме создания требуем заполнение всех основных полей карточки аккаунта.
@@ -733,10 +824,12 @@ export function useAccountsFlow({
         .split(/\s+/)
         .map((v) => v.trim())
         .filter(Boolean)
-      if (secretUpserts.length || reserveValues.length) {
+      if (secretUpserts.length || reserveValues.length || newAccount.authenticator_image) {
         await apiPut(
           `/accounts/${created.account_id}/secrets`,
-          { upserts: secretUpserts, delete_keys: [], reserve_values: reserveValues, expected_reserves: {} },
+          { upserts: secretUpserts, delete_keys: [], reserve_values: reserveValues, expected_reserves: {},
+            ...(newAccount.authenticator_image ? { authenticator_image: newAccount.authenticator_image, expected_authenticator_image_version: '' } : {}),
+          },
           { token: auth.state.token }
         )
       }
@@ -773,6 +866,8 @@ export function useAccountsFlow({
       newAccount.account_password = ''
       newAccount.reserve_text = ''
       newAccount.auth_code = ''
+      newAccount.authenticator_image = ''
+      newAccount.authenticator_image_loading = false
       newAccount.product_ids = []
       newAccount.subscription_valid_until = getDefaultSubscriptionTermDate()
       accountProductSearch.value = ''
@@ -807,85 +902,96 @@ export function useAccountsFlow({
   }
 
   async function updateAccount() {
+    // Нельзя сохранять неполный снимок или запускать второе сохранение параллельно первому.
+    if (accountSaving.value || editAccount.details_loading || editAccount.authenticator_image_loading) return
     accountsError.value = null
     accountsOk.value = null
     if (!editAccount.account_id) return
+    if (editAccount.details_load_failed) {
+      accountsError.value = 'Данные аккаунта не загружены. Обновите карточку перед сохранением.'
+      return
+    }
     if (!editAccount.login_name || !editAccount.domain_code) {
       accountsError.value = 'Укажите логин и домен'
       return
     }
+    const targetId = editAccount.account_id
+    const editorRequestId = accountEditorRequestSeq
+    const isCurrentEditor = () => editorRequestId === accountEditorRequestSeq && isSameAccountId(editAccount.account_id, targetId)
+    const original = initialEditAccountSnapshot
+    const current = { ...editAccount, product_ids: [...(editAccount.product_ids || [])] }
+    const accountPatch = {
+      region_code: current.region_code || null,
+      login_name: current.login_name || null,
+      domain_code: current.domain_code || null,
+      notes: current.notes || null,
+      account_date: current.account_date || null,
+      status_code: current.status_code || 'active',
+      is_deactivated: Boolean(current.is_deactivated),
+    }
+    // Не отправляем неизменённые поля: старый снимок не должен отменять правки другого сотрудника.
+    if (original) {
+      for (const key of Object.keys(accountPatch)) {
+        const previous = key === 'is_deactivated' ? Boolean(original[key])
+          : (original[key] || (key === 'status_code' ? 'active' : null))
+        if (accountPatch[key] === previous) delete accountPatch[key]
+      }
+    }
+    const secretUpserts = []
+    const secretDeleteKeys = []
+    for (const [field, keyField, hasField] of [
+      ['email_password', 'email_key', 'has_email'],
+      ['account_password', 'account_key', 'has_account'],
+      ['auth_code', 'auth_key', 'has_auth'],
+    ]) {
+      if (original && (current[field] || '') === (original[field] || '')) continue
+      if (current[field]) secretUpserts.push({ secret_key: current[keyField] || field, secret_value: current[field] })
+      else if (current[hasField]) secretDeleteKeys.push(current[keyField] || field)
+    }
+    const reserveValues = reserveValuesFromText(current.reserve_text)
+    const expectedReserves = { ...(current.expected_reserves || {}) }
+    const reservesChanged = !sameListValues(reserveValues, Object.values(expectedReserves))
+    const secretsPatch = { upserts: secretUpserts, delete_keys: secretDeleteKeys }
+    // Проверка устаревшего списка нужна только при реальном изменении резервов.
+    if (reservesChanged) Object.assign(secretsPatch, { reserve_values: reserveValues, expected_reserves: expectedReserves })
+    const imageChanged = (current.authenticator_image || '') !== (original?.authenticator_image || '')
+    if (imageChanged) Object.assign(secretsPatch, { authenticator_image: current.authenticator_image || '', expected_authenticator_image_version: current.expected_authenticator_image_version || '' })
+    const secretsChanged = imageChanged || reservesChanged || secretUpserts.length > 0 || secretDeleteKeys.length > 0
+    const productsChanged = !original || !sameListValues(current.product_ids, original.product_ids || [])
+    let savedParts = false
     accountSaving.value = true
     try {
-      await apiPut(
-        `/accounts/${editAccount.account_id}`,
-        {
-          region_code: editAccount.region_code || null,
-          login_name: editAccount.login_name || null,
-          domain_code: editAccount.domain_code || null,
-          notes: editAccount.notes || null,
-          account_date: editAccount.account_date || null,
-          status_code: editAccount.status_code || 'active',
-          // Передаем флаг деактивации отдельным полем: backend сам валидирует правило 183 дней.
-          is_deactivated: Boolean(editAccount.is_deactivated),
-        },
-        { token: auth.state.token }
-      )
-
-      // Секреты сохраняем одной операцией, чтобы исключить частичное обновление при сетевой ошибке.
-      const secretUpserts = []
-      const secretDeleteKeys = []
-      if (editAccount.email_password) {
-        secretUpserts.push({
-          secret_key: editAccount.email_key || 'email_password',
-          secret_value: editAccount.email_password,
-        })
-      } else if (editAccount.has_email) {
-        secretDeleteKeys.push(editAccount.email_key || 'email_password')
+      if (Object.keys(accountPatch).length) {
+        await apiPut(`/accounts/${targetId}`, accountPatch, { token: auth.state.token })
+        savedParts = true
+        if (!isCurrentEditor()) return
+        if (original) {
+          for (const key of Object.keys(accountPatch)) original[key] = current[key]
+        }
       }
-
-      if (editAccount.account_password) {
-        secretUpserts.push({
-          secret_key: editAccount.account_key || 'account_password',
-          secret_value: editAccount.account_password,
-        })
-      } else if (editAccount.has_account) {
-        secretDeleteKeys.push(editAccount.account_key || 'account_password')
+      if (secretsChanged) {
+        await apiPut(`/accounts/${targetId}/secrets`, secretsPatch, { token: auth.state.token })
+        savedParts = true
+        if (!isCurrentEditor()) return
+        // После успешной записи обновляем исходный снимок, чтобы повтор после сбоя следующего запроса не конфликтовал сам с собой.
+        const [loaded, image] = await Promise.all([ensureAccountSecretsLoaded(targetId, true), fetchAuthenticatorImage(targetId)])
+        if (!isCurrentEditor()) return
+        if (!loaded || !image) {
+          editAccount.details_load_failed = true
+          throw new Error('Секреты сохранены, но не удалось загрузить их актуальное состояние. Откройте аккаунт заново.')
+        }
+        applyCachedSecretsToEditAccount(targetId)
+        applyAuthenticatorImage(image)
+        if (original) {
+          for (const field of ['email_password', 'account_password', 'auth_code', 'reserve_text', 'authenticator_image']) original[field] = editAccount[field]
+        }
       }
-
-      if (editAccount.auth_code) {
-        secretUpserts.push({
-          secret_key: editAccount.auth_key || 'auth_code',
-          secret_value: editAccount.auth_code,
-        })
-      } else if (editAccount.has_auth) {
-        secretDeleteKeys.push(editAccount.auth_key || 'auth_code')
+      if (productsChanged) {
+        await apiPut(`/accounts/${targetId}/products`, { product_ids: current.product_ids }, { token: auth.state.token })
+        savedParts = true
+        if (!isCurrentEditor()) return
+        if (original) original.product_ids = [...current.product_ids]
       }
-
-      const reserveValues = (editAccount.reserve_text || '')
-        .split(/\s+/)
-        .map((v) => v.trim())
-        .filter(Boolean)
-
-      // Сервер сопоставляет коды по значениям и отклоняет устаревший снимок списка.
-      await apiPut(
-        `/accounts/${editAccount.account_id}/secrets`,
-        {
-          upserts: secretUpserts,
-          delete_keys: secretDeleteKeys,
-          reserve_values: reserveValues,
-          expected_reserves: editAccount.expected_reserves || {},
-        },
-        { token: auth.state.token }
-      )
-      // Принудительно обновляем кеш секретов, чтобы сразу показать актуальные резервы без ручного refresh.
-      await ensureAccountSecretsLoaded(editAccount.account_id, true)
-
-      await apiPut(
-        `/accounts/${editAccount.account_id}/products`,
-        { product_ids: editAccount.product_ids || [] },
-        { token: auth.state.token }
-      )
-
       accountsOk.value = 'Аккаунт обновлён'
       // После успешного сохранения закрываем модалку без повторного confirm о несохраненных правках.
       if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = true
@@ -894,10 +1000,12 @@ export function useAccountsFlow({
       } finally {
         if (suppressUnsavedConfirm) suppressUnsavedConfirm.value = false
       }
-      // Обновляем список после закрытия, чтобы модалка не зависела от времени ответа API.
       await Promise.allSettled([loadAccounts(), loadAccountsAll()])
     } catch (e) {
-      accountsError.value = mapApiError(e?.message)
+      if (!isCurrentEditor()) return
+      // API сохраняет блоки отдельными запросами; честно сообщаем о возможном частичном результате.
+      const message = mapApiError(e?.message)
+      accountsError.value = savedParts ? `Часть изменений уже сохранена. ${message}` : message
     } finally {
       accountSaving.value = false
     }
@@ -943,6 +1051,7 @@ export function useAccountsFlow({
     getReserveSecretEntries,
     getAuthSecret,
     ensureAccountSecretsLoaded,
+    loadAccountForDealNavigation,
     loadAccountProducts,
     loadAccounts,
     loadAccountsAll,

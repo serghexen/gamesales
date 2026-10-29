@@ -2295,8 +2295,10 @@ async function ensureDealAccountDetailsLoaded(target, { assignDraftReserve = fal
     }
     // При каждом выборе аккаунта обновляем занятость, чтобы новая сделка не использовала устаревший кеш.
     tasks.push(ensureAccountReserveUsageLoaded(accountId, currentDealId, true))
-    if (tasks.length) await Promise.allSettled(tasks)
+    const results = await Promise.allSettled(tasks)
     if (requestId !== accountDetailsRequestSeq[target]) return
+    // Сохранённый кеш не считается свежими секретами после ошибки сети.
+    if (results.some((result) => result.status === 'rejected' || result.value === false)) return
     if (!hasAccountReserveUsage(accountId, currentDealId)) return
     if (getDealAccountIdByTarget(target) !== accountId) return
     const deal = target === 'edit' ? editDeal.value : newDeal.value
