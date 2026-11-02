@@ -4,7 +4,7 @@
       <span class="label">Код аутентификатора</span>
       <input :value="code" class="input" placeholder="код" :readonly="readonly" @input="$emit('update:code', $event.target.value.trim())" />
     </label>
-    <div class="account-authenticator__image">
+    <div class="account-authenticator__image" role="group" aria-label="QR аутентификатора" :tabindex="readonly ? undefined : 0" @paste="pasteImage">
       <span class="label">QR аутентификатора</span>
       <button v-if="image" type="button" class="account-authenticator__thumbnail" aria-label="Увеличить QR аутентификатора" @click="openPreview">
         <img :src="image" alt="QR аутентификатора" width="88" height="88" />
@@ -15,6 +15,7 @@
         <button v-if="image" type="button" class="btn--ghost account-authenticator__action" :disabled="reading" @click="$emit('update:image', '')">Удалить</button>
         <input ref="fileInput" class="account-authenticator__file" type="file" accept="image/png,image/jpeg,image/webp" aria-label="Прикрепить QR аутентификатора" @change="selectFile" />
         <small>PNG, JPEG, WebP · до 1 МБ</small>
+        <small>Нажмите здесь и вставьте изображение: Ctrl+V / ⌘V</small>
       </div>
       <p v-if="error" class="bad account-authenticator__error" role="alert">{{ error }}</p>
     </div>
@@ -44,10 +45,26 @@ const reading = ref(false)
 const error = ref('')
 let requestId = 0
 
-async function selectFile(event) {
-  // Старый ответ после закрытия карточки или выключения редактирования не меняет изображение.
+function selectFile(event) {
+  // Повторный выбор того же файла проходит общую проверку, как и вставка из буфера.
   const file = event.target.files?.[0]
   event.target.value = ''
+  return attachImage(file)
+}
+
+function pasteImage(event) {
+  // Перехватываем только изображение внутри блока QR; вставку текста не меняем.
+  if (props.readonly || reading.value) return
+  const clipboard = event.clipboardData
+  const item = Array.from(clipboard?.items || []).find((entry) => entry.kind === 'file' && entry.type.startsWith('image/'))
+  const file = item?.getAsFile() || Array.from(clipboard?.files || []).find((entry) => entry.type.startsWith('image/'))
+  if (!file) return
+  event.preventDefault()
+  return attachImage(file)
+}
+
+async function attachImage(file) {
+  // Оба способа проверяют файл одинаково; поздний ответ после отмены не меняет карточку.
   if (!file || props.readonly || reading.value) return
   const currentRequest = ++requestId
   error.value = ''
@@ -106,6 +123,7 @@ onBeforeUnmount(() => {
 .account-authenticator { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 170px); align-items: start; gap: 16px; min-width: 0; }
 .account-authenticator__code { min-width: 0; }
 .account-authenticator__image { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.account-authenticator__image:focus-visible { outline: 2px solid var(--ghost-border); outline-offset: 4px; border-radius: 10px; }
 .account-authenticator__thumbnail { width: 96px; height: 96px; box-sizing: border-box; flex: none; padding: 4px; background: #fff; border: 1px solid #64748b; border-radius: 10px; cursor: zoom-in; }
 .account-authenticator__thumbnail img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .account-authenticator__actions { display: flex; flex-wrap: wrap; gap: 6px; max-width: 100%; }
