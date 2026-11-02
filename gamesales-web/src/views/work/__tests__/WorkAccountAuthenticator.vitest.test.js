@@ -21,7 +21,7 @@ async function select(wrapper) {
   await flushPromises()
 }
 
-async function paste(wrapper, clipboardData, selector = '.account-authenticator__image') {
+async function paste(wrapper, clipboardData, selector = '.account-authenticator__paste') {
   // Событие с буфером проверяет обработку вставки без доступа к системному буферу.
   const event = new Event('paste', { bubbles: true, cancelable: true })
   Object.defineProperty(event, 'clipboardData', { value: clipboardData })
@@ -71,7 +71,7 @@ describe('account authenticator field', () => {
   it('offers replacement and removal only while editing', async () => {
     // Удаление меняет только модель и может быть отменено закрытием карточки.
     const wrapper = create({ image: 'data:image/png;base64,OLD' })
-    expect(wrapper.text()).toContain('Заменить')
+    expect(wrapper.find('button[aria-label="Заменить QR файлом"]').exists()).toBe(true)
     await wrapper.findAll('button').find((button) => button.text() === 'Удалить').trigger('click')
     expect(wrapper.emitted('update:image')).toEqual([['']])
     await wrapper.setProps({ readonly: true })
@@ -127,7 +127,7 @@ describe('account authenticator field', () => {
     readAuthenticatorImage.mockResolvedValue('data:image/png;base64,NEW')
     const event = await paste(wrapper, { [source]: clipboard[source] })
     expect(event.defaultPrevented).toBe(true)
-    expect(readAuthenticatorImage).toHaveBeenCalledWith(clipboard.files[0])
+    expect(readAuthenticatorImage).toHaveBeenCalledWith(clipboard.files[0], { fromClipboard: true })
     expect(wrapper.emitted('update:image')).toEqual([['data:image/png;base64,NEW']])
     expect(wrapper.emitted('loading')).toEqual([[true], [false]])
   })
@@ -135,7 +135,7 @@ describe('account authenticator field', () => {
   it('leaves text pastes and pastes outside the QR area untouched', async () => {
     // Поле кода и другие поля не должны прикреплять изображения по общему Ctrl+V.
     const wrapper = create()
-    const text = await paste(wrapper, { items: [{ kind: 'string', type: 'text/plain' }] })
+    const text = await paste(wrapper, { items: [{ kind: 'string', type: 'text/plain' }] }, '.account-authenticator__image')
     const code = await paste(wrapper, imageClipboard(), '.account-authenticator__code input')
     expect(text.defaultPrevented).toBe(false)
     expect(code.defaultPrevented).toBe(false)
@@ -146,7 +146,8 @@ describe('account authenticator field', () => {
     // Просмотр не меняет данные, повторная вставка не обгоняет начатую загрузку.
     const wrapper = create({ readonly: true })
     expect(wrapper.find('.account-authenticator__image').attributes('tabindex')).toBeUndefined()
-    await paste(wrapper, imageClipboard())
+    expect(wrapper.find('.account-authenticator__paste').exists()).toBe(false)
+    await paste(wrapper, imageClipboard(), '.account-authenticator__image')
     expect(readAuthenticatorImage).not.toHaveBeenCalled()
     await wrapper.setProps({ readonly: false })
     let finish
@@ -167,6 +168,30 @@ describe('account authenticator field', () => {
     expect(wrapper.find('[role=alert]').text()).toContain('до 1 МБ')
     expect(wrapper.emitted('update:image')).toBeUndefined()
     expect(wrapper.emitted('loading').at(-1)).toEqual([false])
+  })
+
+  it('opens the file picker with the paperclip beside the paste input', async () => {
+    // Явное поле вставки и скрепка работают независимо, без открытия диалога при фокусе поля.
+    const wrapper = create()
+    const picker = vi.spyOn(wrapper.find('input[type=file]').element, 'click').mockImplementation(() => {})
+    const field = wrapper.find('.account-authenticator__paste-row input[type=text]')
+    expect(field.attributes('aria-label')).toContain('из буфера')
+    await field.trigger('focus')
+    expect(picker).not.toHaveBeenCalled()
+    await wrapper.find('button[aria-label="Прикрепить QR файлом"]').trigger('click')
+    expect(picker).toHaveBeenCalledOnce()
+  })
+
+  it('explains text-only clipboard content and never leaves text in the image field', async () => {
+    // Путь или ссылка не выглядят как успешно прикреплённое изображение.
+    const wrapper = create({ image: 'data:image/png;base64,OLD' })
+    const event = await paste(wrapper, { items: [{ kind: 'string', type: 'text/plain' }] })
+    expect(event.defaultPrevented).toBe(true)
+    expect(wrapper.find('[role=alert]').text()).toContain('В буфере нет изображения')
+    await wrapper.find('.account-authenticator__paste').setValue('local-file.jpg')
+    expect(wrapper.find('.account-authenticator__paste').element.value).toBe('')
+    expect(wrapper.emitted('update:image')).toBeUndefined()
+    expect(readAuthenticatorImage).not.toHaveBeenCalled()
   })
 
   it.each(['readonly', 'unmount'])('ignores late clipboard reading after %s', async (action) => {

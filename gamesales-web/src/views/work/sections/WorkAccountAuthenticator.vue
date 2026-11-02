@@ -4,18 +4,22 @@
       <span class="label">Код аутентификатора</span>
       <input :value="code" class="input" placeholder="код" :readonly="readonly" @input="$emit('update:code', $event.target.value.trim())" />
     </label>
-    <div class="account-authenticator__image" role="group" aria-label="QR аутентификатора" :tabindex="readonly ? undefined : 0" @paste="pasteImage">
+    <div class="account-authenticator__image" role="group" aria-label="QR аутентификатора" @paste="pasteImage">
       <span class="label">QR аутентификатора</span>
       <button v-if="image" type="button" class="account-authenticator__thumbnail" aria-label="Увеличить QR аутентификатора" @click="openPreview">
         <img :src="image" alt="QR аутентификатора" width="88" height="88" />
       </button>
       <span v-else-if="readonly" class="account-authenticator__empty">Не прикреплён</span>
       <div v-if="!readonly" class="account-authenticator__actions">
-        <button type="button" class="btn--ghost account-authenticator__action" :disabled="reading" @click="fileInput?.click()">{{ image ? 'Заменить' : 'Прикрепить' }}</button>
+        <div class="account-authenticator__paste-row">
+          <input class="input account-authenticator__paste" type="text" value="" placeholder="Ctrl+V / ⌘V" aria-label="Вставить изображение QR из буфера" title="Нажмите на поле и вставьте изображение: Ctrl+V / ⌘V" autocomplete="off" :disabled="reading" @beforeinput.prevent @input="clearPasteText" />
+          <button type="button" class="btn--ghost account-authenticator__action account-authenticator__attach" :disabled="reading" :aria-label="image ? 'Заменить QR файлом' : 'Прикрепить QR файлом'" :title="image ? 'Заменить QR файлом' : 'Прикрепить QR файлом'" @click="fileInput?.click()">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 11-8.5 8.5a6 6 0 0 1-8.5-8.5l9-9a4 4 0 0 1 5.7 5.7l-9 9a2 2 0 0 1-2.8-2.8L15 6" /></svg>
+          </button>
+        </div>
         <button v-if="image" type="button" class="btn--ghost account-authenticator__action" :disabled="reading" @click="$emit('update:image', '')">Удалить</button>
         <input ref="fileInput" class="account-authenticator__file" type="file" accept="image/png,image/jpeg,image/webp" aria-label="Прикрепить QR аутентификатора" @change="selectFile" />
         <small>PNG, JPEG, WebP · до 1 МБ</small>
-        <small>Нажмите здесь и вставьте изображение: Ctrl+V / ⌘V</small>
       </div>
       <p v-if="error" class="bad account-authenticator__error" role="alert">{{ error }}</p>
     </div>
@@ -58,12 +62,24 @@ function pasteImage(event) {
   const clipboard = event.clipboardData
   const item = Array.from(clipboard?.items || []).find((entry) => entry.kind === 'file' && entry.type.startsWith('image/'))
   const file = item?.getAsFile() || Array.from(clipboard?.files || []).find((entry) => entry.type.startsWith('image/'))
-  if (!file) return
+  if (!file) {
+    // Поле принимает изображение, а не путь или ссылку; остальные текстовые поля не затрагиваем.
+    if (event.target.classList.contains('account-authenticator__paste')) {
+      event.preventDefault()
+      error.value = 'В буфере нет изображения. Скопируйте само изображение или выберите файл через скрепку.'
+    }
+    return
+  }
   event.preventDefault()
-  return attachImage(file)
+  return attachImage(file, { fromClipboard: true })
 }
 
-async function attachImage(file) {
+function clearPasteText(event) {
+  // Не оставляем набранный текст или путь в поле, предназначенном для вставки изображения.
+  event.target.value = ''
+}
+
+async function attachImage(file, options) {
   // Оба способа проверяют файл одинаково; поздний ответ после отмены не меняет карточку.
   if (!file || props.readonly || reading.value) return
   const currentRequest = ++requestId
@@ -71,7 +87,7 @@ async function attachImage(file) {
   reading.value = true
   emit('loading', true)
   try {
-    const result = await readAuthenticatorImage(file)
+    const result = await readAuthenticatorImage(file, options)
     if (currentRequest === requestId && !props.readonly) emit('update:image', result)
   } catch (e) {
     if (currentRequest === requestId) error.value = e.message
@@ -120,17 +136,21 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.account-authenticator { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 170px); align-items: start; gap: 16px; min-width: 0; }
+.account-authenticator { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 220px); align-items: start; gap: 16px; min-width: 0; }
 .account-authenticator__code { min-width: 0; }
 .account-authenticator__image { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
-.account-authenticator__image:focus-visible { outline: 2px solid var(--ghost-border); outline-offset: 4px; border-radius: 10px; }
 .account-authenticator__thumbnail { width: 96px; height: 96px; box-sizing: border-box; flex: none; padding: 4px; background: #fff; border: 1px solid #64748b; border-radius: 10px; cursor: zoom-in; }
 .account-authenticator__thumbnail img { display: block; width: 100%; height: 100%; object-fit: contain; }
-.account-authenticator__actions { display: flex; flex-wrap: wrap; gap: 6px; max-width: 100%; }
+.account-authenticator__actions { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; min-width: 0; }
+.account-authenticator__paste-row { display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 6px; width: 100%; }
+.account-authenticator .account-authenticator__paste { min-width: 0; width: 100%; height: 36px; padding: 0 10px; font-size: 12px; border-radius: 10px; }
+.account-authenticator .account-authenticator__paste:focus { border-color: var(--ink); box-shadow: 0 0 0 1px var(--input-border); }
 /* Общий .btn в компактной форме имеет min-width: 200px; действия QR используют свои размеры. */
 .account-authenticator__action { box-sizing: border-box; width: auto; min-width: 0; max-width: 100%; min-height: 32px; padding: 6px 8px; border: 1px solid var(--ghost-border); border-radius: 10px; background: var(--ghost-bg); color: var(--ghost-text); font: inherit; font-size: 12px; line-height: 18px; cursor: pointer; overflow-wrap: anywhere; }
 .account-authenticator__action:hover:not(:disabled) { filter: brightness(1.15); }
 .account-authenticator__action:disabled { opacity: .55; cursor: not-allowed; }
+.account-authenticator__action.account-authenticator__attach { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; }
+.account-authenticator__attach svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .account-authenticator__action:focus-visible, .account-authenticator__thumbnail:focus-visible { outline: 2px solid var(--ink, #fff); outline-offset: 2px; }
 .account-authenticator__actions small, .account-authenticator__empty { font-size: 12px; opacity: .7; }
 .account-authenticator__actions small { flex-basis: 100%; overflow-wrap: anywhere; }

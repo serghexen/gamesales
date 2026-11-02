@@ -1,10 +1,17 @@
 export const AUTHENTICATOR_IMAGE_MAX_BYTES = 1024 * 1024
 const allowedTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
 
-export async function readAuthenticatorImage(file) {
-  // Проверяем файл до чтения и не принимаем активные форматы вроде SVG.
-  if (!file || !allowedTypes.has(file.type) || !file.size || file.size > AUTHENTICATOR_IMAGE_MAX_BYTES) {
-    throw new Error('Выберите PNG, JPEG или WebP размером до 1 МБ')
+export async function readAuthenticatorImage(file, { fromClipboard = false } = {}) {
+  // Называем конкретную причину отказа, не читая заведомо неподходящий файл.
+  if (!file || !file.size) throw new Error('Изображение пустое. Выберите другой файл.')
+  if (!allowedTypes.has(file.type)) {
+    throw new Error(`Формат ${file.type || 'не определён'}. Поддерживаются PNG, JPEG или WebP.`)
+  }
+  if (file.size > AUTHENTICATOR_IMAGE_MAX_BYTES) {
+    const size = file.size.toLocaleString('ru-RU')
+    const source = fromClipboard ? 'Изображение из буфера' : 'Файл'
+    const hint = fromClipboard ? ' При копировании формат и размер могут измениться. Выберите исходный файл через скрепку.' : ''
+    throw new Error(`${source}: ${size} байт. Допустимо до 1 МБ (1 048 576 байт).${hint}`)
   }
   const dataUrl = await new Promise((resolve, reject) => {
     // Содержимое остаётся локальным до сохранения аккаунта.
