@@ -19,7 +19,7 @@
         </div>
         <button v-if="image" type="button" class="btn--ghost account-authenticator__action" :disabled="reading" @click="$emit('update:image', '')">Удалить</button>
         <input ref="fileInput" class="account-authenticator__file" type="file" accept="image/png,image/jpeg,image/webp" aria-label="Прикрепить QR аутентификатора" @change="selectFile" />
-        <small>PNG, JPEG, WebP · до 1 МБ</small>
+        <small>PNG, JPEG, WebP · до 15 МБ</small>
       </div>
       <p v-if="error" class="bad account-authenticator__error" role="alert">{{ error }}</p>
     </div>

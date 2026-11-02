@@ -1,4 +1,4 @@
-export const AUTHENTICATOR_IMAGE_MAX_BYTES = 1024 * 1024
+export const AUTHENTICATOR_IMAGE_MAX_BYTES = 15 * 1024 * 1024
 const allowedTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
 
 export async function readAuthenticatorImage(file, { fromClipboard = false } = {}) {
@@ -11,7 +11,7 @@ export async function readAuthenticatorImage(file, { fromClipboard = false } = {
     const size = file.size.toLocaleString('ru-RU')
     const source = fromClipboard ? 'Изображение из буфера' : 'Файл'
     const hint = fromClipboard ? ' При копировании формат и размер могут измениться. Выберите исходный файл через скрепку.' : ''
-    throw new Error(`${source}: ${size} байт. Допустимо до 1 МБ (1 048 576 байт).${hint}`)
+    throw new Error(`${source}: ${size} байт. Допустимо до 15 МБ (15 728 640 байт).${hint}`)
   }
   const dataUrl = await new Promise((resolve, reject) => {
     // Содержимое остаётся локальным до сохранения аккаунта.

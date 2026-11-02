@@ -26,12 +26,20 @@ describe('authenticator image file reading', () => {
 
   it('rejects an oversized file before decoding it', async () => {
     // Не читаем лишний мегабайт в FileReader, если размер уже превышен.
-    await expect(readAuthenticatorImage(new File([new Uint8Array(AUTHENTICATOR_IMAGE_MAX_BYTES + 1)], 'qr.png', { type: 'image/png' }))).rejects.toThrow('до 1 МБ')
+    await expect(readAuthenticatorImage(new File([new Uint8Array(AUTHENTICATOR_IMAGE_MAX_BYTES + 1)], 'qr.png', { type: 'image/png' }))).rejects.toThrow('до 15 МБ')
+  })
+
+  it.each([5665558, 15 * 1024 * 1024])('accepts clipboard images of %s bytes', async (bytes) => {
+    // Принимаем увеличившийся PNG из буфера и точную границу нового лимита без сжатия.
+    imageDecoder({ width: 2560, height: 1920 })
+    const result = await readAuthenticatorImage(new File([new Uint8Array(bytes)], 'image.png', { type: 'image/png' }), { fromClipboard: true })
+    expect(result.startsWith('data:image/png;base64,')).toBe(true)
+    expect(result.split(',')[1].length).toBe(4 * Math.ceil(bytes / 3))
   })
 
   it('reports actual clipboard size and suggests attaching the original', async () => {
     // Копирование JPEG может дать большой PNG: ошибка должна объяснять размер полученного буфера.
-    const bytes = 5665558
+    const bytes = 15 * 1024 * 1024 + 1
     const file = new File([new Uint8Array(bytes)], 'image.png', { type: 'image/png' })
     await expect(readAuthenticatorImage(file, { fromClipboard: true })).rejects.toThrow(`${bytes.toLocaleString('ru-RU')} байт`)
     await expect(readAuthenticatorImage(file, { fromClipboard: true })).rejects.toThrow('исходный файл через скрепку')

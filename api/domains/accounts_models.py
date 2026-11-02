@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .account_authenticator_image import MAX_IMAGE_DATA_URL_LENGTH
+
 
 def _normalize_date(value):
     if value is None:
@@ -128,7 +130,7 @@ class AccountSecretsPatchIn(BaseModel):
     delete_keys: List[str] = Field(default_factory=list)
     reserve_values: Optional[List[str]] = None
     expected_reserves: Optional[dict[str, str]] = None
-    authenticator_image: Optional[str] = Field(default=None, max_length=1_398_232)
+    authenticator_image: Optional[str] = Field(default=None, max_length=MAX_IMAGE_DATA_URL_LENGTH)
     expected_authenticator_image_version: Optional[str] = Field(default=None, max_length=64)
 
 

@@ -8,7 +8,9 @@ import re
 from fastapi import HTTPException
 
 IMAGE_SECRET_KEY = 'authenticator_image'
-MAX_IMAGE_BYTES = 1024 * 1024
+MAX_IMAGE_BYTES = 15 * 1024 * 1024
+# Общий предел data URL нужен и валидатору, и HTTP-модели, чтобы они принимали одинаковый размер.
+MAX_IMAGE_DATA_URL_LENGTH = 4 * ((MAX_IMAGE_BYTES + 2) // 3) + 128
 
 
 def raster_dimensions(raw, mime):
@@ -49,8 +51,8 @@ def validate_image(value):
     if not value:
         return ''
     match = re.fullmatch(r'data:(image/png|image/jpeg|image/webp);base64,([A-Za-z0-9+/=]+)', value)
-    if not match or len(value) > MAX_IMAGE_BYTES * 4 // 3 + 128:
-        raise HTTPException(400, 'Выберите PNG, JPEG или WebP размером до 1 МБ')
+    if not match or len(value) > MAX_IMAGE_DATA_URL_LENGTH:
+        raise HTTPException(400, 'Выберите PNG, JPEG или WebP размером до 15 МБ')
     try:
         raw = base64.b64decode(match[2], validate=True)
     except (ValueError, binascii.Error):

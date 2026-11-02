@@ -163,9 +163,9 @@ describe('account authenticator field', () => {
   it('keeps the current QR if the clipboard image fails validation', async () => {
     // Неподходящий формат или размер показывает штатную ошибку и сохраняет прежний QR.
     const wrapper = create({ image: 'data:image/png;base64,OLD' })
-    readAuthenticatorImage.mockRejectedValue(new Error('Выберите PNG, JPEG или WebP размером до 1 МБ'))
+    readAuthenticatorImage.mockRejectedValue(new Error('Выберите PNG, JPEG или WebP размером до 15 МБ'))
     await paste(wrapper, imageClipboard('image/svg+xml'))
-    expect(wrapper.find('[role=alert]').text()).toContain('до 1 МБ')
+    expect(wrapper.find('[role=alert]').text()).toContain('до 15 МБ')
     expect(wrapper.emitted('update:image')).toBeUndefined()
     expect(wrapper.emitted('loading').at(-1)).toEqual([false])
   })

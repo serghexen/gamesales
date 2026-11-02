@@ -5,7 +5,9 @@ import sqlite3
 import struct
 import unittest
 import zlib
+import re
 from inspect import signature
+from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi import FastAPI, Header, HTTPException
@@ -15,13 +17,17 @@ from domains.accounts_api import mount_accounts_routes
 from domains.account_authenticator_image import MAX_IMAGE_BYTES
 
 
-def png_data_url(color=0):
-    # Синтетический PNG 1×1 не содержит реального секрета аутентификатора.
+def png_data_url(color=0, size=None):
+    # Синтетический PNG с текстовым чанком позволяет проверить точный вес без реального QR.
     def chunk(kind, data):
         # Собираем корректные PNG-чанки с контрольными суммами без библиотек изображений.
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
     data = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 1, 1, 8, 2, 0, 0, 0))
-    data += chunk(b'IDAT', zlib.compress(bytes([0, color, color, color]))) + chunk(b'IEND', b'')
+    data += chunk(b'IDAT', zlib.compress(bytes([0, color, color, color])))
+    if size is not None:
+        padding = size - len(data) - 24
+        data += chunk(b'tEXt', b'Note\x00' + b'x' * (padding - 5))
+    data += chunk(b'IEND', b'')
     return 'data:image/png;base64,' + base64.b64encode(data).decode()
 
 
@@ -160,6 +166,28 @@ class AuthenticatorImageTests(unittest.TestCase):
         response = self.save(png_data_url(), upserts=[{'secret_key': '', 'secret_value': 'bad'}])
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.read().json()['image'], '')
+
+    def test_15mb_roundtrip_and_rejection_one_byte_above_limit(self):
+        # Проверяем HTTP, хранение и границу размера; отказ не должен менять сохранённую картинку.
+        limit = 15 * 1024 * 1024
+        image = png_data_url(size=limit)
+        self.assertEqual(len(base64.b64decode(image.split(',')[1])), limit)
+        response = self.save(image)
+        self.assertEqual(response.status_code, 200)
+        stored = self.read().json()
+        self.assertEqual(stored['image'], image)
+        self.assertEqual(self.save(png_data_url(size=limit + 1), stored['version']).status_code, 400)
+        self.assertEqual(self.read().json(), stored)
+
+        # JSON с base64 больше прежних 20 МБ; оба nginx-конфига должны пропускать его целиком.
+        request_bytes = len(response.request.content)
+        self.assertGreater(request_bytes, 20 * 1024 * 1024)
+        root = Path(__file__).resolve().parents[2]
+        for config in ['nginx/default.conf', 'gamesales-web/nginx/default.conf']:
+            with self.subTest(config=config):
+                match = re.search(r'client_max_body_size\s+(\d+)m;', (root / config).read_text())
+                self.assertIsNotNone(match)
+                self.assertLess(request_bytes, int(match[1]) * 1024 * 1024)
 
     def test_old_secret_endpoints_cannot_bypass_version_check(self):
         # Все старые способы записи этого ключа блокируются.
