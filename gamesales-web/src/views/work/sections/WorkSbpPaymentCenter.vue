@@ -151,6 +151,7 @@
                   <span>!</span><strong>{{ statusLabel(activePayment.state) }}</strong>
                 </div>
                 <p v-if="activePayment.last_error" class="sbp-message sbp-message--error">{{ activePayment.last_error }}</p>
+                <p v-if="error" class="sbp-message sbp-message--error" role="alert">{{ error }}</p>
                 <div class="sbp-payment__actions">
                   <button v-if="activePayment.qr_data_url" data-test="sbp-download" class="sbp-secondary" type="button" @click="downloadQr(activePayment)">Скачать QR</button>
                   <button data-test="sbp-create-another" class="sbp-primary sbp-primary--compact" type="button" @click="startAnother">Создать ещё</button>
@@ -547,31 +548,52 @@ function showPayment(payment) {
   open.value = true
 }
 
-function qrDataUrlBlob(dataUrl) {
-  // Превращаем банковский data URL в файл, потому что Safari не скачивает такие ссылки напрямую.
-  const separator = dataUrl.indexOf(',')
-  if (separator < 0) throw new Error('Некорректный формат QR-кода')
-  const header = dataUrl.slice(0, separator)
-  const payload = dataUrl.slice(separator + 1)
-  const mimeType = header.match(/^data:([^;,]+)/i)?.[1] || 'image/svg+xml'
-  const bytes = /;base64/i.test(header)
-    ? Uint8Array.from(window.atob(payload), (character) => character.charCodeAt(0))
-    : new TextEncoder().encode(decodeURIComponent(payload))
-  return new Blob([bytes], { type: mimeType })
+async function qrPngBlob(dataUrl) {
+  // Загружаем банковский SVG как изображение, чтобы сохранить сам QR в PNG.
+  const image = new Image()
+  await new Promise((resolve, reject) => {
+    image.onload = resolve
+    image.onerror = () => reject(new Error('Не удалось загрузить QR-код'))
+    image.src = dataUrl
+  })
+  if (!image.naturalWidth || !image.naturalHeight) throw new Error('Некорректный размер QR-кода')
+
+  // Белая подложка убирает прозрачность, а одинаковый масштаб сохраняет пропорции кода.
+  const canvas = document.createElement('canvas')
+  canvas.width = 1024
+  canvas.height = 1024
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Не удалось подготовить PNG')
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  const scale = Math.min(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight)
+  const width = image.naturalWidth * scale
+  const height = image.naturalHeight * scale
+  context.drawImage(image, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height)
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob)
+      else reject(new Error('Не удалось сохранить PNG'))
+    }, 'image/png')
+  })
 }
 
-function downloadQr(payment) {
-  // Скачиваем QR через blob URL, а после старта загрузки освобождаем память браузера.
+async function downloadQr(payment) {
+  // Скачиваем PNG через blob URL, а после старта загрузки освобождаем память браузера.
   if (!payment?.qr_data_url) return
+  error.value = ''
   try {
-    const objectUrl = URL.createObjectURL(qrDataUrlBlob(payment.qr_data_url))
+    const objectUrl = URL.createObjectURL(await qrPngBlob(payment.qr_data_url))
     const link = document.createElement('a')
     link.href = objectUrl
-    link.download = `sbp-${payment.order_id || payment.id}.svg`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000)
+    link.download = `sbp-${payment.order_id || payment.id}.png`
+    try {
+      document.body.appendChild(link)
+      link.click()
+    } finally {
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000)
+    }
   } catch {
     error.value = 'Не удалось скачать QR-код. Попробуйте сформировать его повторно.'
   }
