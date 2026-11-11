@@ -3,6 +3,7 @@
 import os
 import threading
 import unittest
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
@@ -65,9 +66,9 @@ class ReservePostgresTests(unittest.TestCase):
             execute(conn, 'DELETE FROM app.account_reserve_codes WHERE account_id=%s', (self.account,))
             execute(conn, 'DELETE FROM app.accounts WHERE account_id=%s', (self.account,))
 
-    def bind(self, conn, key, actor='test-alice'):
+    def bind(self, conn, key, actor='test-alice', token=None):
         # Назначаем резерв в том же порядке и транзакции, что обработчик создания сделки.
-        selected = self.service.select(conn, self.account, key, actor, auto=False)
+        selected = self.service.select(conn, self.account, key, actor, auto=False, token=token)
         deal = one(conn, "INSERT INTO app.deals(deal_type_code) VALUES ('rental') RETURNING deal_id")[0]
         self.deals.append(deal)
         execute(conn, 'INSERT INTO app.deal_items(deal_id,account_id,reserve_key) VALUES (%s,%s,%s)', (deal, self.account, selected))
@@ -98,6 +99,35 @@ class ReservePostgresTests(unittest.TestCase):
     def test_concurrent_assignment_has_one_winner(self):
         # Проверяем блокировку вместе с сохранением настоящей связи deal_items.
         self.assertEqual(self.race(lambda conn, actor: self.bind(conn, self.keys[0], actor)), [200, 409])
+
+    def test_same_employee_different_operations_have_one_winner(self):
+        # Две вкладки одного сотрудника получают разные UUID и не могут выдать один резерв дважды.
+        self.assertEqual(self.race(lambda conn, actor: self.service.claim(
+            conn,self.account,self.keys[0],'test-alice',token=str(uuid.uuid4()))),[200,409])
+
+    def test_same_operation_retries_without_second_issuance(self):
+        # Два одинаковых запроса после потери ответа сохраняют одну выдачу и один токен.
+        token = str(uuid.uuid4())
+        self.assertEqual(self.race(lambda conn, actor: self.service.claim(
+            conn,self.account,self.keys[0],'test-alice',token=token)),[200,200])
+        with self.connection() as conn:
+            self.assertIn(self.keys[0],self.service.used(conn,self.account,owner='test-alice'))
+            self.assertEqual(one(conn,'SELECT count(*) FROM app.account_reserve_events WHERE reserve_id IN (SELECT reserve_id FROM app.account_reserve_codes WHERE account_id=%s) AND event_type=%s',(self.account,'claimed'))[0],1)
+            deal = self.bind(conn,self.keys[0],token=token)
+            self.assertTrue(self.service.claim(conn,self.account,self.keys[0],'test-alice',deal_id=deal)['assigned'])
+        with self.connection() as conn:
+            with self.assertRaises(HTTPException):
+                self.service.select(conn,self.account,self.keys[0],'test-alice',token=token)
+
+    def test_old_claim_skipped_and_new_identity_stays_free(self):
+        # Реальный SQL сохраняет старые ID, но автоподбор пропускает собственную прежнюю выдачу.
+        with self.connection() as conn:
+            self.service.claim(conn,self.account,self.keys[0],'test-alice')
+            self.assertEqual(self.service.select(conn,self.account,None,'test-alice'),self.keys[1])
+            new_key = self.service.replace(conn,self.account,['NEW-CODE'],'test-alice')[0]
+            self.assertEqual(new_key,'reserve3')
+            self.assertNotIn(new_key,self.service.used(conn,self.account))
+            self.assertEqual(self.service.select(conn,self.account,None,'test-alice'),new_key)
 
     def test_concurrent_edit_rejects_stale_snapshot(self):
         # Второй редактор после ожидания видит новый список и получает конфликт.

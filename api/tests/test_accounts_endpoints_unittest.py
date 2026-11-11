@@ -540,6 +540,41 @@ class AccountsEndpointsTests(unittest.TestCase):
         self.assertIn("d.deal_id<>%s", sql_collector[0])
 
     # Первое копирование должно атомарно создать отметку и вернуть токен владельцу формы.
+    def test_usage_for_deal_does_not_exempt_employee_claims(self):
+        # Старый флаг клиента не должен возвращать собственные августовские выдачи в свободные.
+        with (
+            patch.object(app_module.psycopg, 'connect', return_value=_DummyConnCtx()),
+            patch.object(AccountReserves, 'used', return_value={'reserve4','reserve5'}) as used,
+            patch.object(app_module, 'JWT_SECRET', 'test-secret'),
+            patch.object(app_module, 'JWT_ALG', 'HS256'),
+        ):
+            client = self._client()
+            self.addCleanup(client.close)
+            res = client.get('/accounts/7/reserve-usage?for_deal=true&exclude_deal_id=55',
+                headers=self._auth_headers(role='manager'))
+        self.assertEqual(res.status_code,200)
+        self.assertEqual(res.json()['used_reserve_keys'],['reserve4','reserve5'])
+        self.assertEqual(used.call_args.args[1:],(7,55))
+
+    def test_claim_passes_client_operation_token(self):
+        # UUID из тела запроса доходит до сервиса; некорректный токен отклоняется до SQL.
+        token = 'a6bb1727-6276-4a2b-9b66-c9a1b765aa98'
+        with (
+            patch.object(app_module.psycopg, 'connect', return_value=_DummyConnCtx()),
+            patch.object(AccountReserves, 'claim', return_value={'reserve_key':'reserve1','claim_token':token}) as claim,
+            patch.object(app_module, 'JWT_SECRET', 'test-secret'),
+            patch.object(app_module, 'JWT_ALG', 'HS256'),
+        ):
+            client = self._client()
+            self.addCleanup(client.close)
+            res = client.post('/accounts/7/reserves/reserve1/claim',
+                json={'deal_id':55,'claim_token':token},headers=self._auth_headers(role='manager'))
+            invalid = client.post('/accounts/7/reserves/reserve1/claim',
+                json={'claim_token':'invalid'},headers=self._auth_headers(role='manager'))
+        self.assertEqual(res.status_code,200)
+        self.assertEqual(claim.call_args.args[1:],(7,'reserve1','admin',55,token))
+        self.assertEqual(invalid.status_code,422)
+
     def test_claim_account_reserve_success(self):
         # Порядок SQL включает блокировку аккаунта до проверки состояния кода.
         script = [
@@ -548,6 +583,7 @@ class AccountsEndpointsTests(unittest.TestCase):
             {"all": []},
             {"one": None},
             {"rowcount": 1},
+            {"one": (1,)},
             {"rowcount": 1},
             {"rowcount": 1},
         ]

@@ -695,6 +695,7 @@
 </template>
 
 <script setup>
+import { createReserveClaimToken } from '../reserveClaimToken'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import WorkAccountAuthenticator from './WorkAccountAuthenticator.vue'
 
@@ -895,6 +896,11 @@ const editAccountCommentOpen = ref(false)
 const editReserveRows = ref([])
 const copiedAccountFieldKey = ref('')
 const persistedUsedReserveKeys = ref(new Set())
+let reserveCopyTokens = new Map()
+// Повтор сети разрешён только в текущем открытии аккаунта; следующая карточка начинает новую операцию.
+watch(() => [props.editAccount?.open, props.editAccount?.account_id], () => {
+  reserveCopyTokens = new Map()
+}, { flush: 'sync' })
 const persistedReserveUsageLoaded = ref(false)
 let reserveUsageRequestSeq = 0
 let copiedAccountFieldTimerId = 0
@@ -997,6 +1003,7 @@ const getReserveDisplayValue = (reserveItem) => {
 
 // Копирует выбранное поле аккаунта и показывает короткий статус на кнопке.
 const copyAccountField = async (field, reserveItem = null) => {
+  // Токен остаётся в этой карточке при потере ответа, но не открывает старые копирования сотрудника.
   const value = getAccountFieldCopyValue(field, reserveItem)
   if (isCopyPlaceholderValue(value)) return
   const accountId = Number(props.editAccount?.account_id || 0)
@@ -1004,12 +1011,15 @@ const copyAccountField = async (field, reserveItem = null) => {
   if (field === 'reserve' && (!accountId || !reserveKey || isReserveUsedByKey(reserveKey))) return
   let claimToken = ''
   let freshClaim = false
+  const tokens = reserveCopyTokens
   try {
     if (field === 'reserve') {
-      const claim = await props.claimAccountReserve?.(accountId, reserveKey)
+      if (!tokens.has(reserveKey)) tokens.set(reserveKey, createReserveClaimToken())
+      const claim = await props.claimAccountReserve?.(accountId, reserveKey, null, tokens.get(reserveKey))
       claimToken = String(claim?.claim_token || '').trim()
       freshClaim = Boolean(claimToken && !claim?.reused)
       if (!claimToken) return
+      if (tokens !== reserveCopyTokens) throw new Error('Account changed')
       persistedUsedReserveKeys.value = new Set([...persistedUsedReserveKeys.value, reserveKey])
     }
     await copyTextToClipboard(value)
@@ -1022,7 +1032,9 @@ const copyAccountField = async (field, reserveItem = null) => {
   } catch {
     if (field === 'reserve' && freshClaim) {
       const result = await Promise.resolve(props.releaseAccountReserveClaim?.(accountId, reserveKey, claimToken)).catch(() => null)
+      if (tokens !== reserveCopyTokens) return
       if (result?.released) {
+        tokens.delete(reserveKey)
         const nextKeys = new Set(persistedUsedReserveKeys.value)
         nextKeys.delete(reserveKey)
         persistedUsedReserveKeys.value = nextKeys

@@ -90,8 +90,8 @@ class AccountReserves:
         values.update(upserts)
         return self.replace(conn, account_id, list(values.values()), actor)
 
-    def used(self, conn, account_id, exclude_deal_id=None, owner=None):
-        # Завершённые/выданные и скрытые коды не возвращаем в свободные после смены сделки.
+    def used(self, conn, account_id, exclude_deal_id=None, owner=None, token=None):
+        # Выданный код доступен только своей сделке или конкретной операции, но не всем формам сотрудника.
         rows = self.qall(conn, '''
             SELECT c.reserve_key FROM app.account_reserve_codes c
             WHERE c.account_id=%s AND (
@@ -102,17 +102,23 @@ class AccountReserves:
                       AND (%s::bigint IS NULL OR d.deal_id<>%s))
                 OR (c.issued_at IS NOT NULL AND NOT EXISTS (
                     SELECT 1 FROM app.account_reserve_claims a
-                    WHERE a.account_id=c.account_id AND a.reserve_key=c.reserve_key AND a.claimed_by=%s)
+                    WHERE a.account_id=c.account_id AND a.reserve_key=c.reserve_key
+                      AND a.claimed_by=%s AND a.claim_token::text=%s)
                     AND NOT EXISTS (SELECT 1 FROM app.deal_items own
                         WHERE own.deal_id=%s AND own.account_id=c.account_id AND own.reserve_key=c.reserve_key))
                 OR EXISTS (SELECT 1 FROM app.account_reserve_codes other
                     WHERE other.account_id=c.account_id AND other.value_hash=c.value_hash AND other.reserve_id<>c.reserve_id)
             )
-        ''', (account_id, exclude_deal_id, exclude_deal_id, owner, exclude_deal_id))
+        ''', (account_id, exclude_deal_id, exclude_deal_id, owner, token, exclude_deal_id))
         return {reserve_key(r[0]) for r in rows if reserve_key(r[0])}
 
-    def claim(self, conn, account_id, key, actor, deal_id=None):
-        # Сначала проверяем настоящую связь сделки; несохранённая форма не получает обход защиты.
+    def claim(self, conn, account_id, key, actor, deal_id=None, token=None):
+        # Повторяем только запрос с тем же токеном; старое копирование сотрудника не становится новой выдачей.
+        if token:
+            try:
+                token = str(uuid.UUID(str(token)))
+            except (ValueError, TypeError, AttributeError):
+                raise HTTPException(400, 'Invalid reserve claim token')
         if deal_id:
             self.q1(conn, 'SELECT deal_id FROM app.deals WHERE deal_id=%s FOR UPDATE', (deal_id,))
         self.lock(conn, account_id)
@@ -129,18 +135,22 @@ class AccountReserves:
                 issued_by=COALESCE(issued_by,%s) WHERE reserve_id=%s''', (actor, row[0]))
             self.event(conn, row[0], 'copied', actor, deal_id)
             return {'reserve_key': key, 'claim_token': '', 'assigned': True}
-        if key in self.used(conn, account_id, owner=actor):
+        if key in self.used(conn, account_id, owner=actor, token=token):
             raise HTTPException(409, 'Reserve already used')
         old = self.q1(conn, '''SELECT claim_token::text, claimed_by FROM app.account_reserve_claims
             WHERE account_id=%s AND reserve_key=%s''', (account_id, key))
         if old:
-            if old[1] != actor:
+            if old[1] != actor or not token or old[0] != token:
                 raise HTTPException(409, 'Reserve already used')
             self.exec1(conn, 'UPDATE app.account_reserve_claims SET reused_at=now() WHERE claim_token=%s', (old[0],))
             return {'reserve_key': key, 'claim_token': old[0], 'assigned': False, 'reused': True}
-        token = str(uuid.uuid4())
+        token = token or str(uuid.uuid4())
         self.exec1(conn, '''INSERT INTO app.account_reserve_claims(claim_token,account_id,reserve_key,claimed_by)
-            VALUES (%s,%s,%s,%s)''', (token, account_id, key, actor))
+            VALUES (%s,%s,%s,%s) ON CONFLICT (claim_token) DO NOTHING''', (token, account_id, key, actor))
+        # Один токен не может продолжить копирование другого кода даже при ошибке клиента.
+        if not self.q1(conn, '''SELECT 1 FROM app.account_reserve_claims
+            WHERE account_id=%s AND reserve_key=%s AND claim_token=%s AND claimed_by=%s''', (account_id, key, token, actor)):
+            raise HTTPException(409, 'Reserve claim belongs to another operation')
         self.exec1(conn, 'UPDATE app.account_reserve_codes SET issued_at=now(),issued_by=%s WHERE reserve_id=%s', (actor, row[0]))
         self.event(conn, row[0], 'claimed', actor)
         return {'reserve_key': key, 'claim_token': token, 'assigned': False, 'reused': False}
@@ -178,7 +188,7 @@ class AccountReserves:
                   AND d.deal_type_code='rental' AND d.status_code<>'cancelled' ''', (deal_id, account_id, key))
             if linked and any(r[1] == key for r in rows):
                 return key
-        used = self.used(conn, account_id, exclude_deal_id=deal_id, owner=actor)
+        used = self.used(conn, account_id, exclude_deal_id=deal_id, owner=actor, token=token)
         available = [r[1] for r in rows if r[3] and r[6] and r[5] is None and r[1] not in used]
         if key:
             if key not in available:

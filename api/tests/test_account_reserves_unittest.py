@@ -4,6 +4,7 @@ import base64
 import re
 import sqlite3
 import unittest
+import uuid
 
 from fastapi import HTTPException
 from domains.account_reserves import AccountReserves
@@ -123,10 +124,11 @@ class ReserveLifecycleTests(unittest.TestCase):
         self.assertIsNone(self.service.rows(self.conn,1)[0][6])
 
     def test_copy_from_account_can_be_attached_by_its_owner(self):
+        # Даже своё копирование доступно новой сделке только по токену конкретной операции.
         key = self.add(['A'])[0]
         claim = self.service.claim(self.conn,1,key,'alice')
         self.assertIn(key,self.service.used(self.conn,1))
-        self.assertNotIn(key,self.service.used(self.conn,1,owner='alice'))
+        self.assertIn(key,self.service.used(self.conn,1,owner='alice'))
         with self.assertRaises(HTTPException):
             self.service.select(self.conn,1,key,'bob')
         self.assertEqual(self.service.select(self.conn,1,key,'alice',token=claim['claim_token']),key)
@@ -157,13 +159,87 @@ class ReserveLifecycleTests(unittest.TestCase):
         self.assertNotIn(key,self.service.used(self.conn,1))
 
     def test_repeated_claim_cannot_be_released_by_first_failed_copy(self):
+        # Повтор с доказательством операции блокирует запоздалый откат первого запроса.
         key = self.add(['A'])[0]
         first = self.service.claim(self.conn,1,key,'alice')
-        second = self.service.claim(self.conn,1,key,'alice')
+        second = self.service.claim(self.conn,1,key,'alice',token=first['claim_token'])
         self.assertEqual(first['claim_token'],second['claim_token'])
         self.assertTrue(second['reused'])
         self.service.release(self.conn,1,key,first['claim_token'],'alice')
         self.assertIn(key,self.service.used(self.conn,1))
+
+    def test_old_own_claim_is_not_available_or_automatically_assigned(self):
+        # Регрессия Mango: старое копирование не возвращается в подбор тому же сотруднику.
+        old, free = self.add(['OLD', 'FREE'])
+        self.service.claim(self.conn,1,old,'alice')
+        self.assertIn(old,self.service.used(self.conn,1,owner='alice'))
+        self.assertEqual(self.service.select(self.conn,1,None,'alice'),free)
+        for token in (None, str(uuid.uuid4())):
+            with self.subTest(token=bool(token)):
+                with self.assertRaises(HTTPException) as err:
+                    self.service.claim(self.conn,1,old,'alice',token=token)
+                self.assertEqual(err.exception.status_code,409)
+                with self.assertRaises(HTTPException):
+                    self.service.select(self.conn,1,old,'alice',token=token)
+
+    def test_client_token_recovers_lost_response_and_can_save_once(self):
+        # Клиент знает UUID до ответа; повтор возвращает ту же выдачу, после сохранения токен погашен.
+        key = self.add(['CODE'])[0]
+        token = str(uuid.uuid4())
+        first = self.service.claim(self.conn,1,key,'alice',token=token)
+        retry = self.service.claim(self.conn,1,key,'alice',token=token)
+        self.assertEqual(first['claim_token'],token)
+        self.assertEqual(retry['claim_token'],token)
+        self.assertTrue(retry['reused'])
+        self.assertEqual(self.service.select(self.conn,1,key,'alice',token=token),key)
+        self.bind(key)
+        with self.assertRaises(HTTPException):
+            self.service.select(self.conn,1,key,'alice',token=token)
+        self.assertTrue(self.service.claim(self.conn,1,key,'alice',deal_id=1)['assigned'])
+
+    def test_token_cannot_be_used_for_other_code_account_or_employee(self):
+        # Токен связан с одним аккаунтом, кодом и сотрудником, а не служит общим обходом занятости.
+        first, second = self.add(['A','B'])
+        other = self.add(['C'],account=2)[0]
+        token = str(uuid.uuid4())
+        self.service.claim(self.conn,1,first,'alice',token=token)
+        for account,key,actor in ((1,second,'alice'),(2,other,'alice'),(1,first,'bob')):
+            with self.subTest(account=account,key=key,actor=actor):
+                with self.assertRaises(HTTPException):
+                    self.service.claim(self.conn,account,key,actor,token=token)
+                with self.assertRaises(HTTPException):
+                    self.service.select(self.conn,account,key,actor,token=token)
+        self.assertNotIn(second,self.service.used(self.conn,1))
+        self.assertNotIn(other,self.service.used(self.conn,2))
+
+    def test_replacing_copied_codes_preserves_ids_and_new_codes_are_free(self):
+        # Новые значения после старых выдач получают новые номера и не наследуют used даже при перестановке.
+        first, second = self.add(['OLD-A','OLD-B'])
+        self.service.claim(self.conn,1,first,'alice')
+        self.bind(second)
+        self.service.claim(self.conn,1,second,'alice',deal_id=1)
+        new_keys = self.add(['NEW-A','NEW-B'],expected={first:'OLD-A',second:'OLD-B'})
+        self.assertEqual(new_keys,['reserve3','reserve4'])
+        self.assertEqual(self.add(['NEW-B','NEW-A']),list(reversed(new_keys)))
+        self.assertEqual(self.add(['NEW-B']),[new_keys[1]])
+        later = self.add(['NEW-B','NEW-C'])[-1]
+        self.assertEqual(later,'reserve5')
+        rows = {r[1]:r for r in self.service.rows(self.conn,1)}
+        self.assertIsNotNone(rows[first][4])
+        for key in (new_keys[1],later):
+            self.assertIsNone(rows[key][4])
+            self.assertNotIn(key,self.service.used(self.conn,1))
+        self.assertEqual(self.conn.execute('SELECT reserve_key FROM app.deal_items').fetchone()[0],second)
+
+    def test_cancel_after_copy_keeps_code_used_for_same_employee(self):
+        # Отмена скопированной сделки не даёт владельцу снова получить её код для другого покупателя.
+        key = self.add(['A'])[0]
+        self.bind(key)
+        self.service.claim(self.conn,1,key,'alice',deal_id=1)
+        self.conn.execute("UPDATE app.deals SET status_code='cancelled' WHERE deal_id=1")
+        with self.assertRaises(HTTPException):
+            self.service.select(self.conn,1,key,'alice')
+        self.assertIsNone(self.service.select(self.conn,1,None,'alice'))
 
     def test_failed_first_copy_releases_only_own_claim(self):
         key = self.add(['A'])[0]

@@ -1668,6 +1668,7 @@
 <script setup>
 import { computed, onBeforeUnmount, reactive, ref, toRefs, watch } from 'vue'
 import { isCompletedDeal } from '../dealsUtils'
+import { createReserveClaimToken } from '../reserveClaimToken'
 import WorkDealSupplierNominals from './WorkDealSupplierNominals.vue'
 import WorkDealPurchaseCostInput from './WorkDealPurchaseCostInput.vue'
 
@@ -1794,6 +1795,7 @@ const newSaleProductLinks = ref([])
 const editDealAccountDetailsLoading = ref(false)
 const newDealAccountDetailsLoading = ref(false)
 const accountReserveUsage = ref({})
+const reserveCopyInFlight = { new: false, edit: false }
 const editDealOpenedAsDraft = ref(false)
 const accountDetailsRequestSeq = { new: 0, edit: 0 }
 onBeforeUnmount(() => {
@@ -2729,6 +2731,8 @@ function getSharingFieldCopyValue(target, field) {
 
 // Копирует выбранное поле шеринга и кратко показывает успешный статус на кнопке.
 async function copySharingField(target, field) {
+  // Не запускаем два копирования одной формы одновременно; токен переживает только сетевой повтор этой формы.
+  if (field === 'reserve' && reserveCopyInFlight[target]) return
   const value = getSharingFieldCopyValue(target, field)
   if (!value) return
   const isEditTarget = target === 'edit'
@@ -2737,15 +2741,19 @@ async function copySharingField(target, field) {
   const reserveKey = normalizeReserveKey(deal?.reserve_key)
   let claimToken = ''
   let freshClaim = false
+  const requestId = accountDetailsRequestSeq[target]
   try {
     if (field === 'reserve') {
       if (!accountId || !reserveKey || !canCopySharingReserve(target)) return
-      // Сервер проверяет сохранённую связь даже при копировании из существующей сделки.
-      const claim = await claimAccountReserve.value?.(accountId, reserveKey, isEditTarget ? deal?.deal_id : null)
+      reserveCopyInFlight[target] = true
+      deal.reserve_claim_token ||= createReserveClaimToken()
+      claimToken = deal.reserve_claim_token
+      // Сохраняем токен до отправки: после потери ответа повтор продолжается с тем же доказательством выдачи.
+      const claim = await claimAccountReserve.value?.(accountId, reserveKey, isEditTarget ? deal?.deal_id : null, claimToken)
       claimToken = String(claim?.claim_token || '').trim()
       freshClaim = Boolean(claimToken && !claim?.reused)
       if (!claimToken && !claim?.assigned) return
-      if (Number(deal?.account_id || 0) !== accountId || normalizeReserveKey(deal?.reserve_key) !== reserveKey || isCompletedDeal(deal)) {
+      if (requestId !== accountDetailsRequestSeq[target] || Number(deal?.account_id || 0) !== accountId || normalizeReserveKey(deal?.reserve_key) !== reserveKey || isCompletedDeal(deal)) {
         throw new Error('Reserve selection changed')
       }
       deal.reserve_claim_token = claimToken
@@ -2760,10 +2768,12 @@ async function copySharingField(target, field) {
   } catch {
     if (field === 'reserve' && freshClaim) {
       await Promise.resolve(releaseAccountReserveClaim.value?.(accountId, reserveKey, claimToken)).catch(() => {})
-      deal.reserve_claim_token = ''
+      if (deal.reserve_claim_token === claimToken) deal.reserve_claim_token = ''
       await ensureAccountReserveUsageLoaded(accountId, isEditTarget ? deal?.deal_id : null, true).catch(() => {})
     }
     showDealWarning.value?.('Не удалось скопировать значение')
+  } finally {
+    if (field === 'reserve') reserveCopyInFlight[target] = false
   }
 }
 

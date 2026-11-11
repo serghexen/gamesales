@@ -437,11 +437,41 @@ describe('WorkAccountEditorModal', () => {
     await copyButton.trigger('click')
     await flushPromises()
 
-    expect(claimAccountReserve).toHaveBeenCalledWith(5, 'reserve1')
+    expect(claimAccountReserve).toHaveBeenCalledWith(5, 'reserve1', null, expect.stringMatching(/^[0-9a-f-]{36}$/))
     expect(writeText).toHaveBeenCalledWith('AAA111')
     expect(wrapper.find('button[aria-label="Копировать Резерв 1"]').exists()).toBe(false)
     expect(wrapper.find('.account-reserve-row input').element.value).toBe('AAA111')
     expect(wrapper.find('.account-reserve-row__badge').text()).toBe('использован')
+  })
+
+  it('keeps the same operation after a lost response and resets it on reopening', async () => {
+    // Повтор сети принадлежит текущему открытию карточки, следующее открытие не получает старый токен.
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const claim = vi.fn().mockRejectedValueOnce(new Error('network'))
+      .mockRejectedValueOnce(new Error('network'))
+      .mockImplementation(async (_a, _k, _d, token) => ({ claim_token: token, reused: true }))
+    const editAccount = { ...buildProps().editAccount, open: true, reserve_text: 'CODE', existing_reserve_keys: ['reserve1'] }
+    const wrapper = mount(WorkAccountEditorModal, {
+      props: buildProps({ accountEditMode: 'view', editAccount, claimAccountReserve: claim }),
+      global: { stubs: { teleport: true } },
+    })
+    await flushPromises()
+    await wrapper.find('button[aria-label="Копировать Резерв 1"]').trigger('click')
+    await flushPromises()
+    expect(writeText).not.toHaveBeenCalled()
+    await wrapper.find('button[aria-label="Копировать Резерв 1"]').trigger('click')
+    await flushPromises()
+    expect(claim.mock.calls[0][3]).toBe(claim.mock.calls[1][3])
+    expect(writeText).not.toHaveBeenCalled()
+    await wrapper.setProps({ editAccount: { ...editAccount, open: false } })
+    await wrapper.setProps({ editAccount: { ...editAccount, open: true } })
+    await flushPromises()
+    await wrapper.find('.account-reserve-row button').trigger('click')
+    await flushPromises()
+    expect(claim.mock.calls[2][3]).not.toBe(claim.mock.calls[1][3])
+    expect(writeText).toHaveBeenCalledOnce()
+    wrapper.unmount()
   })
 
   it.each([true, false])('trusts server rollback after a clipboard failure (released=%s)', async (released) => {

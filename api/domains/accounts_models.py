@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from typing import List, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -118,6 +119,7 @@ class AccountReserveClaimOut(BaseModel):
 
 class AccountReserveClaimIn(BaseModel):
     deal_id: Optional[int] = None
+    claim_token: Optional[UUID] = None
 
 
 class AccountSecretPatchItemIn(BaseModel):

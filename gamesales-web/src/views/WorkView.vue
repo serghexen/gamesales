@@ -386,12 +386,14 @@ async function loadAccountUsedReserveKeys(accountId, excludeDealId = null, forDe
   return Array.isArray(result?.used_reserve_keys) ? result.used_reserve_keys : []
 }
 
-// Атомарно отмечает резерв использованным перед записью значения в буфер обмена.
-async function claimAccountReserve(accountId, reserveKey, dealId = null) {
+// Передаём токен конкретного копирования: имя сотрудника само по себе не разрешает повторную выдачу.
+async function claimAccountReserve(accountId, reserveKey, dealId = null, claimToken = null) {
   const targetId = Number(accountId || 0)
   const normalizedKey = String(reserveKey || '').trim().toLowerCase()
   if (!targetId || !normalizedKey) throw new Error('Не выбран резерв')
-  return apiPost(`/accounts/${targetId}/reserves/${encodeURIComponent(normalizedKey)}/claim`, { deal_id: Number(dealId) || null }, {
+  return apiPost(`/accounts/${targetId}/reserves/${encodeURIComponent(normalizedKey)}/claim`, {
+    deal_id: Number(dealId) || null, claim_token: claimToken || null,
+  }, {
     token: auth.state.token,
   })
 }

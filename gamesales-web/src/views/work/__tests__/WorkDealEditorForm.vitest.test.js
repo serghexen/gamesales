@@ -221,7 +221,7 @@ describe('WorkDealEditorForm template', () => {
     expect(source).toContain("v-if=\"canCopySharingReserve('edit')\"")
     expect(source).toContain("v-if=\"canCopySharingReserve('new')\"")
     expect(source).toContain('function canCopySharingReserve(target)')
-    expect(source).toContain('claimAccountReserve.value?.(accountId, reserveKey, isEditTarget ? deal?.deal_id : null)')
+    expect(source).toContain('claimAccountReserve.value?.(accountId, reserveKey, isEditTarget ? deal?.deal_id : null, claimToken)')
     expect(source).toContain('deal.reserve_claim_token = claimToken')
   })
 

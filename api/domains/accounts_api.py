@@ -737,9 +737,9 @@ def mount_accounts_routes(
         for_deal: bool = False,
         user=Depends(require_role("admin", "owner", "manager", "operator")),
     ):
-        # Полный учёт выдачи не зависит от страницы сделок; свои копирования можно привязать к сделке.
+        # Список не считает старые копирования сотрудника свободными; for_deal оставлен для старых клиентов.
         with psycopg.connect(DB_DSN) as conn:
-            keys = reserves.used(conn, account_id, exclude_deal_id, user.username if for_deal else None)
+            keys = reserves.used(conn, account_id, exclude_deal_id)
         return AccountReserveUsageOut(used_reserve_keys=sorted(keys, key=lambda key: int(key[7:])))
 
     @app.post("/accounts/{account_id}/reserves/{reserve_key}/claim", response_model=AccountReserveClaimOut)
@@ -749,9 +749,11 @@ def mount_accounts_routes(
         payload: Optional[AccountReserveClaimIn] = None,
         user=Depends(require_role("admin", "owner", "manager", "operator")),
     ):
-        # Общая проверка одинаково защищает создание, просмотр и редактирование сделки.
+        # Токен формы позволяет повторить потерянный ответ, не открывая чужие или старые выдачи.
         with psycopg.connect(DB_DSN) as conn:
-            result = reserves.claim(conn, account_id, reserve_key, user.username, payload.deal_id if payload else None)
+            result = reserves.claim(conn, account_id, reserve_key, user.username,
+                payload.deal_id if payload else None,
+                str(payload.claim_token) if payload and payload.claim_token else None)
             conn.commit()
         return AccountReserveClaimOut(**result)
 
