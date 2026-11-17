@@ -75,4 +75,7 @@ SQL
 docker exec -i "$PROD_DB_CONTAINER" pg_dump -U "$PROD_DB_USER" -d "$PROD_DB_NAME" --no-owner --no-privileges \
   | docker exec -i "$STAGING_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$STAGING_DB_USER" -d "$STAGING_DB_NAME"
 
+# Дамп PostgreSQL 16 не содержит статистику; собираем её до открытия восстановленной базы.
+docker exec -i "$STAGING_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$STAGING_DB_USER" -d "$STAGING_DB_NAME" -c 'ANALYZE'
+
 echo "[OK] Sync completed: $PROD_DB_NAME -> $STAGING_DB_NAME"

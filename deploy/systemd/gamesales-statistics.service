@@ -1,0 +1,17 @@
+[Unit]
+Description=Gamesales PostgreSQL planner statistics maintenance
+Requires=docker.service
+After=docker.service
+StartLimitIntervalSec=1h
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+WorkingDirectory=/apps/gamesales
+# Используем зависимости и окружение работающего API, не перезапуская его.
+ExecStart=/bin/sh -c '/usr/bin/docker exec -i gamesales-api python - < /apps/gamesales/api/scripts/maintain_statistics.py'
+TimeoutStartSec=180
+Restart=on-failure
+RestartSec=10min
+StandardOutput=journal
+StandardError=journal

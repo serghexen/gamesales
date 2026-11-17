@@ -182,6 +182,52 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build api
 
 Мигратор берёт блокировку на одного исполнителя и прекращает работу, если не смог получить DDL-блокировку за пять секунд. Перед первым production-запуском обязательно сделать и проверить восстановление резервной копии БД.
 
+### Статистика PostgreSQL
+
+Миграция `20261117_01_reference_autoanalyze.sql` снижает порог autoanalyze до
+одного изменения для 21 редко меняющегося справочника. Она не изменяет строки.
+Рабочие таблицы, очереди и глобальные настройки PostgreSQL сохраняют свои пороги.
+
+`api/scripts/maintain_statistics.py` ежедневно анализирует родительскую таблицу
+`finance.entries` и собирает отсутствующую статистику непустых обычных таблиц
+в схемах `app` и `finance`. Скрипт выполняет только SELECT/ANALYZE, без DDL/DML.
+Родителю секционированной таблицы нужен отдельный ANALYZE: анализ дочерних секций
+автоматически его не запускает. Защита от параллельных запусков — advisory lock;
+lock_timeout=1s, statement_timeout=30s, бюджет работы около двух минут.
+При конфликте/ошибке таблицы остальные обрабатываются, итоговый код ненулевой.
+
+После push, проверки резервной копии и выполнения мигратора установить серверные
+задачи из запушенного коммита:
+
+```bash
+sudo install -m 644 deploy/systemd/gamesales-statistics.service /etc/systemd/system/
+sudo install -m 644 deploy/systemd/gamesales-statistics.timer /etc/systemd/system/
+sudo systemd-analyze verify /etc/systemd/system/gamesales-statistics.service /etc/systemd/system/gamesales-statistics.timer
+sudo systemctl daemon-reload
+sudo systemctl start gamesales-statistics.service
+sudo systemctl enable --now gamesales-statistics.timer
+sudo systemctl list-timers gamesales-statistics.timer
+sudo journalctl -u gamesales-statistics.service --since today --no-pager
+```
+
+Таймер запускается в 04:15 МСК (точность до минуты), догоняет пропущенный запуск
+после выключения сервера. При ошибке сервис повторяет попытку через 10 минут,
+не более трёх стартов за час. Проверьте `Result`, `ExecMainStatus` и событие
+`complete` с `failed=0`; наличие включённого таймера само по себе не подтверждает
+успешный ANALYZE. Зависимости и DATABASE_URL используются из работающего контейнера
+API, а скрипт читается из серверного Git; перезапуск API и новая сборка не нужны.
+Ошибки соединения журналируются без DSN и содержимого строк.
+
+После восстановления PostgreSQL 16 сначала выполните `ANALYZE` восстановленной
+БД и только затем проверяйте производительность: pg_dump не переносит статистику
+планировщика. `scripts/sync_prod_to_staging_db.sh` выполняет этот шаг после импорта.
+Он по-прежнему запускается только явно, а не задачей обслуживания production.
+
+Откат задачи: отключить `gamesales-statistics.timer`, остановить сервис, если он
+работает; статистику удалять не требуется. Если потребуется вернуть пороги,
+оформить отдельную новую runtime-миграцию с RESET двух autovacuum_analyze-параметров
+только у перечисленных справочников. Бизнес-данные восстанавливать не нужно.
+
 ### Unified supplier catalogue (staging preview)
 
 `app.supplier_catalog_current` holds the current price, stock and discovery state per supplier/service/nominal ID. Manual refresh and the Moscow 09:00/hourly schedule share one updater and PostgreSQL advisory lock. Excel and voucher bindings read the same saved values. Failed updates retain the last successful value and its timestamp; prices and stock have independent timestamps. Existing snapshots are migrated independently and marked reviewed. Legacy tables remain for compatibility; purchase history is preserved.
