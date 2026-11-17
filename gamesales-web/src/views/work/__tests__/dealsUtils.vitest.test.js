@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 
 import {
   isCompletedDeal,
+  isSupplierVoucherDeal,
   createNewDealState,
   createEditDealState,
   createDealFiltersState,
@@ -9,6 +10,12 @@ import {
 } from '../dealsUtils.js'
 
 describe('dealsUtils', () => {
+  it('recognizes USA vouchers without enabling other regions or rental deals', () => {
+    // Используем код региона US из справочника; валюта USD сама по себе ничего не разрешает.
+    expect(isSupplierVoucherDeal({ deal_type_code: 'sale', region_code: ' us ' })).toBe(true)
+    expect(isSupplierVoucherDeal({ deal_type_code: 'rental', region_code: 'US' })).toBe(false)
+    expect(isSupplierVoucherDeal({ deal_type_code: 'sale', region_code: 'UA' })).toBe(false)
+  })
   it('recognizes completion by current status even when no reserve remains', () => {
     // Исторический timestamp не должен скрывать новую выдачу после возврата сделки в работу.
     expect(isCompletedDeal({ flow_status_code: 'completed', reserve_key: null })).toBe(true)

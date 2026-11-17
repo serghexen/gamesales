@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock
 
 from fastapi import FastAPI
 
@@ -97,6 +98,25 @@ class SupplierHubApiTests(unittest.TestCase):
         self.assertEqual(hub.list_queries[0]["sort_by"], "amount")
         self.assertEqual(hub.list_queries[0]["created_from"], "2026-08-26T00:00:00+03:00")
         self.assertEqual(hub.list_queries[0]["created_to"], "2026-08-27T00:00:00+03:00")
+
+    def test_history_keeps_calculated_price_without_using_purchase_limit(self):
+        # Проверяем обычный список и поиск: лимит не подменяет отсутствующую сумму даже у отказа.
+        client, hub = self.create_client()
+        rows = [
+            {"id": str(index), "service_id": 11125, "state": state,
+             "amount": amount, "max_amount": "912.01"}
+            for index, (state, amount) in enumerate([
+                ("succeeded", "861.43"), ("failed", "861.43"), ("failed", None), ("failed", 0),
+            ])
+        ]
+        hub.list_transactions = Mock(return_value={"items": rows, "total": 4, "total_amount": "861.43"})
+        for query in ("", "?search=steam"):
+            with self.subTest(query=query):
+                response = client.get("/integrations/supplier-hub/transactions" + query)
+                self.assertEqual(response.status_code, 200)
+                payload = response.json()
+                self.assertEqual([item["price"] for item in payload["items"]], [861.43, 861.43, None, 0])
+                self.assertEqual(payload["total_amount"], 861.43)
 
     def test_history_searches_visible_catalog_labels_and_ignores_short_uuid_matches(self):
         client, hub = self.create_client()

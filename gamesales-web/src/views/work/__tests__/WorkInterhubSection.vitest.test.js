@@ -89,7 +89,6 @@ describe('WorkInterhubSection', () => {
     wrapper.unmount()
   })
 
-
   it('shows the live balance on staging while keeping price refresh disabled', () => {
     // Ограниченный staging сохраняет видимый баланс и запрет массового опроса.
     const ctx = buildCtx({ supplierOffline: true, canManagePrices: true, balance: 12345, currency: 'RUB' })
@@ -290,6 +289,28 @@ describe('WorkInterhubSection', () => {
     const archiveTab = [...document.body.querySelectorAll('.interhub-history__sources button')].find((item) => item.textContent.includes('CRM и сделки'))
     await archiveTab.dispatchEvent(new Event('click'))
     expect(ctx.loadSalesHistory).toHaveBeenLastCalledWith({ source: 'crm', dateFrom: '2026-07-01', dateTo: '2026-07-27', search: '', state: '', sortBy: 'createdAt', sortDirection: 'desc', page: 1, pageSize: 25 })
+    wrapper.unmount()
+  })
+
+  it('distinguishes paid, calculated and missing prices in desktop and mobile history', async () => {
+    // Проверяем обе версии истории: отсутствие расчёта не становится нулём или лимитом.
+    const ctx = buildCtx({
+      canPay: true,
+      salesHistory: [
+        { purchase_id: 'paid', price: 861.43, state: 'succeeded' },
+        { purchase_id: 'failed', price: 861.43, state: 'failed' },
+        { purchase_id: 'unknown', price: null, state: 'failed', max_amount: 912.01 },
+        { purchase_id: 'missing', state: 'failed' },
+        { purchase_id: 'zero', price: 0, state: 'succeeded' },
+      ],
+    })
+    const wrapper = mount(WorkInterhubSection, { props: { ctx }, attachTo: document.body })
+    await wrapper.get('.interhub-catalog__history-action').trigger('click')
+    const expected = ['861,43 ₽', '861,43 ₽ (расчётная)', '—', '—', '0,00 ₽']
+    expect([...document.body.querySelectorAll('.interhub-history__table-wrap td[data-label="Цена"]')].map(cell => cell.textContent)).toEqual(expected)
+    const mobilePrices = [...document.body.querySelectorAll('.interhub-history__mobile-card dt')]
+      .filter(label => label.textContent === 'Цена').map(label => label.nextElementSibling.textContent)
+    expect(mobilePrices).toEqual(expected)
     wrapper.unmount()
   })
 

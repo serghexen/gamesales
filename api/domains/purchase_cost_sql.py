@@ -5,7 +5,7 @@
 # EXISTS не размножает строки отчёта, когда у сделки несколько покупок.
 PAID_VOUCHER_COST_SQL = """(
     d.deal_type_code = 'sale'
-    AND upper(rd.code) IN ('TR', 'PL')
+    AND upper(rd.code) IN ('TR', 'PL', 'US')
     AND EXISTS (
         SELECT 1
         FROM app.interhub_transactions cost_tx

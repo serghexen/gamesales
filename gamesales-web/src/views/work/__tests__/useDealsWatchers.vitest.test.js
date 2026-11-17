@@ -36,11 +36,11 @@ function createHarness(role = '') {
 }
 
 describe('useDealsWatchers', () => {
-  it.each(['TR', 'PL'])('preserves owner cost when switching new and saved services to %s', async (region) => {
+  it.each(['TR', 'PL', 'US'])('preserves owner cost when switching new and saved services to %s', async (region) => {
     // Поле остаётся доступным владельцу, поэтому переход на ваучеры не стирает его сумму.
     const h = createHarness('owner')
     for (const deal of [h.newDeal, h.editDeal]) {
-      Object.assign(deal, { deal_type_code: 'sale', region_code: 'US', purchase_cost: 123.45 })
+      Object.assign(deal, { deal_type_code: 'sale', region_code: 'UA', purchase_cost: 123.45 })
     }
     await nextTick()
     for (const deal of [h.newDeal, h.editDeal]) deal.region_code = region
@@ -49,29 +49,29 @@ describe('useDealsWatchers', () => {
     expect(h.editDeal.purchase_cost).toBe(123.45)
   })
 
-  it.each(['TR', 'PL'])('clears manual cost on switching new and edited services to %s', async (region) => {
+  it.each(['TR', 'PL', 'US'])('clears manual cost on switching new and edited services to %s', async (region) => {
     // Возврат к обычному региону не должен воскресить ранее введённый закуп.
     const h = createHarness()
     for (const deal of [h.newDeal, h.editDeal]) {
-      Object.assign(deal, { deal_type_code: 'sale', region_code: 'US', purchase_cost: 500 })
+      Object.assign(deal, { deal_type_code: 'sale', region_code: 'UA', purchase_cost: 500 })
     }
     await nextTick()
     for (const deal of [h.newDeal, h.editDeal]) deal.region_code = region
     await nextTick()
     for (const deal of [h.newDeal, h.editDeal]) {
       expect(deal.purchase_cost).toBe(0)
-      deal.region_code = 'US'
+      deal.region_code = 'UA'
     }
     await nextTick()
     expect(h.newDeal.purchase_cost).toBe(0)
     expect(h.editDeal.purchase_cost).toBe(0)
   })
 
-  it('preserves loaded voucher totals during initialization and payment synchronization', async () => {
+  it.each(['TR', 'PL', 'US'])('preserves loaded %s voucher totals during initialization and payment synchronization', async (region) => {
     // Применение сохранённой карточки под блокировкой не является ручной сменой региона.
     const h = createHarness()
     h.dealInitLock.value = true
-    Object.assign(h.editDeal, { deal_type_code: 'sale', region_code: 'TR', purchase_cost: 475.04 })
+    Object.assign(h.editDeal, { deal_type_code: 'sale', region_code: region, purchase_cost: 475.04 })
     await nextTick()
     h.dealInitLock.value = false
     expect(h.editDeal.purchase_cost).toBe(475.04)

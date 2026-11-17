@@ -56,7 +56,8 @@ def mount_supplier_hub_routes(
             "service_title": service_titles.get(service_id, ""),
             "nominal": nominal_id,
             "nominal_title": nominal_titles.get((service_id, nominal_id), ""),
-            "price": float(item.get("amount") or item.get("max_amount") or 0),
+            # Лимит покупки не является ценой; отсутствие расчёта сохраняем явно.
+            "price": float(item["amount"]) if item.get("amount") is not None else None,
             "state": str(item.get("state") or ""),
             "result_available": bool(item.get("result_available")),
             "provider_message": str(item.get("provider_message") or ""),

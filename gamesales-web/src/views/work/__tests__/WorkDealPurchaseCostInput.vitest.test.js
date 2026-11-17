@@ -4,7 +4,7 @@ import { mount } from '@vue/test-utils'
 import WorkDealPurchaseCostInput from '../sections/WorkDealPurchaseCostInput.vue'
 
 describe('WorkDealPurchaseCostInput', () => {
-  it.each(['TR', 'PL'])('lets only the owner view and edit new and saved %s purchase costs', async (region) => {
+  it.each(['TR', 'PL', 'US'])('lets only the owner view and edit new and saved %s purchase costs', async (region) => {
     // Проверяем обе карточки и смену роли, чтобы администратор не получил доступ владельца.
     for (const dealId of [undefined, 42]) {
       const deal = reactive({ deal_id: dealId, deal_type_code: 'sale', region_code: region, purchase_cost: 475.04 })
@@ -29,7 +29,7 @@ describe('WorkDealPurchaseCostInput', () => {
     }
   })
 
-  it.each(['TR', 'PL'])('hides saved %s cost in view and edit modes without changing accounting', async (region) => {
+  it.each(['TR', 'PL', 'US'])('hides saved %s cost in view and edit modes without changing accounting', async (region) => {
     // Исторический закуп остаётся в модели, но ни поле, ни подпись не попадают в карточку.
     const deal = reactive({ deal_id: 42, deal_type_code: 'sale', region_code: region, purchase_cost: 475.04 })
     const clampPrice = vi.fn(Number)
@@ -45,7 +45,7 @@ describe('WorkDealPurchaseCostInput', () => {
     wrapper.unmount()
   })
 
-  it.each(['TR', 'PL'])('keeps new %s cost hidden after saving and buying vouchers', async (region) => {
+  it.each(['TR', 'PL', 'US'])('keeps new %s cost hidden after saving and buying vouchers', async (region) => {
     // Сохранение и получение суммы закупа не раскрывают скрытое поле.
     const deal = reactive({ deal_type_code: 'sale', region_code: region, purchase_cost: 0 })
     const wrapper = mount(WorkDealPurchaseCostInput, { props: { deal, max: 100000, clampPrice: Number } })
@@ -58,7 +58,7 @@ describe('WorkDealPurchaseCostInput', () => {
 
   it('updates cost visibility when the region changes without clearing its value', async () => {
     // Переключение региона меняет видимость поля, но не стирает учётную сумму.
-    const deal = reactive({ deal_type_code: 'sale', region_code: 'US', purchase_cost: 50 })
+    const deal = reactive({ deal_type_code: 'sale', region_code: 'UA', purchase_cost: 50 })
     const wrapper = mount(WorkDealPurchaseCostInput, { props: { deal, max: 100000, clampPrice: Number } })
     expect(wrapper.get('input').element.value).toBe('50')
     await wrapper.setProps({ deal: { ...deal, region_code: 'TR' } })
@@ -71,7 +71,7 @@ describe('WorkDealPurchaseCostInput', () => {
 
   it('keeps decimal input for other regions and respects view mode', async () => {
     // Обычные услуги сохраняют прежний ввод дробной закупочной цены.
-    const deal = reactive({ deal_type_code: 'sale', region_code: 'US', purchase_cost: 50 })
+    const deal = reactive({ deal_type_code: 'sale', region_code: 'UA', purchase_cost: 50 })
     const wrapper = mount(WorkDealPurchaseCostInput, { props: { deal, max: 100000, clampPrice: Number } })
     const input = wrapper.get('input')
     expect(input.element.disabled).toBe(false)

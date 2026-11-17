@@ -74,6 +74,20 @@ class PurchaseHistoryExportTests(unittest.TestCase):
             self.assertEqual(call.args[0]["created_to"], "2026-09-06T00:00:00+03:00")
         hub.reveal_result.assert_not_called()
 
+    def test_export_never_substitutes_limit_for_missing_amount(self):
+        # В обоих источниках и общем листе сохраняем сумму, ноль и пустую ячейку без подстановки лимита.
+        rows = [{"id": str(index), "price": amount, "amount": amount, "max_amount": "912.01",
+                 "state": "succeeded"} for index, amount in enumerate(["861.43", None, 0])]
+        hub = SimpleNamespace(list_transactions=Mock(return_value={"total": len(rows), "items": rows}))
+        workbook = load_workbook(BytesIO(build_purchase_history_xlsx(
+            load_crm_rows=lambda: iter(rows), supplier_hub_client=hub,
+            services=[], date_from=None, date_to=None,
+        )))
+        for name in ("CRM", "Селлер", "Все покупки"):
+            with self.subTest(sheet=name):
+                expected = [861.43, None, 0] * (2 if name == "Все покупки" else 1)
+                self.assertEqual([cell.value for cell in workbook[name]["G"][1:]], expected)
+
     def test_empty_period_still_contains_all_sheet_headers(self):
         # Пустая выборка сохраняет три листа с одинаковыми колонками.
         empty = Mock(return_value={"total": 0, "items": []})

@@ -12,7 +12,7 @@ from domains.deals_api import mount_deals_routes
 
 
 def playstation_services():
-    # Тестовый каталог содержит только разрешённые региональные сервисы и один посторонний сервис.
+    # Каталог содержит разрешённые регионы и похожие услуги, которые нельзя смешивать с ними.
     return [
         {
             "service_id": 11125,
@@ -27,6 +27,20 @@ def playstation_services():
             "category": "Games",
             "type": "VOUCHER",
             "fields": [{"name": "nominal", "value_list": [{"id": 16793, "title": "PLN 100"}, {"id": 16796, "title": "PLN 200"}]}],
+        },
+        {
+            "service_id": 9829,
+            "title": "po_PlayStation - USA",
+            "category": "Games",
+            "type": "VOUCHER",
+            "fields": [{"name": "nominal", "value_list": [{"id": 16986, "title": "USD 50"}, {"id": 16985, "title": "USD 25"}]}],
+        },
+        {
+            "service_id": 9915,
+            "title": "po_PlayStation Network - USA",
+            "category": "Games",
+            "type": "VOUCHER",
+            "fields": [{"name": "nominal", "value_list": [{"id": 17545, "title": "USD 100"}]}],
         },
         {
             "service_id": 99999,
@@ -240,13 +254,21 @@ class FakeCursor:
             )
             self.rowcount = 1
             return
+        if normalized.startswith("SELECT account_id, reserve_key FROM app.deal_items") and "app.account_reserve_events" in normalized:
+            # Текущий сценарий завершения сверяет резервы аккаунтов; у тестовых услуг их нет.
+            self._all = []
+            return
+        if normalized == "SELECT account_id,reserve_key FROM app.deal_items WHERE deal_id=%s AND reserve_key IS NOT NULL ORDER BY account_id":
+            # Удаление черновика проверяет ту же привязку; тестовая услуга не занимает резервов.
+            self._all = []
+            return
         if normalized.startswith("WITH filtered_history AS"):
             # Повторяем состав истории, включая ID покупки для связи строк в Excel со сделками.
             paid_items = [item for item in self.db.transactions.values() if item["state"] == "paid" and item.get("deal_id")]
             if "SELECT COUNT(*), COALESCE(SUM(amount), 0)" in normalized:
                 self._one = (len(paid_items), sum(item["amount"] for item in paid_items))
             else:
-                service_titles = {11125: "po_PlayStation - Turkey", 9811: "po_PlayStation - Poland"}
+                service_titles = {11125: "po_PlayStation - Turkey", 9811: "po_PlayStation - Poland", 9829: "po_PlayStation - USA"}
                 rows = []
                 for item in reversed(paid_items):
                     deal = self.db.deals[item["deal_id"]]
@@ -298,6 +320,7 @@ class DealInterhubPurchaseTests(unittest.TestCase):
         self.db = FakeDealInterhubDb()
         self.role = "operator"
         self.publish = Mock()
+        self.services = Mock(side_effect=playstation_services)
         self.pay = Mock(side_effect=lambda payload: {
             "success": True, "status": 0, "message": "Готово",
             "transaction_id": f"provider-{payload['agent_transaction_id']}",
@@ -330,7 +353,7 @@ class DealInterhubPurchaseTests(unittest.TestCase):
             InterHubPaymentCheckOut=app_module.InterHubPaymentCheckOut,
             InterHubPayRequestIn=app_module.InterHubPayRequestIn,
             InterHubVoucherBatchPayRequestIn=app_module.InterHubVoucherBatchPayRequestIn,
-            interhub_get_services=playstation_services,
+            interhub_get_services=self.services,
             interhub_get_balance=lambda: {"balance": 0, "currency": "RUB", "over_balance": 0, "over_limit": 0},
             interhub_calculate=lambda payload: {"success": True, "status": 0, "fixed_amount": 475.04, "message": "Цена получена", "raw": {}},
             interhub_check=lambda payload: {"success": True, "status": 0, "message": "Доступно", "transaction_id": payload["agent_transaction_id"], "raw": {}},
@@ -369,7 +392,7 @@ class DealInterhubPurchaseTests(unittest.TestCase):
     def test_saving_historical_deal_preserves_purchase_cost_without_vouchers(self):
         # Старая сделка хранит ручной закуп без истории ваучеров; правка комментария не теряет сумму.
         self.role = "owner"
-        for deal_id in (42, 44):
+        for deal_id in (42, 44, 43):
             for flow in ("pending", "completed", "draft"):
                 with self.subTest(deal_id=deal_id, flow=flow):
                     self.db.update_deal(deal_id, flow=flow)
@@ -443,6 +466,72 @@ class DealInterhubPurchaseTests(unittest.TestCase):
         blocked = self.client.put("/deals/42", json={"lock_version": 3, "region_code": "TR"})
         self.assertEqual(blocked.status_code, 409)
         self.assertEqual(self.db.deals[42][1], "PL")
+
+    def test_switching_between_usa_and_turkey_invalidates_previous_confirmation(self):
+        # Проверка USA не оплачивается после смены региона; после покупки регион уже нельзя сменить.
+        old = self.prepare(43, "16985").json()
+        saved = self.client.put("/deals/43", json={"lock_version": 1, "region_code": "TR"})
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(self.buy(old, 43).status_code, 409)
+        tr_check = self.prepare(43, "28632").json()
+        saved = self.client.put("/deals/43", json={"lock_version": 2, "region_code": "US"})
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(self.buy(tr_check, 43).status_code, 409)
+        self.pay.assert_not_called()
+        current = self.prepare(43, "16985").json()
+        self.assertEqual(self.buy(current, 43).json()["service_id"], 9829)
+        self.assertEqual(self.client.put("/deals/43", json={"lock_version": 4, "region_code": "PL"}).status_code, 409)
+        self.assertEqual(self.db.deals[43][1], "US")
+
+    def test_usa_draft_purchase_retries_multiple_codes_and_history_remain_deal_bound(self):
+        # Оператор покупает несколько кодов USA только в рабочей сделке; повторы не списывают деньги снова.
+        self.db.update_deal(43, flow="draft")
+        self.assertEqual(self.prepare(43, "16985").status_code, 409)
+        self.assertEqual(self.db.transactions, {})
+        saved = self.client.put("/deals/43", json={"lock_version": 1, "flow_status_code": "pending"})
+        self.assertEqual(saved.status_code, 200, saved.text)
+        first_check = self.prepare(43, "16985").json()
+        self.assertEqual(self.buy(first_check, 42).status_code, 409)
+        self.pay.assert_not_called()
+        first = self.buy(first_check, 43).json()
+        self.assertEqual(first["state"], "paid")
+        self.assertEqual(self.buy(first_check, 43).json()["gift_code"], first["gift_code"])
+        self.assertEqual(self.pay.call_count, 1)
+        second = self.buy(self.prepare(43, "16986").json(), 43).json()
+        self.assertNotEqual(first["gift_code"], second["gift_code"])
+        self.assertEqual(self.db.purchase_costs[43], 950.08)
+        saved = self.client.put("/deals/43", json={"lock_version": 4, "purchase_cost": 0, "notes": "два ваучера USA"})
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(self.db.purchase_costs[43], 950.08)
+        tr = self.buy(self.prepare().json()).json()
+        history = self.client.get("/integrations/interhub/transactions/paid").json()["items"]
+        usa = [row for row in history if row["deal_id"] == 43]
+        self.assertEqual({row["gift_code"] for row in usa}, {first["gift_code"], second["gift_code"]})
+        self.assertEqual({row["nominal_title"] for row in usa}, {"USD 25", "USD 50"})
+        self.assertTrue(all(row["region_code"] == "US" for row in usa))
+        self.assertNotIn(tr["gift_code"], {row["gift_code"] for row in usa})
+        self.assertEqual(self.pay.call_count, 3)
+
+    def test_usa_processing_payment_is_not_repeated_and_blocks_deal_save(self):
+        # Неопределённый ответ поставщика остаётся processing, а не разрешает повторное списание.
+        self.pay.side_effect = TimeoutError("payment response lost")
+        prepared = self.prepare(43, "16985").json()
+        self.assertEqual(self.buy(prepared, 43).json()["state"], "processing")
+        self.assertEqual(self.buy(prepared, 43).json()["state"], "processing")
+        self.assertEqual(self.pay.call_count, 1)
+        self.assertEqual(self.client.put("/deals/43", json={"lock_version": 1, "flow_status_code": "completed"}).status_code, 409)
+        self.assertEqual(self.client.put("/deals/43", json={"lock_version": 1, "region_code": "TR"}).status_code, 409)
+
+    def test_usa_catalogue_must_match_both_region_and_voucher_type(self):
+        # Одного совпадения ID недостаточно: ошибочная привязка поставщика не должна разрешить покупку.
+        for changes in ({"title": "po_PlayStation - Canada"}, {"type": "TOPUP"}):
+            services = playstation_services()
+            next(s for s in services if s["service_id"] == 9829).update(changes)
+            self.services.side_effect = None
+            self.services.return_value = services
+            with self.subTest(changes=changes):
+                self.assertEqual(self.prepare(43, "16985").status_code, 503)
+        self.pay.assert_not_called()
 
     def test_stale_or_missing_version_and_draft_transition_prevent_payment(self):
         # Версию нельзя обойти прямым запросом; переход в черновик запрещает даже ранее проверенную покупку.
@@ -556,7 +645,7 @@ class DealInterhubPurchaseTests(unittest.TestCase):
 
     def test_completed_deals_reject_new_preparation_and_payment_for_all_roles_and_regions(self):
         # Завершение между проверкой и оплатой закрывает старое подтверждение, даже с актуальной версией.
-        for deal_id, nominal in [(42, "28632"), (44, "16793")]:
+        for deal_id, nominal in [(42, "28632"), (44, "16793"), (43, "16985")]:
             prepared = self.prepare(deal_id, nominal).json()
             completed = self.client.put(f"/deals/{deal_id}", json={"flow_status_code": "completed", "lock_version": 1})
             self.assertEqual(completed.status_code, 200, completed.text)
@@ -588,6 +677,7 @@ class DealInterhubPurchaseTests(unittest.TestCase):
         self.assertEqual(self.prepare().status_code, 409)
 
     def test_operator_gets_only_the_service_selected_by_deal_region(self):
+        # USA использует только 9829, хотя рядом в каталоге есть другая услуга PlayStation Network USA.
         response = self.client.get("/deals/42/interhub")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
@@ -599,7 +689,16 @@ class DealInterhubPurchaseTests(unittest.TestCase):
         self.assertEqual(poland["service_id"], 9811)
         self.assertEqual([item["title"] for item in poland["nominals"]], ["PLN 100", "PLN 200"])
 
+        usa = self.client.get("/deals/43/interhub").json()
+        self.assertEqual(usa["service_id"], 9829)
+        self.assertEqual([item["title"] for item in usa["nominals"]], ["USD 25", "USD 50"])
+        for nominal in ("28632", "16793", "17545"):
+            self.assertEqual(self.prepare(43, nominal).status_code, 422)
+        self.pay.assert_not_called()
+
     def test_rejects_unsupported_region_and_non_service_deal(self):
+        # US теперь поддержан, поэтому отрицательный сценарий проверяем на другом регионе.
+        self.db.update_deal(43, region="UA")
         self.assertEqual(self.client.get("/deals/43/interhub").status_code, 422)
         self.assertEqual(self.client.get("/deals/45/interhub").status_code, 422)
 

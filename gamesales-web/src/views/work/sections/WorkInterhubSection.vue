@@ -181,7 +181,7 @@
                   </td>
                   <td data-label="Сервис">{{ item.service }}</td>
                   <td data-label="Номинал">{{ item.nominal || '—' }}</td>
-                  <td data-label="Цена">{{ formatMoney(item.price) }} ₽</td>
+                  <td data-label="Цена">{{ formatHistoryPrice(item) }}</td>
                   <td v-if="salesHistorySource === 'hub'" data-label="Статус"><span class="interhub-history__state" :class="`is-${item.state}`">{{ item.stateLabel }}</span></td>
                   <td v-else data-label="Гифт-код"><code v-if="item.giftCode" class="interhub-history__gift-code">{{ item.giftCode }}</code><span v-else>—</span></td>
                   <td v-if="salesHistorySource === 'crm'" data-label="Оператор">{{ item.createdBy || '—' }}</td>
@@ -204,7 +204,7 @@
                   <div v-if="salesHistorySource === 'crm'"><dt>Сделка</dt><dd><button v-if="item.dealId" class="interhub-history__deal-link" type="button" @click="openSalesHistoryDeal(item.dealId)">#{{ item.dealId }}</button><span v-else>—</span><small v-if="item.orderNumber">{{ item.orderNumber }}</small><small v-if="item.customerNickname">{{ item.customerNickname }}<template v-if="item.regionCode"> · {{ item.regionCode }}</template></small></dd></div>
                   <div><dt>Сервис</dt><dd>{{ item.service }}</dd></div>
                   <div><dt>Номинал</dt><dd>{{ item.nominal || '—' }}</dd></div>
-                  <div><dt>Цена</dt><dd>{{ formatMoney(item.price) }} ₽</dd></div>
+                  <div><dt>Цена</dt><dd>{{ formatHistoryPrice(item) }}</dd></div>
                   <div v-if="salesHistorySource === 'hub'"><dt>Статус</dt><dd><span class="interhub-history__state" :class="`is-${item.state}`">{{ item.stateLabel }}</span></dd></div>
                   <div v-else><dt>Гифт-код</dt><dd><code v-if="item.giftCode" class="interhub-history__gift-code">{{ item.giftCode }}</code><span v-else>—</span></dd></div>
                   <div v-if="salesHistorySource === 'crm'"><dt>Оператор</dt><dd>{{ item.createdBy || '—' }}</dd></div>
@@ -457,7 +457,8 @@ const salesHistoryRows = computed(() => {
       serviceId,
       service: formatServiceTitle(String(item?.service_title || '').trim() || serviceNames.get(serviceId) || `Услуга #${serviceId || '—'}`),
       nominal: String(item?.nominal_title || '').trim() || nominalNames.get(`${serviceId}:${nominalId}`) || nominalId,
-      price: Number(item?.price || 0),
+      // Не превращаем отсутствующую цену в нулевую стоимость покупки.
+      price: item?.price == null ? null : Number(item.price),
       giftCode: String(item?.gift_code || ''),
       state,
       stateLabel: salesHistoryStateLabel(state),
@@ -787,6 +788,13 @@ function formatBalance(value, currency) {
 function formatMoney(value) {
   // Показываем стоимость без потери копеек перед необратимым подтверждением оплаты.
   return new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0)).replace(/\u00A0/g, ' ')
+}
+
+function formatHistoryPrice(item) {
+  // Отделяем сохранённый расчёт от оплаты и не подставляем лимит вместо цены.
+  if (item.price == null) return '—'
+  const suffix = salesHistorySource.value === 'hub' && item.state !== 'succeeded' ? ' (расчётная)' : ''
+  return `${formatMoney(item.price)} ₽${suffix}`
 }
 
 function formatCachedDate(value) {

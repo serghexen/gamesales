@@ -38,9 +38,9 @@ function checkedPurchase(overrides = {}) {
   return { success: true, state: 'checked', lock_version: 1, agent_transaction_id: 'deal-42-one', nominal_id: '28632', nominal_title: 'TRY 250', amount: 475.04, ...overrides }
 }
 
-async function openConfirmation(wrapper) {
+async function openConfirmation(wrapper, nominal = '28632') {
   // Проходим пользовательские действия до подтверждения без доступа к внутренним refs компонента.
-  await wrapper.find('select').setValue('28632')
+  await wrapper.find('select').setValue(nominal)
   await wrapper.find('.deal-supplier__obtain').trigger('click')
   await flushPromises()
 }
@@ -65,7 +65,7 @@ describe('WorkDealSupplierNominals', () => {
     document.body.innerHTML = ''
   })
 
-  it.each(['TR', 'PL'])('hides purchase controls in completed %s deals but keeps copying existing codes', async (region) => {
+  it.each(['TR', 'PL', 'US'])('hides purchase controls in completed %s deals but keeps copying existing codes', async (region) => {
     // Завершённая карточка остаётся архивом ваучеров, а не местом для новых оплат.
     const paid = checkedPurchase({ state: 'paid', gift_code: 'SAVED-CODE' })
     apiGet.mockResolvedValue(supplierPayload({ flow_status_code: 'completed', purchase_allowed: false, purchases: [paid] }))
@@ -109,7 +109,8 @@ describe('WorkDealSupplierNominals', () => {
     wrapper.unmount()
   })
 
-  it('shows the embedded supplier block only for Turkey and Poland', async () => {
+  it('shows the embedded supplier block for supported regions only', async () => {
+    // Добавление USA не должно открывать блок поставщика для остальных регионов.
     apiGet.mockResolvedValue(supplierPayload())
     const tr = mount(WorkDealSupplierNominals, { props: { deal: { deal_id: 42, region_code: 'TR', flow_status_code: 'pending', lock_version: 1 } } })
     await flushPromises()
@@ -119,13 +120,15 @@ describe('WorkDealSupplierNominals', () => {
     expect(tr.text()).toContain('Турция')
     tr.unmount()
 
-    const unsupported = mount(WorkDealSupplierNominals, { props: { deal: { deal_id: 43, region_code: 'US' } } })
+    const unsupported = mount(WorkDealSupplierNominals, { props: { deal: { deal_id: 43, region_code: 'UA' } } })
     expect(unsupported.find('.deal-supplier').exists()).toBe(false)
     expect(apiGet).toHaveBeenCalledTimes(1)
+    unsupported.unmount()
   })
 
-  it('requires a saved deal before obtaining a code', () => {
-    const wrapper = mount(WorkDealSupplierNominals, { props: { deal: { region_code: 'PL' } } })
+  it.each(['TR', 'PL', 'US'])('requires a saved %s deal before obtaining a code', (region) => {
+    // Несохранённая карточка любого поддержанного региона не запускает покупку.
+    const wrapper = mount(WorkDealSupplierNominals, { props: { deal: { region_code: region } } })
     expect(wrapper.text()).toContain('Сначала сохраните сделку')
     expect(wrapper.find('.deal-supplier__obtain').exists()).toBe(false)
     wrapper.unmount()
@@ -153,8 +156,11 @@ describe('WorkDealSupplierNominals', () => {
     wrapper.unmount()
   })
 
-  it('drops the old confirmation when region is edited and buys only from the newly saved region', async () => {
-    // Турецкая проверка не переживает редактирование региона; после сохранения выбирается только Польша.
+  it.each([
+    ['PL', 9811, 'Poland', '16793', 'PLN 100'],
+    ['US', 9829, 'USA', '16985', 'USD 25'],
+  ])('drops the old confirmation when changing to %s and buys only after saving', async (region, serviceId, title, nominalId, nominalTitle) => {
+    // Турецкая проверка не переживает редактирование региона; после сохранения используется новый каталог.
     const deal = { deal_id: 42, region_code: 'TR', flow_status_code: 'pending', lock_version: 1 }
     apiGet.mockResolvedValue(supplierPayload())
     apiPost.mockResolvedValue(checkedPurchase())
@@ -162,21 +168,53 @@ describe('WorkDealSupplierNominals', () => {
     await flushPromises()
     await openConfirmation(wrapper)
     expect(document.body.querySelector('.deal-supplier-confirm')).not.toBeNull()
-    await wrapper.setProps({ editing: true, deal: { ...deal, region_code: 'PL' } })
+    await wrapper.setProps({ editing: true, deal: { ...deal, region_code: region } })
     expect(document.body.querySelector('.deal-supplier-confirm')).toBeNull()
     expect(apiPost).toHaveBeenCalledTimes(1)
     expect(apiGet).toHaveBeenCalledTimes(1)
-    apiGet.mockResolvedValue(supplierPayload({ region_code: 'PL', service_id: 9811, service_title: 'PlayStation - Poland', lock_version: 2, nominals: [{ id: '16793', title: 'PLN 100' }] }))
-    apiPost.mockResolvedValue(checkedPurchase({ lock_version: 2, nominal_id: '16793', nominal_title: 'PLN 100' }))
-    await wrapper.setProps({ editing: false, deal: { ...deal, region_code: 'PL', lock_version: 2 } })
+    apiGet.mockResolvedValue(supplierPayload({ region_code: region, service_id: serviceId, service_title: `PlayStation - ${title}`, lock_version: 2, nominals: [{ id: nominalId, title: nominalTitle }] }))
+    apiPost.mockResolvedValue(checkedPurchase({ lock_version: 2, nominal_id: nominalId, nominal_title: nominalTitle }))
+    await wrapper.setProps({ editing: false, deal: { ...deal, region_code: region, lock_version: 2 } })
     await flushPromises()
     expect(wrapper.text()).not.toContain('TRY 250')
-    await wrapper.find('select').setValue('16793')
+    await wrapper.find('select').setValue(nominalId)
     await wrapper.find('.deal-supplier__obtain').trigger('click')
     await flushPromises()
     confirmBuy()
     await flushPromises()
     expect(apiPost).toHaveBeenLastCalledWith('/deals/42/interhub/pay', { agent_transaction_id: 'deal-42-one', lock_version: 2 }, { token: 'operator-token' })
+    wrapper.unmount()
+  })
+
+  it('buys a USA voucher only after leaving draft and synchronizes the saved deal', async () => {
+    // Проверяем подпись США, USD-номинал и полный путь оператора без реальных платежей.
+    const deal = { deal_id: 43, region_code: 'US', flow_status_code: 'draft', lock_version: 1 }
+    const catalog = supplierPayload({ deal_id: 43, region_code: 'US', service_id: 9829, service_title: 'po_PlayStation - USA', nominals: [{ id: '16985', title: 'USD 25' }] })
+    apiGet.mockResolvedValue({ ...catalog, flow_status_code: 'draft', purchase_allowed: false })
+    const syncDeal = vi.fn().mockResolvedValue(undefined)
+    const wrapper = mount(WorkDealSupplierNominals, { props: { deal, syncDeal } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Поставщик · США')
+    expect(wrapper.get('.deal-supplier__obtain').element.disabled).toBe(true)
+    expect(apiPost).not.toHaveBeenCalled()
+    await wrapper.setProps({ editing: true, deal: { ...deal, flow_status_code: 'pending' } })
+    expect(wrapper.text()).toContain('Сначала сохраните изменения сделки')
+    expect(apiGet).toHaveBeenCalledTimes(1)
+    apiGet.mockResolvedValue({ ...catalog, lock_version: 2 })
+    const checked = checkedPurchase({ lock_version: 2, agent_transaction_id: 'usa-43', nominal_id: '16985', nominal_title: 'USD 25' })
+    apiPost.mockResolvedValueOnce(checked).mockResolvedValueOnce({ ...checked, state: 'paid', gift_code: 'USA-CODE' })
+    await wrapper.setProps({ editing: false, deal: { ...deal, flow_status_code: 'pending', lock_version: 2 } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('USD 25')
+    expect(wrapper.text()).not.toContain('TRY 250')
+    await openConfirmation(wrapper, '16985')
+    expect(apiPost).toHaveBeenCalledWith('/deals/43/interhub/prepare', { nominal_id: '16985', lock_version: 2 }, { token: 'operator-token' })
+    confirmBuy()
+    await flushPromises()
+    expect(apiPost).toHaveBeenLastCalledWith('/deals/43/interhub/pay', { agent_transaction_id: 'usa-43', lock_version: 2 }, { token: 'operator-token' })
+    expect(syncDeal).toHaveBeenCalledWith(43)
+    expect(wrapper.text()).toContain('USA-CODE')
+    expect(wrapper.text()).not.toContain('₽')
     wrapper.unmount()
   })
 
@@ -384,6 +422,9 @@ describe('WorkDealSupplierNominals', () => {
     ['PL', 'PLN 100', 'checked'],
     ['PL', 'PLN 100', 'processing'],
     ['PL', 'PLN 100', 'paid'],
+    ['US', 'USD 25', 'checked'],
+    ['US', 'USD 25', 'processing'],
+    ['US', 'USD 25', 'paid'],
   ])('hides purchase costs when reopening %s vouchers in state %s %s', async (region, nominal, state) => {
     // Ответ сервера по-прежнему содержит закуп, но при повторном открытии он не появляется в интерфейсе.
     const purchase = checkedPurchase({ state, nominal_title: nominal, amount: 477.13, gift_code: state === 'paid' ? 'SAVED-CODE' : '', created_by: 'operator' })

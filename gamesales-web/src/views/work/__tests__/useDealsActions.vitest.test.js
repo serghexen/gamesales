@@ -82,7 +82,7 @@ function createDeps(overrides = {}) {
 }
 
 describe('useDealsActions', () => {
-  it.each(['TR', 'PL'])('preserves owner manual %s cost on create, edit and draft save', async (region) => {
+  it.each(['TR', 'PL', 'US'])('preserves owner manual %s cost on create, edit and draft save', async (region) => {
     // Введённая владельцем сумма доходит до API во всех вариантах сохранения.
     for (const action of ['createDeal', 'createDealDraft', 'updateDeal', 'updateDealDraft']) {
       const deps = createDeps()
@@ -98,7 +98,7 @@ describe('useDealsActions', () => {
     }
   })
 
-  it.each(['TR', 'PL'])('starts new %s deals at zero but preserves historical cost on edit and draft save', async (region) => {
+  it.each(['TR', 'PL', 'US'])('starts new %s deals at zero but preserves historical cost on edit and draft save', async (region) => {
     // Создание исключает ручной закуп, а правка других полей старой сделки не обнуляет историю.
     for (const action of ['createDeal', 'createDealDraft', 'updateDeal', 'updateDealDraft']) {
       const deps = createDeps()

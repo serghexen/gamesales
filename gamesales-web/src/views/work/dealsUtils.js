@@ -6,7 +6,7 @@ export function isCompletedDeal(deal) {
 export function isSupplierVoucherDeal(deal) {
   // Определяем услуги, в которых поставщик автоматически учитывает закуп ваучеров.
   return deal?.deal_type_code === 'sale'
-    && ['TR', 'PL'].includes(String(deal?.region_code || '').trim().toUpperCase())
+    && ['TR', 'PL', 'US'].includes(String(deal?.region_code || '').trim().toUpperCase())
 }
 
 export function canEnterManualPurchaseCost(deal, role) {

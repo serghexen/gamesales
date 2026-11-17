@@ -61,14 +61,13 @@ def build_purchase_history_xlsx(*, load_crm_rows, supplier_hub_client, services,
             nominal_id = str(item.get("nominal") or item.get("nominal_id") or "")
             state = item.get("state") or ("paid" if source == "CRM" else "")
             amount = item.get("price") if source == "CRM" else item.get("amount")
-            if amount is None:
-                amount = item.get("max_amount")
+            # Пустую сумму оставляем пустой: лимит нельзя выдавать за стоимость покупки.
             values = [
                 str(item.get("agent_transaction_id") or item.get("id") or ""),
                 "CRM" if source == "CRM" else str(item.get("consumer_id") or "seller"),
                 service_id, item.get("service_title") or labels.get(service_id, str(service_id)),
                 nominal_id, item.get("nominal_title") or nominals.get((service_id, nominal_id)) or nominal_id,
-                float(amount or 0),
+                float(amount) if amount is not None else None,
                 STATES.get(state, state), history_date(item.get("created_at")),
                 item.get("deal_id"), item.get("order_number", ""), item.get("customer_nickname", ""),
                 item.get("region_code", ""), item.get("created_by", ""),
