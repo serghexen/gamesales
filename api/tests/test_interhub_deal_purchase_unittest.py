@@ -56,7 +56,7 @@ class FakeDealInterhubDb:
     def __init__(self):
         self.deals = {
             42: ("sale", "TR", "confirmed", None, "ORDER-42", "buyer-tr", "pending", 1),
-            43: ("sale", "US", "confirmed", None, "ORDER-43", "buyer-us", "pending", 1),
+            43: ("sale", "USA", "confirmed", None, "ORDER-43", "buyer-us", "pending", 1),
             44: ("sale", "PL", "confirmed", None, "ORDER-44", "buyer-pl", "pending", 1),
             45: ("rental", "TR", "confirmed", None, "ORDER-45", "buyer-rental", "pending", 1),
         }
@@ -78,7 +78,7 @@ class FakeDealInterhubDb:
         paid = [t for t in self.transactions.values() if t["deal_id"] == deal_id and t["state"] == "paid"]
         processing = [t for t in self.transactions.values() if t["deal_id"] == deal_id and t["state"] == "processing"]
         return (
-            deal[0], deal[2], deal[6], deal[7], {"TR": 1, "PL": 2, "US": 3}[deal[1]],
+            deal[0], deal[2], deal[6], deal[7], {"TR": 1, "PL": 2, "USA": 3}[deal[1]],
             7, 1000, deal[4], "operator", 1, deal_id * 10, None, None, 1000,
             self.purchase_costs.get(deal_id, 0), None, None, None, 0, None, None,
             None, self.notes.get(deal_id, ""), "", deal[3], len(paid),
@@ -163,7 +163,7 @@ class FakeCursor:
         if normalized.startswith("UPDATE app.deals SET deal_type_code"):
             deal_id = int(params[-2])
             if self.db.deals[deal_id][7] == params[-1]:
-                self.db.update_deal(deal_id, deal_type=params[0], region={1: "TR", 2: "PL", 3: "US"}[params[5]],
+                self.db.update_deal(deal_id, deal_type=params[0], region={1: "TR", 2: "PL", 3: "USA"}[params[5]],
                                     flow=params[4], version=int(params[-1]) + 1)
                 self.rowcount = 1
             return
@@ -369,7 +369,7 @@ class DealInterhubPurchaseTests(unittest.TestCase):
             validate_date_in_range=lambda *args: None, validate_date_range=lambda *args: None,
             ensure_account_exists=lambda *args: None, ensure_source_exists=lambda *args: None,
             ensure_account_allows_slot_type=lambda *args: None, get_platform_id=lambda *args: 1,
-            get_region_id=lambda conn, code: {"TR": 1, "PL": 2, "US": 3}[code],
+            get_region_id=lambda conn, code: {"TR": 1, "PL": 2, "USA": 3}[code],
             get_account_slot_free=lambda *args: 1, ensure_customer=lambda *args: 7,
             get_slot_type=lambda *args: None, account_has_ps4=lambda *args: False,
             release_slot_assignment=lambda *args: None, build_deals_filters=lambda *args: None,
@@ -474,14 +474,14 @@ class DealInterhubPurchaseTests(unittest.TestCase):
         self.assertEqual(saved.status_code, 200, saved.text)
         self.assertEqual(self.buy(old, 43).status_code, 409)
         tr_check = self.prepare(43, "28632").json()
-        saved = self.client.put("/deals/43", json={"lock_version": 2, "region_code": "US"})
+        saved = self.client.put("/deals/43", json={"lock_version": 2, "region_code": "USA"})
         self.assertEqual(saved.status_code, 200, saved.text)
         self.assertEqual(self.buy(tr_check, 43).status_code, 409)
         self.pay.assert_not_called()
         current = self.prepare(43, "16985").json()
         self.assertEqual(self.buy(current, 43).json()["service_id"], 9829)
         self.assertEqual(self.client.put("/deals/43", json={"lock_version": 4, "region_code": "PL"}).status_code, 409)
-        self.assertEqual(self.db.deals[43][1], "US")
+        self.assertEqual(self.db.deals[43][1], "USA")
 
     def test_usa_draft_purchase_retries_multiple_codes_and_history_remain_deal_bound(self):
         # Оператор покупает несколько кодов USA только в рабочей сделке; повторы не списывают деньги снова.
@@ -508,7 +508,7 @@ class DealInterhubPurchaseTests(unittest.TestCase):
         usa = [row for row in history if row["deal_id"] == 43]
         self.assertEqual({row["gift_code"] for row in usa}, {first["gift_code"], second["gift_code"]})
         self.assertEqual({row["nominal_title"] for row in usa}, {"USD 25", "USD 50"})
-        self.assertTrue(all(row["region_code"] == "US" for row in usa))
+        self.assertTrue(all(row["region_code"] == "USA" for row in usa))
         self.assertNotIn(tr["gift_code"], {row["gift_code"] for row in usa})
         self.assertEqual(self.pay.call_count, 3)
 
@@ -697,10 +697,19 @@ class DealInterhubPurchaseTests(unittest.TestCase):
         self.pay.assert_not_called()
 
     def test_rejects_unsupported_region_and_non_service_deal(self):
-        # US теперь поддержан, поэтому отрицательный сценарий проверяем на другом регионе.
+        # USA теперь поддержан, поэтому отрицательный сценарий проверяем на другом регионе.
         self.db.update_deal(43, region="UA")
         self.assertEqual(self.client.get("/deals/43/interhub").status_code, 422)
         self.assertEqual(self.client.get("/deals/45/interhub").status_code, 422)
+
+    def test_legacy_us_region_keeps_same_supplier_catalog(self):
+        # Старый US остаётся совместимым, а основные сценарии выше используют USA из формы.
+        self.db.update_deal(43, region="US")
+        response = self.client.get("/deals/43/interhub")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["service_id"], 9829)
+        self.assertEqual(response.json()["region_code"], "US")
+        self.pay.assert_not_called()
 
     def test_second_pay_for_one_deal_returns_same_code_without_second_provider_call(self):
         prepared = self.client.post("/deals/42/interhub/prepare", json={"nominal_id": "28632", "lock_version": self.db.deals[42][7]})

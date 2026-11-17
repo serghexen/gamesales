@@ -157,8 +157,9 @@ const synchronizing = ref(false)
 const dealId = computed(() => Number(props.deal?.deal_id || 0))
 const regionCode = computed(() => String(props.deal?.region_code || '').trim().toUpperCase())
 // USA использует тот же блок и ограничения, но собственный каталог PlayStation.
-const isSupportedRegion = computed(() => ['TR', 'PL', 'US'].includes(regionCode.value))
-const regionLabel = computed(() => ({ TR: 'Турция', PL: 'Польша', US: 'США' })[regionCode.value] || '')
+// Код USA из формы и прежний US открывают один и тот же американский каталог.
+const isSupportedRegion = computed(() => ['TR', 'PL', 'US', 'USA'].includes(regionCode.value))
+const regionLabel = computed(() => ({ TR: 'Турция', PL: 'Польша', US: 'США', USA: 'США' })[regionCode.value] || '')
 const selectedNominalTitle = computed(() => supplier.value?.nominals?.find((item) => String(item.id) === nominalId.value)?.title || '')
 const purchaseLocked = computed(() => String(purchase.value?.state || '') === 'processing')
 // Сохранённое завершение на сервере блокирует покупку даже при устаревшей локальной карточке.

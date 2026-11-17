@@ -16,7 +16,8 @@ from domains.crm_purchase_export import iter_crm_purchase_export
 PENDING_STATUS = 1
 INTERHUB_HISTORY_TIMEZONE = "Europe/Moscow"
 # Для сделки разрешаем только PlayStation-ваучеры её региона, а не все услуги в этой валюте.
-DEAL_INTERHUB_SERVICE_IDS = {"TR": 11125, "PL": 9811, "US": 9829}
+# USA — код PlayStation-региона в форме; US сохраняем для прежних записей справочника.
+DEAL_INTERHUB_SERVICE_IDS = {"TR": 11125, "PL": 9811, "US": 9829, "USA": 9829}
 
 
 def interhub_status_check_interval(check_attempts: int) -> str:
@@ -693,7 +694,7 @@ def mount_interhub_routes(
         # Находим только заранее разрешённый PlayStation-сервис региона и дополнительно проверяем его название.
         normalized_region = str(region_code or "").strip().upper()
         service_id = DEAL_INTERHUB_SERVICE_IDS.get(normalized_region)
-        expected_region = {"TR": "turkey", "PL": "poland", "US": "usa"}.get(normalized_region, "")
+        expected_region = {"TR": "turkey", "PL": "poland", "US": "usa", "USA": "usa"}.get(normalized_region, "")
         services = interhub_get_services()
         service = next((item for item in services if int(item.get("service_id") or 0) == int(service_id or 0)), None)
         title = str(service.get("title") or "") if service else ""
@@ -707,7 +708,7 @@ def mount_interhub_routes(
     def fallback_provider_service(region_code: str) -> dict:
         # Восстанавливаем подпись уже купленного кода без обращения к каталогу, если Interhub временно недоступен.
         normalized_region = str(region_code or "").strip().upper()
-        region_title = {"TR": "Turkey", "PL": "Poland", "US": "USA"}.get(normalized_region, normalized_region)
+        region_title = {"TR": "Turkey", "PL": "Poland", "US": "USA", "USA": "USA"}.get(normalized_region, normalized_region)
         return {
             "service_id": int(DEAL_INTERHUB_SERVICE_IDS.get(normalized_region) or 0),
             "title": f"PlayStation - {region_title}", "type": "VOUCHER", "fields": [],

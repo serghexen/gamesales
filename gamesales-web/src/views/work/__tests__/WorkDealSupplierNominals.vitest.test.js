@@ -65,7 +65,7 @@ describe('WorkDealSupplierNominals', () => {
     document.body.innerHTML = ''
   })
 
-  it.each(['TR', 'PL', 'US'])('hides purchase controls in completed %s deals but keeps copying existing codes', async (region) => {
+  it.each(['TR', 'PL', 'US', 'USA'])('hides purchase controls in completed %s deals but keeps copying existing codes', async (region) => {
     // Завершённая карточка остаётся архивом ваучеров, а не местом для новых оплат.
     const paid = checkedPurchase({ state: 'paid', gift_code: 'SAVED-CODE' })
     apiGet.mockResolvedValue(supplierPayload({ flow_status_code: 'completed', purchase_allowed: false, purchases: [paid] }))
@@ -126,7 +126,7 @@ describe('WorkDealSupplierNominals', () => {
     unsupported.unmount()
   })
 
-  it.each(['TR', 'PL', 'US'])('requires a saved %s deal before obtaining a code', (region) => {
+  it.each(['TR', 'PL', 'US', 'USA'])('requires a saved %s deal before obtaining a code', (region) => {
     // Несохранённая карточка любого поддержанного региона не запускает покупку.
     const wrapper = mount(WorkDealSupplierNominals, { props: { deal: { region_code: region } } })
     expect(wrapper.text()).toContain('Сначала сохраните сделку')
@@ -159,6 +159,7 @@ describe('WorkDealSupplierNominals', () => {
   it.each([
     ['PL', 9811, 'Poland', '16793', 'PLN 100'],
     ['US', 9829, 'USA', '16985', 'USD 25'],
+    ['USA', 9829, 'USA', '16985', 'USD 25'],
   ])('drops the old confirmation when changing to %s and buys only after saving', async (region, serviceId, title, nominalId, nominalTitle) => {
     // Турецкая проверка не переживает редактирование региона; после сохранения используется новый каталог.
     const deal = { deal_id: 42, region_code: 'TR', flow_status_code: 'pending', lock_version: 1 }
@@ -188,8 +189,8 @@ describe('WorkDealSupplierNominals', () => {
 
   it('buys a USA voucher only after leaving draft and synchronizes the saved deal', async () => {
     // Проверяем подпись США, USD-номинал и полный путь оператора без реальных платежей.
-    const deal = { deal_id: 43, region_code: 'US', flow_status_code: 'draft', lock_version: 1 }
-    const catalog = supplierPayload({ deal_id: 43, region_code: 'US', service_id: 9829, service_title: 'po_PlayStation - USA', nominals: [{ id: '16985', title: 'USD 25' }] })
+    const deal = { deal_id: 43, region_code: 'USA', flow_status_code: 'draft', lock_version: 1 }
+    const catalog = supplierPayload({ deal_id: 43, region_code: 'USA', service_id: 9829, service_title: 'po_PlayStation - USA', nominals: [{ id: '16985', title: 'USD 25' }] })
     apiGet.mockResolvedValue({ ...catalog, flow_status_code: 'draft', purchase_allowed: false })
     const syncDeal = vi.fn().mockResolvedValue(undefined)
     const wrapper = mount(WorkDealSupplierNominals, { props: { deal, syncDeal } })
@@ -423,8 +424,11 @@ describe('WorkDealSupplierNominals', () => {
     ['PL', 'PLN 100', 'processing'],
     ['PL', 'PLN 100', 'paid'],
     ['US', 'USD 25', 'checked'],
+    ['USA', 'USD 25', 'checked'],
     ['US', 'USD 25', 'processing'],
+    ['USA', 'USD 25', 'processing'],
     ['US', 'USD 25', 'paid'],
+    ['USA', 'USD 25', 'paid'],
   ])('hides purchase costs when reopening %s vouchers in state %s %s', async (region, nominal, state) => {
     // Ответ сервера по-прежнему содержит закуп, но при повторном открытии он не появляется в интерфейсе.
     const purchase = checkedPurchase({ state, nominal_title: nominal, amount: 477.13, gift_code: state === 'paid' ? 'SAVED-CODE' : '', created_by: 'operator' })

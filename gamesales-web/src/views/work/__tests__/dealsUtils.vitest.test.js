@@ -11,8 +11,12 @@ import {
 
 describe('dealsUtils', () => {
   it('recognizes USA vouchers without enabling other regions or rental deals', () => {
-    // Используем код региона US из справочника; валюта USD сама по себе ничего не разрешает.
-    expect(isSupplierVoucherDeal({ deal_type_code: 'sale', region_code: ' us ' })).toBe(true)
+    // Проверяем USA из формы и прежний US; валюта USD не разрешает покупку.
+    for (const code of [' us ', ' usa ', 'USA']) {
+      expect(isSupplierVoucherDeal({ deal_type_code: 'sale', region_code: code })).toBe(true)
+      expect(isSupplierVoucherDeal({ deal_type_code: 'rental', region_code: code })).toBe(false)
+    }
+    expect(isSupplierVoucherDeal({ deal_type_code: 'sale', region_code: 'USD' })).toBe(false)
     expect(isSupplierVoucherDeal({ deal_type_code: 'rental', region_code: 'US' })).toBe(false)
     expect(isSupplierVoucherDeal({ deal_type_code: 'sale', region_code: 'UA' })).toBe(false)
   })

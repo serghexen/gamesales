@@ -4,7 +4,7 @@ import { mount } from '@vue/test-utils'
 import WorkDealPurchaseCostInput from '../sections/WorkDealPurchaseCostInput.vue'
 
 describe('WorkDealPurchaseCostInput', () => {
-  it.each(['TR', 'PL', 'US'])('lets only the owner view and edit new and saved %s purchase costs', async (region) => {
+  it.each(['TR', 'PL', 'US', 'USA'])('lets only the owner view and edit new and saved %s purchase costs', async (region) => {
     // Проверяем обе карточки и смену роли, чтобы администратор не получил доступ владельца.
     for (const dealId of [undefined, 42]) {
       const deal = reactive({ deal_id: dealId, deal_type_code: 'sale', region_code: region, purchase_cost: 475.04 })
@@ -29,7 +29,7 @@ describe('WorkDealPurchaseCostInput', () => {
     }
   })
 
-  it.each(['TR', 'PL', 'US'])('hides saved %s cost in view and edit modes without changing accounting', async (region) => {
+  it.each(['TR', 'PL', 'US', 'USA'])('hides saved %s cost in view and edit modes without changing accounting', async (region) => {
     // Исторический закуп остаётся в модели, но ни поле, ни подпись не попадают в карточку.
     const deal = reactive({ deal_id: 42, deal_type_code: 'sale', region_code: region, purchase_cost: 475.04 })
     const clampPrice = vi.fn(Number)
@@ -45,7 +45,7 @@ describe('WorkDealPurchaseCostInput', () => {
     wrapper.unmount()
   })
 
-  it.each(['TR', 'PL', 'US'])('keeps new %s cost hidden after saving and buying vouchers', async (region) => {
+  it.each(['TR', 'PL', 'US', 'USA'])('keeps new %s cost hidden after saving and buying vouchers', async (region) => {
     // Сохранение и получение суммы закупа не раскрывают скрытое поле.
     const deal = reactive({ deal_type_code: 'sale', region_code: region, purchase_cost: 0 })
     const wrapper = mount(WorkDealPurchaseCostInput, { props: { deal, max: 100000, clampPrice: Number } })

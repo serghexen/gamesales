@@ -29,7 +29,7 @@ class PurchaseCostSqlTests(unittest.TestCase):
     def test_paid_vouchers_use_rubles_in_all_supported_regions(self):
         # Две покупки одной сделки подтверждают валюту, но не удваивают расход.
         self.conn.executemany("INSERT INTO app.interhub_transactions VALUES (?, ?)", [(42, "paid"), (42, "paid")])
-        for region in ("TR", "PL", "US"):
+        for region in ("TR", "PL", "US", "USA"):
             with self.subTest(region=region):
                 self.conn.execute("UPDATE regions SET code=?", (region,))
                 self.assertEqual(self.cost_and_rate(cost=1911.36, qty=2), (3822.72, 1, 1))
@@ -37,7 +37,7 @@ class PurchaseCostSqlTests(unittest.TestCase):
     def test_historical_and_unpaid_deals_keep_regional_rate(self):
         # Чужая оплата и любые неоплаченные покупки не меняют старый валютный закуп.
         self.conn.execute("INSERT INTO app.interhub_transactions VALUES (99, 'paid')")
-        for region in ("TR", "PL", "US"):
+        for region in ("TR", "PL", "US", "USA"):
             self.conn.execute("UPDATE regions SET code=?", (region,))
             for state in (None, "checked", "processing", "failed", "cancelled"):
                 with self.subTest(region=region, state=state):
@@ -49,7 +49,7 @@ class PurchaseCostSqlTests(unittest.TestCase):
     def test_other_regions_and_rental_keep_previous_rule(self):
         # Наличие связи с поставщиком не меняет правила других регионов и шеринга.
         self.conn.execute("INSERT INTO app.interhub_transactions VALUES (42, 'paid')")
-        for region, deal_type in (("UA", "sale"), ("TR", "rental"), ("PL", "rental"), ("US", "rental")):
+        for region, deal_type in (("UA", "sale"), ("TR", "rental"), ("PL", "rental"), ("US", "rental"), ("USA", "rental")):
             with self.subTest(region=region, deal_type=deal_type):
                 self.conn.execute("UPDATE regions SET code=?", (region,))
                 self.conn.execute("UPDATE deals SET deal_type_code=?", (deal_type,))
