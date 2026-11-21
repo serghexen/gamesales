@@ -85,8 +85,9 @@ services:
       - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    mem_limit: 90m
-    cpus: "0.15"
+    # Даём HTTPS-шлюзу запас, чтобы вытеснение памяти не блокировало соединения.
+    mem_limit: 256m
+    cpus: "0.50"
 
   queue-api:
     build: ./notify-api
