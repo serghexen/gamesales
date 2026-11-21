@@ -86,7 +86,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     # Даём HTTPS-шлюзу запас, чтобы вытеснение памяти не блокировало соединения.
-    mem_limit: 256m
+    mem_limit: 512m
     cpus: "0.50"
 
   queue-api:
